@@ -1,0 +1,24 @@
+{
+  "name": "life-ui",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "apps/web",
+    "packages/core"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd apps/web dev",
+    "test": "bun test scripts/test-origin.test.ts && bun run --cwd apps/web test",
+    "check": "bun run --cwd apps/web check",
+    "build": "bun run --cwd apps/web build",
+    "bundle:core": "bun scripts/bundle-core.ts",
+    "bundle:native": "bun scripts/bundle-core.ts --native",
+    "bundle:graph": "bun run --cwd apps/web bundle:graph"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/bun": "^1.4.2",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,53 @@
+name: LifeUI
+options:
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: 1
+  configs:
+    debug:
+      ONLY_ACTIVE_ARCH: YES
+      ENABLE_TESTABILITY: YES
+      SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+packages:
+  LifeKit:
+    path: ../../packages/LifeKit
+targets:
+  LifeUI:
+    type: application
+    platform: macOS
+    sources: [App]
+    dependencies:
+      - package: LifeKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.life-ui
+        PRODUCT_NAME: LifeUI
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Life UI
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  LifeUITests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [../../packages/LifeKit/Tests/LifeKitTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.life-ui.tests
+        PRODUCT_NAME: LifeUITests
+    dependencies:
+      - target: LifeUI
+      - package: LifeKit
+schemes:
+  LifeUI:
+    build:
+      targets:
+        LifeUI: all
+        LifeUITests: [test]
+    test:
+      targets: [LifeUITests]

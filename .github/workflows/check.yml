@@ -1,0 +1,32 @@
+name: Check
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - name: Verify generated native resources
+        run: |
+          bun run bundle:graph
+          bun run bundle:native
+          git diff --exit-code -- packages/LifeKit/Sources/LifeKit/Resources/graph.html packages/LifeKit/Sources/LifeKit/Resources/life-core.js
+      - run: bun run test
+      - run: bun run check
+      - run: bun run --cwd apps/web lint
+      - run: bun run build
+  apple:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen just
+      - run: swift test --package-path packages/LifeKit
+      - run: just --justfile apps/macos/justfile check
+      - run: just --justfile apps/ios/justfile check

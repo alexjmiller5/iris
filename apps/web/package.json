@@ -1,0 +1,37 @@
+{
+	"name": "life-ui-web",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev --host 127.0.0.1",
+		"build": "wrangler types && vite build",
+		"bundle:graph": "vite build --config vite.graph.config.ts",
+		"check": "wrangler types && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"test": "vitest run",
+		"fmt": "prettier --write .",
+		"lint": "prettier --check ."
+	},
+	"dependencies": {
+		"life-ui-core": "workspace:*",
+		"wa-sqlite": "github:rhashimoto/wa-sqlite#7a4b4241ba7c61ee19121aacd6c93892234ce1a1"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-cloudflare": "^7.2.8",
+		"@sveltejs/kit": "^2.63.0",
+		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@tabler/icons-svelte": "^3.46.0",
+		"@tailwindcss/vite": "^4.3.0",
+		"@types/node": "^26.6.4",
+		"prettier": "^3.8.3",
+		"prettier-plugin-svelte": "^4.1.0",
+		"prettier-plugin-tailwindcss": "^0.8.0",
+		"svelte": "^5.56.1",
+		"svelte-check": "^4.6.0",
+		"tailwindcss": "^4.3.0",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.16",
+		"vitest": "^4.1.8",
+		"wrangler": "^4.97.0"
+	}
+}

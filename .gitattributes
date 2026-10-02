@@ -1,0 +1,5 @@
+# Generated JavaScript may contain significant whitespace inside string literals.
+packages/LifeKit/Sources/LifeKit/Resources/graph.html linguist-generated=true -whitespace
+packages/LifeKit/Sources/LifeKit/Resources/life-core.js linguist-generated=true
+packages/core/*.js linguist-generated=true
+packages/core/*.d.ts linguist-generated=true

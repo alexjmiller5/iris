@@ -1,0 +1,86 @@
+#if os(macOS)
+  import SwiftUI
+  import WebKit
+
+  /// The same offline graph component used by the web app. No SQL bridge or token is exposed.
+  struct SchemaGraphView: NSViewRepresentable {
+    static let resourceURL = Bundle.module.url(forResource: "graph", withExtension: "html")
+    let catalog: WorkspaceCatalog
+    let groups: [String: String]
+    let openTable: (String) -> Void
+    let saveGroups: ([String: String]) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeNSView(context: Context) -> WKWebView {
+      let configuration = WKWebViewConfiguration()
+      configuration.websiteDataStore = .nonPersistent()
+      configuration.userContentController.add(context.coordinator, name: "lifeGraph")
+      let view = WKWebView(frame: .zero, configuration: configuration)
+      view.navigationDelegate = context.coordinator
+      if let url = Self.resourceURL,
+        let html = try? String(contentsOf: url, encoding: .utf8)
+      {
+        view.loadHTMLString(html, baseURL: nil)
+      }
+      return view
+    }
+    func updateNSView(_ view: WKWebView, context: Context) {
+      context.coordinator.tableIDs = Set(catalog.tables.compactMap { $0["id"]?.text })
+      context.coordinator.openTable = openTable
+      context.coordinator.saveGroups = saveGroups
+      context.coordinator.payload = .object([
+        "tables": .array(catalog.tables.map(JSONValue.object)),
+        "properties": .array(catalog.properties.map(JSONValue.object)),
+        "groups": .object(groups.mapValues(JSONValue.string)),
+      ])
+      if context.coordinator.ready { context.coordinator.render(in: view) }
+    }
+    static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
+      view.configuration.userContentController.removeScriptMessageHandler(forName: "lifeGraph")
+      view.navigationDelegate = nil
+      view.stopLoading()
+    }
+
+    @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+      var ready = false
+      var tableIDs: Set<String> = []
+      var payload: JSONValue = .null
+      var openTable: (String) -> Void = { _ in }
+      var saveGroups: ([String: String]) -> Void = { _ in }
+      func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        ready = true
+        render(in: webView)
+      }
+      func render(in view: WKWebView) {
+        guard let data = try? JSONEncoder().encode(payload),
+          let value = try? JSONSerialization.jsonObject(with: data)
+        else { return }
+        view.callAsyncJavaScript(
+          "window.LifeGraph.render(payload)", arguments: ["payload": value], in: nil, in: .page,
+          completionHandler: nil)
+      }
+      func userContentController(
+        _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
+      ) {
+        guard message.frameInfo.isMainFrame, let body = message.body as? [String: Any] else {
+          return
+        }
+        if body["type"] as? String == "openTable", let table = body["table"] as? String,
+          tableIDs.contains(table)
+        {
+          openTable(table)
+        }
+        if body["type"] as? String == "groups", let groups = body["groups"] as? [String: String] {
+          saveGroups(groups)
+        }
+      }
+      func webView(
+        _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
+      ) {
+        decisionHandler(
+          navigationAction.request.url?.absoluteString == "about:blank" ? .allow : .cancel)
+      }
+    }
+  }
+#endif

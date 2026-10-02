@@ -1,0 +1,23 @@
+set shell := ["bash", "-euc"]
+app := "LifeUI"
+derived_data := env_var_or_default("MACOS_DERIVED_DATA", env_var("HOME") + "/Library/Developer/Xcode/DerivedData/life-ui-macos")
+
+gen:
+    "$(realpath "$(command -v xcodegen)")" generate --spec project.yml
+
+dev: run
+
+test: gen
+    xcodebuild -project "{{app}}.xcodeproj" -scheme "{{app}}" -derivedDataPath "{{derived_data}}" -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO test
+
+check: gen
+    xcodebuild -project "{{app}}.xcodeproj" -scheme "{{app}}" -derivedDataPath "{{derived_data}}" -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO build
+
+run: check
+    open "{{derived_data}}/Build/Products/Debug/{{app}}.app"
+
+build: gen
+    xcodebuild -project "{{app}}.xcodeproj" -scheme "{{app}}" -derivedDataPath "{{derived_data}}" -destination "platform=macOS" -configuration Release CODE_SIGNING_ALLOWED=NO build
+
+fmt:
+    xcrun swift-format format --in-place --recursive App

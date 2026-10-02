@@ -1,0 +1,15 @@
+node_modules/
+.svelte-kit/
+.wrangler/
+.build/
+.swiftpm/
+build/
+logs/
+*.xcodeproj/
+apps/*/App/Info.plist
+.DS_Store
+.env
+.env.*
+!.env.tpl
+worker-configuration.d.ts
+__pycache__/
