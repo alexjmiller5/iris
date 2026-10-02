@@ -12,7 +12,10 @@ Your workspace accepts a hub URL and app-issued device token. The token stays
 in memory for that browser session; stored rows remain available without it.
 The hub must allow the web app's origin through CORS.
 
-- Browse catalog tables, search, sort and filter records.
+- Browse catalog tables, search and sort records. Added filters combine with AND;
+  remove individual filter chips or clear them together.
+- **Columns** chooses, reorders and sizes the displayed properties. Record stays
+  visible first, and hidden properties remain available when editing the record.
 - Create/edit typed fields, search related records by their display names,
   write Markdown with rich formatting or source editing, and move records to trash or restore them.
 - Required fields, immutable/derived properties, reference validation and
@@ -27,6 +30,14 @@ The hub must allow the web app's origin through CORS.
 The app edits any catalogued table; it does not infer a catalog for arbitrary
 SQLite files or connect directly to other database engines. System tables
 are read-only. Catalog entries with `kind: system` also remain read-only.
+
+**Find records** (Cmd+K or Ctrl+K) searches across locally available tables,
+including Markdown bodies. Results show the record title, table and an excerpt;
+use the arrow keys and Enter to open one. Search matches word prefixes, ignores
+accents, and requires every word in the query. Table search uses the same FTS5
+index. External edits and sync pulls update the persistent index before searching.
+Trashed rows stay out of quick find. A warning identifies potentially incomplete
+results when tables are excluded from sync.
 
 ## Native apps
 
@@ -44,13 +55,39 @@ changing connections cannot redirect a save. Unsaved drafts require explicit
 discard.
 
 Markdown fields open a dedicated screen containing the same **Write** and
-**Source** editor as web, bundled locally in WebKit. **Done** reads the live
-document before returning to the record draft; **Save** then writes through
-shared core. Opening a document preserves its original source. Each editor
-session has a new document identity, so callbacks from closed or replaced
-documents cannot change the current draft. If the embedded editor fails, a
-native source editor keeps the last received draft available. The island has
-no network, database or credential access.
+**Source** editor as web, bundled locally in WebKit. Existing records autosave
+editable Markdown after a 600 ms typing pause. **Done** collects the live document
+and awaits the local write. Other property changes and new records still require
+**Save**. Later typing stays in the draft while a write is pending, and successful
+receipts advance the editor's revision without replacing those changes. A failed
+identical edit waits for a change or explicit retry. The status says **Saved on
+this device** only after the write succeeds; hub synchronization is separate.
+
+Drafts are kept as private, atomic files in Application Support, isolated by the
+database location, record and editor. App-owned databases use paths relative to
+their app state so container relocation during an update preserves recovery;
+external databases use canonical absolute paths. Separate windows keep separate
+recovery drafts, including new records. **Resume draft** restores unsaved fields
+after relaunch; **Discard draft** removes them explicitly. A stale recovered
+revision cannot overwrite a newer row. An interrupted write with no confirmed
+receipt retains its latest draft and requires review before saving again.
+Use **Copy Markdown** or a field's **Copy** button, then **Keep draft and close**
+to leave without saving or deleting the recovery draft. The Markdown actions
+collect the live editor source before copying or closing. Reopen the row and choose
+**Open saved record** to inspect its latest values and paste reviewed changes
+into a fresh editor. The old recovery draft remains until explicitly discarded.
+Backgrounding collects a nonlocking live snapshot and attempts to finish saving
+within the available background time.
+Recovery covers changes received and journaled by the native host; a forced kill
+before WebKit delivers a change can still lose that keystroke. New-record drafts
+remain recoverable without automatically creating a row. The temporary sample
+workspace does not retain recovery drafts across launches.
+
+Opening a document preserves its original source. Each editor session has a new
+document identity, so callbacks from closed or replaced documents cannot change
+the current draft. If the embedded editor fails, a native source editor keeps the
+last received draft available. The island has no network, database or credential
+access.
 
 Choose **Open local workspace** for persistent local notes with sample topics, or
 **Try sample workspace** for an in-memory preview. macOS also opens existing
@@ -107,7 +144,11 @@ database, and verifies accepted edits at the hub. Set
 real HTTP Usage and complete-feed tests. Xcode tests accept these variables
 with the `TEST_RUNNER_` prefix; the services UI test requires a fresh fixture
 with its 205 unread synthetic events and verifies individual and shared
-mark-all-read actions. Launch an Apple app with
+mark-all-read actions. To include interrupted-save UI recovery, set
+`TEST_RUNNER_LIFE_UI_TEST_RECOVERY_SIMULATOR` to the selected disposable simulator's
+UDID. The app-host test seeds only that simulator's local workspace before the
+UI test copies recovered text, exits, opens the saved row and relaunches.
+Launch an Apple app with
 `--demo` for the temporary preview; app-hosted tests use fixture mode as well.
 Unsigned builds are development artifacts, not signed releases or phone installs.
 
@@ -163,6 +204,10 @@ bun scripts/test-rejections.ts
 bun scripts/test-workspace-regressions.ts /path/to/life-data
 # Open http://life-ui-sql-integrity.localhost:5198/workspace?review in its own page.
 bun scripts/test-sql-integrity.ts /path/to/life-data
+# Open http://life-ui-markdown.localhost:5198/workspace?review in its own page.
+bun scripts/test-search.ts
+bun scripts/test-search-sync.ts /path/to/life-data
+bun scripts/test-typed-filters.ts /path/to/life-data
 ```
 
 The first test covers validation, Markdown persistence, relations, trash,
@@ -221,8 +266,9 @@ Done collects a live snapshot to include the final keystroke. The island has
 no database or credential bridge and blocks network access. The web client
 autosaves Markdown on existing records after a short typing pause, with a visible
 saving/saved state. Unrelated property drafts wait for **Save record**; new records
-also require their first explicit save. Conflicts retain the draft. Native record
-saves use the shared validated write path and explicit Save action.
+also require their first explicit save. Conflicts retain the draft. Native editors
+also autosave existing Markdown bodies and flush on Done; property edits and new
+records require Save. Every save uses the shared validated write path.
 
 Browser checks for the editor use a dedicated `life-ui-markdown.localhost`
 review tab:
@@ -238,9 +284,9 @@ bun scripts/test-body-autosave.ts
 This is an MVP implementation in progress. Enforced SQL invariants and custom
 triggers fail closed until the complete local rule/journal engine is connected.
 Missing references must be included in the replica before editing them. A
-skipped table is not automatically browsed remotely. Search uses bounded SQL
-queries, not FTS. The browser SQLite build includes FTS5 for the shared search
-index under development. Saved views, full grid keyboard editing, native body autosave,
+skipped table is not automatically browsed remotely. Native cross-table quick
+find remains open; native table search already uses the shared FTS5 index.
+Saved views, full grid keyboard editing,
 and Notes migration remain open work.
 
 Native references use named pickers; multi-select and JSON fields use source
@@ -250,8 +296,9 @@ their data and show errors; a dedicated repair workflow remains open. Sync
 runs on connection and explicit request,
 not in the background. Device-approval enrollment, automatic token issuance
 remain open work. The graph is available on web and macOS; iOS graph presentation
-is outside the MVP. Native Markdown edits remain a draft until the record's Save
-action succeeds; native automatic saving is not implemented.
+is outside the MVP. Native property edits and new records require explicit Save;
+existing-record Markdown autosaves locally. Recovered stale drafts retain their
+source for review; automatic conflict merging is not implemented.
 
 Browser OPFS availability is required. There is no remote read-only fallback,
 service worker, or promise that a closed web app can cold-load without a
@@ -294,10 +341,9 @@ native testing. Both use synthetic records and loopback interfaces only.
 
 ## Owner setup
 
-- Choose GitHub visibility before creating the remote; no visibility is assumed.
 - `.env.tpl` is the Life UI CI bootstrap manifest. Run
   `op-project-bootstrap /path/to/life-ui/.env.tpl --repo <owner>/life-ui`
-  after the remote exists. Credentials must be minted for Life UI. Cloudflare
+  for the deployment repository. Credentials must be minted for Life UI. Cloudflare
   Workers Scripts Write is account-scoped, so that broader deployment scope
   needs an explicit decision before provisioning the CI token.
 - Provision Life UI's own Worker and Access application, then enable deployment.

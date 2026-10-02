@@ -21,11 +21,15 @@ import WebKit
       let view = WKWebView(frame: .zero, configuration: config)
       self.view = view
       view.navigationDelegate = self
-      session.snapshot = { [weak self] in
+      session.snapshot = { [weak self] lock in
         guard let self else {
           throw WorkspaceError(message: "The editor is unavailable.", violations: [])
         }
-        return try await self.snapshot(lock: true)
+        return try await self.snapshot(lock: lock)
+      }
+      session.resumeEditing = { [weak self] in
+        self?.lastSent = nil
+        self?.render()
       }
       if let url = MarkdownWebView.resourceURL,
         let html = try? String(contentsOf: url, encoding: .utf8)

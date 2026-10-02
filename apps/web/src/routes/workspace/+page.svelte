@@ -20,12 +20,21 @@
 		isReadOnlyTable,
 		type Row,
 		type Property,
-		type Filter
+		type Filter,
+		type SearchHit
 	} from 'life-ui-core/client';
 	import { WorkspaceDatabase } from '$lib/database';
 	import SchemaGraph from '$lib/SchemaGraph.svelte';
 	import HubServices from '$lib/HubServices.svelte';
+	import SearchDialog from '$lib/SearchDialog.svelte';
+	import ColumnSettings from '$lib/ColumnSettings.svelte';
 	let connectedHub = $state<{ endpoint: string; token: string } | null>(null);
+	let findVisible = $state(false);
+	let findVersion = 0;
+	function showFind(visible: boolean) {
+		findVersion++;
+		findVisible = visible;
+	}
 
 	let database: WorkspaceDatabase | null = null;
 	let ready = $state(false),
@@ -86,6 +95,8 @@
 	let sort = $state('id'),
 		descending = $state(false),
 		offset = $state(0);
+	let columns = $state<string[] | null>(null),
+		widths = $state<Record<string, number>>({});
 	let references = $state<Record<string, Row[]>>({}),
 		referenceSearch = $state<Record<string, string>>({});
 	let optionValues = $state<Record<string, string[]>>({});
@@ -96,6 +107,19 @@
 		filterOp = $state<Filter['op']>('eq'),
 		filterValue = $state(''),
 		filters = $state<Filter[]>([]);
+	const filterLabels: Record<Filter['op'], string> = {
+		eq: 'is',
+		ne: 'is not',
+		empty: 'is empty',
+		not_empty: 'is not empty',
+		contains: 'contains',
+		gt: 'greater than',
+		gte: 'at least',
+		lt: 'less than',
+		lte: 'at most'
+	};
+	const describeFilter = (filter: Filter) =>
+		`${properties.find((p) => p.col === filter.column)?.label || filter.column} ${filterLabels[filter.op]}${filter.value === undefined ? '' : ` ${filter.value}`}`;
 	const system = new Set(['id', 'created_at', 'updated_at', 'deleted_at', 'hub_at']);
 	const properties = $derived(
 		catalog.properties
@@ -105,6 +129,27 @@
 	const filterType = $derived(properties.find((p) => p.col === filterColumn)?.type ?? 'text');
 	const current = $derived(catalog.tables.find((t) => t.id === table));
 	const display = $derived(typeof current?.display === 'string' ? current.display : null);
+	const columnChoices = $derived(properties.filter((p) => p.col !== display));
+	const visibleColumns = $derived(
+		columns ??
+			columnChoices
+				.filter((p) => p.type !== 'markdown')
+				.slice(0, 4)
+				.map((p) => p.col)
+	);
+	const gridProperties = $derived(
+		visibleColumns
+			.map((col) => columnChoices.find((p) => p.col === col))
+			.filter((p): p is Property => !!p)
+	);
+	const columnWidth = (column: string) =>
+		Number.isFinite(widths[column]) ? Math.min(800, Math.max(96, widths[column])) : 180;
+	const gridWidth = $derived(280 + gridProperties.reduce((sum, p) => sum + columnWidth(p.col), 0));
+	function changeColumns(next: string[], sizes: Record<string, number>) {
+		columns = next;
+		widths = sizes;
+		void loadRows().catch((e) => (error = message(e)));
+	}
 	const rules = $derived(catalog.rules.filter((r) => r.tbl === table || r.scope === 'estate'));
 	const readOnly = $derived(isReadOnlyTable(table, current));
 	const blocked = $derived(rules.some((r) => r.kind === 'invariant' && r.enforce));
@@ -317,9 +362,7 @@
 		const labels: Record<string, string> = {};
 		// ponytail: at most 200 visible references per page; batch SQL when larger grids need it.
 		const targets = new Map<string, Property>();
-		for (const p of properties
-			.filter((p) => p.type === 'ref' || p.type === 'multi_ref')
-			.slice(0, 4))
+		for (const p of gridProperties.filter((p) => p.type === 'ref' || p.type === 'multi_ref'))
 			for (const row of found) {
 				for (const id of p.type === 'multi_ref' ? list(String(row[p.col] ?? '[]')) : [row[p.col]])
 					if (id && targets.size < 200) targets.set(JSON.stringify([p.ref_table, id]), p);
@@ -370,6 +413,8 @@
 		offset = 0;
 		sort = 'id';
 		descending = false;
+		columns = null;
+		widths = {};
 		filters = [];
 		filterColumn = '';
 		filterOp = 'eq';
@@ -379,6 +424,7 @@
 	}
 	async function openWorkspace(sample: boolean) {
 		if (busy) return;
+		showFind(false);
 		busy = true;
 		connectedHub = null;
 		resetView();
@@ -436,21 +482,37 @@
 		await loadRows().catch((e) => (error = message(e)));
 	}
 	async function applyFilter() {
+		let value: Filter['value'] = filterValue;
+		if (!['empty', 'not_empty'].includes(filterOp)) {
+			if (filterType === 'bool') {
+				if (!['true', 'false'].includes(filterValue)) {
+					error = 'Choose True or False for this filter.';
+					return;
+				}
+				value = filterValue === 'true';
+			} else if (['number', 'int'].includes(filterType)) {
+				if (!filterValue.trim() || !Number.isFinite(Number(filterValue))) {
+					error = 'Enter a number for this filter.';
+					return;
+				}
+				value = Number(filterValue);
+			}
+		}
+		error = '';
 		filters = filterColumn
 			? [
+					...filters,
 					{
 						column: filterColumn,
 						op: filterOp,
-						...(['empty', 'not_empty'].includes(filterOp)
-							? {}
-							: {
-									value: ['number', 'int', 'bool'].includes(filterType)
-										? Number(filterValue)
-										: filterValue
-								})
+						...(['empty', 'not_empty'].includes(filterOp) ? {} : { value })
 					}
 				]
 			: [];
+		await find();
+	}
+	async function removeFilter(index?: number) {
+		filters = index === undefined ? [] : filters.filter((_, i) => i !== index);
 		await find();
 	}
 	function edit(row: Row | null) {
@@ -608,6 +670,36 @@
 			error = message(e);
 		}
 	}
+	async function searchWorkspace(text: string, offset: number) {
+		if (!database) throw new Error('Open a workspace first.');
+		return database.request('search', { text, offset, limit: 50 });
+	}
+	async function openSearchHit(hit: SearchHit) {
+		if (!database || busy) return false;
+		const workspace = database,
+			version = editorVersion,
+			searchVersion = findVersion;
+		const found = await workspace.request('rows', {
+			view: { table: hit.table, filters: [{ column: 'id', op: 'eq', value: hit.id }], limit: 1 }
+		});
+		if (
+			database !== workspace ||
+			version !== editorVersion ||
+			busy ||
+			!findVisible ||
+			searchVersion !== findVersion
+		)
+			return false;
+		if (!found[0]) throw new Error('This record is no longer available. Try searching again.');
+		if (!discard()) return false;
+		resetView();
+		table = hit.table;
+		graphVisible = false;
+		edit(found[0]);
+		showFind(false);
+		await loadRows().catch((e) => (error = message(e)));
+		return true;
+	}
 	onDestroy(() => {
 		editorVersion++;
 		database?.close();
@@ -617,6 +709,12 @@
 
 <svelte:head><title>Workspace | Life UI</title></svelte:head>
 <svelte:window
+	onkeydown={(event) => {
+		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && opened) {
+			event.preventDefault();
+			if (!busy && !findVisible) showFind(true);
+		}
+	}}
 	ononline={() => (online = true)}
 	onoffline={() => (online = false)}
 	onbeforeunload={(e) => {
@@ -645,6 +743,14 @@
 		{#if error}<p role="alert" class="failure">{error}</p>{/if}
 	</main>
 {:else}
+	{#if findVisible}
+		<SearchDialog
+			search={searchWorkspace}
+			onchoose={openSearchHit}
+			onclose={() => showFind(false)}
+			incomplete={skipped.length > 0}
+		/>
+	{/if}
 	<fieldset class="workspace-controls" disabled={writing} aria-label="Workspace controls">
 		<div class="data-shell">
 			<aside class="tables">
@@ -661,6 +767,9 @@
 						>{demo ? 'Example data' : 'Stored on this device'}</span
 					>
 				</div>
+				<button class="secondary" onclick={() => showFind(true)} disabled={busy}
+					><IconSearch size={16} /> Find records <kbd>⌘K</kbd></button
+				>
 				<nav aria-label="Tables">
 					{#each catalog.tables as t (t.id)}<button
 							class:active={tableName(t) === table}
@@ -724,6 +833,7 @@
 						database?.close();
 						database = null;
 						opened = false;
+						showFind(false);
 						resetView();
 						token = '';
 					}}>Switch workspace</button
@@ -833,16 +943,40 @@
 									><option value="not_empty">is not empty</option
 									>{#if ['number', 'int', 'date', 'datetime'].includes(filterType)}<option
 											value="gt">greater than</option
-										><option value="lt">less than</option>{:else}<option value="contains"
-											>contains</option
+										><option value="lt">less than</option>{:else if filterType !== 'bool'}<option
+											value="contains">contains</option
 										>{/if}</select
 								>
-								{#if !['empty', 'not_empty'].includes(filterOp)}<input
-										aria-label="Filter value"
-										bind:value={filterValue}
-									/>{/if}{/if}
+								{#if !['empty', 'not_empty'].includes(filterOp)}
+									{#if filterType === 'bool'}
+										<select aria-label="Filter value" bind:value={filterValue}>
+											<option value="">Choose a value</option>
+											<option value="true">True</option>
+											<option value="false">False</option>
+										</select>
+									{:else}<input aria-label="Filter value" bind:value={filterValue} />{/if}{/if}{/if}
 							<button class="secondary" type="submit">Apply filter</button>
 						</form>
+						<ColumnSettings
+							properties={columnChoices}
+							columns={visibleColumns}
+							{widths}
+							onChange={changeColumns}
+						/>
+						{#if filters.length}
+							<div class="active-filters" role="group" aria-label="Active filters">
+								<span>Match all</span>
+								{#each filters as filter, index}
+									<button
+										class="secondary filter-chip"
+										aria-label={`Remove filter ${index + 1}: ${describeFilter(filter)}`}
+										onclick={() => removeFilter(index)}
+										>{describeFilter(filter)}<IconX size={14} /></button
+									>
+								{/each}
+								<button class="secondary" onclick={() => removeFilter()}>Clear filters</button>
+							</div>
+						{/if}
 						{#if blocked}<p class="notice">
 								This table has enforced cross-record rules. It is read-only here until the local
 								rule engine is connected.
@@ -858,12 +992,16 @@
 									>{/each}
 							</details>{/if}
 						<div class="table-scroll">
-							<table>
+							<table style:width={`${gridWidth}px`}>
+								<colgroup>
+									<col style:width="280px" />
+									{#each gridProperties as p}<col style:width={`${columnWidth(p.col)}px`} />{/each}
+								</colgroup>
 								<thead
 									><tr
-										><th scope="col">Record</th>{#each properties
-											.filter((p) => p.col !== display && p.type !== 'markdown')
-											.slice(0, 4) as p}<th scope="col">{label(p)}</th>{/each}</tr
+										><th scope="col">Record</th>{#each gridProperties as p}<th scope="col"
+												>{label(p)}</th
+											>{/each}</tr
 									></thead
 								><tbody>
 									{#each rows as row (row.id)}<tr
@@ -871,9 +1009,7 @@
 											><td
 												><button class="record-link" onclick={() => edit(row)}>{title(row)}</button
 												></td
-											>{#each properties
-												.filter((p) => p.col !== display && p.type !== 'markdown')
-												.slice(0, 4) as p}<td>{cell(p, row[p.col])}</td>{/each}</tr
+											>{#each gridProperties as p}<td>{cell(p, row[p.col])}</td>{/each}</tr
 										>{/each}
 								</tbody>
 							</table>
@@ -1298,6 +1434,20 @@
 	.filters input {
 		max-width: 220px;
 	}
+	.active-filters {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin: 0 0 20px;
+		font-size: 0.8rem;
+		color: var(--color-muted);
+	}
+	.filter-chip {
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		text-align: left;
+	}
 	.toolbar {
 		display: flex;
 		gap: 8px;
@@ -1349,7 +1499,8 @@
 	}
 	table {
 		border-collapse: collapse;
-		width: 100%;
+		min-width: 100%;
+		table-layout: fixed;
 		font-size: 13px;
 	}
 	th {

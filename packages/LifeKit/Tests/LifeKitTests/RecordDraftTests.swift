@@ -38,4 +38,44 @@ struct RecordDraftTests {
     #expect(new.patch.isEmpty)
     #expect(new.fields.map(\.id) == ["title", "body", "fixed"])
   }
+
+  @Test func receiptKeepsLaterTypingAndTheOriginalFieldSet() {
+    var draft = RecordDraft(
+      properties: properties,
+      original: [
+        "id": .string("fixture-1"), "title": .string("Original"), "body": .string("Old"),
+        "updated_at": .string("revision-1"),
+      ])
+    draft.values["body"] = "Sent"
+    let sent = draft.patch
+    draft.values["body"] = "Later typing"
+    draft.values["title"] = "Unsaved title"
+    draft.values["unknown"] = "Retain recovery source"
+    draft.acknowledge(
+      [
+        "id": .string("fixture-1"), "title": .string("Original"), "body": .string("Sent"),
+        "new_column": .string("Server default"), "updated_at": .string("revision-2"),
+      ], sent: sent)
+    #expect(draft.fields.map(\.id) == ["title", "body"])
+    #expect(draft.values["unknown"] == "Retain recovery source")
+    #expect(draft.original?["updated_at"] == .string("revision-2"))
+    #expect(
+      draft.patch == [
+        "id": .string("fixture-1"), "title": .string("Unsaved title"),
+        "body": .string("Later typing"),
+      ])
+    draft.values["body"] = "Sent"
+    draft.values["title"] = "Original"
+    #expect(draft.patch == ["id": .string("fixture-1")])
+  }
+
+  @Test func acknowledgedSQLiteBooleanKeepsPickerValueAndCleanPatch() {
+    var draft = RecordDraft(
+      properties: [["col": .string("done"), "type": .string("bool")]],
+      original: ["id": .string("fixture"), "done": .number(1)])
+    draft.values["done"] = "false"
+    draft.acknowledge(["id": .string("fixture"), "done": .number(0)], sent: draft.patch)
+    #expect(draft.values["done"] == "false")
+    #expect(draft.patch == ["id": .string("fixture")])
+  }
 }

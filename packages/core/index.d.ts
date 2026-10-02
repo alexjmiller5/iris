@@ -9,3 +9,5 @@ export * from './status.ts';
 export * from './services.ts';
 export * from './contract.generated.ts';
 export * from './operations.ts';
+export * from './search.ts';
+export * from './saved-views.ts';

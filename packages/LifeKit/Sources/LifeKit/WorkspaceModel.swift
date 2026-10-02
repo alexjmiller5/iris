@@ -5,6 +5,7 @@ import Observation
 struct WorkspaceEditingContext {
   let workspace: NativeWorkspace
   let table: String
+  let draftStore: EditorDraftStore?
 }
 
 @Observable @MainActor
@@ -32,6 +33,8 @@ final class WorkspaceModel {
   var connection: HubCredentials?
   var isReplica = false
   var groups: [String: String] = [:]
+  private(set) var recoverableDrafts: [StoredEditorDraft] = []
+  private var draftStore: EditorDraftStore?
   let services = HubServicesModel()
   private var groupsURL: URL?
   private var transport: HubTransport?
@@ -74,7 +77,7 @@ final class WorkspaceModel {
 
   var editingContext: WorkspaceEditingContext? {
     guard let client, let table else { return nil }
-    return WorkspaceEditingContext(workspace: client, table: table)
+    return WorkspaceEditingContext(workspace: client, table: table, draftStore: draftStore)
   }
   var tables: [WorkspaceRecord] { catalog?.tables ?? [] }
   var properties: [WorkspaceRecord] {
@@ -126,6 +129,7 @@ final class WorkspaceModel {
         seed = url == nil && !FileManager.default.fileExists(atPath: path)
       }
       try loadGroups(workspace: demo ? nil : path)
+      try prepareDrafts(path: demo ? nil : path)
       let workspace = try NativeWorkspace(path: path)
       do {
         if seed { try await workspace.createSample() }
@@ -187,8 +191,9 @@ final class WorkspaceModel {
     loading = false
   }
 
+  @discardableResult
   func save(_ patch: WorkspaceRecord, original: WorkspaceRecord?, context: WorkspaceEditingContext?)
-    async throws
+    async throws -> WorkspaceRecord
   {
     guard let client, let table else {
       throw WorkspaceError(message: "Open a workspace before saving.", violations: [])
@@ -197,9 +202,47 @@ final class WorkspaceModel {
       throw WorkspaceError(
         message: "The workspace or table changed. Reopen the record before saving.", violations: [])
     }
-    _ = try await context.workspace.write(
+    let receipt = try await context.workspace.write(
       table: context.table, patch: patch, expectedUpdatedAt: original?["updated_at"]?.text)
     await reload()
+    return receipt
+  }
+
+  private func prepareDrafts(path: String?) throws {
+    draftStore = nil
+    recoverableDrafts = []
+    guard let path else { return }
+    let root = try Self.localURL().deletingLastPathComponent().appendingPathComponent("drafts")
+    draftStore = EditorDraftStore(root: root, workspace: URL(fileURLWithPath: path))
+    refreshDrafts()
+  }
+
+  func refreshDrafts() {
+    do { recoverableDrafts = try draftStore?.all() ?? [] } catch {
+      self.error = "Saved drafts could not be opened. They have been kept."
+    }
+  }
+
+  func recoveryRecord(_ saved: StoredEditorDraft, context: WorkspaceEditingContext) async throws
+    -> WorkspaceRecord?
+  {
+    guard context.workspace === client, context.table == table, saved.table == context.table else {
+      throw WorkspaceError(message: "The workspace changed. Open the draft again.", violations: [])
+    }
+    guard let id = saved.recordID else { return nil }
+    for trashed in [false, true] {
+      let rows = try await context.workspace.rows(
+        view: CoreView(
+          table: context.table,
+          filters: [CoreFilter(column: "id", op: .eq, value: .string(id))], limit: 1, trash: trashed
+        ))
+      guard context.workspace === client, context.table == table else {
+        throw WorkspaceError(
+          message: "The workspace changed. Open the draft again.", violations: [])
+      }
+      if let row = rows.first { return row.record }
+    }
+    return nil
   }
 
   private func loadGroups(workspace: String?) throws {
@@ -246,6 +289,7 @@ final class WorkspaceModel {
       .joined()
     let path = directory.appendingPathComponent(name + ".sqlite").path
     try loadGroups(workspace: path)
+    try prepareDrafts(path: path)
     client = try NativeWorkspace(path: path)
     transport = hub
     services.configure(workspace: client, transport: hub)
@@ -304,6 +348,8 @@ final class WorkspaceModel {
     syncStatus = nil
     catalog = nil
     rows = []
+    draftStore = nil
+    recoverableDrafts = []
     scopedURL?.stopAccessingSecurityScopedResource()
     scopedURL = nil
   }

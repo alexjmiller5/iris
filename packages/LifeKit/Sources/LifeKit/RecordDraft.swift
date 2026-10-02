@@ -1,6 +1,6 @@
 import Foundation
 
-struct CatalogField: Identifiable {
+struct CatalogField: Identifiable, Codable {
   let property: WorkspaceRecord
   var id: String { property["col"]?.text ?? "" }
   var label: String { property["label"]?.text.nonempty ?? id }
@@ -31,11 +31,11 @@ extension String {
   var nonempty: String? { isEmpty ? nil : self }
 }
 
-struct RecordDraft {
+struct RecordDraft: Codable {
   var values: [String: String]
   let fields: [CatalogField]
-  private let initial: [String: String]
-  private let original: WorkspaceRecord?
+  private var initial: [String: String]
+  private(set) var original: WorkspaceRecord?
   init(properties: [WorkspaceRecord], original: WorkspaceRecord?) {
     self.original = original
     fields = properties.map(CatalogField.init).filter { field in
@@ -73,5 +73,28 @@ struct RecordDraft {
       }
     }
     return patch
+  }
+
+  var unknownValues: [String: String] {
+    values.filter { key, value in !fields.contains(where: { $0.id == key }) && !value.isEmpty }
+  }
+
+  mutating func acknowledge(_ receipt: WorkspaceRecord, sent: WorkspaceRecord) {
+    // Retain the exact fields loaded when this editor opened. A catalog refresh
+    // must not add empty fields to an existing draft or its next patch.
+    for field in fields where sent[field.id] != nil {
+      let submitted = sent[field.id] == .null ? "" : sent[field.id]?.text ?? ""
+      let value = receipt[field.id]
+      let acknowledged =
+        field.type == "bool"
+        ? (value?.isTrue == true
+          ? "true"
+          : value == .number(0) || value == .bool(false)
+            ? "false" : value == .null ? "" : value?.text ?? "")
+        : value == .null ? "" : value?.text ?? ""
+      if values[field.id] == submitted { values[field.id] = acknowledged }
+      initial[field.id] = acknowledged
+    }
+    original = receipt
   }
 }

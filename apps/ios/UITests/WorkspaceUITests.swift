@@ -3,6 +3,153 @@ import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testPendingRecoveryCanCopyExitAndOpenLatestWhileKeepingDraft() throws {
+    try XCTSkipIf(
+      ProcessInfo.processInfo.environment["LIFE_UI_TEST_RECOVERY_SIMULATOR"] == nil,
+      "Run the app-host recovery fixture on an explicitly selected disposable simulator first.")
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    openLocalWorkspace(app)
+    openRecord(app, title: "Pending recovery fixture")
+    tapWhenReady(app.buttons["Resume draft"])
+    XCTAssertEqual(app.textFields["field-title"].value as? String, "Recovered property to keep")
+    tapWhenReady(app.buttons["Copy Title"])
+    let body = app.buttons["field-body"]
+    for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    let source = app.webViews.textViews["Body"]
+    XCTAssertEqual(source.value as? String, "Recovered body to keep")
+    let copied = typeMarkerThenFinalCharacter(
+      source, marker: "CopyZ", previous: "Recovered body to keep")
+    app.buttons["Copy Markdown"].tap()
+    let retained = typeMarkerThenFinalCharacter(source, marker: "KeepZ", previous: copied)
+    // Neither action is preceded by Done or a read after the final keystroke.
+    app.buttons["keep-markdown-draft"].tap()
+    tapWhenReady(app.navigationBars["Record"].buttons["keep-record-draft"])
+    openRecord(app, title: "Pending recovery fixture")
+    tapWhenReady(app.buttons["Open saved record"])
+    XCTAssertEqual(app.textFields["field-title"].value as? String, "Pending recovery fixture")
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    XCTAssertEqual(source.value as? String, "Submitted body on disk")
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    // Paste the copied source into a separate new draft using the actual OS
+    // clipboard, then relaunch to verify the original recovery is still there.
+    tapWhenReady(app.toolbars.buttons["close"])
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    tapWhenReady(source)
+    source.press(forDuration: 1.2)
+    tapWhenReady(app.menuItems["Paste"].firstMatch)
+    XCTAssertEqual(source.value as? String, copied)
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["New record"].buttons["Cancel"])
+    tapWhenReady(app.buttons["Discard changes"])
+    app.terminate()
+    app.launch()
+    openLocalWorkspace(app)
+    openRecord(app, title: "Pending recovery fixture")
+    tapWhenReady(app.buttons["Resume draft"])
+    XCTAssertEqual(app.textFields["field-title"].value as? String, "Recovered property to keep")
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    XCTAssertEqual(source.value as? String, retained)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "native-pending-recovery-exit"
+    shot.lifetime = .keepAlways
+    add(shot)
+    tapWhenReady(app.buttons["keep-markdown-draft"])
+    tapWhenReady(app.navigationBars["Record"].buttons["keep-record-draft"])
+  }
+
+  func testAutosaveAndRecoveryKeepBodyAndUnsavedPropertiesAcrossRelaunch() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    openLocalWorkspace(app)
+    let name = "Autosave " + UUID().uuidString.prefix(8)
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    tapWhenReady(app.textFields["field-title"])
+    app.textFields["field-title"].typeText(name)
+    tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
+    openRecord(app, title: String(name))
+    let title = app.textFields["field-title"]
+    tapWhenReady(title)
+    title.typeText(" pending")
+    let dirtyTitle = title.value as? String
+    let body = app.buttons["field-body"]
+    for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    let source = app.webViews.textViews["Body"]
+    tapWhenReady(source)
+    source.typeText("Synthetic autosave final!")
+    XCUIDevice.shared.press(.home)
+    app.activate()
+    XCTAssertTrue(app.staticTexts["Saved on this device"].waitForExistence(timeout: 10))
+    // Termination loses the editor process. Recovery must come from private
+    // application state, and the body must already be committed independently.
+    app.terminate()
+    app.launch()
+    openLocalWorkspace(app)
+    openRecord(app, title: String(name))
+    tapWhenReady(app.buttons["Resume draft"])
+    XCTAssertEqual(title.value as? String, dirtyTitle)
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    XCTAssertEqual(source.value as? String, "Synthetic autosave final!")
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    tapWhenReady(app.buttons["Discard changes"])
+    openRecord(app, title: String(name))
+    XCTAssertEqual(title.value as? String, String(name))
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    XCTAssertEqual(source.value as? String, "Synthetic autosave final!")
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    tapWhenReady(app.toolbars.buttons["close"])
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    tapWhenReady(title)
+    title.typeText("Uncreated recovery fixture")
+    for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    tapWhenReady(source)
+    source.typeText("Unsaved new source!")
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    app.terminate()
+    app.launch()
+    openLocalWorkspace(app)
+    tapWhenReady(
+      app.buttons.matching(identifier: "resume-unsaved-draft").matching(
+        NSPredicate(format: "label CONTAINS %@", "Uncreated recovery fixture")
+      ).firstMatch)
+    tapWhenReady(app.buttons["Resume draft"])
+    XCTAssertTrue(app.navigationBars["New record"].waitForExistence(timeout: 5))
+    XCTAssertEqual(title.value as? String, "Uncreated recovery fixture")
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    XCTAssertEqual(source.value as? String, "Unsaved new source!")
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "native-autosave-recovery"
+    shot.lifetime = .keepAlways
+    add(shot)
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["New record"].buttons["Cancel"])
+    tapWhenReady(app.buttons["Discard changes"])
+    XCTAssertFalse(
+      app.buttons.matching(
+        NSPredicate(
+          format: "label BEGINSWITH %@",
+          "Uncreated recovery fixture")
+      ).firstMatch.exists)
+  }
+
   func testMarkdownSurvivesTenBackgroundAndRotationCycles() throws {
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -58,7 +205,7 @@ final class WorkspaceUITests: XCTestCase {
             (editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), expected)
         }
         expected = typeMarkerThenFinalCharacter(
-          editor, marker: String(format: "%02dv", cycle), previous: expected)
+          editor, marker: String(format: "%02dv", cycle), previous: expected, refocus: false)
         // Done must collect this final character before returning to the record.
         tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
         tapWhenReady(
@@ -83,9 +230,12 @@ final class WorkspaceUITests: XCTestCase {
   }
 
   private func typeMarkerThenFinalCharacter(
-    _ editor: XCUIElement, marker: String, previous: String
+    _ editor: XCUIElement, marker: String, previous: String, refocus: Bool = true
   ) -> String {
-    tapWhenReady(editor)
+    // Rotation can leave the modal window's accessibility frame invalid while
+    // its editor visibly retains keyboard focus. Continue real keyboard input
+    // instead of asking XCTest to synthesize an unnecessary hit-test tap.
+    if refocus || !XCUIApplication().keyboards.firstMatch.exists { tapWhenReady(editor) }
     editor.typeText(marker)
     let entered = (editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     XCTAssertEqual(entered.replacingOccurrences(of: marker, with: ""), previous)
@@ -427,7 +577,10 @@ final class WorkspaceUITests: XCTestCase {
       predicate: NSPredicate { _, _ in
         MainActor.assumeIsolated {
           if self.dismissPasswordPrompt() || self.dismissKeyboardTutorial() { return false }
-          return element.exists && element.isHittable
+          guard element.exists else { return false }
+          let frame = element.frame
+          return frame.width > 0 && frame.height > 0 && frame.minX.isFinite && frame.minY.isFinite
+            && element.isHittable
         }
       }, object: element)
     let result = XCTWaiter.wait(for: [ready], timeout: 10)
@@ -441,6 +594,28 @@ final class WorkspaceUITests: XCTestCase {
       result, .completed, XCUIApplication().debugDescription,
       file: file, line: line)
     element.tap()
+  }
+
+  private func openRecord(_ app: XCUIApplication, title: String) {
+    let search = app.searchFields.firstMatch
+    if search.value as? String != title {
+      tapWhenReady(search)
+      let clear = search.buttons["Clear text"]
+      if clear.exists { clear.tap() }
+      search.typeText(title)
+    }
+    tapWhenReady(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch)
+  }
+
+  private func openLocalWorkspace(_ app: XCUIApplication) {
+    let open = app.buttons["open-local"]
+    if !open.waitForExistence(timeout: 3) {
+      // A preceding failed network test may leave a saved synthetic connection.
+      // Navigate through the supported UI instead of assuming the welcome screen.
+      tapWhenReady(app.navigationBars.buttons["BackButton"].firstMatch)
+      tapWhenReady(app.buttons["Close workspace"])
+    }
+    tapWhenReady(open)
   }
 
   private func scrollRecordFormUp(_ app: XCUIApplication) {
@@ -473,7 +648,9 @@ final class WorkspaceUITests: XCTestCase {
     // This button belongs to the remote Password AutoFill process. A coordinate
     // anchored to the app sends the event to the wrong process on iOS.
     prompt.buttons["Not Now"].tap()
-    XCTAssertTrue(prompt.waitForNonExistence(timeout: 5))
+    // The remote system sheet can still be visibly fading after five seconds
+    // under simulator load. Wait for its actual dismissal before touching the app.
+    XCTAssertTrue(prompt.waitForNonExistence(timeout: 15))
     return true
   }
 }

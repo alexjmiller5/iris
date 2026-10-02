@@ -4,6 +4,8 @@ export type { Filter, View } from './contract.generated.ts';
 /** Compile a catalog-scoped view. Equality is null-safe; contains is literal
  * (ASCII case-insensitive text, exact JSON array membership). Empty includes
  * NULL, empty strings and, for multi-value properties, empty JSON arrays.
+ * Nonempty search requires the prepared local FTS index. Prefer readRows(),
+ * which drains its queue and queries in the same transaction.
  */
 export declare function compileView(view: View, properties: Property[]): {
     sql: string;

@@ -45,4 +45,30 @@ struct WorkspaceModelTests {
     }
     await model.close()
   }
+
+  @Test func draftRecoveryReadsTheCurrentRowEvenWhenItIsOutsideTheLoadedPage() async throws {
+    let model = WorkspaceModel()
+    await model.open(demo: true)
+    let context = try #require(model.editingContext)
+    let original = try #require(model.rows.first?.record)
+    let saved = StoredEditorDraft(
+      table: "notes", recordID: original["id"]?.text,
+      draft: RecordDraft(properties: model.properties, original: original), failure: nil,
+      failedPatch: nil)
+    _ = try await context.workspace.write(
+      table: "notes",
+      patch: [
+        "id": original["id"]!, "body": .string("Changed outside this editor"),
+      ],
+      expectedUpdatedAt: original["updated_at"]?.text)
+    model.rows = []
+    let current = try #require(try await model.recoveryRecord(saved, context: context))
+    #expect(current["body"] == .string("Changed outside this editor"))
+    #expect(current["updated_at"] != original["updated_at"])
+    model.table = "history"
+    await #expect(throws: WorkspaceError.self) {
+      try await model.recoveryRecord(saved, context: context)
+    }
+    await model.close()
+  }
 }

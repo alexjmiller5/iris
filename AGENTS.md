@@ -41,6 +41,14 @@ never enter the browser bundle. Workers Scripts Write is account-scoped and
 requires an explicit scope decision before provisioning. No deploy workflow is
 enabled. The public repository is `alexjmiller5/life-ui`.
 
+Shared core owns local FTS5 indexing and search. Web table search and Cmd+K use
+literal word prefixes combined with AND; user input never becomes raw MATCH
+syntax. Index queues survive external edits and reopen, and index updates run
+inside the same serialized request as the query. No client scan fallback or
+parallel search implementation. Cross-table results carry table/id identities;
+opening one must re-read it, respect unsaved drafts and ignore a cancelled dialog.
+Search covers locally replicated rows and identifies skipped-table incompleteness.
+
 The usage/notifications API is owned by life-data; never add competing hub
 endpoints here. life-core owns service validation, feed pagination and presentation
 policy. Isolate cached state by signed-in deployment, deduplicate native/feed
@@ -61,6 +69,12 @@ silently discarding later typing. Web body autosave writes only editable Markdow
 columns on existing rows; it updates the acknowledged baseline without replacing
 the live draft. Failed identical patches must not loop. Preserve unknown existing
 multi-select values.
+
+Native recovery journals are private, atomic and isolated per editor. Persist
+the latest draft and any unacknowledged write before awaiting its receipt. Keep
+app-owned workspace identities stable across container relocation; external
+databases use canonical paths. Recovery never rebases an old draft implicitly.
+Copy/review into a fresh editor or explicitly discard the retained draft.
 
 Whole Worker requests and whole native asynchronous requests are serialized.
 Native SQLite transactions retain ownership across awaited JS callbacks.

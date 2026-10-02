@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "7b27a5008fcb173613bf5f9b7661dfaebdbb0e459495ac68461cc68a67032fb8";
+export declare const CORE_CONTRACT_HASH = "7383948e6272389b9625022e1e1bc67174e87a4e2a12f6afb99afbc5d1fa0400";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -49,6 +49,9 @@ export type Property = {
     immutable?: PropertyFlag | null;
     deprecated?: PropertyFlag | null;
     description?: string | null;
+    source?: string | null;
+    source_ref?: string | null;
+    id?: string;
 };
 export type Violation = {
     col: string;
@@ -177,6 +180,56 @@ export type NotificationPresentationArgs = {
     feed: NotificationFeed;
     baseline: Count | null;
 };
+export type SearchArgs = {
+    text: string;
+    table?: string;
+    limit?: Count;
+    offset?: Count;
+};
+export type SearchHit = {
+    table: string;
+    id: string;
+    label: string;
+    excerpt: string;
+};
+export type SavedViewDefinition = {
+    version: Count;
+    columns?: string[];
+    filters?: Filter[];
+    sort?: Sort[];
+    search?: string;
+    trash?: boolean;
+    widths?: Record<string, number>;
+};
+export type SavedViewRecord = {
+    id: string;
+    name: string;
+    tbl: string;
+    updated_at: string | null;
+    deleted_at: string | null;
+    definition: SavedViewDefinition | null;
+    view: View | null;
+    unavailable: string | null;
+};
+export type SavedViewList = {
+    views: SavedViewRecord[];
+    unavailable: string | null;
+};
+export type ListViewsArgs = {
+    table: string;
+    trash?: boolean;
+};
+export type SaveViewArgs = {
+    table: string;
+    name: string;
+    definition: SavedViewDefinition;
+    id?: string;
+    expectedUpdatedAt?: string;
+};
+export type DeleteViewArgs = {
+    id: string;
+    expectedUpdatedAt: string;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -217,6 +270,22 @@ export interface CoreOperations {
     notificationPresentation: {
         args: NotificationPresentationArgs;
         result: NotificationPresentation;
+    };
+    search: {
+        args: SearchArgs;
+        result: SearchHit[];
+    };
+    listViews: {
+        args: ListViewsArgs;
+        result: SavedViewList;
+    };
+    saveView: {
+        args: SaveViewArgs;
+        result: SavedViewRecord;
+    };
+    deleteView: {
+        args: DeleteViewArgs;
+        result: SavedViewRecord;
     };
 }
 export type CoreMethod = keyof CoreOperations;

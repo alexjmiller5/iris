@@ -68,6 +68,46 @@ try {
 		await save.click();
 		await page.waitForFunction(() => (window as any).heldWrites.length > 0);
 	}
+	await check('column settings hide, reorder and resize without dropping hidden edit values', async () => {
+		const headers=page.getByRole('columnheader');
+		await expect(headers).toHaveText(['Record','Quantity','Status','Tags']);
+		await page.getByText('Columns', {exact:true}).click();
+		await page.getByRole('checkbox', {name:'Show Body', exact:true}).check();
+		await page.getByRole('checkbox', {name:'Show Quantity', exact:true}).uncheck();
+		await page.getByRole('button', {name:'Move Body left', exact:true}).click();
+		await page.getByRole('button', {name:'Move Body left', exact:true}).click();
+		await expect(headers).toHaveText(['Record','Body','Status','Tags']);
+		const bodyHeader=page.getByRole('columnheader', {name:'Body', exact:true});
+		const before=(await bodyHeader.boundingBox())!.width;
+		await page.getByRole('spinbutton', {name:'Width Body', exact:true}).fill('500');
+		await page.getByRole('spinbutton', {name:'Width Body', exact:true}).press('Tab');
+		await expect.poll(async()=>(await bodyHeader.boundingBox())!.width).toBeGreaterThan(before);
+		await page.getByText('Columns', {exact:true}).click();
+		await page.getByRole('button', {name:'Fixture record', exact:true}).click();
+		await expect(page.getByLabel('Quantity', {exact:true})).toHaveValue('42');
+		await page.getByRole('button', {name:'Close record', exact:true}).click();
+	});
+	await check('combined filters intersect records and removable chips keep the remaining clauses', async () => {
+		await page.getByLabel('Filter property', {exact:true}).selectOption('title');
+		await page.getByLabel('Filter value', {exact:true}).fill('Fixture record');
+		await page.getByRole('button', {name:'Apply filter', exact:true}).click();
+		await expect(page.getByText('1 record shown', {exact:true})).toBeVisible();
+		await expect(page.getByRole('button', {name:'Fixture record', exact:true})).toBeVisible();
+		await page.getByLabel('Filter property', {exact:true}).selectOption('body');
+		await page.getByLabel('Filter operator', {exact:true}).selectOption('contains');
+		await page.getByLabel('Filter value', {exact:true}).fill('Second');
+		await page.getByRole('button', {name:'Apply filter', exact:true}).click();
+		await expect(page.getByText('0 records shown', {exact:true})).toBeVisible();
+		await expect(page.getByRole('button', {name:'Second record', exact:true})).not.toBeVisible();
+		await expect(page.getByRole('button', {name:'Fixture record', exact:true})).not.toBeVisible();
+		await page.getByRole('button', {name:/Remove filter 2:/}).click();
+		await expect(page.getByText('1 record shown', {exact:true})).toBeVisible();
+		await expect(page.getByRole('button', {name:'Fixture record', exact:true})).toBeVisible();
+		await expect(page.getByRole('button', {name:'Second record', exact:true})).not.toBeVisible();
+		await page.getByRole('button', {name:'Clear filters', exact:true}).click();
+		await expect(page.getByRole('button', {name:'Second record', exact:true})).toBeVisible();
+		await expect(page.getByRole('button', {name:/Remove filter/})).toHaveCount(0);
+	});
 	await check('write in flight locks editable fields', async () => {
 		await page.getByRole('button', { name: 'Fixture record', exact: true }).click();
 		if (await page.getByRole('button', { name: 'Body source', exact: true }).getAttribute('aria-pressed') !== 'true') await page.getByRole('button', { name: 'Body source', exact: true }).click();

@@ -14,8 +14,8 @@ export declare function isReadOnlyTable(table: string, catalogEntry?: Row): bool
  * now/id are host/test seams; id generates row IDs only. History IDs always
  * come from SQLite. No caller may supply created_at, updated_at or hub_at.
  * Enforced invariants require the CLI's estate-wide snapshot write path.
- * Custom triggers anywhere in main/temp block writes. Only the exact main
- * timestamp trigger shipped by Python is supported; this writer keeps it idle.
+ * Custom triggers anywhere in main/temp block writes. Exact main timestamp
+ * triggers and queue-only search triggers are supported.
  * Forms should pass expectedUpdatedAt from their selected row. A stale edit
  * fails with rule='conflict'; omit it for unconditional merges into current data.
  */

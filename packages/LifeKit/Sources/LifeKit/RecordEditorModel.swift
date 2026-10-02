@@ -1,0 +1,259 @@
+import Foundation
+import Observation
+
+@Observable @MainActor
+final class RecordEditorModel {
+  private(set) var draft: RecordDraft
+  private(set) var recoveryChoices: [StoredEditorDraft] = []
+  var recovery: StoredEditorDraft? { recoveryChoices.first }
+  private(set) var failure: String?
+  private(set) var violations: [Violation] = []
+  private(set) var saving = false
+  private var failedPatch: WorkspaceRecord?
+  private var debounceTask: Task<Void, Never>?
+  private var inFlight: Task<Void, any Error>?
+  private let table: String
+  private let recordID: String?
+  private let store: EditorDraftStore?
+  private let debounce: Duration
+  private let write: @MainActor (WorkspaceRecord, WorkspaceRecord?) async throws -> WorkspaceRecord
+  private var unreadableDraft = false
+  private var journalID = UUID().uuidString
+  private var pendingWrite: PendingEditorWrite?
+  private var reviewRequired = false
+  private final class Owner {
+    weak var editor: RecordEditorModel?
+    init(_ editor: RecordEditorModel) { self.editor = editor }
+  }
+  private static var owners: [String: Owner] = [:]
+  private func ownerKey(_ id: String) -> String {
+    (store?.directory.path ?? "temporary") + "/" + id
+  }
+
+  init(
+    properties: [WorkspaceRecord], original: WorkspaceRecord?, table: String,
+    store: EditorDraftStore?, debounce: Duration = .milliseconds(600),
+    recovered: StoredEditorDraft? = nil,
+    write: @escaping @MainActor (WorkspaceRecord, WorkspaceRecord?) async throws -> WorkspaceRecord
+  ) {
+    draft = RecordDraft(properties: properties, original: original)
+    self.table = table
+    recordID = recovered != nil ? recovered!.recordID : original?["id"]?.text
+    self.store = store
+    self.debounce = debounce
+    self.write = write
+    do {
+      recoveryChoices =
+        try recovered.map { [$0] }
+        ?? store?.all().filter { $0.table == table && $0.recordID == recordID } ?? []
+    } catch {
+      unreadableDraft = true
+      failure = "The saved draft could not be opened. It has been kept."
+    }
+    Self.owners = Self.owners.filter { $0.value.editor != nil }
+    Self.owners[ownerKey(journalID)] = Owner(self)
+  }
+
+  var dirty: Bool { draft.patch.keys.contains { $0 != "id" } || !draft.unknownValues.isEmpty }
+  var needsReview: Bool { reviewRequired }
+  var isNew: Bool { draft.original == nil }
+  var markdownSaved: Bool {
+    !isNew && !saving && failure == nil && recovery == nil
+      && !markdownPatch.keys.contains(where: { $0 != "id" })
+  }
+  var markdownPatch: WorkspaceRecord {
+    let columns = Set(draft.fields.filter { $0.type == "markdown" }.map(\.id))
+    return draft.patch.filter { $0.key == "id" || columns.contains($0.key) }
+  }
+  var status: String {
+    if let failure { return failure }
+    if saving { return "Saving…" }
+    if isNew { return "Draft · Save the record to keep it" }
+    return markdownSaved ? "Saved on this device" : "Unsaved changes"
+  }
+
+  func setValue(_ value: String, for column: String) {
+    guard recovery == nil, draft.values[column] != value else { return }
+    draft.values[column] = value
+    if failedPatch?[column] != nil && !reviewRequired {
+      failedPatch = nil
+      failure = nil
+      violations = []
+    }
+    do { try persist() } catch {
+      failure = "Could not keep a recovery draft. " + error.localizedDescription
+      return
+    }
+    guard !isNew, draft.fields.contains(where: { $0.id == column && $0.type == "markdown" }) else {
+      return
+    }
+    debounceTask?.cancel()
+    debounceTask = Task { [weak self, debounce] in
+      do { try await Task.sleep(for: debounce) } catch { return }
+      try? await self?.flushMarkdown()
+    }
+  }
+
+  func resumeDraft(_ selected: StoredEditorDraft? = nil) {
+    guard let recovery = selected ?? recovery,
+      recoveryChoices.contains(where: { $0.id == recovery.id })
+    else { return }
+    // A live window keeps its own journal. Resuming its draft in another window
+    // forks a separate variant instead of sharing deletion/write ownership.
+    if Self.owners[ownerKey(recovery.id)]?.editor == nil {
+      Self.owners.removeValue(forKey: ownerKey(journalID))
+      journalID = recovery.id
+      Self.owners[ownerKey(journalID)] = Owner(self)
+    }
+    let changed = draft.original?["updated_at"] != recovery.draft.original?["updated_at"]
+    draft = recovery.draft
+    pendingWrite = recovery.pendingWrite
+    reviewRequired = pendingWrite != nil
+    failure =
+      reviewRequired
+      ? "A previous save did not finish confirming. Your draft has been kept for review."
+      : changed
+        ? "This record changed while the draft was closed. Your draft has been kept."
+        : recovery.failure
+    failedPatch = recovery.failedPatch
+    recoveryChoices = []
+    do { try persist() } catch { failure = error.localizedDescription }
+    // Recovery never silently replays a write, especially with a stale revision.
+  }
+
+  func discardDraft() throws {
+    guard !saving else {
+      throw WorkspaceError(message: "Wait for the current save to finish.", violations: [])
+    }
+    debounceTask?.cancel()
+    try store?.remove(table: table, recordID: recordID, draftID: journalID)
+    recoveryChoices = []
+  }
+
+  func keepDraft() throws {
+    debounceTask?.cancel()
+    try persist()
+  }
+
+  func keepDraft(collect: @MainActor () async throws -> Void) async throws {
+    debounceTask?.cancel()
+    try await collect()
+    try keepDraft()
+  }
+
+  func openSavedRecord() {
+    // The current editor still has the freshly loaded row and its revision.
+    // Leave every recovery variant available for a separate review.
+    recoveryChoices = []
+  }
+
+  func discardRecovery(_ saved: StoredEditorDraft) throws {
+    guard Self.owners[ownerKey(saved.id)]?.editor == nil else {
+      throw WorkspaceError(
+        message: "This draft is open in another window. Close it there before discarding.",
+        violations: [])
+    }
+    try store?.remove(table: saved.table, recordID: saved.recordID, draftID: saved.id)
+    recoveryChoices.removeAll { $0.id == saved.id }
+  }
+
+  func flushMarkdown(retry: Bool = false) async throws {
+    debounceTask?.cancel()
+    if retry { failedPatch = nil }
+    guard !isNew else {
+      try persist()
+      return
+    }
+    try checkRecovery()
+    while true {
+      if let inFlight {
+        try await inFlight.value
+        continue
+      }
+      let patch = markdownPatch
+      guard patch.keys.contains(where: { $0 != "id" }) else {
+        if let failure { throw WorkspaceError(message: failure, violations: violations) }
+        return
+      }
+      try await submit(patch)
+    }
+  }
+
+  func saveAll(_ explicitPatch: WorkspaceRecord? = nil) async throws {
+    debounceTask?.cancel()
+    while let inFlight { try await inFlight.value }
+    try checkRecovery()
+    failedPatch = nil
+    let patch = explicitPatch ?? draft.patch
+    if isNew || patch.keys.contains(where: { $0 != "id" }) {
+      try await submit(patch)
+    } else {
+      if let failure { throw WorkspaceError(message: failure, violations: violations) }
+      try persist()
+    }
+  }
+
+  private func checkRecovery() throws {
+    if reviewRequired {
+      throw WorkspaceError(
+        message: failure ?? "Review the recovered draft before saving.", violations: [])
+    }
+  }
+
+  private func submit(_ patch: WorkspaceRecord) async throws {
+    guard recovery == nil, !unreadableDraft else {
+      throw WorkspaceError(
+        message: "Open or discard the saved draft before saving.", violations: [])
+    }
+    if failedPatch == patch {
+      throw WorkspaceError(
+        message: failure ?? "The edit could not be saved.", violations: violations)
+    }
+    saving = true
+    pendingWrite = PendingEditorWrite(
+      id: UUID().uuidString, patch: patch,
+      expectedUpdatedAt: draft.original?["updated_at"]?.text)
+    let task = Task { @MainActor in
+      defer {
+        self.saving = false
+        self.inFlight = nil
+      }
+      do {
+        try self.persist()
+        let receipt = try await self.write(patch, self.draft.original)
+        self.draft.acknowledge(receipt, sent: patch)
+        self.pendingWrite = nil
+        self.failedPatch = nil
+        self.failure = nil
+        self.violations = []
+        try self.persist()
+      } catch {
+        self.pendingWrite = nil
+        self.failedPatch = patch
+        self.failure = error.localizedDescription
+        self.violations = (error as? WorkspaceError)?.violations ?? []
+        // Keep the failed patch and every later keystroke available after relaunch.
+        try? self.persist()
+        throw error
+      }
+    }
+    inFlight = task
+    try await task.value
+  }
+
+  private func persist() throws {
+    guard !unreadableDraft else {
+      throw WorkspaceError(
+        message: "The saved draft has been kept. It could not be opened.", violations: [])
+    }
+    guard recovery == nil else { return }
+    if dirty || failure != nil || pendingWrite != nil {
+      try store?.save(
+        StoredEditorDraft(
+          id: journalID, table: table, recordID: recordID, draft: draft,
+          failure: failure, failedPatch: failedPatch, pendingWrite: pendingWrite))
+    } else {
+      try store?.remove(table: table, recordID: recordID, draftID: journalID)
+    }
+  }
+}

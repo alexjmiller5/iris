@@ -255,6 +255,8 @@ async function dispatch(request: DatabaseRequest) {
 			return snapshot();
 		case 'rows':
 			return (await local.rows(args.view)).map((row) => row.record);
+		case 'search':
+			return local.search(args);
 		case 'options':
 			return local.options(args);
 		case 'write':

@@ -5,6 +5,42 @@ import Testing
 
 @MainActor
 struct NativeWorkspaceTests {
+  @Test func sharedFullTextSearchIndexesWritesAndExcludesTrash() async throws {
+    let workspace = try NativeWorkspace(path: ":memory:")
+    try await workspace.createSample()
+    let created = try await workspace.write(
+      table: "notes",
+      patch: [
+        "title": .string("Café synthetic record"), "body": .string("# A searchable quokka body"),
+      ])
+    let id = try #require(created["id"])
+    let hits = try await workspace.search(CoreSearchArgs(text: "cafe", table: "notes", limit: 5))
+    #expect(hits.count == 1)
+    #expect(hits.first?.id == id.text)
+    #expect(hits.first?.table == "notes")
+    #expect(hits.first?.label == "Café synthetic record")
+    #expect(
+      try await workspace.search(CoreSearchArgs(text: "quokka", table: "notes")).first?.id
+        == id.text)
+    _ = try await workspace.write(
+      table: "notes",
+      patch: [
+        "id": id,
+        "body": .string("Changed to platypus"),
+      ], expectedUpdatedAt: created["updated_at"]?.text)
+    #expect(try await workspace.search(CoreSearchArgs(text: "quokka", table: "notes")).isEmpty)
+    #expect(
+      try await workspace.search(CoreSearchArgs(text: "platypus", table: "notes")).first?.id
+        == id.text)
+    _ = try await workspace.write(table: "notes", patch: ["id": id, "deleted_at": .bool(true)])
+    #expect(try await workspace.search(CoreSearchArgs(text: "platypus", table: "notes")).isEmpty)
+    _ = try await workspace.write(table: "notes", patch: ["id": id, "deleted_at": .null])
+    #expect(
+      try await workspace.search(CoreSearchArgs(text: "platypus", table: "notes")).first?.id
+        == id.text)
+    try await workspace.close()
+  }
+
   @Test func catalogAndRecordLifecycleUsesSharedCore() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()

@@ -41,6 +41,27 @@ struct MarkdownEditorTests {
     #expect(session.document.value == "# Final keystroke")
   }
 
+  @Test func backgroundSnapshotDoesNotLockOrReplaceLaterDeliveredTyping() async throws {
+    let session = MarkdownEditorSession(value: "Before", label: "Body")
+    session.markReady()
+    session.snapshot = { lock in
+      #expect(!lock)
+      let captured = session.document
+      session.editSource("Later delivered change!")
+      return captured
+    }
+    try await session.collectSnapshot(lock: false)
+    #expect(session.document.value == "Later delivered change!")
+    session.snapshot = { lock in
+      #expect(!lock)
+      return MarkdownDocument(
+        id: session.document.id, value: "Final live value!",
+        label: "Body", readOnly: false)
+    }
+    try await session.collectSnapshot(lock: false)
+    #expect(session.document.value == "Final live value!")
+  }
+
   @Test func bundledEditorUndoHistoryCannotCrossDocumentIdentity() async throws {
     let session = MarkdownEditorSession(value: "# First\n\nOriginal", label: "Body")
     let host = MarkdownWebView.Coordinator(session: session)
@@ -92,6 +113,63 @@ struct MarkdownEditorTests {
     #expect(afterUndo.value == "# Second\n\nUnchanged source.\n")
   }
 
+  @Test func keepingAndCopyingRecoveredSourceCollectsLiveWebKitWhenChangeDeliveryIsDelayed()
+    async throws
+  {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = EditorDraftStore(
+      root: root.appendingPathComponent("drafts"),
+      workspace: root.appendingPathComponent("local.sqlite"))
+    let original: WorkspaceRecord = [
+      "id": .string("fixture"), "body": .string("Cached"), "updated_at": .string("revision-1"),
+    ]
+    let properties: [WorkspaceRecord] = [["col": .string("body"), "type": .string("markdown")]]
+    let pending = PendingEditorWrite(
+      id: "pending-fixture", patch: ["body": .string("Submitted")], expectedUpdatedAt: "revision-1")
+    try store.save(
+      StoredEditorDraft(
+        table: "notes", recordID: "fixture",
+        draft: RecordDraft(properties: properties, original: original), failure: nil,
+        failedPatch: nil, pendingWrite: pending))
+    let editor = RecordEditorModel(
+      properties: properties, original: original, table: "notes", store: store
+    ) { _, _ in
+      Issue.record("Copy and Keep must not save the row")
+      return [:]
+    }
+    editor.resumeDraft()
+    let session = MarkdownEditorSession(value: "Cached", label: "Body")
+    session.onChange = { editor.setValue($0, for: "body") }
+    let host = MarkdownWebView.Coordinator(session: session)
+    let view = host.makeView()
+    defer { host.stop(view) }
+    for _ in 0..<300 where !session.ready { try await Task.sleep(for: .milliseconds(20)) }
+    try #require(session.ready)
+    // Hold ordinary IPC delivery in the real island. Its live document still
+    // receives input, so relying on the native cache deterministically loses it.
+    view.configuration.userContentController.removeScriptMessageHandler(forName: "editor")
+    _ = try await view.callAsyncJavaScript(
+      """
+      [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Source').click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      """, arguments: [:], in: nil, contentWorld: .page)
+    for (value, lock) in [("Copied final!", false), ("Kept final!", true)] {
+      _ = try await view.callAsyncJavaScript(
+        """
+        const input = document.querySelector('textarea');
+        input.value = value;
+        input.dispatchEvent(new Event('input', {bubbles: true}));
+        """, arguments: ["value": value], in: nil, contentWorld: .page)
+      #expect(session.document.value != value)
+      try await editor.keepDraft { try await session.collectSnapshot(lock: lock) }
+      #expect(session.document.value == value)
+      #expect(try store.all().first?.draft.values["body"] == value)
+      #expect(try store.all().first?.pendingWrite?.id == "pending-fixture")
+      #expect(editor.needsReview)
+    }
+  }
+
   @Test func bundledEditorRoundTripsFinalSourceAndRejectsRemoteNavigation() async throws {
     let session = MarkdownEditorSession(value: "# Fixture\n\nUntouched source.\n", label: "Body")
     var changes: [String] = []
@@ -117,7 +195,7 @@ struct MarkdownEditorTests {
       """, arguments: ["value": replacement], in: nil, contentWorld: .page)
     // No debounce or sleep after the final input: Done must read the live document.
     let finish = try #require(session.snapshot)
-    try session.acceptSnapshot(try await finish())
+    try session.acceptSnapshot(try await finish(true))
     #expect(session.document.value == replacement)
     #expect(try await host.snapshot().readOnly, "Done freezes input at the returned snapshot")
     #expect(!MarkdownWebView.Coordinator.allowsNavigation(URL(string: "https://fixture.invalid")))

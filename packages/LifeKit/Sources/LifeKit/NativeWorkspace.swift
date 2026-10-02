@@ -27,7 +27,8 @@ public struct WorkspaceCatalog: Sendable {
 
   init(_ catalog: CoreCatalog) throws {
     tables = catalog.tables
-    properties = try JSONDecoder().decode([WorkspaceRecord].self, from: JSONEncoder().encode(catalog.properties))
+    properties = try JSONDecoder().decode(
+      [WorkspaceRecord].self, from: JSONEncoder().encode(catalog.properties))
     rules = catalog.rules
   }
 }
@@ -71,8 +72,12 @@ public final class NativeWorkspace {
   }
 
   init(path: String, runtime: LifeCoreRuntime) throws {
-    guard runtime.context.objectForKeyedSubscript("LifeNative")?.forProperty("contractHash")?.toString() == CoreContract.hash else {
-      throw WorkspaceError(message: "Core contract does not match the bundled runtime.", violations: [])
+    guard
+      runtime.context.objectForKeyedSubscript("LifeNative")?.forProperty("contractHash")?.toString()
+        == CoreContract.hash
+    else {
+      throw WorkspaceError(
+        message: "Core contract does not match the bundled runtime.", violations: [])
     }
     self.path = path
     self.runtime = runtime
@@ -140,50 +145,70 @@ public final class NativeWorkspace {
   public func rows(table: String, search: String = "", trash: Bool = false, offset: Int = 0)
     async throws -> [WorkspaceRow]
   {
-    try await rows(view: CoreView(table: table, limit: 100, offset: offset, trash: trash, search: search))
+    try await rows(
+      view: CoreView(table: table, limit: 100, offset: offset, trash: trash, search: search))
   }
   public func options(table: String, column: String) async throws -> [String] {
     try await decode(CoreRequests.Options(CoreOptionsArgs(table: table, column: column)))
   }
+  public func search(_ args: CoreSearchArgs) async throws -> [CoreSearchHit] {
+    try await decode(CoreRequests.Search(args))
+  }
   public func write(table: String, patch: WorkspaceRecord, expectedUpdatedAt: String? = nil)
     async throws -> WorkspaceRecord
   {
-    try await decode(CoreRequests.Write(CoreWriteArgs(table: table, patch: patch, expectedUpdatedAt: expectedUpdatedAt)))
+    try await decode(
+      CoreRequests.Write(
+        CoreWriteArgs(table: table, patch: patch, expectedUpdatedAt: expectedUpdatedAt)))
   }
   public func status() async throws -> WorkspaceSyncStatus {
     try await decode(CoreRequests.Status(CoreEmptyArgs()))
   }
 
   func usage(using transport: HubTransport) async throws -> UsageSummary {
-    try await decode(CoreRequests.ServiceUsage(CoreEndpointArgs(endpoint: transport.endpoint)), transport: transport)
+    try await decode(
+      CoreRequests.ServiceUsage(CoreEndpointArgs(endpoint: transport.endpoint)),
+      transport: transport)
   }
   func notifications(using transport: HubTransport) async throws -> NotificationFeed {
-    try await decode(CoreRequests.ServiceNotifications(CoreEndpointArgs(endpoint: transport.endpoint)), transport: transport)
+    try await decode(
+      CoreRequests.ServiceNotifications(CoreEndpointArgs(endpoint: transport.endpoint)),
+      transport: transport)
   }
   func markNotificationsRead(using transport: HubTransport, selector: WorkspaceRecord) async throws
     -> NotificationReadResult
   {
-    let typed = try JSONDecoder().decode(CoreNotificationReadSelector.self, from: JSONEncoder().encode(selector))
+    let typed = try JSONDecoder().decode(
+      CoreNotificationReadSelector.self, from: JSONEncoder().encode(selector))
     return try await markNotificationsRead(using: transport, selector: typed)
   }
-  func markNotificationsRead(using transport: HubTransport, selector: CoreNotificationReadSelector) async throws
+  func markNotificationsRead(using transport: HubTransport, selector: CoreNotificationReadSelector)
+    async throws
     -> NotificationReadResult
   {
-    try await decode(CoreRequests.MarkNotificationsRead(CoreNotificationReadArgs(endpoint: transport.endpoint, selector: selector)), transport: transport)
+    try await decode(
+      CoreRequests.MarkNotificationsRead(
+        CoreNotificationReadArgs(endpoint: transport.endpoint, selector: selector)),
+      transport: transport)
   }
   func notificationPresentation(_ feed: NotificationFeed, baseline: Int?) async throws
     -> NotificationPresentation
   {
-    try await decode(CoreRequests.NotificationPresentation(CoreNotificationPresentationArgs(feed: feed, baseline: baseline)))
+    try await decode(
+      CoreRequests.NotificationPresentation(
+        CoreNotificationPresentationArgs(feed: feed, baseline: baseline)))
   }
 
   func sync(using transport: HubTransport) async throws -> WorkspaceSyncResult {
-    try await decode(CoreRequests.Sync(CoreSyncArgs(endpoint: transport.endpoint)), transport: transport)
+    try await decode(
+      CoreRequests.Sync(CoreSyncArgs(endpoint: transport.endpoint)), transport: transport)
   }
   public func createSample() async throws { _ = try await call("sample") }
   public func close() async throws { _ = try await call("close") }
 
-  private func decode<R: CoreRequest>(_ request: R, transport: HubTransport? = nil) async throws -> R.Response {
+  private func decode<R: CoreRequest>(_ request: R, transport: HubTransport? = nil) async throws
+    -> R.Response
+  {
     let arguments = String(decoding: try JSONEncoder().encode(request.arguments), as: UTF8.self)
     let value = try await call(R.method, arguments: arguments, transport: transport)
     return try JSONDecoder().decode(R.Response.self, from: JSONEncoder().encode(value))
