@@ -14,7 +14,7 @@ The hub must allow the web app's origin through CORS.
 
 - Browse catalog tables, search, sort and filter records.
 - Create/edit typed fields, search related records by their display names,
-  write Markdown source, and move records to trash or restore them.
+  write Markdown with rich formatting or source editing, and move records to trash or restore them.
 - Required fields, immutable/derived properties, reference validation and
   stale-edit checks use the shared core. Unsaved drafts prompt before leaving.
 - View table relationships and group tables locally. Groups are separate for
@@ -32,13 +32,27 @@ are read-only. Catalog entries with `kind: system` also remain read-only.
 
 The macOS and iOS apps share `packages/LifeKit`: a SwiftUI catalog workspace
 using the same TypeScript core through JavaScriptCore and GRDB. Browse/search
-records, create/edit fields, preserve Markdown source, and trash/restore rows.
+records, sort by a catalog field, combine filters, create/edit fields, edit
+Markdown, and trash/restore rows. Sort and filter controls reset when
+changing tables or workspaces. Reference fields offer searchable record names;
+single and multiple choices save their underlying IDs through shared core.
+Unavailable selections remain in the draft until explicitly removed. Core
+rejects a save if its references are missing from the local replica.
 Catalog rules, read-only tables, validation, history and stale-revision checks
 come from shared core. An editor also captures its workspace and table, so
 changing connections cannot redirect a save. Unsaved drafts require explicit
 discard.
 
-Choose **Open local workspace** for a persistent local notes workspace, or
+Markdown fields open a dedicated screen containing the same **Write** and
+**Source** editor as web, bundled locally in WebKit. **Done** reads the live
+document before returning to the record draft; **Save** then writes through
+shared core. Opening a document preserves its original source. Each editor
+session has a new document identity, so callbacks from closed or replaced
+documents cannot change the current draft. If the embedded editor fails, a
+native source editor keeps the last received draft available. The island has
+no network, database or credential access.
+
+Choose **Open local workspace** for persistent local notes with sample topics, or
 **Try sample workspace** for an in-memory preview. macOS also opens existing
 catalogued SQLite files for local use. It never automatically opens the CLI's
 database or syncs a file selected through that picker.
@@ -173,15 +187,16 @@ artifacts from one source checkout:
 ```sh
 bun run bundle:core /path/to/life-core/src/validate.ts
 
-# Rebuild the native adapter and graph from this checkout alone.
+# Rebuild the native adapter and web islands from this checkout alone.
 bun run bundle:native
 bun run bundle:graph
+bun run bundle:editor
 ```
 
 The full core bundles carry the same source SHA-256; validator-only artifacts
 carry the validator's SHA-256. Generated bundles contain no developer paths.
 A clean Life UI checkout builds without a sibling life-data checkout.
-CI regenerates both native resources and rejects a stale committed artifact.
+CI regenerates the native resources and rejects a stale committed artifact.
 Never patch generated files by hand. `scripts/native-core.ts` is the native
 adapter, not a second validator. No native SQL callbacks are exposed to web
 content.
@@ -190,20 +205,47 @@ content.
 `scripts` follow the repository's platform boundaries. The independent
 mockup remains in `../life-ui-mockup`.
 
+## Markdown editing
+
+Write mode supports headings, bold and italic text, links, lists, checkable
+items, quotes, code blocks, tables, undo and redo. Type `/` on an empty line to
+open the block menu. Source mode edits plain Markdown, which is the stored
+format. Opening a document or switching modes preserves its original source;
+an actual rich edit serializes it as Markdown. Unsupported HTML and imported
+custom tags remain inert text, with Source available for exact editing.
+Image references are retained as placeholders without loading remote images.
+
+The native editor uses the same component in a single bundled HTML resource.
+Its bridge accepts document state and emits changes with an opaque draft ID;
+Done collects a live snapshot to include the final keystroke. The island has
+no database or credential bridge and blocks network access. Record saves still
+use the shared validated write path and explicit Save action.
+
+Browser checks for the editor use a dedicated `life-ui-markdown.localhost`
+review tab:
+
+```sh
+bun scripts/test-markdown-editor.ts
+bun scripts/test-editor-island.ts
+```
+
 ## Current limits
 
 This is an MVP implementation in progress. Enforced SQL invariants and custom
 triggers fail closed until the complete local rule/journal engine is connected.
 Missing references must be included in the replica before editing them. A
 skipped table is not automatically browsed remotely. Search uses bounded SQL
-queries, not FTS. Saved views, full grid keyboard editing, rich Markdown
-editing/editor islands, and Notes migration remain open work.
+queries, not FTS. Saved views, full grid keyboard editing, body autosave,
+and Notes migration remain open work.
 
-Native references currently accept row IDs; multi-value/JSON fields use source
-editors. Native browse supports search, trash and pages of 100 rows, with no
-saved views or full grid editor. Sync runs on connection and explicit request,
-not in the background. Device-approval enrollment, automatic token issuance,
-rich Markdown editing and iOS graph presentation remain open work.
+Native references use named pickers; multi-select and JSON fields use source
+editors. Native browse supports search, sort, combined filters, trash and pages
+of 100 rows, with no saved views or full grid editor. Rejected edits retain
+their data and show errors; a dedicated repair workflow remains open. Sync
+runs on connection and explicit request,
+not in the background. Device-approval enrollment, automatic token issuance
+and iOS graph presentation remain open work. Markdown edits remain a draft
+until the record's Save action succeeds; automatic saving is not implemented.
 
 Browser OPFS availability is required. There is no remote read-only fallback,
 service worker, or promise that a closed web app can cold-load without a

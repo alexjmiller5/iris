@@ -3,3 +3,4 @@ packages/LifeKit/Sources/LifeKit/Resources/graph.html linguist-generated=true -w
 packages/LifeKit/Sources/LifeKit/Resources/life-core.js linguist-generated=true
 packages/core/*.js linguist-generated=true
 packages/core/*.d.ts linguist-generated=true
+packages/LifeKit/Sources/LifeKit/Resources/editor.html -whitespace

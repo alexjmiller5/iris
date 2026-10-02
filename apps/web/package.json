@@ -10,9 +10,11 @@
 		"check": "wrangler types && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest run",
 		"fmt": "prettier --write .",
-		"lint": "prettier --check ."
+		"lint": "prettier --check .",
+		"bundle:editor": "vite build --config vite.editor.config.ts"
 	},
 	"dependencies": {
+		"@milkdown/kit": "7.22.2",
 		"life-ui-core": "workspace:*",
 		"wa-sqlite": "github:rhashimoto/wa-sqlite#7a4b4241ba7c61ee19121aacd6c93892234ce1a1"
 	},
@@ -23,6 +25,7 @@
 		"@tabler/icons-svelte": "^3.46.0",
 		"@tailwindcss/vite": "^4.3.0",
 		"@types/node": "^26.6.4",
+		"happy-dom": "20.14.5",
 		"prettier": "^3.8.3",
 		"prettier-plugin-svelte": "^4.1.0",
 		"prettier-plugin-tailwindcss": "^0.8.0",

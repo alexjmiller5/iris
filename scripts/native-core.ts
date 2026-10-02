@@ -1,5 +1,5 @@
-import { compileView, displayName, isReadOnlyTable, readCatalog, sync, syncStatus, validateRow, writeRow, readUsage, readNotifications, markNotificationsRead, notificationPresentation } from '../packages/core/client.js';
-import type { Row, SqlDriver, Value, View, ServiceHub, NotificationFeed } from '../packages/core/index.d.ts';
+import { CORE_CONTRACT_HASH, createCoreHandlers, validateRow } from '../packages/core/client.js';
+import type { CoreArgs, CoreMethod, CoreResult, Row, SqlDriver, Value, ServiceHub } from '../packages/core/index.d.ts';
 import { createSample } from './native-sample';
 
 declare const LifeSql: {
@@ -48,39 +48,24 @@ function hub(endpoint: unknown): ServiceHub {
   };
 }
 
-async function dispatch(method: string, args: Record<string, unknown>) {
-  switch (method) {
-    case 'catalog': {
-      const catalog = await readCatalog(db);
-      return { ...catalog, tables: catalog.tables.map((table) => ({ ...table, readOnly: isReadOnlyTable(String(table.id), table) })) };
-    }
-    case 'rows': {
-      const catalog = await readCatalog(db);
-      const table = catalog.tables.find((t) => t.id === args.table);
-      if (!table) throw new Error('Table is not in the catalog.');
-      const view = compileView(args as View, catalog.properties);
-      return (await db.all(view.sql, view.params)).map((record) => ({
-        record, label: displayName(record, typeof table.display === 'string' ? table.display : null),
-      }));
-    }
-    case 'write': return writeRow(db, args.table as string, args.patch as Row, {
-      origin: 'life-ui',
-      ...(typeof args.expectedUpdatedAt === 'string' ? { expectedUpdatedAt: args.expectedUpdatedAt } : {}),
-    });
-    case 'status': return syncStatus(db);
-    case 'sync': return sync(db, hub(args.endpoint));
-    case 'serviceUsage': return readUsage(hub(args.endpoint));
-    case 'serviceNotifications': return readNotifications(hub(args.endpoint));
-    case 'markNotificationsRead': return markNotificationsRead(hub(args.endpoint), args.selector as { ids?: string[]; through?: number });
-    case 'notificationPresentation': return notificationPresentation(args.feed as unknown as NotificationFeed, args.baseline as number | null);
-    case 'sample': await createSample(db); return null;
-    default: throw new Error('Unknown workspace operation.');
-  }
+const handlers = createCoreHandlers(db, hub, 'life-ui');
+
+function invoke<M extends CoreMethod>(method: M, args: CoreArgs<M>): CoreResult<M> | Promise<CoreResult<M>> {
+  return handlers[method](args);
+}
+
+async function dispatch(method: string, args: unknown) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Invalid workspace arguments.');
+  if (method === 'sample') { await createSample(db); return null; }
+  if (!Object.hasOwn(handlers, method)) throw new Error('Unknown workspace operation.');
+  // The sole untyped JSON boundary. Core functions retain runtime validation.
+  return invoke(method as CoreMethod, args as CoreArgs<CoreMethod>);
 }
 
 Object.assign(globalThis, {
   LifeCore: { validateRow },
   LifeNative: {
+    contractHash: CORE_CONTRACT_HASH,
     async request(id: number, method: string, json: string) {
       try { __lifeFinish(id, JSON.stringify({ value: await dispatch(method, JSON.parse(json)) })); }
       catch (error) {

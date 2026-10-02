@@ -1,0 +1,291 @@
+import {
+	Editor,
+	defaultValueCtx,
+	editorViewCtx,
+	editorViewOptionsCtx,
+	rootCtx,
+	serializerCtx
+} from '@milkdown/kit/core';
+import {
+	commonmark,
+	imageSchema,
+	wrapInHeadingCommand,
+	wrapInBulletListCommand,
+	wrapInOrderedListCommand,
+	wrapInBlockquoteCommand,
+	createCodeBlockCommand,
+	toggleStrongCommand,
+	toggleEmphasisCommand,
+	toggleLinkCommand
+} from '@milkdown/kit/preset/commonmark';
+import { gfm, insertTableCommand } from '@milkdown/kit/preset/gfm';
+import { history, undoCommand, redoCommand } from '@milkdown/kit/plugin/history';
+import { Plugin, TextSelection } from '@milkdown/kit/prose/state';
+import { $prose, callCommand, replaceAll } from '@milkdown/kit/utils';
+
+export type MarkdownCommand =
+	| 'heading1'
+	| 'heading2'
+	| 'heading3'
+	| 'bullet'
+	| 'ordered'
+	| 'quote'
+	| 'codeBlock'
+	| 'task'
+	| 'table'
+	| 'undo'
+	| 'redo'
+	| 'bold'
+	| 'italic'
+	| 'link';
+export interface MarkdownController {
+	getMarkdown(): string;
+	focus(): void;
+	replaceMarkdown(value: string): void;
+	command(command: MarkdownCommand, value?: string): boolean;
+	setReadOnly(value: boolean): void;
+	destroy(): Promise<void>;
+}
+export async function createMarkdownEditor(
+	element: HTMLElement,
+	options: {
+		value: string;
+		label: string;
+		id: string;
+		onchange(value: string): void;
+		onslash?(): void;
+	}
+): Promise<MarkdownController> {
+	let source = options.value;
+	let replacing = false;
+	let readOnly = false;
+	let destroyed = false;
+	const changes = $prose(
+		(ctx) =>
+			new Plugin({
+				view: () => ({
+					update(view, previous) {
+						if (destroyed || replacing || view.state.doc.eq(previous.doc)) return;
+						const updated = ctx.get(serializerCtx)(view.state.doc);
+						if (updated === source) return;
+						source = updated;
+						options.onchange(source);
+					}
+				})
+			})
+	);
+	const editor = await Editor.make()
+		.config((ctx) => {
+			ctx.set(rootCtx, element);
+			ctx.set(defaultValueCtx, source);
+			// Retain image references without fetching remote content while editing.
+			ctx.update(imageSchema.key, (previous) => (context) => {
+				const schema = previous(context);
+				return {
+					...schema,
+					attrs: { ...schema.attrs, title: { default: null, validate: 'string|null' } },
+					toDOM: (node) => [
+						'span',
+						{
+							'data-type': 'image-reference',
+							role: 'img',
+							'aria-label': node.attrs.alt || 'Image reference'
+						},
+						node.attrs.alt || 'Image reference'
+					]
+				};
+			});
+			ctx.set(editorViewOptionsCtx, {
+				editable: () => !readOnly,
+				handleKeyDown(view, event) {
+					const { empty, $from } = view.state.selection;
+					if (
+						!readOnly &&
+						event.key === '/' &&
+						empty &&
+						$from.parent.type.name === 'paragraph' &&
+						!$from.parent.content.size &&
+						options.onslash
+					) {
+						event.preventDefault();
+						options.onslash();
+						return true;
+					}
+					return false;
+				},
+				handleTextInput(view, from, to, text) {
+					if (
+						!readOnly &&
+						text === '/' &&
+						from === to &&
+						view.state.selection.$from.parent.type.name === 'paragraph' &&
+						!view.state.selection.$from.parent.content.size &&
+						options.onslash
+					) {
+						options.onslash();
+						return true;
+					}
+					return false;
+				},
+				nodeViews: {
+					list_item(node, view, getPos) {
+						const dom = document.createElement('li');
+						const contentDOM = document.createElement('div');
+						const checkbox = document.createElement('input');
+						checkbox.type = 'checkbox';
+						checkbox.contentEditable = 'false';
+						checkbox.setAttribute('aria-label', 'Completed task');
+						dom.appendChild(checkbox);
+						dom.appendChild(contentDOM);
+						const update = (next: typeof node) => {
+							if (next.type !== node.type) return false;
+							node = next;
+							checkbox.hidden = node.attrs.checked == null;
+							checkbox.checked = node.attrs.checked === true;
+							checkbox.disabled = readOnly;
+							if (node.attrs.checked != null) dom.dataset.itemType = 'task';
+							else delete dom.dataset.itemType;
+							return true;
+						};
+						update(node);
+						checkbox.onchange = () => {
+							const pos = getPos();
+							if (!readOnly && pos !== undefined)
+								view.dispatch(
+									view.state.tr.setNodeMarkup(pos, undefined, {
+										...node.attrs,
+										checked: checkbox.checked
+									})
+								);
+						};
+						return {
+							dom,
+							contentDOM,
+							update,
+							stopEvent: (event) => event.target === checkbox,
+							ignoreMutation: (mutation) =>
+								mutation.type !== 'selection' && mutation.target === checkbox
+						};
+					}
+				},
+				attributes: {
+					id: options.id,
+					role: 'textbox',
+					'aria-label': options.label,
+					'aria-multiline': 'true'
+				},
+				handleDOMEvents: {
+					click: (_view, event) => {
+						if ((event.target as Element).closest('a')) {
+							event.preventDefault();
+							return true;
+						}
+						return false;
+					}
+				}
+			});
+		})
+		.use(commonmark)
+		.use(gfm)
+		.use(history)
+		.use(changes)
+		.create();
+	return {
+		getMarkdown: () => source,
+		focus() {
+			if (!destroyed) editor.action((ctx) => ctx.get(editorViewCtx).focus());
+		},
+		replaceMarkdown(value) {
+			if (destroyed || value === source) return;
+			replacing = true;
+			try {
+				editor.action(replaceAll(value));
+				editor.action((ctx) => {
+					const view = ctx.get(editorViewCtx);
+					view.dispatch(view.state.tr.setSelection(TextSelection.atStart(view.state.doc)));
+				});
+				source = value;
+			} finally {
+				replacing = false;
+			}
+		},
+		command(command, value) {
+			if (readOnly || destroyed) return false;
+			let result = false;
+			switch (command) {
+				case 'heading1':
+				case 'heading2':
+				case 'heading3':
+					result = editor.action(callCommand(wrapInHeadingCommand.key, Number(command.at(-1))));
+					break;
+				case 'italic':
+					result = editor.action(callCommand(toggleEmphasisCommand.key));
+					break;
+				case 'link':
+					result =
+						typeof value === 'string' &&
+						/^(https?:|mailto:|tel:|#|\/)/i.test(value) &&
+						editor.action(callCommand(toggleLinkCommand.key, { href: value }));
+					break;
+				case 'bold':
+					result = editor.action(callCommand(toggleStrongCommand.key));
+					break;
+				case 'bullet':
+					result = editor.action(callCommand(wrapInBulletListCommand.key));
+					break;
+				case 'ordered':
+					result = editor.action(callCommand(wrapInOrderedListCommand.key));
+					break;
+				case 'quote':
+					result = editor.action(callCommand(wrapInBlockquoteCommand.key));
+					break;
+				case 'codeBlock':
+					result = editor.action(callCommand(createCodeBlockCommand.key));
+					break;
+				case 'table':
+					result = editor.action(callCommand(insertTableCommand.key, { row: 2, col: 2 }));
+					break;
+				case 'undo':
+					result = editor.action(callCommand(undoCommand.key));
+					break;
+				case 'redo':
+					result = editor.action(callCommand(redoCommand.key));
+					break;
+				case 'task': {
+					editor.action(callCommand(wrapInBulletListCommand.key));
+					result = editor.action((ctx) => {
+						const view = ctx.get(editorViewCtx);
+						const { $from } = view.state.selection;
+						for (let depth = $from.depth; depth > 0; depth--) {
+							const node = $from.node(depth);
+							if (node.type.name === 'list_item') {
+								view.dispatch(
+									view.state.tr.setNodeMarkup($from.before(depth), undefined, {
+										...node.attrs,
+										checked: false
+									})
+								);
+								return true;
+							}
+						}
+						return false;
+					});
+				}
+			}
+			editor.action((ctx) => ctx.get(editorViewCtx).focus());
+			return result;
+		},
+		setReadOnly(value) {
+			readOnly = value;
+			if (!destroyed) {
+				editor.action((ctx) => ctx.get(editorViewCtx).setProps({ editable: () => !readOnly }));
+				for (const checkbox of element.querySelectorAll<HTMLInputElement>('input[type=checkbox]'))
+					checkbox.disabled = readOnly;
+			}
+		},
+		async destroy() {
+			destroyed = true;
+			await editor.destroy();
+		}
+	};
+}

@@ -70,19 +70,23 @@ try {
 	}
 	await check('write in flight locks editable fields', async () => {
 		await page.getByRole('button', { name: 'Fixture record', exact: true }).click();
-		await page.getByLabel('Body', { exact: true }).fill('Saved body');
+		if (await page.getByRole('button', { name: 'Body source', exact: true }).getAttribute('aria-pressed') !== 'true') await page.getByRole('button', { name: 'Body source', exact: true }).click();
+		await page.getByRole('textbox', { name: 'Body', exact: true }).fill('Saved body');
 		await heldSave();
-		await expect(page.getByLabel('Body', { exact: true })).toBeDisabled();
+		if (await page.getByRole('button', { name: 'Body source', exact: true }).getAttribute('aria-pressed') !== 'true') await page.getByRole('button', { name: 'Body source', exact: true }).click();
+		await expect(page.getByRole('textbox', { name: 'Body', exact: true })).toBeDisabled();
 		await expect(page.getByLabel('Tags', { exact: true })).toBeDisabled();
 		await page.evaluate(() => (window as any).releaseWrites());
 		await expect(save).toBeEnabled();
 		await reopen();
 		await page.getByRole('button', { name: 'Fixture record', exact: true }).click();
-		await expect(page.getByLabel('Body', { exact: true })).toHaveValue('Saved body');
+		if (await page.getByRole('button', { name: 'Body source', exact: true }).getAttribute('aria-pressed') !== 'true') await page.getByRole('button', { name: 'Body source', exact: true }).click();
+		await expect(page.getByRole('textbox', { name: 'Body', exact: true })).toHaveValue('Saved body');
 	});
 	await check('write in flight locks record table workspace and route navigation', async () => {
 		await page.getByRole('button', { name: 'Fixture record', exact: true }).click();
-		await page.getByLabel('Body', { exact: true }).fill('Still record one');
+		if (await page.getByRole('button', { name: 'Body source', exact: true }).getAttribute('aria-pressed') !== 'true') await page.getByRole('button', { name: 'Body source', exact: true }).click();
+		await page.getByRole('textbox', { name: 'Body', exact: true }).fill('Still record one');
 		await heldSave();
 		for (const name of ['Second record', 'Close record', 'Switch workspace', 'Table graph'])
 			await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
@@ -93,7 +97,8 @@ try {
 		await expect(save).toBeEnabled();
 		await page.getByRole('button', { name: 'Close record', exact: true }).click();
 		await page.getByRole('button', { name: 'Second record', exact: true }).click();
-		await expect(page.getByLabel('Body', { exact: true })).toHaveValue('Second body');
+		if (await page.getByRole('button', { name: 'Body source', exact: true }).getAttribute('aria-pressed') !== 'true') await page.getByRole('button', { name: 'Body source', exact: true }).click();
+		await expect(page.getByRole('textbox', { name: 'Body', exact: true })).toHaveValue('Second body');
 	});
 	await check('canonical SQL and physical defaults survive another edit', async () => {
 		await page.getByRole('button', { name: 'New record', exact: true }).click();
@@ -102,7 +107,8 @@ try {
 		await expect(save).toBeEnabled();
 		await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('42');
 		await expect(page.getByLabel('Status', { exact: true })).toHaveValue('Dynamic');
-		await page.getByLabel('Body', { exact: true }).fill('Unrelated change');
+		if (await page.getByRole('button', { name: 'Body source', exact: true }).getAttribute('aria-pressed') !== 'true') await page.getByRole('button', { name: 'Body source', exact: true }).click();
+		await page.getByRole('textbox', { name: 'Body', exact: true }).fill('Unrelated change');
 		await save.click();
 		await expect(save).toBeEnabled();
 		await reopen();

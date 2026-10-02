@@ -1,9 +1,7 @@
 import type { SqlDriver } from './driver.ts';
-import { type Row, type Violation } from './validate.ts';
-export type WriteViolation = Violation & {
-    tbl: string;
-    row_id: string | null;
-};
+import { type Row } from './validate.ts';
+import type { WriteViolation } from './contract.generated.ts';
+export type { WriteViolation } from './contract.generated.ts';
 export declare class ValidationError extends Error {
     readonly violations: WriteViolation[];
     constructor(violations: WriteViolation[]);

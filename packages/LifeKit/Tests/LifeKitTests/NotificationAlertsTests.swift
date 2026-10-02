@@ -67,7 +67,7 @@ import Testing
     .init(
       seq: seq, id: "event-\(seq)", createdAt: "2026-10-02T15:04:05.123Z", producer: "fixture",
       type: "fixture.event", severity: "info", title: "Synthetic event \(seq)",
-      body: "Fixture body", data: nil, readAt: nil)
+      body: "Fixture body", data: .null, readAt: nil)
   }
 }
 

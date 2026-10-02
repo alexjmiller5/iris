@@ -1,3 +1,6 @@
+import { CORE_CONTRACT_HASH } from 'life-ui-core/contract';
+import type { DatabaseArgs, DatabaseMethod, DatabaseResult } from './database-contract';
+
 /** One dedicated worker per workspace; requests and shutdown preserve FIFO order. */
 export class WorkspaceDatabase extends EventTarget {
 	private worker: Worker;
@@ -5,13 +8,17 @@ export class WorkspaceDatabase extends EventTarget {
 	private closed = false;
 	private pending = new Map<
 		number,
-		{ resolve: (value: any) => void; reject: (error: Error) => void }
+		{ resolve: (value: unknown) => void; reject: (error: Error) => void }
 	>();
 
 	constructor() {
 		super();
 		this.worker = new Worker(new URL('./database.worker.ts', import.meta.url), { type: 'module' });
 		this.worker.onmessage = ({ data }) => {
+			if (data.contractHash !== CORE_CONTRACT_HASH) {
+				this.stop(new Error('Core contract does not match the database worker. Reload the app.'));
+				return;
+			}
 			if (data.changed) {
 				this.dispatchEvent(new Event('change'));
 				return;
@@ -30,13 +37,17 @@ export class WorkspaceDatabase extends EventTarget {
 			this.stop(new Error('Database worker returned an unreadable response.'));
 	}
 
-	request(method: string, args: Record<string, unknown> = {}): Promise<any> {
+	request<M extends DatabaseMethod>(
+		method: M,
+		...input: {} extends DatabaseArgs<M> ? [args?: DatabaseArgs<M>] : [args: DatabaseArgs<M>]
+	): Promise<DatabaseResult<M>> {
+		const args = input[0] ?? {};
 		if (this.closed) return Promise.reject(new Error('Database is closed.'));
 		const id = ++this.nextId;
-		return new Promise((resolve, reject) => {
-			this.pending.set(id, { resolve, reject });
+		return new Promise<DatabaseResult<M>>((resolve, reject) => {
+			this.pending.set(id, { resolve: (value) => resolve(value as DatabaseResult<M>), reject });
 			try {
-				this.worker.postMessage({ id, method, args });
+				this.worker.postMessage({ id, method, args, contractHash: CORE_CONTRACT_HASH });
 			} catch (error) {
 				this.pending.delete(id);
 				reject(error);

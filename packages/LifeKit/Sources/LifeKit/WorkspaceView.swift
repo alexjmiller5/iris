@@ -6,6 +6,7 @@ public struct WorkspaceView: View {
   @State private var model = WorkspaceModel()
   @State private var importing = false
   @State private var settings = false
+  @State private var options = false
   @State private var showingGraph = false
   @State private var editor: EditorTarget?
   private let demo: Bool
@@ -74,12 +75,13 @@ public struct WorkspaceView: View {
       guard scenePhase == .active else { return }
       await model.services.poll()
     }
-    .task(id: "\(model.table ?? "")|\(model.search)|\(model.trash)") { await model.reload() }
+    .task(id: model.queryKey) { await model.reload() }
     .sheet(item: $editor) { target in
       RecordEditor(
         model: model, original: target.row, context: target.context, onSaved: { editor = nil })
     }
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
+    .sheet(isPresented: $options) { WorkspaceOptionsView(model: model) }
     .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
       switch result {
       case .success(let url): Task { await model.open(url: url) }
@@ -134,7 +136,8 @@ public struct WorkspaceView: View {
         ContentUnavailableView(
           model.trash ? "Trash is empty" : "No records", systemImage: "tray",
           description: Text(
-            model.search.isEmpty ? "Create a record to get started." : "Try a different search."))
+            model.search.isEmpty && model.filters.isEmpty
+              ? "Create a record to get started." : "Try a different search or filter."))
       }
       ForEach(model.rows) { row in
         Button {
@@ -153,12 +156,24 @@ public struct WorkspaceView: View {
       if model.loading { ProgressView().frame(maxWidth: .infinity) }
     }
     .safeAreaInset(edge: .top, spacing: 0) {
-      if model.isReplica {
-        SyncSummary(model: model)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.horizontal).padding(.vertical, 8)
-          .background(.regularMaterial)
+      VStack(alignment: .leading, spacing: 8) {
+        if model.isReplica { SyncSummary(model: model) }
+        Button {
+          options = true
+        } label: {
+          HStack {
+            Label("Sort and filter", systemImage: "line.3.horizontal.decrease")
+            Spacer()
+            if !model.sortColumn.isEmpty {
+              Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
+            }
+            if !model.filters.isEmpty { Text("\(model.filters.count) active") }
+          }
+        }.accessibilityIdentifier("view-options")
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal).padding(.vertical, 8)
+      .background(.regularMaterial)
     }
     .navigationTitle(model.table ?? "Workspace")
     .searchable(text: $model.search, prompt: "Search records")
@@ -215,6 +230,7 @@ private struct RecordEditor: View {
   @State private var discard = false
   @State private var failure: String?
   @State private var violations: [Violation] = []
+  @FocusState private var focusedField: String?
 
   init(
     model: WorkspaceModel, original: WorkspaceRecord?, context: WorkspaceEditingContext?,
@@ -242,6 +258,8 @@ private struct RecordEditor: View {
             Section {
               FieldInput(
                 field: field,
+                workspace: context?.workspace,
+                focus: $focusedField,
                 value: Binding(
                   get: { draft.values[field.id] ?? "" }, set: { draft.values[field.id] = $0 }))
               ForEach(violations.filter { $0.col == field.id }, id: \.rule) { violation in
@@ -278,6 +296,7 @@ private struct RecordEditor: View {
         if let failure { Section { Text(failure).foregroundStyle(.red).textSelection(.enabled) } }
       }
       .formStyle(.grouped)
+      .accessibilityIdentifier("record-form")
       .navigationTitle(original == nil ? "New record" : "Record")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
@@ -325,15 +344,38 @@ private struct RecordEditor: View {
 
 private struct FieldInput: View {
   let field: CatalogField
+  let workspace: NativeWorkspace?
+  let focus: FocusState<String?>.Binding
   @Binding var value: String
 
   var body: some View {
     Group {
-      if ["markdown", "json", "multi_select", "multi_ref"].contains(field.type) {
+      if ["ref", "multi_ref"].contains(field.type) {
+        if let workspace, field.property["ref_table"]?.text.nonempty != nil {
+          ReferenceField(
+            field: field, value: $value, workspace: workspace, onOpen: { focus.wrappedValue = nil })
+        } else {
+          Text("Reference choices are unavailable. The original value has been preserved.")
+            .foregroundStyle(.secondary)
+        }
+      } else if field.type == "markdown" {
+        NavigationLink {
+          MarkdownEditorScreen(value: $value, label: field.label)
+            .onAppear { focus.wrappedValue = nil }
+        } label: {
+          VStack(alignment: .leading, spacing: 6) {
+            Text("Edit Markdown")
+            if !value.isEmpty {
+              Text(value).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+            }
+          }
+        }.accessibilityIdentifier("field-\(field.id)")
+      } else if ["json", "multi_select"].contains(field.type) {
         VStack(alignment: .leading, spacing: 8) {
-          Text(field.type == "markdown" ? "Markdown source" : "JSON source").font(.caption)
+          Text("JSON source").font(.caption)
             .foregroundStyle(.secondary)
           TextEditor(text: $value).font(.system(.body, design: .monospaced)).frame(minHeight: 180)
+            .focused(focus, equals: field.id)
             .accessibilityLabel(field.label).accessibilityIdentifier("field-\(field.id)")
         }
       } else if field.type == "bool" {
@@ -354,6 +396,7 @@ private struct FieldInput: View {
         }.accessibilityIdentifier("field-\(field.id)")
       } else {
         TextField(field.label, text: $value, axis: .vertical)
+          .focused(focus, equals: field.id)
           .accessibilityIdentifier("field-\(field.id)")
           .autocorrectionDisabled(field.type != "text")
       }

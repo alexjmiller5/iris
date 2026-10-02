@@ -1,22 +1,6 @@
 import { type Property, type Row } from "./validate.ts";
-export type Filter = {
-    column: string;
-    op: "eq" | "ne" | "contains" | "gt" | "gte" | "lt" | "lte" | "empty" | "not_empty";
-    value?: string | number | boolean | null;
-};
-export type View = {
-    table: string;
-    columns?: string[];
-    filters?: Filter[];
-    sort?: {
-        column: string;
-        direction: "asc" | "desc";
-    }[];
-    limit?: number;
-    offset?: number;
-    trash?: boolean;
-    search?: string;
-};
+import type { View } from './contract.generated.ts';
+export type { Filter, View } from './contract.generated.ts';
 /** Compile a catalog-scoped view. Equality is null-safe; contains is literal
  * (ASCII case-insensitive text, exact JSON array membership). Empty includes
  * NULL, empty strings and, for multi-value properties, empty JSON arrays.

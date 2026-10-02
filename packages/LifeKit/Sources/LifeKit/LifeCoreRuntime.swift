@@ -1,11 +1,7 @@
 import Foundation
 import JavaScriptCore
 
-public struct Violation: Codable, Equatable, Sendable {
-  public let col: String
-  public let rule: String
-  public let message: String
-}
+public typealias Violation = CoreViolation
 
 @MainActor
 public final class LifeCoreRuntime {

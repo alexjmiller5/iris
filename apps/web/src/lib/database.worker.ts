@@ -4,22 +4,22 @@ import wasmUrl from 'wa-sqlite/dist/wa-sqlite.wasm?url';
 import * as SQLite from 'wa-sqlite';
 import { OPFSCoopSyncVFS } from 'wa-sqlite/src/examples/OPFSCoopSyncVFS.js';
 import {
-	allowed,
-	compileView,
+	CORE_CONTRACT_HASH,
+	createCoreHandlers,
 	createHttpHub,
 	initCore,
 	qident,
 	readCatalog,
-	sync,
 	syncStatus,
-	writeRow,
 	type Row,
 	type SqlDriver,
-	type Value,
-	type View
+	type Value
 } from 'life-ui-core/client';
+import type { DatabaseRequest, WorkspaceSnapshot } from './database-contract';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
+const respond = (data: Record<string, unknown>) =>
+	scope.postMessage({ ...data, contractHash: CORE_CONTRACT_HASH });
 let sqlite: ReturnType<typeof SQLite.Factory>;
 let connection: number | undefined;
 let databaseName: string | undefined;
@@ -131,7 +131,7 @@ async function seedDemo() {
 	]);
 }
 
-async function snapshot() {
+async function snapshot(): Promise<WorkspaceSnapshot> {
 	const status = await syncStatus(db);
 	return {
 		catalog: await readCatalog(db),
@@ -167,7 +167,16 @@ async function migrateDemo() {
 	);
 }
 
-async function dispatch(method: string, args: Record<string, unknown>) {
+const local = createCoreHandlers(
+	db,
+	() => {
+		throw new Error('No hub connection.');
+	},
+	'life-ui'
+);
+
+async function dispatch(request: DatabaseRequest) {
+	const { method, args } = request;
 	if (method === 'open') {
 		if (args.demo !== undefined && typeof args.demo !== 'boolean')
 			throw new Error('demo must be a boolean.');
@@ -231,7 +240,7 @@ async function dispatch(method: string, args: Record<string, unknown>) {
 		}
 		databaseName = name;
 		channel = new BroadcastChannel(`life-ui:database:${name}`);
-		channel.onmessage = () => scope.postMessage({ changed: true });
+		channel.onmessage = () => respond({ changed: true });
 		return snapshot();
 	}
 	if (method === 'close') {
@@ -244,29 +253,12 @@ async function dispatch(method: string, args: Record<string, unknown>) {
 	switch (method) {
 		case 'snapshot':
 			return snapshot();
-		case 'rows': {
-			const { properties } = await readCatalog(db);
-			const { sql, params } = compileView(args.view as View, properties);
-			return db.all(sql, params);
-		}
-		case 'options': {
-			const { properties } = await readCatalog(db);
-			const property = properties.find((p) => p.tbl === args.table && p.col === args.column);
-			if (!property || !['select', 'multi_select'].includes(property.type ?? ''))
-				throw new Error('Select property is not available in the local catalog.');
-			// SQL comes only from the catalog, with the same read-expression wrapper as writeRow.
-			const extra = property.options_sql
-				? (await db.all(`SELECT * FROM (${property.options_sql})`)).map(
-						(row) => Object.values(row)[0] as string
-					)
-				: [];
-			return allowed(property, () => extra);
-		}
+		case 'rows':
+			return (await local.rows(args.view)).map((row) => row.record);
+		case 'options':
+			return local.options(args);
 		case 'write':
-			return writeRow(db, args.table as string, args.patch as Row, {
-				origin: 'life-ui',
-				expectedUpdatedAt: args.expectedUpdatedAt as string | undefined
-			});
+			return local.write(args);
 		case 'sync': {
 			if (databaseName === 'life-ui-demo')
 				throw new Error('Demo workspaces cannot sync. Open your workspace first.');
@@ -287,13 +279,10 @@ async function dispatch(method: string, args: Record<string, unknown>) {
 				}
 				for (const table of Object.keys(args.tables)) qident(table);
 			}
-			const hub = createHttpHub(args.endpoint as string, args.token as string, (url, init) =>
+			const hub = createHttpHub(args.endpoint, args.token, (url, init) =>
 				fetch(url, { ...init, signal: AbortSignal.timeout(120_000) })
 			);
-			const result = await sync(db, hub, {
-				maxRows: args.maxRows as number | undefined,
-				tables: args.tables as Record<string, boolean> | undefined
-			});
+			const result = await createCoreHandlers(db, () => hub, 'life-ui').sync(args);
 			await db.run("INSERT OR REPLACE INTO _core_state(key,value) VALUES ('skipped_tables',?)", [
 				JSON.stringify(result.skipped)
 			]);
@@ -308,6 +297,8 @@ scope.onmessage = ({ data }) => {
 	// SQLite retries can yield, so even separate read requests must wait their turn.
 	queue = queue.then(async () => {
 		try {
+			if (data?.contractHash !== CORE_CONTRACT_HASH)
+				throw new Error('Core contract does not match the database worker. Reload the app.');
 			if (
 				!data ||
 				typeof data.method !== 'string' ||
@@ -323,16 +314,16 @@ scope.onmessage = ({ data }) => {
 				);
 			const name = databaseName ?? (data.args.demo === true ? 'life-ui-demo' : 'life-ui');
 			const result = await navigator.locks.request(`life-ui:dispatch:${name}`, () =>
-				dispatch(data.method, data.args)
+				dispatch(data as DatabaseRequest)
 			);
-			scope.postMessage({ id: data.id, result });
+			respond({ id: data.id, result });
 			if (data.method === 'write' || data.method === 'sync') {
 				channel?.postMessage({ changed: true });
-				scope.postMessage({ changed: true });
+				respond({ changed: true });
 			}
 		} catch (error) {
 			const e = error as Error & { violations?: unknown };
-			scope.postMessage({
+			respond({
 				id: data?.id,
 				error: {
 					name: e.name ?? 'Error',

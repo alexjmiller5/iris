@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { editRevision } from '$lib/record-revision';
+	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
 	import {
@@ -36,7 +38,7 @@
 		busy = $state(false),
 		error = $state('');
 	let writing = $state(false);
-	let editorVersion = 0;
+	let editorVersion = $state(0);
 	let catalog = $state<{ tables: Row[]; properties: Property[]; rules: Row[] }>({
 		tables: [],
 		properties: [],
@@ -452,7 +454,7 @@
 			const stored: Row = await workspace.request('write', {
 				table: target,
 				patch,
-				...(selected ? { expectedUpdatedAt: selected.updated_at } : {})
+				...(selected ? { expectedUpdatedAt: editRevision(selected) } : {})
 			});
 			if (database !== workspace || editorVersion !== version || table !== target) return;
 			selected = stored;
@@ -482,7 +484,7 @@
 			await workspace.request('write', {
 				table: target,
 				patch: { id: selected.id, deleted_at: trash ? null : true },
-				expectedUpdatedAt: selected.updated_at
+				expectedUpdatedAt: editRevision(selected)
 			});
 			if (database !== workspace || editorVersion !== version || table !== target) return;
 			editorVersion++;
@@ -941,11 +943,20 @@
 										>{#each choices(p) as value}<option {value}>{choiceLabel(p, value)}</option
 											>{/each}</select
 									>
-								{:else if p.type === 'markdown' || p.type === 'json'}
+								{:else if p.type === 'markdown'}
+									{#key editorVersion}
+										<MarkdownEditor
+											id={`field-${p.col}`}
+											label={label(p)}
+											bind:value={draft[p.col]}
+											disabled={locked(p)}
+										/>
+									{/key}
+								{:else if p.type === 'json'}
 									<textarea
 										id={`field-${p.col}`}
 										aria-required={!!p.required}
-										rows={p.type === 'markdown' ? 12 : 4}
+										rows={4}
 										bind:value={draft[p.col]}
 										disabled={locked(p)}></textarea>
 								{:else if p.type === 'select'}<select

@@ -9,12 +9,19 @@ struct WorkspaceEditingContext {
 
 @Observable @MainActor
 final class WorkspaceModel {
-  var client: NativeWorkspace?
+  var client: NativeWorkspace? {
+    didSet { if oldValue !== client { resetView() } }
+  }
   var catalog: WorkspaceCatalog?
-  var table: String?
+  var table: String? {
+    didSet { if oldValue != table { resetView() } }
+  }
   var rows: [WorkspaceRow] = []
   var search = ""
   var trash = false
+  var sortColumn = ""
+  var sortAscending = true
+  var filters: [WorkspaceFilter] = []
   var loading = false
   var error: String?
   var location = ""
@@ -30,6 +37,40 @@ final class WorkspaceModel {
   private var transport: HubTransport?
   private var revision = 0
   private var scopedURL: URL?
+
+  var queryKey: [String] {
+    [table ?? "", search, String(trash), sortColumn, String(sortAscending)]
+      + filters.flatMap { [$0.column, $0.operation.rawValue, $0.value] }
+  }
+
+  private func resetView() {
+    revision += 1
+    search = ""
+    trash = false
+    sortColumn = ""
+    sortAscending = true
+    filters = []
+    rows = []
+    canLoadMore = false
+    loading = false
+  }
+
+  func applyViewOptions(
+    sortColumn: String, ascending: Bool, filters: [WorkspaceFilter],
+    context: WorkspaceEditingContext?
+  ) throws {
+    guard let context, context.workspace === client, context.table == table else {
+      throw WorkspaceError(
+        message: "The workspace or table changed. Reopen view options.", violations: [])
+    }
+    let fields = properties.map(CatalogField.init)
+    for filter in filters {
+      _ = try filter.coreFilter(field: fields.first { $0.id == filter.column })
+    }
+    self.sortColumn = sortColumn
+    sortAscending = ascending
+    self.filters = filters
+  }
 
   var editingContext: WorkspaceEditingContext? {
     guard let client, let table else { return nil }
@@ -112,24 +153,34 @@ final class WorkspaceModel {
   }
 
   func reload(more: Bool = false) async {
+    revision += 1
     guard let client, let table else {
       rows = []
+      loading = false
       return
     }
-    revision += 1
     let request = revision
+    let query = queryKey
     loading = true
     error = nil
     do {
-      let result = try await client.rows(
-        table: table, search: search, trash: trash, offset: more ? rows.count : 0)
+      let fields = properties.map(CatalogField.init)
+      let view = CoreView(
+        table: table,
+        filters: try filters.map { filter in
+          try filter.coreFilter(field: fields.first { $0.id == filter.column })
+        },
+        sort: sortColumn.isEmpty
+          ? nil : [CoreSort(column: sortColumn, direction: sortAscending ? .asc : .desc)],
+        limit: 100, offset: more ? rows.count : 0, trash: trash, search: search)
+      let result = try await client.rows(view: view)
       let status = isReplica ? try await client.status() : nil
-      guard request == revision else { return }
+      guard request == revision, self.client === client, query == queryKey else { return }
       syncStatus = status
       rows = more ? rows + result : result
       canLoadMore = result.count == 100
     } catch {
-      guard request == revision else { return }
+      guard request == revision, self.client === client, query == queryKey else { return }
       self.error = error.localizedDescription
       if !more { rows = [] }
     }
@@ -240,6 +291,7 @@ final class WorkspaceModel {
   }
 
   func close() async {
+    revision += 1
     services.configure(workspace: nil, transport: nil)
     do { try await client?.close() } catch {
       self.error = error.localizedDescription

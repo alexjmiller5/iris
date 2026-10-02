@@ -129,7 +129,9 @@ private final class FixtureState: @unchecked Sendable {
         return try JSONDecoder().decode([WorkspaceRecord].self, from: Data(json.utf8))
       }
       schema = try records("SELECT applied_at,ddl FROM _schema_log ORDER BY id")
-      for name in ["notes", "catalog_tables", "catalog_properties", "catalog_rules", "history"] {
+      for name in [
+        "notes", "topics", "catalog_tables", "catalog_properties", "catalog_rules", "history",
+      ] {
         tables[name] = try records("SELECT * FROM \(name)")
       }
       status = 200

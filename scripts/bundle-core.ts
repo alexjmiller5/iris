@@ -5,6 +5,7 @@ import {
   writeFile,
   readdir,
   copyFile,
+  mkdir,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -18,6 +19,23 @@ if (!source)
 const root = resolve(import.meta.dir, "..");
 if (source !== "--native") {
   const sourcePath = resolve(source);
+  const sourceRoot = resolve(dirname(sourcePath), '../..');
+  const schemaPath = join(sourceRoot, 'core/contract/core.json');
+  const generatorPath = join(sourceRoot, 'scripts/generate-core-contract.ts');
+  const { generateContract } = await import(generatorPath);
+  const generated = generateContract(JSON.parse(await readFile(schemaPath, 'utf8')));
+  if (await readFile(join(dirname(sourcePath), 'contract.generated.ts'), 'utf8') !== generated.typescript
+    || await readFile(join(sourceRoot, 'core/generated/CoreContract.generated.swift'), 'utf8') !== generated.swift) {
+    throw new Error('Source core contract is stale; regenerate it in life-data first.');
+  }
+  const contractDir = join(root, 'packages/core/contract');
+  const swiftDir = join(root, 'packages/LifeKit/Sources/LifeKit/Generated');
+  await mkdir(contractDir, { recursive: true });
+  await mkdir(swiftDir, { recursive: true });
+  await copyFile(schemaPath, join(contractDir, 'core.json'));
+  await copyFile(generatorPath, join(contractDir, 'generate-core-contract.ts'));
+  await writeFile(join(root, 'packages/core/contract.generated.ts'), generated.typescript);
+  await writeFile(join(swiftDir, 'CoreContract.generated.swift'), generated.swift);
   const sourceHash = createHash("sha256")
     .update(await readFile(sourcePath))
     .digest("hex");
@@ -44,12 +62,16 @@ if (source !== "--native") {
       "--no-install",
       "tsc",
       "--ignoreConfig",
+      "--strict",
       "--declaration",
       "--emitDeclarationOnly",
       "--target",
       "ES2022",
       "--module",
       "esnext",
+      "--moduleResolution",
+      "bundler",
+      "--allowImportingTsExtensions",
       "--skipLibCheck",
       "--outDir",
       temp,
@@ -94,6 +116,7 @@ if (source !== "--native") {
       "--no-install",
       "tsc",
       "--ignoreConfig",
+      "--strict",
       "--declaration",
       "--emitDeclarationOnly",
       "--target",
@@ -116,6 +139,9 @@ if (source !== "--native") {
     if (name.endsWith(".d.ts") && name !== "validate.d.ts")
       await copyFile(join(temp, name), join(root, "packages/core", name));
 
+  // Relative script imports of client.js need the same declaration entrypoint
+  // as the package export, not a similarly named internal source module.
+  await writeFile(join(root, 'packages/core/client.d.ts'), coreBanner + "export * from './index.d.ts';\n");
   console.log(`Bundled validator ${sourceHash}`);
 }
 

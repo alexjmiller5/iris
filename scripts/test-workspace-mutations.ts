@@ -14,7 +14,7 @@ const mutations: { name: string; file: string; test: string; edits: [string | Re
 		['draft = rowDraft(stored);', '/* mutation: leave the draft unchanged */']
 	] },
 	{ name: 'dynamic options excluded', file: worker, test: 'dynamic options are available', edits: [
-		['return allowed(property, () => extra);', 'return allowed(property);']
+		['return local.options(args);', 'return (await readCatalog(db)).properties.find(p => p.tbl === args.table && p.col === args.column)?.options?.map(o => o.v) ?? [];']
 	] },
 	{ name: 'legacy selected values omitted', file: route, test: 'unknown selections', edits: [
 		["...(p.type === 'multi_select' ? list(draft[p.col]) : [draft[p.col]].filter(Boolean))", '...[]']

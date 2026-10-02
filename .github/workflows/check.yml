@@ -13,11 +13,13 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      - run: bun run check:contract
       - name: Verify generated native resources
         run: |
           bun run bundle:graph
+          bun run bundle:editor
           bun run bundle:native
-          git diff --exit-code -- packages/LifeKit/Sources/LifeKit/Resources/graph.html packages/LifeKit/Sources/LifeKit/Resources/life-core.js
+          git diff --exit-code -- packages/LifeKit/Sources/LifeKit/Resources/graph.html packages/LifeKit/Sources/LifeKit/Resources/editor.html packages/LifeKit/Sources/LifeKit/Resources/life-core.js
       - run: bun run test
       - run: bun run check
       - run: bun run --cwd apps/web lint

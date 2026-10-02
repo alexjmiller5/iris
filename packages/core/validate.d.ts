@@ -1,35 +1,6 @@
-// Generated from life-core/src/validate.ts. SHA-256: ecf9606f8e87d199dc85bdc6c0324ebfc68a9a7adc4c0b371db1df41b759d486
-export type Row = Record<string, unknown>;
-export type OptionDef = {
-    v: string;
-    d?: string;
-    sort?: number;
-};
-export type Property = {
-    tbl?: string;
-    col: string;
-    label?: string | null;
-    sort?: number | null;
-    type?: string | null;
-    required?: number | boolean | null;
-    default_value?: string | null;
-    options?: OptionDef[] | null;
-    options_sql?: string | null;
-    min_items?: number | null;
-    max_items?: number | null;
-    pattern?: string | null;
-    ref_table?: string | null;
-    derived_by?: string | null;
-    inputs?: string[] | null;
-    immutable?: number | boolean | null;
-    deprecated?: number | boolean | null;
-    description?: string | null;
-};
-export type Violation = {
-    col: string;
-    rule: string;
-    message: string;
-};
+// Generated from life-core/src/validate.ts. SHA-256: ecaacd60b559ba0d5e6ba069b9b39b5cc4590ff0a4240c2dcea17a8667759515
+import type { Row, Property, Violation } from './contract.generated.ts';
+export type { Row, OptionDef, Property, Violation } from './contract.generated.ts';
 export type ValidateOptions = {
     /** Derived columns the hub is filling in this write (derivation runs only). */
     inDerive?: Set<string>;

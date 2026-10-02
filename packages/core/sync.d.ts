@@ -1,16 +1,9 @@
 import type { SqlDriver, Hub } from './driver.ts';
-import { type Row } from './validate.ts';
-export type SyncOptions = {
-    maxRows?: number;
-    tables?: Record<string, boolean>;
+import type { SyncSettings, SyncResult } from './contract.generated.ts';
+export type { SyncResult } from './contract.generated.ts';
+export type SyncOptions = SyncSettings & {
     now?: () => Date;
     maxClockSkewMs?: number;
-};
-export type SyncResult = {
-    pulled: number;
-    pushed: number;
-    skipped: string[];
-    rejected: Row[];
 };
 export declare function initCore(db: SqlDriver): Promise<void>;
 export declare function sync(db: SqlDriver, hub: Hub, options?: SyncOptions): Promise<SyncResult>;

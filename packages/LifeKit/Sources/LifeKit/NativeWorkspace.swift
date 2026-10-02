@@ -1,40 +1,13 @@
 import Foundation
 import JavaScriptCore
 
-public enum JSONValue: Codable, Hashable, Sendable {
-  case string(String)
-  case number(Double)
-  case bool(Bool)
-  case null
-  case array([JSONValue])
-  case object([String: JSONValue])
-  public init(from decoder: Decoder) throws {
-    let container = try decoder.singleValueContainer()
-    if container.decodeNil() {
-      self = .null
-    } else if let value = try? container.decode(Bool.self) {
-      self = .bool(value)
-    } else if let value = try? container.decode(String.self) {
-      self = .string(value)
-    } else if let value = try? container.decode(Double.self) {
-      self = .number(value)
-    } else if let value = try? container.decode([JSONValue].self) {
-      self = .array(value)
-    } else {
-      self = .object(try container.decode([String: JSONValue].self))
-    }
-  }
-  public func encode(to encoder: Encoder) throws {
-    var container = encoder.singleValueContainer()
-    switch self {
-    case .string(let value): try container.encode(value)
-    case .number(let value): try container.encode(value)
-    case .bool(let value): try container.encode(value)
-    case .null: try container.encodeNil()
-    case .array(let value): try container.encode(value)
-    case .object(let value): try container.encode(value)
-    }
-  }
+public typealias JSONValue = CoreJSONValue
+public typealias WorkspaceRecord = CoreRow
+public typealias WorkspaceRow = CoreWorkspaceRow
+public typealias WorkspaceSyncStatus = CoreSyncStatus
+public typealias WorkspaceSyncResult = CoreSyncResult
+
+extension CoreJSONValue {
   public var text: String {
     switch self {
     case .string(let value): value
@@ -46,34 +19,25 @@ public enum JSONValue: Codable, Hashable, Sendable {
   }
   public var isTrue: Bool { self == .bool(true) || self == .number(1) }
 }
-public typealias WorkspaceRecord = [String: JSONValue]
-public struct WorkspaceCatalog: Decodable, Sendable {
+// Forms consume a dictionary projection, not a second wire DTO.
+public struct WorkspaceCatalog: Sendable {
   public let tables: [WorkspaceRecord]
   public let properties: [WorkspaceRecord]
   public let rules: [WorkspaceRecord]
+
+  init(_ catalog: CoreCatalog) throws {
+    tables = catalog.tables
+    properties = try JSONDecoder().decode([WorkspaceRecord].self, from: JSONEncoder().encode(catalog.properties))
+    rules = catalog.rules
+  }
 }
-public struct WorkspaceRow: Decodable, Identifiable, Sendable {
-  public let record: WorkspaceRecord
-  public let label: String
+extension CoreWorkspaceRow: Identifiable {
   public var id: String { record["id"]?.text ?? "" }
 }
 public struct WorkspaceError: Error, LocalizedError, Sendable {
   public let message: String
   public let violations: [Violation]
   public var errorDescription: String? { message }
-}
-
-public struct WorkspaceSyncStatus: Decodable, Sendable {
-  public let lastSuccessfulSync: String?
-  public let pendingUiEdits: Int
-  public let rejected: Int
-}
-
-public struct WorkspaceSyncResult: Decodable, Sendable {
-  public let pulled: Int
-  public let pushed: Int
-  public let skipped: [String]
-  public let rejected: [WorkspaceRecord]
 }
 
 /// One request owns the database until its JavaScript promise settles.
@@ -102,9 +66,16 @@ public final class NativeWorkspace {
     let violations: [Violation]?
   }
 
-  public init(path: String) throws {
+  public convenience init(path: String) throws {
+    try self.init(path: path, runtime: LifeCoreRuntime())
+  }
+
+  init(path: String, runtime: LifeCoreRuntime) throws {
+    guard runtime.context.objectForKeyedSubscript("LifeNative")?.forProperty("contractHash")?.toString() == CoreContract.hash else {
+      throw WorkspaceError(message: "Core contract does not match the bundled runtime.", violations: [])
+    }
     self.path = path
-    runtime = try LifeCoreRuntime()
+    self.runtime = runtime
     database = try SQLiteBridge(path: path)
     try database.install(in: runtime.context)
     let finish: @convention(block) (Int, String) -> Void = { [weak self] id, json in
@@ -161,79 +132,71 @@ public final class NativeWorkspace {
   }
 
   public func catalog() async throws -> WorkspaceCatalog {
-    try await decode("catalog")
+    try await WorkspaceCatalog(decode(CoreRequests.Catalog(CoreEmptyArgs())))
+  }
+  public func rows(view: CoreView) async throws -> [WorkspaceRow] {
+    try await decode(CoreRequests.Rows(view))
   }
   public func rows(table: String, search: String = "", trash: Bool = false, offset: Int = 0)
     async throws -> [WorkspaceRow]
   {
-    try await decode(
-      "rows",
-      arguments: [
-        "table": .string(table), "search": .string(search),
-        "trash": .bool(trash), "offset": .number(Double(offset)), "limit": .number(100),
-      ])
+    try await rows(view: CoreView(table: table, limit: 100, offset: offset, trash: trash, search: search))
+  }
+  public func options(table: String, column: String) async throws -> [String] {
+    try await decode(CoreRequests.Options(CoreOptionsArgs(table: table, column: column)))
   }
   public func write(table: String, patch: WorkspaceRecord, expectedUpdatedAt: String? = nil)
     async throws -> WorkspaceRecord
   {
-    var arguments: WorkspaceRecord = ["table": .string(table), "patch": .object(patch)]
-    if let expectedUpdatedAt { arguments["expectedUpdatedAt"] = .string(expectedUpdatedAt) }
-    return try await decode("write", arguments: arguments)
+    try await decode(CoreRequests.Write(CoreWriteArgs(table: table, patch: patch, expectedUpdatedAt: expectedUpdatedAt)))
   }
-  public func status() async throws -> WorkspaceSyncStatus { try await decode("status") }
+  public func status() async throws -> WorkspaceSyncStatus {
+    try await decode(CoreRequests.Status(CoreEmptyArgs()))
+  }
 
   func usage(using transport: HubTransport) async throws -> UsageSummary {
-    try await decode(
-      "serviceUsage", arguments: ["endpoint": .string(transport.endpoint)], transport: transport)
+    try await decode(CoreRequests.ServiceUsage(CoreEndpointArgs(endpoint: transport.endpoint)), transport: transport)
   }
   func notifications(using transport: HubTransport) async throws -> NotificationFeed {
-    try await decode(
-      "serviceNotifications", arguments: ["endpoint": .string(transport.endpoint)],
-      transport: transport)
+    try await decode(CoreRequests.ServiceNotifications(CoreEndpointArgs(endpoint: transport.endpoint)), transport: transport)
   }
   func markNotificationsRead(using transport: HubTransport, selector: WorkspaceRecord) async throws
     -> NotificationReadResult
   {
-    try await decode(
-      "markNotificationsRead",
-      arguments: ["endpoint": .string(transport.endpoint), "selector": .object(selector)],
-      transport: transport)
+    let typed = try JSONDecoder().decode(CoreNotificationReadSelector.self, from: JSONEncoder().encode(selector))
+    return try await markNotificationsRead(using: transport, selector: typed)
+  }
+  func markNotificationsRead(using transport: HubTransport, selector: CoreNotificationReadSelector) async throws
+    -> NotificationReadResult
+  {
+    try await decode(CoreRequests.MarkNotificationsRead(CoreNotificationReadArgs(endpoint: transport.endpoint, selector: selector)), transport: transport)
   }
   func notificationPresentation(_ feed: NotificationFeed, baseline: Int?) async throws
     -> NotificationPresentation
   {
-    let value = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(feed))
-    return try await decode(
-      "notificationPresentation",
-      arguments: ["feed": value, "baseline": baseline.map { .number(Double($0)) } ?? .null])
+    try await decode(CoreRequests.NotificationPresentation(CoreNotificationPresentationArgs(feed: feed, baseline: baseline)))
   }
 
   func sync(using transport: HubTransport) async throws -> WorkspaceSyncResult {
-    let value = try await call(
-      "sync", arguments: ["endpoint": .string(transport.endpoint)], transport: transport)
-    return try JSONDecoder().decode(WorkspaceSyncResult.self, from: JSONEncoder().encode(value))
+    try await decode(CoreRequests.Sync(CoreSyncArgs(endpoint: transport.endpoint)), transport: transport)
   }
   public func createSample() async throws { _ = try await call("sample") }
   public func close() async throws { _ = try await call("close") }
 
-  private func decode<T: Decodable>(
-    _ method: String, arguments: WorkspaceRecord = [:], transport: HubTransport? = nil
-  ) async throws
-    -> T
-  {
-    let value = try await call(method, arguments: arguments, transport: transport)
-    return try JSONDecoder().decode(T.self, from: JSONEncoder().encode(value))
+  private func decode<R: CoreRequest>(_ request: R, transport: HubTransport? = nil) async throws -> R.Response {
+    let arguments = String(decoding: try JSONEncoder().encode(request.arguments), as: UTF8.self)
+    let value = try await call(R.method, arguments: arguments, transport: transport)
+    return try JSONDecoder().decode(R.Response.self, from: JSONEncoder().encode(value))
   }
   private func call(
-    _ method: String, arguments: WorkspaceRecord = [:], transport: HubTransport? = nil
+    _ method: String, arguments: String = "{}", transport: HubTransport? = nil
   ) async throws -> JSONValue {
     guard !closed else { throw WorkspaceError(message: "Workspace is closed.", violations: []) }
-    let json = String(decoding: try JSONEncoder().encode(arguments), as: UTF8.self)
     return try await withCheckedThrowingContinuation { continuation in
       nextID += 1
       requests.append(
         Request(
-          id: nextID, method: method, arguments: json, transport: transport,
+          id: nextID, method: method, arguments: arguments, transport: transport,
           continuation: continuation))
       startNext()
     }

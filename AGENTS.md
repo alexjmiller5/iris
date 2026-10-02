@@ -14,10 +14,21 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   implementation belongs to life-data. Regenerate with
   `bun run bundle:core <path-to-life-core/src/validate.ts>`. Never patch generated
   files. Native and browser full-core headers identify the same source SHA-256.
+- `packages/core/contract`: vendored canonical schema and deterministic generator
+  from life-data. `bun run check:contract` verifies TS/Swift output and the client
+  bundle hash without writes. Change the schema in life-data and regenerate the
+  bundle; never hand-edit DTOs. Swift `CoreRequests` and TS operation pairs share
+  these shapes. Native and Worker boundaries reject a local contract hash mismatch.
 - `scripts/native-core.ts`: native adapter over the generated shared core.
   It must not become a second validator, view compiler or sync implementation.
 - `apps/web/vite.graph.config.ts`: self-contained native graph HTML built from
   the same SchemaGraph component. No external assets or network access.
+- `apps/web/vite.editor.config.ts`: self-contained Markdown editor island using
+  the same Milkdown component as the web client. `lifeEditor.setDocument` accepts
+  a draft ID, source, label and read-only state; `getDocument` returns the live
+  snapshot. Native hosts reject stale IDs and collect the snapshot before Done.
+  Keep Markdown as storage, preserve untouched source, and render imported HTML
+  inert. The island has no network, SQL or credential access.
 - `scripts`: build and fixture test operations. No credentials or data exports.
 
 The supported service dependency is the life-data hub API with independently
@@ -26,7 +37,7 @@ Life UI owns its Worker, Access application, vault and deployment credentials
 when provisioned. `.env.tpl` is the operator/CI bootstrap manifest; its values
 never enter the browser bundle. Workers Scripts Write is account-scoped and
 requires an explicit scope decision before provisioning. No deploy workflow is
-enabled, and remote visibility is an owner decision.
+enabled. The public repository is `alexjmiller5/life-ui`.
 
 The usage/notifications API is owned by life-data; never add competing hub
 endpoints here. life-core owns service validation, feed pagination and presentation

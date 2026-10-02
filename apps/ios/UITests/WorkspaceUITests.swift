@@ -2,6 +2,90 @@ import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testNamedReferencesAndSortFiltersUseSavedRecords() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    let title = app.descendants(matching: .any)["field-title"]
+    tapWhenReady(title)
+    title.typeText("Zulu parity")
+    let topic = app.buttons["field-topic"]
+    for _ in 0..<8 where !topic.isHittable {
+      _ = dismissKeyboardTutorial()
+      scrollRecordFormUp(app)
+    }
+    tapWhenReady(topic)
+    XCTAssertTrue(app.navigationBars["Topic"].waitForExistence(timeout: 5))
+    XCTAssertFalse(
+      app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "[a-f0-9]{32}")).firstMatch
+        .exists)
+    tapWhenReady(app.buttons["Field notes"])
+    XCTAssertTrue(app.navigationBars["New record"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+    let related = app.buttons["field-related"]
+    for _ in 0..<5 where !related.isHittable {
+      _ = dismissKeyboardTutorial()
+      scrollRecordFormUp(app)
+    }
+    tapWhenReady(related)
+    tapWhenReady(app.buttons["Field notes"])
+    tapWhenReady(app.buttons["Ideas"])
+    let pickerShot = XCTAttachment(screenshot: app.screenshot())
+    pickerShot.name = "native-named-reference-picker"
+    pickerShot.lifetime = .keepAlways
+    add(pickerShot)
+    tapWhenReady(app.navigationBars["Related topics"].buttons["Done"])
+    tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
+    let zulu = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Zulu parity"))
+      .firstMatch
+    tapWhenReady(zulu)
+    for _ in 0..<8 where !related.isHittable {
+      _ = dismissKeyboardTutorial()
+      scrollRecordFormUp(app)
+    }
+    XCTAssertTrue(related.waitForExistence(timeout: 5))
+    XCTAssertTrue(related.label.contains("Field notes"), related.label)
+    XCTAssertTrue(related.label.contains("Ideas"), related.label)
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    tapWhenReady(title)
+    title.typeText("Alpha parity")
+    tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
+    tapWhenReady(app.buttons["view-options"])
+    tapWhenReady(app.buttons["sort-column"])
+    tapWhenReady(app.buttons["Title"])
+    tapWhenReady(app.buttons["sort-direction"])
+    tapWhenReady(app.buttons["Descending"])
+    tapWhenReady(app.buttons["Add filter"])
+    tapWhenReady(app.buttons["filter-operation"])
+    tapWhenReady(app.buttons["Contains"])
+    tapWhenReady(app.textFields["filter-value"])
+    app.textFields["filter-value"].typeText("parity")
+    tapWhenReady(app.navigationBars["Sort and filter"].buttons["apply-view-options"])
+    let alpha = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Alpha parity"))
+      .firstMatch
+    XCTAssertTrue(alpha.waitForExistence(timeout: 5))
+    XCTAssertTrue(zulu.waitForExistence(timeout: 5))
+    XCTAssertGreaterThan(alpha.frame.height, 0)
+    XCTAssertGreaterThan(zulu.frame.height, 0)
+    XCTAssertLessThan(zulu.frame.minY, alpha.frame.minY)
+    XCTAssertFalse(
+      app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
+        .firstMatch.exists)
+    let filterShot = XCTAttachment(screenshot: app.screenshot())
+    filterShot.name = "native-sorted-filtered-workspace"
+    filterShot.lifetime = .keepAlways
+    add(filterShot)
+    tapWhenReady(app.buttons["view-options"])
+    tapWhenReady(app.buttons["Reset sort and filters"])
+    tapWhenReady(app.navigationBars["Sort and filter"].buttons["apply-view-options"])
+    XCTAssertTrue(
+      app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
+        .firstMatch.waitForExistence(timeout: 5))
+  }
+
   func testUsageAndNotificationsThroughTheNativeInterface() throws {
     guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_SERVICES_HUB"] else {
       throw XCTSkip("Set LIFE_UI_TEST_SERVICES_HUB for the synthetic services Worker test")
@@ -168,23 +252,47 @@ final class WorkspaceUITests: XCTestCase {
     let title = app.descendants(matching: .any)["field-title"]
     tapWhenReady(title)
     title.typeText("Synthetic UI note")
-    let body = app.textViews["field-body"]
+    let body = app.buttons["field-body"]
     for _ in 0..<5 where !body.isHittable {
       _ = dismissPasswordPrompt()
-      app.swipeUp()
+      scrollRecordFormUp(app)
     }
     tapWhenReady(body)
-    body.typeText("# Markdown source\n\nA synthetic paragraph.")
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    let source = app.webViews.textViews["Body"]
+    tapWhenReady(source)
+    source.typeText("# Markdown source\n\nA synthetic paragraph.")
     let sourceShot = XCTAttachment(screenshot: app.screenshot())
     sourceShot.name = "native-markdown-editor"
     sourceShot.lifetime = .keepAlways
     add(sourceShot)
+    // Done reads the live snapshot without waiting for a debounce after typing.
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
     let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Synthetic UI note"))
       .firstMatch
     tapWhenReady(row)
-    XCTAssertTrue(body.waitForExistence(timeout: 5))
-    XCTAssertEqual(body.value as? String, "# Markdown source\n\nA synthetic paragraph.")
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    XCTAssertEqual(source.value as? String, "# Markdown source\n\nA synthetic paragraph.")
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body write"])
+    let rich = app.webViews.textViews["Body"]
+    tapWhenReady(rich)
+    rich.typeText(" Final rich keystroke.")
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["Record"].buttons["save-record"])
+    tapWhenReady(row)
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    XCTAssertTrue(
+      (source.value as? String)?.contains("Final rich keystroke.") == true, app.debugDescription)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body write"])
+    XCTAssertTrue(app.webViews.buttons["Heading 1"].waitForExistence(timeout: 5))
+    let richShot = XCTAttachment(screenshot: app.screenshot())
+    richShot.name = "native-shared-markdown-editor"
+    richShot.lifetime = .keepAlways
+    add(richShot)
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(title)
     title.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
     title.typeText(" revised")
@@ -219,21 +327,53 @@ final class WorkspaceUITests: XCTestCase {
     let ready = XCTNSPredicateExpectation(
       predicate: NSPredicate { _, _ in
         MainActor.assumeIsolated {
-          if self.dismissPasswordPrompt() { return false }
+          if self.dismissPasswordPrompt() || self.dismissKeyboardTutorial() { return false }
           return element.exists && element.isHittable
         }
       }, object: element)
+    let result = XCTWaiter.wait(for: [ready], timeout: 10)
+    if result != .completed {
+      let screenshot = XCTAttachment(screenshot: XCUIApplication().screenshot())
+      screenshot.name = "unreachable-control"
+      screenshot.lifetime = .keepAlways
+      add(screenshot)
+    }
     XCTAssertEqual(
-      XCTWaiter.wait(for: [ready], timeout: 10), .completed, element.debugDescription,
+      result, .completed, XCUIApplication().debugDescription,
       file: file, line: line)
     element.tap()
+  }
+
+  private func scrollRecordFormUp(_ app: XCUIApplication) {
+    let form = app.collectionViews["record-form"]
+    // Drag the Form's gutter without scrolling an embedded source field.
+    form.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5))
+      .press(
+        forDuration: 0.05,
+        thenDragTo: form.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.2)))
+  }
+
+  @discardableResult
+  private func dismissKeyboardTutorial() -> Bool {
+    let app = XCUIApplication()
+    let tutorial = app.staticTexts.matching(
+      NSPredicate(
+        format: "label BEGINSWITH %@", "Speed up your typing by sliding your finger")
+    ).firstMatch
+    let button = app.buttons["Continue"]
+    guard tutorial.exists, button.isHittable else { return false }
+    button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    XCTAssertTrue(tutorial.waitForNonExistence(timeout: 5))
+    return true
   }
 
   @discardableResult
   private func dismissPasswordPrompt() -> Bool {
     let prompt = XCUIApplication().sheets["Save Password?"]
     guard prompt.exists, prompt.buttons["Not Now"].isHittable else { return false }
-    prompt.buttons["Not Now"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    // This button belongs to the remote Password AutoFill process. A coordinate
+    // anchored to the app sends the event to the wrong process on iOS.
+    prompt.buttons["Not Now"].tap()
     XCTAssertTrue(prompt.waitForNonExistence(timeout: 5))
     return true
   }
