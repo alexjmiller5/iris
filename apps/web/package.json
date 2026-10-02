@@ -6,12 +6,12 @@
 	"scripts": {
 		"dev": "vite dev --host 127.0.0.1",
 		"build": "wrangler types && vite build",
-		"bundle:graph": "vite build --config vite.graph.config.ts",
+		"bundle:graph": "svelte-kit sync && vite build --config vite.graph.config.ts",
 		"check": "wrangler types && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest run",
 		"fmt": "prettier --write .",
 		"lint": "prettier --check .",
-		"bundle:editor": "vite build --config vite.editor.config.ts"
+		"bundle:editor": "svelte-kit sync && vite build --config vite.editor.config.ts"
 	},
 	"dependencies": {
 		"@milkdown/kit": "7.22.2",

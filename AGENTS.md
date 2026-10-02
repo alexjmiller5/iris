@@ -6,7 +6,9 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
 ## Layout and contracts
 
 - `apps/web`: Svelte 5/SvelteKit, Tailwind 4, Cloudflare Worker static assets.
-  SQLite runs through wa-sqlite/OPFSCoopSyncVFS in a dedicated Worker.
+  SQLite runs through wa-sqlite/OPFSCoopSyncVFS in a dedicated Worker. The pinned
+  FTS5-enabled JS/WASM pair is in `vendor/wa-sqlite`; regenerate through its Nix
+  package and `scripts/build-wa-sqlite.ts`, preserving the matching API/VFS pin.
 - `apps/ios`, `apps/macos`: XcodeGen SwiftUI targets consuming LifeKit.
 - `packages/LifeKit`: serialized JavaScriptCore facade, GRDB adapter, native
   workspace, URLSession transport, Keychain storage and bundled graph island.
@@ -55,7 +57,10 @@ whole input before stepping; reject writes and connection-changing commands
 from catalog options/default expressions. Trusted schema replay stays separate. Pass the opened
 record's `updated_at` as `expectedUpdatedAt` to prevent stale editor overwrites.
 Keep drafts separate from the stored row and reconcile successful writes without
-silently discarding later typing. Preserve unknown existing multi-select values.
+silently discarding later typing. Web body autosave writes only editable Markdown
+columns on existing rows; it updates the acknowledged baseline without replacing
+the live draft. Failed identical patches must not loop. Preserve unknown existing
+multi-select values.
 
 Whole Worker requests and whole native asynchronous requests are serialized.
 Native SQLite transactions retain ownership across awaited JS callbacks.

@@ -218,8 +218,11 @@ Image references are retained as placeholders without loading remote images.
 The native editor uses the same component in a single bundled HTML resource.
 Its bridge accepts document state and emits changes with an opaque draft ID;
 Done collects a live snapshot to include the final keystroke. The island has
-no database or credential bridge and blocks network access. Record saves still
-use the shared validated write path and explicit Save action.
+no database or credential bridge and blocks network access. The web client
+autosaves Markdown on existing records after a short typing pause, with a visible
+saving/saved state. Unrelated property drafts wait for **Save record**; new records
+also require their first explicit save. Conflicts retain the draft. Native record
+saves use the shared validated write path and explicit Save action.
 
 Browser checks for the editor use a dedicated `life-ui-markdown.localhost`
 review tab:
@@ -227,6 +230,7 @@ review tab:
 ```sh
 bun scripts/test-markdown-editor.ts
 bun scripts/test-editor-island.ts
+bun scripts/test-body-autosave.ts
 ```
 
 ## Current limits
@@ -235,7 +239,8 @@ This is an MVP implementation in progress. Enforced SQL invariants and custom
 triggers fail closed until the complete local rule/journal engine is connected.
 Missing references must be included in the replica before editing them. A
 skipped table is not automatically browsed remotely. Search uses bounded SQL
-queries, not FTS. Saved views, full grid keyboard editing, body autosave,
+queries, not FTS. The browser SQLite build includes FTS5 for the shared search
+index under development. Saved views, full grid keyboard editing, native body autosave,
 and Notes migration remain open work.
 
 Native references use named pickers; multi-select and JSON fields use source
@@ -244,8 +249,9 @@ of 100 rows, with no saved views or full grid editor. Rejected edits retain
 their data and show errors; a dedicated repair workflow remains open. Sync
 runs on connection and explicit request,
 not in the background. Device-approval enrollment, automatic token issuance
-and iOS graph presentation remain open work. Markdown edits remain a draft
-until the record's Save action succeeds; automatic saving is not implemented.
+remain open work. The graph is available on web and macOS; iOS graph presentation
+is outside the MVP. Native Markdown edits remain a draft until the record's Save
+action succeeds; native automatic saving is not implemented.
 
 Browser OPFS availability is required. There is no remote read-only fallback,
 service worker, or promise that a closed web app can cold-load without a
@@ -305,3 +311,7 @@ native testing. Both use synthetic records and loopback interfaces only.
   Developer ID, notarization, release CI and declarative installation.
 
 No production data is migrated by development or tests.
+
+The browser SQLite build is pinned and reproducible through Nix. See
+[vendor/wa-sqlite](vendor/wa-sqlite/README.md) for regeneration and the real OPFS
+FTS5 regression fixture. Normal app builds consume the committed JS/WASM pair.

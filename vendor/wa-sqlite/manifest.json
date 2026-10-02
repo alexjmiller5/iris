@@ -1,0 +1,24 @@
+{
+  "waSqlite": {
+    "revision": "7a4b4241ba7c61ee19121aacd6c93892234ce1a1",
+    "url": "https://codeload.github.com/rhashimoto/wa-sqlite/tar.gz/7a4b4241ba7c61ee19121aacd6c93892234ce1a1",
+    "sha256": "e9af664c083f55854f75d1adb8b9037ac914ea60830abd44710a5746d02d6306"
+  },
+  "sqlite": {
+    "version": "3.53.0",
+    "amalgamation": "sqlite-amalgamation-3530000",
+    "url": "https://www.sqlite.org/2026/sqlite-amalgamation-3530000.zip",
+    "sha256": "bf3733d7c71b3ab0f6fd8a9ea0052ad87fa037d94333e14ce09878ba3492c3b0"
+  },
+  "extension": {
+    "url": "https://www.sqlite.org/contrib/download/extension-functions.c?get=25",
+    "sha256": "991b40fe8b2799edc215f7260b890f14a833512c9d9896aa080891330ffe4052"
+  },
+  "emscripten": "6.0.9",
+  "defines": ["SQLITE_ENABLE_FTS5"],
+  "artifacts": {
+    "wa-sqlite.mjs": "84c24f6f2f4d44cd4e2dd609caa743549857df790d4a04e1a2e9ca4f009501d5",
+    "wa-sqlite.wasm": "b5f4e0c8568b5aabb543f0fbd9e904c037a9d07026010cc991b25bd28794c940",
+    "LICENSE": "547f9e97e461bd369cc64b6fc12d724e8b02764b8db7812691f29f0ec572be79"
+  }
+}

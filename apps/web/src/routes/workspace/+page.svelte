@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { markdownPatch } from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -38,6 +39,8 @@
 		busy = $state(false),
 		error = $state('');
 	let writing = $state(false);
+	let bodySaving = $state(false),
+		bodyFailure = $state('');
 	let editorVersion = $state(0);
 	let catalog = $state<{ tables: Row[]; properties: Property[]; rules: Row[] }>({
 		tables: [],
@@ -68,7 +71,8 @@
 			}
 	});
 	const dirty = $derived(editing && JSON.stringify(draft) !== savedDraft);
-	const discard = () => !writing && (!dirty || confirm('Discard unsaved changes to this record?'));
+	const discard = () =>
+		!writing && !bodySaving && (!dirty || confirm('Discard unsaved changes to this record?'));
 	beforeNavigate((navigation) => {
 		if (!discard()) navigation.cancel();
 	});
@@ -104,6 +108,60 @@
 	const rules = $derived(catalog.rules.filter((r) => r.tbl === table || r.scope === 'estate'));
 	const readOnly = $derived(isReadOnlyTable(table, current));
 	const blocked = $derived(rules.some((r) => r.kind === 'invariant' && r.enforce));
+	const draftProperties = $derived(properties.filter((p) => Object.hasOwn(draft, p.col)));
+	const bodyPatch = $derived(markdownPatch(properties, draft, selected));
+	const bodySaveKey = $derived(JSON.stringify([editorVersion, bodyPatch]));
+	$effect(() => {
+		if (
+			!editing ||
+			!bodyPatch ||
+			busy ||
+			readOnly ||
+			blocked ||
+			trash ||
+			bodyFailure === bodySaveKey
+		)
+			return;
+		const patch = bodyPatch,
+			key = bodySaveKey;
+		const timer = setTimeout(() => void saveBody(patch, key), 600);
+		return () => clearTimeout(timer);
+	});
+	async function saveBody(patch: Row, key: string) {
+		if (!database || !selected || !editing || busy || key !== bodySaveKey) return;
+		const workspace = database,
+			version = editorVersion,
+			target = table;
+		bodySaving = true;
+		busy = true;
+		try {
+			const stored = await workspace.request('write', {
+				table: target,
+				patch,
+				expectedUpdatedAt: editRevision(selected)
+			});
+			if (database !== workspace || editorVersion !== version || table !== target) return;
+			selected = stored;
+			// Keep the live draft: typing may have continued while the write was pending.
+			const acknowledged = rowDraft(stored);
+			savedDraft = JSON.stringify(
+				Object.fromEntries(Object.keys(draft).map((column) => [column, acknowledged[column] ?? '']))
+			);
+			bodyFailure = '';
+			error = '';
+			await refresh();
+		} catch (e) {
+			if (database === workspace && editorVersion === version) {
+				bodyFailure = key;
+				error = message(e);
+			}
+		} finally {
+			if (database === workspace) {
+				bodySaving = false;
+				busy = false;
+			}
+		}
+	}
 	const label = (p: Property) =>
 		p.label || p.col.charAt(0).toUpperCase() + p.col.slice(1).replaceAll('_', ' ');
 	const tableName = (t: Row) => String(t.id);
@@ -301,6 +359,7 @@
 		selected = null;
 		draft = {};
 		savedDraft = '';
+		bodyFailure = '';
 		rows = [];
 		names = {};
 		references = {};
@@ -398,6 +457,7 @@
 		if (!discard()) return;
 		editorVersion++;
 		selected = row;
+		bodyFailure = '';
 		draft = rowDraft(row);
 		references = {};
 		referenceSearch = {};
@@ -430,7 +490,7 @@
 		error = '';
 		try {
 			const patch: Row = selected ? { id: selected.id } : {};
-			for (const p of properties) {
+			for (const p of draftProperties) {
 				if (p.derived_by || p.deprecated || (selected && p.immutable)) continue;
 				const value = draft[p.col] ?? '';
 				if (
@@ -460,6 +520,7 @@
 			selected = stored;
 			draft = rowDraft(stored);
 			savedDraft = JSON.stringify(draft);
+			bodyFailure = '';
 			notice = 'Saved on this device';
 			await refresh();
 		} catch (e) {
@@ -559,7 +620,7 @@
 	ononline={() => (online = true)}
 	onoffline={() => (online = false)}
 	onbeforeunload={(e) => {
-		if (dirty || writing) {
+		if (dirty || writing || bodySaving) {
 			e.preventDefault();
 			e.returnValue = '';
 		}
@@ -866,6 +927,22 @@
 							}}><IconX size={18} /></button
 						>
 					</header>
+					{#if draftProperties.some((p) => p.type === 'markdown')}
+						<p role="status" aria-label="Body save status" class="hint">
+							{bodySaving
+								? 'Saving body…'
+								: !selected
+									? 'Save record to start body autosave'
+									: bodyPatch
+										? bodyFailure === bodySaveKey
+											? 'Body not saved. Your draft is kept.'
+											: 'Body changes pending'
+										: 'Body saved on this device'}
+						</p>
+					{/if}
+					{#if draftProperties.length !== properties.length}
+						<p class="hint">Properties changed. Reopen this record to edit newly added fields.</p>
+					{/if}
 					<form
 						onsubmit={(e) => {
 							e.preventDefault();
@@ -873,7 +950,7 @@
 						}}
 						novalidate
 					>
-						{#each properties as p (p.col)}
+						{#each draftProperties as p (p.col)}
 							<div class="field">
 								<label for={`field-${p.col}`}
 									>{label(p)}{#if p.required}<span class="required" aria-hidden="true"

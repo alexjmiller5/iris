@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
-import SQLiteFactory from 'wa-sqlite/dist/wa-sqlite.mjs';
-import wasmUrl from 'wa-sqlite/dist/wa-sqlite.wasm?url';
+import SQLiteFactory from '../../../../vendor/wa-sqlite/wa-sqlite.mjs';
+import wasmUrl from '../../../../vendor/wa-sqlite/wa-sqlite.wasm?url';
 import * as SQLite from 'wa-sqlite';
 import { OPFSCoopSyncVFS } from 'wa-sqlite/src/examples/OPFSCoopSyncVFS.js';
 import {
@@ -206,9 +206,9 @@ async function dispatch(request: DatabaseRequest) {
 				(_, action, name, detail) => {
 					if (!reading) return SQLite.SQLITE_OK;
 					// The authorizer runs during preparation too: reject connection control
-					// and mutating PRAGMAs before they can act. Core needs table introspection.
+					// and mutating PRAGMAs before they can act. FTS5 reads data_version on reopen.
 					if (action === SQLite.SQLITE_PRAGMA)
-						return ['table_info', 'table_xinfo'].includes(name?.toLowerCase() ?? '')
+						return ['table_info', 'table_xinfo', 'data_version'].includes(name?.toLowerCase() ?? '')
 							? SQLite.SQLITE_OK
 							: SQLite.SQLITE_DENY;
 					if (action === SQLite.SQLITE_FUNCTION && detail?.toLowerCase() === 'load_extension')

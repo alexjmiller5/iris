@@ -1,7 +1,106 @@
+import UIKit
 import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testMarkdownSurvivesTenBackgroundAndRotationCycles() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    XCUIDevice.shared.orientation = .portrait
+    defer { XCUIDevice.shared.orientation = .portrait }
+    app.launchArguments = ["--demo"]
+    app.launch()
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    let title = app.textFields["field-title"]
+    tapWhenReady(title)
+    title.typeText("Editor lifecycle fixture")
+    let body = app.buttons["field-body"]
+    for _ in 0..<5 where !body.isHittable {
+      _ = dismissKeyboardTutorial()
+      scrollRecordFormUp(app)
+    }
+    tapWhenReady(body)
+    let editor = app.webViews.textViews["Body"]
+    tapWhenReady(editor)
+    var expected = "Cycles"
+    editor.typeText(expected)
+    for cycle in 1...10 {
+      XCTContext.runActivity(named: "Editor lifecycle cycle \(cycle) of 10") { _ in
+        expected = typeMarkerThenFinalCharacter(
+          editor, marker: String(format: "%02dz", cycle), previous: expected)
+        // Background immediately after the final keystroke, with no save/debounce wait.
+        XCUIDevice.shared.press(.home)
+        let background = XCTNSPredicateExpectation(
+          predicate: NSPredicate { _, _ in
+            MainActor.assumeIsolated {
+              app.state == .runningBackground || app.state == .runningBackgroundSuspended
+            }
+          }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [background], timeout: 5), .completed)
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+          (editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), expected)
+        for orientation in [UIDeviceOrientation.landscapeLeft, .portrait] {
+          XCUIDevice.shared.orientation = orientation
+          let rotated = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+              MainActor.assumeIsolated {
+                let frame = app.frame
+                return frame.width > 0 && frame.height > 0
+                  && (orientation == .portrait
+                    ? frame.height > frame.width : frame.width > frame.height)
+              }
+            }, object: app)
+          XCTAssertEqual(XCTWaiter.wait(for: [rotated], timeout: 5), .completed)
+          XCTAssertEqual(
+            (editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), expected)
+        }
+        expected = typeMarkerThenFinalCharacter(
+          editor, marker: String(format: "%02dv", cycle), previous: expected)
+        // Done must collect this final character before returning to the record.
+        tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+        tapWhenReady(
+          app.navigationBars[cycle == 1 ? "New record" : "Record"].buttons["save-record"])
+        let row = app.buttons.matching(
+          NSPredicate(format: "label BEGINSWITH %@", "Editor lifecycle fixture")
+        ).firstMatch
+        tapWhenReady(row)
+        tapWhenReady(body)
+        tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+        XCTAssertEqual(
+          (editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), expected)
+        tapWhenReady(app.webViews.descendants(matching: .any)["Body write"])
+      }
+    }
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-editor-ten-lifecycle-cycles"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+  }
+
+  private func typeMarkerThenFinalCharacter(
+    _ editor: XCUIElement, marker: String, previous: String
+  ) -> String {
+    tapWhenReady(editor)
+    editor.typeText(marker)
+    let entered = (editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    XCTAssertEqual(entered.replacingOccurrences(of: marker, with: ""), previous)
+    guard let insertion = entered.range(of: marker) else {
+      XCTFail("The editor did not receive the marker")
+      return entered
+    }
+    // Derive the actual insertion position rather than assuming a tap places the
+    // caret at the end. No accessibility read occurs after the final character.
+    var expected = entered
+    expected.insert("!", at: insertion.upperBound)
+    editor.typeText("!")
+    return expected
+  }
+
   func testNamedReferencesAndSortFiltersUseSavedRecords() throws {
     continueAfterFailure = false
     let app = XCUIApplication()

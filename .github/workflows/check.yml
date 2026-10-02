@@ -8,7 +8,7 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
@@ -27,7 +27,7 @@ jobs:
   apple:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - run: brew install xcodegen just
       - run: swift test --package-path packages/LifeKit
       - run: just --justfile apps/macos/justfile check

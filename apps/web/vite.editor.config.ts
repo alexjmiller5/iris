@@ -23,7 +23,8 @@ export default defineConfig({
 					chunks.length !== 1 ||
 					styles.length === 0 ||
 					chunks[0].imports.length ||
-					chunks[0].dynamicImports.length ||
+					// Rolldown records inlined dynamic imports as references to this same chunk.
+					chunks[0].dynamicImports.some((name) => name !== chunks[0].fileName) ||
 					Object.keys(bundle).length !== chunks.length + styles.length
 				) {
 					throw new Error(
@@ -47,6 +48,7 @@ export default defineConfig({
 		outDir: path('../../packages/LifeKit/Sources/LifeKit/Resources'),
 		emptyOutDir: false,
 		cssCodeSplit: false,
+		rolldownOptions: { output: { codeSplitting: false } },
 		lib: { entry: path('./src/editor.ts'), name: 'LifeEditorIsland', formats: ['iife'] }
 	}
 });

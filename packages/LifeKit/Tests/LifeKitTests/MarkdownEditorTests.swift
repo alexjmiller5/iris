@@ -41,6 +41,57 @@ struct MarkdownEditorTests {
     #expect(session.document.value == "# Final keystroke")
   }
 
+  @Test func bundledEditorUndoHistoryCannotCrossDocumentIdentity() async throws {
+    let session = MarkdownEditorSession(value: "# First\n\nOriginal", label: "Body")
+    let host = MarkdownWebView.Coordinator(session: session)
+    let view = host.makeView()
+    defer { host.stop(view) }
+    for _ in 0..<300 where !session.ready { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(session.ready)
+    let edit = """
+      for (let i = 0; i < 200; i++) {
+        const input = document.querySelector('[contenteditable="true"]');
+        if (input) {
+          input.focus();
+          document.execCommand('insertText', false, 'Synthetic edit ');
+          return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      throw Error('Editable document unavailable');
+      """
+    _ = try await view.callAsyncJavaScript(edit, arguments: [:], in: nil, contentWorld: .page)
+    #expect(try await host.snapshot().value.contains("Synthetic edit"))
+    _ = try await view.callAsyncJavaScript(
+      "document.querySelector('button[aria-label=Undo]').click();", arguments: [:], in: nil,
+      contentWorld: .page)
+    #expect(
+      try await host.snapshot().value.trimmingCharacters(in: .whitespacesAndNewlines)
+        == "# First\n\nOriginal")
+    // Refill undo history before switching to a different record/property.
+    _ = try await view.callAsyncJavaScript(edit, arguments: [:], in: nil, contentWorld: .page)
+    #expect(try await host.snapshot().value.contains("Synthetic edit"))
+    let firstID = session.document.id
+    session.begin(value: "# Second\n\nUnchanged source.\n", label: "Description", readOnly: false)
+    host.render()
+    _ = try await view.callAsyncJavaScript(
+      """
+      for (let i = 0; i < 200; i++) {
+        const input = document.querySelector('[contenteditable="true"]');
+        if (input) {
+          document.querySelector('button[aria-label=Undo]').click();
+          return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      throw Error('Replacement document unavailable');
+      """, arguments: [:], in: nil, contentWorld: .page)
+    let afterUndo = try await host.snapshot()
+    #expect(afterUndo.id != firstID)
+    #expect(afterUndo.id == session.document.id)
+    #expect(afterUndo.value == "# Second\n\nUnchanged source.\n")
+  }
+
   @Test func bundledEditorRoundTripsFinalSourceAndRejectsRemoteNavigation() async throws {
     let session = MarkdownEditorSession(value: "# Fixture\n\nUntouched source.\n", label: "Body")
     var changes: [String] = []
