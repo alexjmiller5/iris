@@ -30,7 +30,7 @@ try {
  await cdp.detach();
  await page.goto(url);
  await page.getByRole('button', {name:'Open my workspace', exact:true}).click();
- await page.getByText('Connect to a hub', {exact:true}).click();
+ await page.getByText('Connect to a hub', {exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
  await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
  await page.getByLabel('Device token').fill('fixture');
  const sync = page.getByRole('button', {name:'Sync now', exact:true});

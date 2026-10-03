@@ -4,10 +4,15 @@ import { resolve } from 'node:path';
 export async function regressionHub(source: string, origin: string, port = 0, options: {
 	wrap?: (worker: any) => any;
 	env?: Record<string, unknown>;
+	context?: Record<string, unknown>;
 } = {}) {
 	const { default: worker } = await import(resolve(source, 'worker/src/index.js'));
 	const { D1Shim } = await import(resolve(source, 'worker/test/d1shim.js'));
 	const db = new D1Shim();
+	const auth = new D1Shim();
+	const {ensureAuthReady,hashToken}=await import(resolve(source,'worker/src/auth.js'));
+	await ensureAuthReady(auth);
+	await auth.prepare('INSERT INTO _tokens(hash,name,scopes,label) VALUES (?,?,?,?)').bind(await hashToken('fixture'),'device:example','full','Example device').run();
 	db.db.exec('CREATE TABLE _schema_log(id INTEGER PRIMARY KEY,applied_at TEXT,ddl TEXT)');
 	const system = `id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),deleted_at TEXT,hub_at TEXT`;
 	for (const [name, columns] of Object.entries({
@@ -34,9 +39,9 @@ export async function regressionHub(source: string, origin: string, port = 0, op
 		('legacy-record','Legacy record','Legacy body','Dynamic','["Legacy","Dynamic"]');`);
 	const handler = options.wrap?.(worker) ?? worker;
 	const server = Bun.serve({ hostname: '127.0.0.1', port, fetch(request) {
-		return handler.fetch(request, { DB: db, HUB_TOKEN: 'fixture', CORS_ORIGINS: origin, ...options.env }, { waitUntil(p: Promise<unknown>) { void p.catch(() => {}); } });
+		return handler.fetch(request, { DB: db, HUB_TOKEN: 'fixture-root', AUTH_DB: auth, CORS_ORIGINS: origin, ...options.env }, { ...options.context, waitUntil(p: Promise<unknown>) { void p.catch(() => {}); } });
 	} });
-	return { server, db };
+	return { server, db, auth };
 }
 
 if (import.meta.main) {

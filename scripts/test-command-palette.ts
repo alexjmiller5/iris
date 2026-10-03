@@ -158,6 +158,7 @@ try {
     page.getByRole("button", { name: /Find records/ }),
   ).toBeEnabled();
   await page.getByText("Connect to a hub", { exact: true }).click();
+    await page.getByText("Use a device token", { exact: true }).click();
   await page.getByLabel("Hub address").fill(server.url.href.replace(/\/$/, ""));
   await page.getByLabel("Device token").fill("fixture");
   await page.getByRole("button", { name: "Sync now", exact: true }).click();
@@ -306,7 +307,7 @@ try {
         await input.fill("nebul");
         await recordOption("Fixture record").click();
         await expect(
-          editor.getByRole("spinbutton", { name: "Quantity", exact: true }),
+          editor.getByLabel("Quantity", { exact: true }),
         ).toHaveValue("42");
         await owned
           .getByRole("button", { name: "Close record", exact: true })

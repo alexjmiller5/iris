@@ -17,7 +17,12 @@ try {
 	page.setDefaultTimeout(5000);
 	await page.setViewportSize({ width: 1280, height: 960 });
 	page.on('dialog', dialog => dialog.accept());
+	if (await page.getByRole('button', { name: 'Switch workspace', exact: true }).count()) {
+		await page.getByRole('button', { name: 'Switch workspace', exact: true }).click();
+		await expect.poll(() => page.workers().length).toBe(0);
+	}
 	await page.goto(new URL('/', url).href);
+	await expect(page.getByRole('button', { name: 'Open my workspace', exact: true })).toBeEnabled();
 	const cdp = await page.context().newCDPSession(page);
 	await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'all' });
 	await cdp.detach();
@@ -45,7 +50,7 @@ try {
 	});
 	await page.goto(url);
 	await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
-	await page.getByText('Connect to a hub', { exact: true }).click();
+	await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 	await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 	await page.getByLabel('Device token').fill('fixture');
 	await page.getByRole('button', { name: 'Sync now', exact: true }).click();
@@ -55,6 +60,8 @@ try {
 		await page.reload();
 		await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
 		await expect(page.getByRole('heading', { name: 'widgets', exact: true })).toBeVisible();
+		const close = page.getByRole('button', { name: 'Close record', exact: true });
+		if (await close.count()) await close.click();
 	}
 	async function check(name: string, body: () => Promise<void>) {
 		if (process.env.LIFE_UI_TEST_CASE && !name.includes(process.env.LIFE_UI_TEST_CASE)) return;
@@ -131,8 +138,9 @@ try {
 		for (const name of ['Second record', 'Close record', 'Switch workspace', 'Table graph'])
 			await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
 		await expect(page.getByRole('navigation', { name: 'Tables' }).getByRole('button')).toBeDisabled();
+		const currentURL = page.url();
 		await page.locator('a.wordmark').evaluate((el: HTMLAnchorElement) => el.click());
-		await expect(page).toHaveURL(url);
+		await expect(page).toHaveURL(currentURL);
 		await page.evaluate(() => (window as any).releaseWrites());
 		await expect(save).toBeEnabled();
 		await page.getByRole('button', { name: 'Close record', exact: true }).click();
@@ -231,7 +239,7 @@ try {
 		await expect(pending).toHaveText(`Pending edits: ${before + 1}`);
 		await reopen();
 		await expect(pending).toHaveText(`Pending edits: ${before + 1}`);
-		await page.getByText('Connect to a hub', { exact: true }).click();
+		await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 		await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 		await page.getByLabel('Device token').fill('fixture');
 		await page.getByRole('button', { name: 'Sync now', exact: true }).click();

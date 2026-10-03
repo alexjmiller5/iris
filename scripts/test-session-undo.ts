@@ -126,6 +126,7 @@ async function check(name: string, run: () => Promise<void>) {
       .getByRole("button", { name: "Open my workspace", exact: true })
       .click({ timeout: 30000 });
     await page.getByText("Connect to a hub", { exact: true }).click();
+  await page.getByText("Use a device token", { exact: true }).click();
     await page
       .getByLabel("Hub address")
       .fill(server.url.href.replace(/\/$/, ""));

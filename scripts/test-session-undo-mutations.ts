@@ -53,7 +53,7 @@ const mutations = [
     file: page,
     before: "undoPaused = reconciled.dirty;",
     after: "undoPaused = false;",
-    count: 2,
+    count: 3,
     browser: "a newer Markdown",
   },
   {

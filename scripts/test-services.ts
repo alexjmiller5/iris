@@ -22,7 +22,7 @@ try {
 	const notifications = page.getByRole('button', { name: /^Notifications/ });
 	await expect(notifications).toBeVisible();
 	await expect(notifications).toBeDisabled();
-	await page.getByText('Connect to a hub', { exact: true }).click();
+	await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 	await page.getByLabel('Hub address').fill(fixture.server.url.href.replace(/\/$/, ''));
 	await page.getByLabel('Device token').fill('fixture');
 	await page.getByRole('button', { name: 'Sync now', exact: true }).click();
@@ -65,7 +65,7 @@ try {
 	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 	await page.getByLabel('Hub address').fill(other.server.url.href.replace(/\/$/, ''));
 	await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-	await expect(page.getByRole('alert')).toContainText('hub changed');
+	await expect(page.getByRole('alert').filter({ hasText: 'hub changed' })).toBeVisible();
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
 	await expect(dialog.getByText(fixture.server.url.origin, { exact: true })).toBeVisible();
 	await expect(dialog.getByRole('status')).toContainText('Sync is paused');

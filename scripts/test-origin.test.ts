@@ -40,7 +40,7 @@ test('navigation fixture permits only its exact reserved host and review path', 
 
 // Exercise each real runner before it can load a fixture or attach to Chrome.
 // Removing the origin guard must fail these tests without clearing any storage.
-const scripts = ['test-services.ts', 'test-sql-integrity.ts', 'test-workspace-regressions.ts', 'test-markdown-editor.ts', 'test-editor-island.ts', 'test-body-autosave.ts', 'test-search.ts', 'test-search-sync.ts', 'test-typed-filters.ts', 'test-saved-views.ts', 'test-table-invariants.ts', 'test-partial-sync.ts', 'test-reference-navigation.ts', 'test-reference-mutations.ts', 'test-workspace-navigation.ts', 'test-navigation-mutations.ts', 'test-read-dependencies.ts', 'test-remote-browse.ts', 'test-command-palette.ts', 'test-command-palette-mutations.ts', 'test-session-undo.ts', 'test-session-undo-mutations.ts'];
+const scripts = ['test-enrollment.ts', 'test-services.ts', 'test-sql-integrity.ts', 'test-workspace-regressions.ts', 'test-markdown-editor.ts', 'test-editor-island.ts', 'test-body-autosave.ts', 'test-search.ts', 'test-search-sync.ts', 'test-typed-filters.ts', 'test-saved-views.ts', 'test-table-invariants.ts', 'test-partial-sync.ts', 'test-reference-navigation.ts', 'test-reference-mutations.ts', 'test-workspace-navigation.ts', 'test-navigation-mutations.ts', 'test-read-dependencies.ts', 'test-remote-browse.ts', 'test-command-palette.ts', 'test-command-palette-mutations.ts', 'test-session-undo.ts', 'test-session-undo-mutations.ts', 'test-record-grid.ts', 'test-grid-components.ts', 'test-grid-mutations.ts', 'test-grid-undo.ts', 'test-grid-undo-mutations.ts'];
 const unsafe = [
 	'https://example.com/workspace?review',
 	'http://localhost:5198/workspace?review',
@@ -63,3 +63,19 @@ for (const script of scripts) {
 		});
 	}
 }
+
+test('enrollment storage reset requires exactly the reserved origin and port',()=>{
+ expect(disposableOrigin('http://life-ui-enrollment.localhost:5230/workspace?review')).toBe('http://life-ui-enrollment.localhost:5230');
+ for(const address of ['http://life-ui-enrollment.localhost:5231/workspace?review','http://life-ui-enrollment.localhost/workspace?review','https://life-ui-enrollment.localhost:5230/workspace?review','http://life-ui-enrollment.localhost:5230/workspace','http://life-ui-enrollment.localhost.example.test:5230/workspace?review'])expect(()=>disposableOrigin(address)).toThrow('Refusing reset');
+});
+
+test('grid fixtures permit only the reserved origin and review path', () => {
+	expect(disposableOrigin('http://life-ui-grid.localhost:5228/workspace?review')).toBe('http://life-ui-grid.localhost:5228');
+	for (const address of ['http://life-ui-grid.localhost:5228/workspace', 'http://life-ui-grid.localhost.evil.test:5228/workspace?review', 'http://life-ui-grid.localhost:5228/other?review'])
+		expect(() => disposableOrigin(address)).toThrow('Refusing reset');
+});
+
+ test('grid enrollment integration reset uses exactly reserved5234', () => {
+ expect(disposableOrigin('http://life-ui-grid-enrollment.localhost:5234/workspace?review')).toBe('http://life-ui-grid-enrollment.localhost:5234');
+ for(const address of ['http://life-ui-grid-enrollment.localhost:5235/workspace?review','https://life-ui-grid-enrollment.localhost:5234/workspace?review','http://life-ui-grid-enrollment.localhost:5234/other?review','http://life-ui-grid-enrollment.localhost.evil.test:5234/workspace?review']) expect(()=>disposableOrigin(address)).toThrow('Refusing reset');
+});
