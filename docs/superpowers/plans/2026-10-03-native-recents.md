@@ -69,9 +69,11 @@ loading/unavailable state and trash state, identified by NativeDestination.
 ## Verification
 
 The focused recents suite passes 19 tests (24 parameterized cases). The complete
-LifeKit suite passes 196 tests. Fourteen behavior mutations were caught, including
+LifeKit suite passes 205 tests with the verified common resolver and palette model. Fourteen behavior mutations were caught, including
 an inaccessible-directory regression reproduced with real permission changes.
 Reads treat only Cocoa fileReadNoSuchFile as an empty preference; other read
 failures preserve the file and disable persistence for that model session.
 
-Final publication waits for the common resolver's NOCASE identifier review.
+The common resolver includes the verified NOCASE returned-identity guard and its
+active/trash JavaScriptCore regression. The recents store/model code remains unchanged
+after its permission fix and mutation gate. Host UI integration is a separate slice.
