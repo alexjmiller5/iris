@@ -95,7 +95,8 @@ final class DeepLinkUITests: XCTestCase {
     // Other fixture rows can sort ahead of this one; filter before opening it.
     let search = app.searchFields.firstMatch
     tap(search)
-    search.typeText(name)
+    // Submitting dismisses the keyboard so the bottom search bar no longer covers the row.
+    search.typeText(name + "\n")
     let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
     tap(row)
     copy(app.buttons["copy-record-link"])
