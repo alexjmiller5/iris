@@ -20,7 +20,7 @@ extension CoreJSONValue {
   public var isTrue: Bool { self == .bool(true) || self == .number(1) }
 }
 // Forms consume a dictionary projection, not a second wire DTO.
-public struct WorkspaceCatalog: Sendable {
+public struct WorkspaceCatalog: Hashable, Sendable {
   public let tables: [WorkspaceRecord]
   public let properties: [WorkspaceRecord]
   public let rules: [WorkspaceRecord]
@@ -153,6 +153,12 @@ public final class NativeWorkspace {
   }
   public func options(table: String, column: String) async throws -> [String] {
     try await decode(CoreRequests.Options(CoreOptionsArgs(table: table, column: column)))
+  }
+  public func referenceSources(_ args: CoreReferenceSourcesArgs) async throws -> [CoreReferenceSource] {
+    try await decode(CoreRequests.ReferenceSources(args))
+  }
+  public func referencedBy(_ args: CoreReferencedByArgs) async throws -> CoreReferencedByPage {
+    try await decode(CoreRequests.ReferencedBy(args))
   }
   public func search(_ args: CoreSearchArgs) async throws -> [CoreSearchHit] {
     try await decode(CoreRequests.Search(args))

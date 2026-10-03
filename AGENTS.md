@@ -134,6 +134,12 @@ preserve the offset on retry and deduplicate page IDs. Record/workspace changes
 dispose old replies; catalog or skipped-table changes invalidate only the panel,
 not the surrounding editor draft. Incoming links use the same fresh-row navigation
 and discard guard as outgoing references. No host SQL or inferred reverse links.
+Native incoming models decode the same generated operations through NativeWorkspace.
+Their panel identity uses workspace generation, target table/ID, catalog values
+and the skipped-table set, excluding row revisions and unrelated status counters.
+Keep that identity scoped to the incoming child; never recreate the record editor
+or its draft when relationship metadata changes. Native requests also capture
+view generation so a table round trip cannot revive an old panel.
 Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never
