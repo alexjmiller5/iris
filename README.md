@@ -129,7 +129,9 @@ Markdown, and trash/restore rows. Sort and filter controls reset when
 changing tables or workspaces. Reference fields offer searchable record names;
 single and multiple choices save their underlying IDs through shared core.
 Unavailable selections remain in the draft until explicitly removed. Core
-rejects a save if its references are missing from the local replica.
+rejects a save that carries references missing from the local replica. Like the
+hub, an edit is judged only on the cells it carries, so stored values in other
+fields (including deprecated ones) do not block it.
 Selected references have a separate **Open** action, including on read-only
 records. Opening reads the complete current local row. Missing targets keep the
 source editor open with an explanation; skipped tables can still contain local
