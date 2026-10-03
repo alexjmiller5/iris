@@ -209,7 +209,9 @@ async function dispatch(request: DatabaseRequest) {
 					// The authorizer runs during preparation too: reject connection control
 					// and mutating PRAGMAs before they can act. FTS5 reads data_version on reopen.
 					if (action === SQLite.SQLITE_PRAGMA)
-						return ['table_info', 'table_xinfo', 'data_version'].includes(name?.toLowerCase() ?? '')
+						return ['table_info', 'table_xinfo', 'foreign_key_list', 'data_version'].includes(
+							name?.toLowerCase() ?? ''
+						)
 							? SQLite.SQLITE_OK
 							: SQLite.SQLITE_DENY;
 					if (action === SQLite.SQLITE_FUNCTION && detail?.toLowerCase() === 'load_extension')
@@ -269,6 +271,8 @@ async function dispatch(request: DatabaseRequest) {
 			return local.options(args);
 		case 'write':
 			return local.write(args);
+		case 'writeability':
+			return local.writeability(args);
 		case 'sync': {
 			if (databaseName === 'life-ui-demo')
 				throw new Error('Demo workspaces cannot sync. Open your workspace first.');
@@ -341,6 +345,12 @@ scope.onmessage = ({ data }) => {
 					...(e.violations ? { violations: e.violations } : {})
 				}
 			});
+			// Sync commits individual pulls and receipts. Its final request can
+			// fail after those changes. The caller owns its refresh/error; notify
+			// the other tabs without racing that error with a second local refresh.
+			if (data?.method === 'sync' && connection !== undefined) {
+				channel?.postMessage({ changed: true });
+			}
 		}
 	});
 };

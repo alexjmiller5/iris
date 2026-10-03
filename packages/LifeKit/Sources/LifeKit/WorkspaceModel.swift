@@ -26,9 +26,34 @@ final class WorkspaceModel {
   var rows: [WorkspaceRow] = []
   var search = ""
   var trash = false
-  var sortColumn = ""
-  var sortAscending = true
+  private(set) var sortRules: [CoreSort] = []
+  var sortColumn: String {
+    get { sortRules.first?.column ?? "" }
+    set {
+      if newValue.isEmpty {
+        sortRules = []
+      } else {
+        sortRules =
+          [CoreSort(column: newValue, direction: sortRules.first?.direction ?? .asc)]
+          + sortRules.dropFirst().filter { $0.column != newValue }
+      }
+    }
+  }
+  var sortAscending: Bool {
+    get { sortRules.first?.direction != .desc }
+    set { if !sortRules.isEmpty { sortRules[0].direction = newValue ? .asc : .desc } }
+  }
   var filters: [WorkspaceFilter] = []
+  private(set) var savedViews: [CoreSavedViewRecord] = []
+  private(set) var appliedView: CoreSavedViewRecord?
+  private(set) var savedViewsUnavailable: String?
+  private(set) var savingView = false
+  private var viewGeneration = 0
+  private var viewsRequest = 0
+  private(set) var writeability: CoreWriteability?
+  private(set) var viewsWriteability: CoreWriteability?
+  private var writeabilityError: String?
+  private var writeabilityRequest = 0
   var loading = false
   var error: String?
   var location = ""
@@ -47,18 +72,33 @@ final class WorkspaceModel {
   private var revision = 0
   private var scopedURL: URL?
   private let resolveLocalURL: @MainActor () throws -> URL
+  private let makeTransport: @MainActor (HubCredentials) throws -> HubTransport
 
-  init(localURL: @escaping @MainActor () throws -> URL = WorkspaceModel.localURL) {
+  init(
+    localURL: @escaping @MainActor () throws -> URL = WorkspaceModel.localURL,
+    makeTransport: @escaping @MainActor (HubCredentials) throws -> HubTransport = {
+      try HubTransport(endpoint: $0.endpoint, token: $0.token)
+    }
+  ) {
     resolveLocalURL = localURL
+    self.makeTransport = makeTransport
   }
 
   var queryKey: [String] {
-    [table ?? "", search, String(trash), sortColumn, String(sortAscending)]
+    [table ?? "", search, String(trash), appliedView?.id ?? "", String(viewGeneration)]
+      + sortRules.flatMap { [$0.column, $0.direction.rawValue] }
       + filters.flatMap { [$0.column, $0.operation.rawValue, $0.value] }
   }
 
   private func resetView() {
+    invalidateWriteability()
     revision += 1
+    viewGeneration += 1
+    viewsRequest += 1
+    savedViews = []
+    appliedView = nil
+    savedViewsUnavailable = nil
+    savingView = false
     search = ""
     trash = false
     sortColumn = ""
@@ -104,7 +144,185 @@ final class WorkspaceModel {
   var canWrite: Bool {
     guard let table else { return false }
     return tables.first(where: { $0["id"]?.text == table })?["readOnly"] == .bool(false)
-      && !properties.isEmpty
+      && !properties.isEmpty && writeability?.writable == true
+  }
+
+  var editingUnavailable: String? {
+    guard client != nil, table != nil else { return nil }
+    return writeabilityError ?? writeability?.reason?.message
+      ?? (writeability == nil ? "Checking editing availability…" : nil)
+  }
+
+  var savedViewEditingUnavailable: String? {
+    writeabilityError ?? viewsWriteability?.reason?.message
+      ?? (viewsWriteability == nil ? "Checking editing availability…" : nil)
+  }
+
+  private func invalidateWriteability() {
+    writeabilityRequest += 1
+    writeability = nil
+    viewsWriteability = nil
+    writeabilityError = nil
+  }
+
+  func refreshWriteability() async {
+    guard let client, let table else {
+      invalidateWriteability()
+      return
+    }
+    writeabilityRequest += 1
+    let request = writeabilityRequest
+    let generation = workspaceGeneration
+    do {
+      let current = try await client.writeability(table: table)
+      let views = table == "views" ? current : try await client.writeability(table: "views")
+      guard self.client === client, self.table == table,
+        generation == workspaceGeneration, request == writeabilityRequest
+      else { return }
+      writeability = current
+      viewsWriteability = views
+      writeabilityError = nil
+    } catch {
+      guard self.client === client, self.table == table,
+        generation == workspaceGeneration, request == writeabilityRequest
+      else { return }
+      writeability = nil
+      viewsWriteability = nil
+      writeabilityError = error.localizedDescription
+    }
+  }
+
+  var visibleRecordColumns: [String]? { appliedView?.definition?.columns }
+
+  func currentViewDefinition() throws -> CoreSavedViewDefinition {
+    var definition = appliedView?.definition ?? CoreSavedViewDefinition(version: 1)
+    let fields = properties.map(CatalogField.init)
+    let currentFilters = try filters.map { filter in
+      try filter.coreFilter(field: fields.first { $0.id == filter.column })
+    }
+    if currentFilters != (definition.filters ?? []) { definition.filters = currentFilters }
+    if sortRules != (definition.sort ?? []) { definition.sort = sortRules }
+    if search != (definition.search ?? "") { definition.search = search }
+    if trash != (definition.trash ?? false) { definition.trash = trash }
+    return definition
+  }
+
+  var viewModified: Bool {
+    guard let appliedView else { return false }
+    return (try? currentViewDefinition()) != appliedView.definition
+  }
+
+  private func requireViewContext(_ context: WorkspaceEditingContext?, generation: Int? = nil)
+    throws
+    -> WorkspaceEditingContext
+  {
+    guard let context, context.workspace === client, context.table == table,
+      generation == nil || generation == workspaceGeneration
+    else {
+      throw WorkspaceError(
+        message: "The workspace or table changed. Reopen saved views.", violations: [])
+    }
+    return context
+  }
+
+  func refreshSavedViews(context: WorkspaceEditingContext?) async throws {
+    let context = try requireViewContext(context)
+    await refreshWriteability()
+    _ = try requireViewContext(context)
+    viewsRequest += 1
+    let request = viewsRequest
+    let generation = viewGeneration
+    let workspace = workspaceGeneration
+    let result = try await context.workspace.listViews(table: context.table)
+    _ = try requireViewContext(context, generation: workspace)
+    guard request == viewsRequest, generation == viewGeneration else { return }
+    savedViews = result.views
+    savedViewsUnavailable = result.unavailable
+    // The list is current; an applied view retains the revision the user opened.
+  }
+
+  func applySavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?) throws {
+    let context = try requireViewContext(context)
+    guard !savingView else {
+      throw WorkspaceError(message: "Wait for the saved view to finish saving.", violations: [])
+    }
+    if let saved {
+      guard saved.tbl == context.table, saved.deletedAt == nil,
+        saved.unavailable == nil, let definition = saved.definition, saved.view != nil
+      else {
+        throw WorkspaceError(
+          message: saved.unavailable ?? "This saved view is unavailable.", violations: [])
+      }
+      appliedView = saved
+      search = definition.search ?? ""
+      trash = definition.trash ?? false
+      sortRules = definition.sort ?? []
+      let fields = properties.map(CatalogField.init)
+      filters = (definition.filters ?? []).map { filter in
+        WorkspaceFilter(filter, field: fields.first { $0.id == filter.column })
+      }
+    } else {
+      appliedView = nil
+      search = ""
+      trash = false
+      sortRules = []
+      filters = []
+    }
+    viewGeneration += 1
+  }
+
+  func saveCurrentView(name: String, update: Bool, context: WorkspaceEditingContext?) async throws {
+    let context = try requireViewContext(context)
+    guard !savingView else {
+      throw WorkspaceError(
+        message: "A saved view operation is already in progress.", violations: [])
+    }
+    let selected = appliedView
+    if update && (selected == nil || selected?.updatedAt == nil) {
+      throw WorkspaceError(message: "Reopen this saved view before updating it.", violations: [])
+    }
+    let args = CoreSaveViewArgs(
+      table: context.table, name: name,
+      definition: try currentViewDefinition(), id: update ? selected?.id : nil,
+      expectedUpdatedAt: update ? selected?.updatedAt : nil)
+    let generation = viewGeneration
+    let workspace = workspaceGeneration
+    viewsRequest += 1
+    savingView = true
+    defer { if generation == viewGeneration { savingView = false } }
+    let saved = try await context.workspace.saveView(args)
+    _ = try requireViewContext(context, generation: workspace)
+    guard generation == viewGeneration else {
+      throw WorkspaceError(
+        message: "The selected view changed while saving. Reopen saved views.", violations: [])
+    }
+    appliedView = saved
+    savedViews.removeAll { $0.id == saved.id }
+    savedViews.append(saved)
+    savedViews.sort { $0.name == $1.name ? $0.id < $1.id : $0.name < $1.name }
+  }
+
+  func deleteSavedView(_ saved: CoreSavedViewRecord, context: WorkspaceEditingContext?) async throws
+  {
+    let context = try requireViewContext(context)
+    guard !savingView, saved.tbl == context.table, let updatedAt = saved.updatedAt else {
+      throw WorkspaceError(message: "Reopen this saved view before deleting it.", violations: [])
+    }
+    let generation = viewGeneration
+    let workspace = workspaceGeneration
+    viewsRequest += 1
+    savingView = true
+    defer { if generation == viewGeneration { savingView = false } }
+    _ = try await context.workspace.deleteView(
+      CoreDeleteViewArgs(id: saved.id, expectedUpdatedAt: updatedAt))
+    _ = try requireViewContext(context, generation: workspace)
+    guard generation == viewGeneration else {
+      throw WorkspaceError(
+        message: "The selected view changed while deleting. Reopen saved views.", violations: [])
+    }
+    savingView = false
+    savedViews.removeAll { $0.id == saved.id }
+    if appliedView?.id == saved.id { try applySavedView(nil, context: context) }
   }
 
   func makeQuickFind() -> QuickFindModel? {
@@ -204,15 +422,12 @@ final class WorkspaceModel {
     let query = queryKey
     loading = true
     error = nil
+    await refreshWriteability()
     do {
-      let fields = properties.map(CatalogField.init)
+      let definition = try currentViewDefinition()
       let view = CoreView(
         table: table,
-        filters: try filters.map { filter in
-          try filter.coreFilter(field: fields.first { $0.id == filter.column })
-        },
-        sort: sortColumn.isEmpty
-          ? nil : [CoreSort(column: sortColumn, direction: sortAscending ? .asc : .desc)],
+        filters: definition.filters, sort: definition.sort,
         limit: 100, offset: more ? rows.count : 0, trash: trash, search: search)
       let result = try await client.rows(view: view)
       let status = isReplica ? try await client.status() : nil
@@ -312,7 +527,7 @@ final class WorkspaceModel {
 
   func connect(_ credentials: HubCredentials, remember: Bool = true) async throws {
     workspaceGeneration += 1
-    let hub = try HubTransport(endpoint: credentials.endpoint, token: credentials.token)
+    let hub = try makeTransport(credentials)
     let canonical = HubCredentials(endpoint: hub.endpoint, token: credentials.token)
     if remember { try HubCredentialStore().save(canonical) }
     services.configure(workspace: nil, transport: nil)
@@ -344,6 +559,7 @@ final class WorkspaceModel {
   func synchronize() async {
     guard let client, let transport, !syncing else { return }
     syncing = true
+    invalidateWriteability()
     error = nil
     do {
       syncResult = try await client.sync(using: transport)

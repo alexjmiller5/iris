@@ -6,6 +6,7 @@ import {
   readdir,
   copyFile,
   mkdir,
+  rm,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -58,98 +59,102 @@ if (source !== "--native") {
   );
 
   const temp = await mkdtemp(join(tmpdir(), "life-ui-types-"));
-  const declarations = Bun.spawn(
-    [
-      "bun",
-      "x",
-      "--no-install",
-      "tsc",
-      "--ignoreConfig",
-      "--strict",
-      "--declaration",
-      "--emitDeclarationOnly",
-      "--target",
-      "ES2022",
-      "--module",
-      "esnext",
-      "--moduleResolution",
-      "bundler",
-      "--allowImportingTsExtensions",
-      "--resolveJsonModule",
-      "--skipLibCheck",
-      "--outDir",
-      temp,
-      sourcePath,
-    ],
-    { cwd: root, stdout: "inherit", stderr: "inherit" },
-  );
-  if ((await declarations.exited) !== 0)
-    throw new Error("Validator declarations failed");
-  await writeFile(
-    join(root, "packages/core/validate.d.ts"),
-    banner + (await readFile(join(temp, "validate.d.ts"), "utf8")),
-  );
-  // The web workspace consumes the full core from the same source checkout.
-  const coreHash = createHash("sha256");
-  for (const name of (await readdir(dirname(sourcePath)))
-    .filter((n) => n.endsWith(".ts"))
-    .sort()) {
-    coreHash
-      .update(name + "\0")
-      .update(await readFile(join(dirname(sourcePath), name)));
-  }
-  coreHash.update('schema/saved-views.json\0').update(await readFile(viewSchemaPath));
-  const coreBanner = `// Generated from life-core. SHA-256: ${coreHash.digest("hex")}\n`;
-  const clientPath = join(dirname(sourcePath), "index.ts");
-  const client = await Bun.build({
-    entrypoints: [clientPath],
-    root: dirname(clientPath),
-    target: "browser",
-    format: "esm",
-    minify: { whitespace: true },
-  });
-  if (!client.success)
-    throw new AggregateError(client.logs, "Client core build failed");
-  await writeFile(
-    join(root, "packages/core/client.js"),
-    coreBanner + (await client.outputs[0].text()),
-  );
-  const clientDeclarations = Bun.spawn(
-    [
-      "bun",
-      "x",
-      "--no-install",
-      "tsc",
-      "--ignoreConfig",
-      "--strict",
-      "--declaration",
-      "--emitDeclarationOnly",
-      "--target",
-      "ES2022",
-      "--module",
-      "esnext",
-      "--moduleResolution",
-      "bundler",
-      "--allowImportingTsExtensions",
-      "--resolveJsonModule",
-      "--skipLibCheck",
-      "--outDir",
-      temp,
-      clientPath,
-    ],
-    { cwd: root, stdout: "inherit", stderr: "inherit" },
-  );
-  if ((await clientDeclarations.exited) !== 0)
-    throw new Error("Client declarations failed");
-  const clientTypes = join(temp, "src");
-  for (const name of await readdir(clientTypes))
-    if (name.endsWith(".d.ts") && name !== "validate.d.ts")
-      await copyFile(join(clientTypes, name), join(root, "packages/core", name));
+  try {
+    const declarations = Bun.spawn(
+      [
+        "bun",
+        "x",
+        "--no-install",
+        "tsc",
+        "--ignoreConfig",
+        "--strict",
+        "--declaration",
+        "--emitDeclarationOnly",
+        "--target",
+        "ES2022",
+        "--module",
+        "esnext",
+        "--moduleResolution",
+        "bundler",
+        "--allowImportingTsExtensions",
+        "--resolveJsonModule",
+        "--skipLibCheck",
+        "--outDir",
+        temp,
+        sourcePath,
+      ],
+      { cwd: root, stdout: "inherit", stderr: "inherit" },
+    );
+    if ((await declarations.exited) !== 0)
+      throw new Error("Validator declarations failed");
+    await writeFile(
+      join(root, "packages/core/validate.d.ts"),
+      banner + (await readFile(join(temp, "validate.d.ts"), "utf8")),
+    );
+    // The web workspace consumes the full core from the same source checkout.
+    const coreHash = createHash("sha256");
+    for (const name of (await readdir(dirname(sourcePath)))
+      .filter((n) => n.endsWith(".ts"))
+      .sort()) {
+      coreHash
+        .update(name + "\0")
+        .update(await readFile(join(dirname(sourcePath), name)));
+    }
+    coreHash.update('schema/saved-views.json\0').update(await readFile(viewSchemaPath));
+    const coreBanner = `// Generated from life-core. SHA-256: ${coreHash.digest("hex")}\n`;
+    const clientPath = join(dirname(sourcePath), "index.ts");
+    const client = await Bun.build({
+      entrypoints: [clientPath],
+      root: dirname(clientPath),
+      target: "browser",
+      format: "esm",
+      minify: { whitespace: true },
+    });
+    if (!client.success)
+      throw new AggregateError(client.logs, "Client core build failed");
+    await writeFile(
+      join(root, "packages/core/client.js"),
+      coreBanner + (await client.outputs[0].text()),
+    );
+    const clientDeclarations = Bun.spawn(
+      [
+        "bun",
+        "x",
+        "--no-install",
+        "tsc",
+        "--ignoreConfig",
+        "--strict",
+        "--declaration",
+        "--emitDeclarationOnly",
+        "--target",
+        "ES2022",
+        "--module",
+        "esnext",
+        "--moduleResolution",
+        "bundler",
+        "--allowImportingTsExtensions",
+        "--resolveJsonModule",
+        "--skipLibCheck",
+        "--outDir",
+        temp,
+        clientPath,
+      ],
+      { cwd: root, stdout: "inherit", stderr: "inherit" },
+    );
+    if ((await clientDeclarations.exited) !== 0)
+      throw new Error("Client declarations failed");
+    const clientTypes = join(temp, "src");
+    for (const name of await readdir(clientTypes))
+      if (name.endsWith(".d.ts") && name !== "validate.d.ts")
+        await copyFile(join(clientTypes, name), join(root, "packages/core", name));
 
-  // Relative script imports of client.js need the same declaration entrypoint
-  // as the package export, not a similarly named internal source module.
-  await writeFile(join(root, 'packages/core/client.d.ts'), coreBanner + "export * from './index.d.ts';\n");
-  console.log(`Bundled validator ${sourceHash}`);
+    // Relative script imports of client.js need the same declaration entrypoint
+    // as the package export, not a similarly named internal source module.
+    await writeFile(join(root, 'packages/core/client.d.ts'), coreBanner + "export * from './index.d.ts';\n");
+    console.log(`Bundled validator ${sourceHash}`);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
 }
 
 // CI rebuilds the native adapter from the checked-in client without life-data.

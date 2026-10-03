@@ -5,6 +5,30 @@ struct WorkspaceFilter: Identifiable, Equatable {
   var column: String
   var operation: CoreFilterOp = .eq
   var value = ""
+  private var imported: CoreFilter?
+  private var importedText: String?
+
+  init(column: String, operation: CoreFilterOp = .eq, value: String = "") {
+    self.column = column
+    self.operation = operation
+    self.value = value
+  }
+
+  init(_ filter: CoreFilter, field: CatalogField? = nil) {
+    column = filter.column
+    operation = filter.op
+    switch filter.value {
+    case .string(let text): value = text
+    case .number(let number):
+      value =
+        field?.type == "bool" && [0, 1].contains(number)
+        ? (number == 1 ? "true" : "false") : String(number)
+    case .bool(let bool): value = bool ? "true" : "false"
+    case .null, nil: value = ""
+    }
+    imported = filter
+    importedText = value
+  }
 
   static func operations(for type: String) -> [CoreFilterOp] {
     switch type {
@@ -16,6 +40,9 @@ struct WorkspaceFilter: Identifiable, Equatable {
   }
 
   func coreFilter(field: CatalogField?) throws -> CoreFilter {
+    if let imported, imported.column == column, imported.op == operation, importedText == value {
+      return imported
+    }
     if operation == .empty || operation == .notEmpty {
       return CoreFilter(column: column, op: operation)
     }

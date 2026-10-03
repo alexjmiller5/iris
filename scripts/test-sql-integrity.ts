@@ -13,7 +13,16 @@ try {
 	const page = browser.contexts().flatMap(c => c.pages()).find(p => p.url() === url);
 	if (!page) throw new Error(`Open this dedicated test page: ${url}`);
 	page.setDefaultTimeout(10000);
-	page.on('console', message => { if (message.type() === 'error') console.error('BROWSER:', message.text()); });
+	const browserErrors: string[] = [];
+	page.on('console', message => {
+		if (message.type() !== 'error') return;
+		// This fixture runs the row/schema Worker. Its optional notification feed
+		// is absent; the dedicated services test exercises that separate handler.
+		const location = message.location().url;
+		const missingFeed = location.startsWith(server.url.origin + '/v1/notifications?')
+			&& message.text().includes('404 (Not Found)');
+		if (!missingFeed) browserErrors.push(`${location}: ${message.text()}`);
+	});
 	page.on('dialog', dialog => dialog.accept());
 	await page.goto(new URL('/', url).href);
 	const cdp = await page.context().newCDPSession(page);
@@ -81,11 +90,15 @@ try {
 	expect((await probe('__test_all', { sql: 'SELECT * FROM history' })).value).toEqual([]);
 	console.log('PASS: escaped SQL default rolls back with structured validation error, no history or pending edits');
 
+	expect((await probe('__test_run', {sql:'PRAGMA foreign_keys=ON'})).ok).toBe(true);
 	for (const sql of [
 		"UPDATE widgets SET title='Changed' RETURNING id",
 		'SELECT 1; SELECT 2',
 		'SELECT 1; DELETE FROM widgets',
+		"SELECT 1 --\r'\n; PRAGMA foreign_keys=OFF; --'\n",
 		'PRAGMA writable_schema=ON',
+		'PRAGMA foreign_keys=ON',
+		'PRAGMA foreign_keys=OFF',
 		'BEGIN',
 		"ATTACH ':memory:' AS extra"
 	]) {
@@ -104,6 +117,18 @@ try {
 	expect((await probe('__test_all', { sql: 'PRAGMA main.table_info(widgets)' })).value.map((r: any) => r.name)).toContain('title');
 	expect((await probe('__test_all', { sql: 'WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<3) SELECT sum(x) AS total FROM n' })).value).toEqual([{ total: 6 }]);
 	console.log('PASS: literals, parameters, comments, introspection and recursive SELECT remain supported');
+	// Rule preflight inspects FK effects through SQLite metadata. Permit this
+	// read without permitting the connection-changing foreign_keys pragma.
+	expect((await probe('__test_all', {sql:'PRAGMA main.foreign_key_list(widgets)'}))).toEqual({ok:true,value:[]});
+	expect((await probe('__test_run', {sql:'CREATE TEMP TABLE fk_parent(id TEXT PRIMARY KEY); CREATE TEMP TABLE fk_child(id TEXT REFERENCES fk_parent(id) ON UPDATE CASCADE ON DELETE SET NULL)'})).ok).toBe(true);
+	const foreignKeys=await probe('__test_all', {sql:'PRAGMA temp.foreign_key_list(fk_child)'});
+	expect(foreignKeys.ok).toBe(true);
+	expect(foreignKeys.value).toMatchObject([{table:'fk_parent',from:'id',to:'id',on_update:'CASCADE',on_delete:'SET NULL'}]);
+	expect((await probe('__test_run', {sql:"INSERT INTO temp.fk_child VALUES ('absent')"})).ok).toBe(false);
+	expect((await probe('__test_all', {sql:'SELECT count(*) AS n FROM temp.fk_child'})).value).toEqual([{n:0}]);
+	expect((await probe('__test_run', {sql:'DROP TABLE temp.fk_child; DROP TABLE temp.fk_parent'})).ok).toBe(true);
+	console.log('PASS: main and temporary foreign-key metadata can be read without changing enforcement');
+
 	// Trusted DDL batches must stay sequential: the INSERT depends on CREATE.
 	expect((await probe('__test_run', { sql: "CREATE TEMP TABLE ddl_probe(value TEXT); INSERT INTO ddl_probe VALUES ('kept;literal');" })).ok).toBe(true);
 	expect((await probe('__test_all', { sql: 'SELECT * FROM ddl_probe' })).value).toEqual([{ value: 'kept;literal' }]);
@@ -126,6 +151,7 @@ try {
 	await page.getByRole('button', { name: 'Sync now', exact: true }).click();
 	await expect(page.getByText('Pending edits: 0', { exact: true })).toBeVisible({ timeout: 30000 });
 	expect(hub.db.query('SELECT body FROM widgets WHERE id=?').get(saved.value.id)).toEqual({ body: 'With history' });
+	expect(browserErrors).toEqual([]);
 	console.log('PASS: schema replay, trusted DDL, create/edit/history and accepted sync still work');
 } finally {
 	await browser.close();

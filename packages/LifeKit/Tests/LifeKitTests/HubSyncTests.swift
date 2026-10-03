@@ -6,6 +6,92 @@ import Testing
 
 @Suite(.serialized) @MainActor
 struct HubSyncTests {
+  @Test func editingAdvisoryTracksFullSyncMissingHistoryAndInterruptedRefresh() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let runtime = try LifeCoreRuntime()
+    let hubPath = directory.appendingPathComponent("hub.sqlite").path
+    let seed = try NativeWorkspace(path: hubPath, runtime: runtime)
+    try await seed.createSample()
+    runtime.context.evaluateScript(
+      """
+      LifeSql.run("INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
+        ['fixture-title','notes','invariant',1,"SELECT id FROM changed WHERE title = 'Blocked'",'Fixture title is blocked.']);
+      LifeSql.run("INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
+        ['fixture-view','views','invariant',1,"SELECT id FROM changed WHERE name = 'Blocked'",'Fixture view is blocked.']);
+      """)
+    #expect(runtime.context.exception == nil)
+    try await seed.close()
+    try HubFixture.state.load(path: hubPath)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [HubFixture.self]
+    let transport = try HubTransport(
+      endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
+      configuration: configuration)
+    let model = WorkspaceModel(
+      localURL: { directory.appendingPathComponent("local.sqlite") },
+      makeTransport: { _ in transport })
+    try await model.connect(
+      HubCredentials(endpoint: transport.endpoint, token: "fixture-scoped-token"), remember: false)
+    model.table = "notes"
+    await model.reload()
+    #expect(model.canWrite)
+    #expect(model.editingUnavailable == nil)
+    let client = try #require(model.client)
+    let context = try #require(model.editingContext)
+    let original = try #require(model.rows.first?.record)
+    try await model.refreshSavedViews(context: context)
+    #expect(model.viewsWriteability?.writable == true)
+    do {
+      try await model.save(
+        ["id": original["id"]!, "title": .string("Blocked")], original: original, context: context)
+      Issue.record("An invariant-violating edit was accepted")
+    } catch let error as WorkspaceError {
+      #expect(error.violations.first?.rule == "fixture-title")
+    }
+    #expect(try await client.rows(table: "notes").first?.record == original)
+    #expect(try await client.status().pendingUiEdits == 0)
+    _ = try await model.save(
+      ["id": original["id"]!, "title": .string("Allowed")], original: original, context: context)
+    await model.synchronize()
+    #expect(model.canWrite)
+    #expect(
+      HubFixture.state.record(table: "notes", id: original["id"]!.text)?["title"]
+        == .string("Allowed"))
+
+    _ = try await client.sync(using: transport, tables: ["history": false])
+    await model.reload()
+    #expect(!model.canWrite)
+    #expect(model.editingUnavailable?.contains("history") == true)
+    #expect(model.rows.first?.label == "Allowed")
+    try await model.refreshSavedViews(context: context)
+    #expect(model.viewsWriteability?.writable == false)
+    await model.synchronize()
+    #expect(model.canWrite)
+    HubFixture.state.failPull("notes")
+    await model.synchronize()
+    #expect(!model.canWrite)
+    #expect(model.error?.contains("503") == true)
+    #expect(model.editingUnavailable?.contains("incomplete") == true)
+    #expect(model.rows.first?.label == "Allowed")
+    await #expect(throws: WorkspaceError.self) {
+      try await model.save(
+        ["id": original["id"]!, "title": .string("Unsafe")], original: nil, context: context)
+    }
+    HubFixture.state.failPull(nil)
+    await model.synchronize()
+    #expect(model.canWrite)
+    model.table = "history"
+    #expect(!model.canWrite)
+    await model.reload()
+    #expect(!model.canWrite)
+    #expect(model.writeability?.reason?.rule == "read_only")
+    #expect(!model.rows.isEmpty)
+    await model.close()
+    #expect(!model.canWrite)
+  }
+
   @Test func realCorePullEditPushAndTransportFailureRecovery() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -109,7 +195,9 @@ private final class FixtureState: @unchecked Sendable {
   private var tables: [String: [WorkspaceRecord]] = [:]
   private var schema: [WorkspaceRecord] = []
   private var status = 200
+  private var failedPullTable: String?
   func setStatus(_ status: Int) { lock.withLock { self.status = status } }
+  func failPull(_ table: String?) { lock.withLock { failedPullTable = table } }
   func record(table: String, id: String) -> WorkspaceRecord? {
     lock.withLock { tables[table]?.first { $0["id"]?.text == id } }
   }
@@ -131,10 +219,12 @@ private final class FixtureState: @unchecked Sendable {
       schema = try records("SELECT applied_at,ddl FROM _schema_log ORDER BY id")
       for name in [
         "notes", "topics", "catalog_tables", "catalog_properties", "catalog_rules", "history",
+        "views",
       ] {
         tables[name] = try records("SELECT * FROM \(name)")
       }
       status = 200
+      failedPullTable = nil
     }
   }
   func reply(_ request: URLRequest) throws -> (Int, Data) {
@@ -166,6 +256,7 @@ private final class FixtureState: @unchecked Sendable {
           "max_hub_at": .string(""), "tables": .object(tables.mapValues { _ in .string("") }),
         ])
       case "/v1/rows/pull":
+        if table == failedPullTable { return (503, Data("{}".utf8)) }
         data = .object(["rows": .array((tables[table] ?? []).map(JSONValue.object))])
       case "/v1/rows/push":
         guard case .array(let values) = body["rows"] else { throw URLError(.badServerResponse) }

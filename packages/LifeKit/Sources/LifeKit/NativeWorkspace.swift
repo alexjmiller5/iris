@@ -139,6 +139,9 @@ public final class NativeWorkspace {
   public func catalog() async throws -> WorkspaceCatalog {
     try await WorkspaceCatalog(decode(CoreRequests.Catalog(CoreEmptyArgs())))
   }
+  public func writeability(table: String) async throws -> CoreWriteability {
+    try await decode(CoreRequests.Writeability(CoreWriteabilityArgs(table: table)))
+  }
   public func rows(view: CoreView) async throws -> [WorkspaceRow] {
     try await decode(CoreRequests.Rows(view))
   }
@@ -153,6 +156,15 @@ public final class NativeWorkspace {
   }
   public func search(_ args: CoreSearchArgs) async throws -> [CoreSearchHit] {
     try await decode(CoreRequests.Search(args))
+  }
+  public func listViews(table: String) async throws -> CoreSavedViewList {
+    try await decode(CoreRequests.ListViews(CoreListViewsArgs(table: table)))
+  }
+  public func saveView(_ args: CoreSaveViewArgs) async throws -> CoreSavedViewRecord {
+    try await decode(CoreRequests.SaveView(args))
+  }
+  public func deleteView(_ args: CoreDeleteViewArgs) async throws -> CoreSavedViewRecord {
+    try await decode(CoreRequests.DeleteView(args))
   }
   public func write(table: String, patch: WorkspaceRecord, expectedUpdatedAt: String? = nil)
     async throws -> WorkspaceRecord
@@ -199,9 +211,12 @@ public final class NativeWorkspace {
         CoreNotificationPresentationArgs(feed: feed, baseline: baseline)))
   }
 
-  func sync(using transport: HubTransport) async throws -> WorkspaceSyncResult {
+  func sync(using transport: HubTransport, tables: [String: Bool]? = nil) async throws
+    -> WorkspaceSyncResult
+  {
     try await decode(
-      CoreRequests.Sync(CoreSyncArgs(endpoint: transport.endpoint)), transport: transport)
+      CoreRequests.Sync(CoreSyncArgs(endpoint: transport.endpoint, tables: tables)),
+      transport: transport)
   }
   public func createSample() async throws { _ = try await call("sample") }
   /// Bootstrap only a database owned by this app. Replicas receive schema through sync.

@@ -31,6 +31,15 @@ The app edits any catalogued table; it does not infer a catalog for arbitrary
 SQLite files or connect directly to other database engines. System tables
 are read-only. Catalog entries with `kind: system` also remain read-only.
 
+Table rules are checked locally before an edit commits. Invalid edits keep the
+draft and leave stored records, history and pending edits unchanged. Rule-checked
+tables require a complete sync of every schema table, including history and
+provenance. Excluding a table or interrupting a sync can make them read-only until
+a complete sync succeeds; the app shows the reason. This completeness check does
+not guarantee the hub has stayed unchanged: it checks edits again during sync.
+A sync can receive records or acknowledge edits before a later request fails.
+Open browser tabs refresh that progress and retain unsaved drafts.
+
 **Saved views** keep a table's filters, search, sort, column order and widths in
 ordinary synced `views` rows. Choose a view, **Save as** a new name, or use
 **Update selected** to save changes and rename it. **Delete view** keeps the
@@ -65,6 +74,10 @@ Catalog rules, read-only tables, validation, history and stale-revision checks
 come from shared core. An editor also captures its workspace and table, so
 changing connections cannot redirect a save. Unsaved drafts require explicit
 discard.
+Editing controls use core's current table advisory and show why editing is
+unavailable. The advisory refreshes after successful or failed sync; incomplete
+invariant coverage leaves records browsable. Saved-view writes check the views
+table separately. Every actual write rechecks its conditions transactionally.
 
 **Find** searches across locally stored tables using the shared FTS5 index;
 on macOS, press **Cmd+K**. Results show record names, table names and matching
@@ -72,6 +85,15 @@ snippets, with 50 results per request. Opening a match reads the full current
 row and respects read-only tables. Find is unavailable while a record editor
 is open, so it cannot replace an unsaved draft. **Search this table** remains
 available for the current table. Skipped sync tables can make results incomplete.
+
+**Views** opens saved views for the current table. Apply a view, save the current
+settings as a new view, update its name or settings, or delete it without deleting
+records. Imported column order appears in the record list; multi-column sorting
+and grid widths are preserved when saving. Native sort controls edit the primary
+sort while retaining later sort rules. Editors always read complete records,
+including fields hidden by a view. Updating or deleting an applied view uses the
+revision opened by the user; refreshing the list cannot silently adopt another
+client's changes. Reopen a changed view before updating it.
 
 Markdown fields open a dedicated screen containing the same **Write** and
 **Source** editor as web, bundled locally in WebKit. Existing records autosave
@@ -114,7 +136,7 @@ catalogued SQLite files for local use. It never automatically opens the CLI's
 database or syncs a file selected through that picker.
 App-owned local workspaces initialize missing shared saved-view storage;
 external files, replicas and existing name collisions are not altered by that
-initialization. Native saved-view controls are still pending.
+initialization. Unavailable saved views show their reason and remain untouched.
 
 **Connect to hub** accepts an HTTPS endpoint and an existing scoped client
 token. Both are saved in this device's Keychain, without prompts during normal
@@ -231,6 +253,9 @@ bun scripts/test-search.ts
 bun scripts/test-search-sync.ts /path/to/life-data
 bun scripts/test-saved-views.ts /path/to/life-data
 bun scripts/test-typed-filters.ts /path/to/life-data
+bun scripts/test-table-invariants.ts /path/to/life-data
+# Also open /workspace?review&observer=1 on the same reserved origin for this test.
+bun scripts/test-partial-sync.ts /path/to/life-data
 ```
 
 The first test covers validation, Markdown persistence, relations, trash,
@@ -304,17 +329,20 @@ bun scripts/test-body-autosave.ts
 
 ## Current limits
 
-This is an MVP implementation in progress. Enforced SQL invariants and custom
-triggers fail closed until the complete local rule/journal engine is connected.
+This is an MVP implementation in progress. Supported table SQL invariants use
+the shared core. Custom triggers, declared SQLite foreign keys and enforced
+estate-wide rules remain read-only because their effects cannot yet be validated
+and replayed consistently across clients. Catalog reference fields are supported.
+External files with table invariants remain read-only without verified sync coverage.
 Missing references must be included in the replica before editing them. A
 skipped table is not automatically browsed remotely. Native table search and
 cross-table Find both use the shared local FTS5 index.
-Native saved-view controls, full grid keyboard editing, and Notes migration
-remain open work.
+Full grid keyboard editing and Notes migration remain open work.
 
 Native references use named pickers; multi-select and JSON fields use source
-editors. Native browse supports search, sort, combined filters, trash and pages
-of 100 rows, with no saved views or full grid editor. Rejected edits retain
+editors. Native browse supports saved views, search, sort, combined filters,
+trash and pages of 100 rows. Column widths are retained for the web grid;
+native does not provide a grid-width or secondary-sort editor. Rejected edits retain
 their data and show errors; a dedicated repair workflow remains open. Sync
 runs on connection and explicit request,
 not in the background. Device-approval enrollment, automatic token issuance

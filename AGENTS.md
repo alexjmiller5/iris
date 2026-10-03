@@ -91,12 +91,20 @@ Browser operations hold a Web Lock across tabs; native sync holds the
 Python-compatible `<database>.sync.lock`. A demo database must never sync.
 Application state lives in OPFS/Application Support, never the source checkout.
 
-Core system tables and `catalog_tables.kind: system` are read-only. SQL
-invariants and custom triggers currently fail closed pending a complete local
-validation/journal engine. Missing replica references must not be guessed valid.
+Core system tables and `catalog_tables.kind: system` are read-only. Hosts use
+the shared `writeability` advisory and display its reason, invalidating stale
+answers on workspace/table changes and refreshing after failed sync too.
+The writer rechecks every mutation transactionally. Table SQL invariants require
+core-certified coverage of every global schema table, including history and
+provenance; ordinary cursors or imported files do not certify completeness.
+Custom triggers, declared SQLite FKs and enforced estate rules fail closed.
+Missing replica references must not be guessed valid.
 Skipped-table data can be incomplete and the UI must identify that state.
 Pending UI edits await the core's own valid receipt; this is not the CLI queue.
 Never report a write as saved or a round as synced before its promise succeeds.
+Web sync failures also broadcast database changes: individual pulls and receipts
+can commit before a later request fails. Refresh rows, counts and writeability
+in every open tab while retaining editor drafts and the original sync error.
 
 Credentials cross the supported client seam as a hub URL and app-issued token.
 Browser tokens are session-only; native tokens use Keychain. Provider credentials

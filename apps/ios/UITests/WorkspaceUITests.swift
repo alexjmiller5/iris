@@ -3,6 +3,81 @@ import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testSavedViewsApplyPersistRenameAndDeleteWithoutProjectingEditor() throws {
+    try XCTSkipIf(
+      ProcessInfo.processInfo.environment["LIFE_UI_TEST_SAVED_VIEWS_SIMULATOR"] == nil,
+      "Seed the saved-views fixture on a disposable simulator first.")
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    openLocalWorkspace(app)
+    tapWhenReady(app.buttons["saved-views"])
+    tapWhenReady(app.buttons["Imported order"])
+    let zulu = app.staticTexts["Viewfixture Zulu"].firstMatch
+    let alpha = app.staticTexts["Viewfixture Alpha"].firstMatch
+    XCTAssertTrue(zulu.waitForExistence(timeout: 5))
+    XCTAssertTrue(alpha.waitForExistence(timeout: 5))
+    XCTAssertLessThan(zulu.frame.minY, alpha.frame.minY)
+    tapWhenReady(zulu)
+    XCTAssertEqual(app.textFields["field-title"].value as? String, "Viewfixture Zulu")
+    let body = app.buttons["field-body"]
+    for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    XCTAssertEqual(
+      app.webViews.textViews["Body"].value as? String, "Hidden source for Viewfixture Zulu")
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    tapWhenReady(app.buttons["saved-views"])
+    let name = app.textFields["saved-view-name"]
+    tapWhenReady(name)
+    name.typeText(" copy")
+    let copiedName = try XCTUnwrap(name.value as? String)
+    for _ in 0..<5 where !app.buttons["save-view-copy"].isHittable {
+      scrollFormUp(app.collectionViews["saved-views-form"])
+    }
+    tapWhenReady(app.buttons["save-view-copy"])
+    XCTAssertTrue(app.staticTexts["saved-view-receipt"].waitForExistence(timeout: 5))
+    tapWhenReady(app.navigationBars["Saved views"].buttons["Done"])
+    app.terminate()
+    app.launch()
+    openLocalWorkspace(app)
+    tapWhenReady(app.buttons["saved-views"])
+    tapWhenReady(app.buttons[copiedName])
+    XCTAssertTrue(zulu.waitForExistence(timeout: 5))
+    XCTAssertLessThan(zulu.frame.minY, alpha.frame.minY)
+    tapWhenReady(app.buttons["saved-views"])
+    tapWhenReady(name)
+    name.typeText(" renamed")
+    let renamed = try XCTUnwrap(name.value as? String)
+    tapWhenReady(app.buttons["Delete Imported order"])
+    tapWhenReady(app.buttons["Delete view"])
+    XCTAssertTrue(app.buttons["Imported order"].waitForNonExistence(timeout: 5))
+    XCTAssertEqual(
+      name.value as? String, renamed, "Deleting another view must retain the pending name")
+    for _ in 0..<5 where !app.buttons["update-saved-view"].isHittable {
+      scrollFormUp(app.collectionViews["saved-views-form"])
+    }
+    tapWhenReady(app.buttons["update-saved-view"])
+    XCTAssertTrue(app.staticTexts["saved-view-receipt"].waitForExistence(timeout: 5))
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-saved-views"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    for _ in 0..<5 where !app.buttons["Delete \(renamed)"].isHittable {
+      let form = app.collectionViews["saved-views-form"]
+      form.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.2))
+        .press(
+          forDuration: 0.05,
+          thenDragTo: form.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.45)))
+    }
+    tapWhenReady(app.buttons["Delete \(renamed)"])
+    tapWhenReady(app.buttons["Delete view"])
+    XCTAssertTrue(app.buttons[renamed].waitForNonExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["All records"].exists)
+    tapWhenReady(app.navigationBars["Saved views"].buttons["Done"])
+  }
+
   func testQuickFindPagesAcrossTablesAndOpensAnEditableFreshRecord() throws {
     try XCTSkipIf(
       ProcessInfo.processInfo.environment["LIFE_UI_TEST_QUICK_FIND_SIMULATOR"] == nil,
@@ -701,9 +776,12 @@ final class WorkspaceUITests: XCTestCase {
   }
 
   private func scrollRecordFormUp(_ app: XCUIApplication) {
-    let form = app.collectionViews["record-form"]
-    // Drag the Form's gutter without scrolling an embedded source field.
-    form.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5))
+    scrollFormUp(app.collectionViews["record-form"])
+  }
+
+  private func scrollFormUp(_ form: XCUIElement) {
+    // Keep the drag in the visible gutter, above the keyboard and outside text fields.
+    form.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.45))
       .press(
         forDuration: 0.05,
         thenDragTo: form.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.2)))

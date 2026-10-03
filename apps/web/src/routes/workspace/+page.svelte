@@ -24,6 +24,7 @@
 		type SearchHit,
 		type SavedViewRecord,
 		type SavedViewDefinition,
+		type Writeability,
 		type Sort
 	} from 'life-ui-core/client';
 	import { WorkspaceDatabase } from '$lib/database';
@@ -178,7 +179,27 @@
 	}
 	const rules = $derived(catalog.rules.filter((r) => r.tbl === table || r.scope === 'estate'));
 	const readOnly = $derived(isReadOnlyTable(table, current));
-	const blocked = $derived(rules.some((r) => r.kind === 'invariant' && r.enforce));
+	let writePermission = $state<Writeability | null>(null);
+	let permissionRequest = 0;
+	const blocked = $derived(!writePermission?.writable);
+	async function loadWriteability() {
+		const workspace = database,
+			target = table,
+			request = ++permissionRequest;
+		writePermission = null;
+		if (!workspace || !target) return;
+		try {
+			const result = await workspace.request('writeability', { table: target });
+			if (database === workspace && table === target && request === permissionRequest)
+				writePermission = result;
+		} catch (e) {
+			if (database === workspace && table === target && request === permissionRequest)
+				writePermission = {
+					writable: false,
+					reason: { tbl: target, row_id: null, col: '', rule: 'storage', message: message(e) }
+				};
+		}
+	}
 	const draftProperties = $derived(properties.filter((p) => Object.hasOwn(draft, p.col)));
 	const bodyPatch = $derived(markdownPatch(properties, draft, selected));
 	const bodySaveKey = $derived(JSON.stringify([editorVersion, bodyPatch]));
@@ -423,9 +444,11 @@
 				catalog.tables.find((t) => !/^catalog_|^history$|^provenance$/.test(tableName(t))) ??
 					catalog.tables[0]
 			);
-		await Promise.all([loadRows(), loadViews()]);
+		await Promise.all([loadRows(), loadViews(), loadWriteability()]);
 	}
 	function resetView() {
+		permissionRequest++;
+		writePermission = null;
 		editorVersion++;
 		rowsRequest++;
 		editing = false;
@@ -516,7 +539,9 @@
 		resetView();
 		graphVisible = false;
 		table = name;
-		await Promise.all([loadRows(), loadViews()]).catch((e) => (error = message(e)));
+		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch(
+			(e) => (error = message(e))
+		);
 	}
 
 	function viewDefinition(): SavedViewDefinition {
@@ -806,6 +831,13 @@
 			if (connection && message(e) === 'hub HTTP 429') connectedHub = connection;
 			error = message(e);
 			notice = 'Sync did not finish. Local records remain available.';
+			// A failed round can still have committed pulls and individual receipts.
+			await refresh().catch(async (refreshError) => {
+				if (database !== workspace) return;
+				await loadWriteability();
+				if (database === workspace)
+					error = `${message(e)} Could not refresh local records: ${message(refreshError)}`;
+			});
 		} finally {
 			busy = false;
 		}
@@ -845,7 +877,9 @@
 		graphVisible = false;
 		edit(found[0]);
 		showFind(false);
-		await loadRows().catch((e) => (error = message(e)));
+		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch(
+			(e) => (error = message(e))
+		);
 		return true;
 	}
 	onDestroy(() => {
@@ -1147,9 +1181,8 @@
 								<button class="secondary" onclick={() => removeFilter()}>Clear filters</button>
 							</div>
 						{/if}
-						{#if blocked}<p class="notice">
-								This table has enforced cross-record rules. It is read-only here until the local
-								rule engine is connected.
+						{#if blocked}<p role="status" aria-label="Editing availability" class="notice">
+								{writePermission?.reason?.message ?? 'Checking editing rules…'}
 							</p>{/if}
 						{#if error}<p role="alert" class="failure">{error}</p>{/if}
 						{#if rejected.length}<details class="rejections">

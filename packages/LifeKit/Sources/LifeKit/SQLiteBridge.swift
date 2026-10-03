@@ -97,9 +97,12 @@ public final class SQLiteBridge {
       return NSNull()
     }
     if kind == "all" {
+      try validateRead(commands[0].0)
       return try database.unsafeRead { db in
         try db.readOnly {
-          try Row.fetchAll(db, sql: commands[0].0, arguments: commands[0].1).map { row in
+          let statement = try db.makeStatement(sql: commands[0].0)
+          guard statement.isReadonly else { throw LifeCoreRuntime.RuntimeError.invalidInput }
+          return try Row.fetchAll(statement, arguments: commands[0].1).map { row in
             try Dictionary(
               row.map { name, value in (name, try jsonValue(value)) },
               uniquingKeysWith: { _, last in last })
@@ -124,6 +127,99 @@ public final class SQLiteBridge {
       return result
     }
     return kind == "run" ? changes[0] : changes
+  }
+
+  /// GRDB owns SQLite's authorizer. Reject connection control and extra statements
+  /// before preparation: some PRAGMAs act during prepare, before readOnly can help.
+  private func validateRead(_ sql: String) throws {
+    guard !sql.contains("\0") else { throw LifeCoreRuntime.RuntimeError.invalidInput }
+    var tokens = try readTokens(sql)
+    if tokens.last == ";" { tokens.removeLast() }
+    guard !tokens.contains(";"), let first = tokens.first?.lowercased() else {
+      throw LifeCoreRuntime.RuntimeError.invalidInput
+    }
+    func identifier(_ token: String) -> String {
+      token.trimmingCharacters(in: CharacterSet(charactersIn: "\"'`[]")).lowercased()
+    }
+    for index in tokens.indices.dropLast() {
+      if identifier(tokens[index]) == "load_extension", tokens[index + 1] == "(" {
+        throw LifeCoreRuntime.RuntimeError.invalidInput
+      }
+    }
+    if ["select", "with", "values"].contains(first) { return }
+    guard first == "pragma" else { throw LifeCoreRuntime.RuntimeError.invalidInput }
+    tokens.removeFirst()
+    if tokens.count >= 2, tokens[1] == "." {
+      guard ["main", "temp"].contains(identifier(tokens[0])) else {
+        throw LifeCoreRuntime.RuntimeError.invalidInput
+      }
+      tokens.removeFirst(2)
+    }
+    guard let name = tokens.first.map(identifier) else {
+      throw LifeCoreRuntime.RuntimeError.invalidInput
+    }
+    if name == "data_version", tokens.count == 1 { return }
+    guard ["table_info", "table_xinfo", "foreign_key_list"].contains(name),
+      tokens.count == 4, tokens[1] == "(", tokens[3] == ")"
+    else { throw LifeCoreRuntime.RuntimeError.invalidInput }
+  }
+
+  /// A single pass keeps unterminated comments/quotes linear. SQLite line
+  /// comments end at LF, not CR; quoted delimiters never split statements.
+  private func readTokens(_ sql: String) throws -> [String] {
+    let bytes = Array(sql.utf8)
+    var index = 0
+    var tokens: [String] = []
+    func word(_ byte: UInt8) -> Bool {
+      byte >= 128 || (65...90).contains(byte) || (97...122).contains(byte)
+        || (48...57).contains(byte) || byte == 95 || byte == 36
+    }
+    while index < bytes.count {
+      let start = index
+      let byte = bytes[index]
+      if [9, 10, 12, 13, 32].contains(byte) {
+        index += 1
+        continue
+      }
+      if byte == 45, index + 1 < bytes.count, bytes[index + 1] == 45 {
+        index += 2
+        while index < bytes.count, bytes[index] != 10 { index += 1 }
+        continue
+      }
+      if byte == 47, index + 1 < bytes.count, bytes[index + 1] == 42 {
+        index += 2
+        while index + 1 < bytes.count, !(bytes[index] == 42 && bytes[index + 1] == 47) {
+          index += 1
+        }
+        guard index + 1 < bytes.count else { throw LifeCoreRuntime.RuntimeError.invalidInput }
+        index += 2
+        continue
+      }
+      if [39, 34, 96, 91].contains(byte) {
+        let end: UInt8 = byte == 91 ? 93 : byte
+        index += 1
+        var closed = false
+        while index < bytes.count {
+          if bytes[index] == end {
+            index += 1
+            if byte != 91, index < bytes.count, bytes[index] == end {
+              index += 1
+              continue
+            }
+            closed = true
+            break
+          }
+          index += 1
+        }
+        guard closed else { throw LifeCoreRuntime.RuntimeError.invalidInput }
+      } else if word(byte) {
+        repeat { index += 1 } while index < bytes.count && word(bytes[index])
+      } else {
+        index += 1
+      }
+      tokens.append(String(decoding: bytes[start..<index], as: UTF8.self))
+    }
+    return tokens
   }
 
   private func jsonValue(_ value: DatabaseValue) throws -> Any {

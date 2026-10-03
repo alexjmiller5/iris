@@ -7,6 +7,7 @@ public struct WorkspaceView: View {
   @State private var importing = false
   @State private var settings = false
   @State private var options = false
+  @State private var savedViews = false
   @State private var showingGraph = false
   @State private var editor: EditorTarget?
   @State private var quickFind: QuickFindModel?
@@ -91,6 +92,7 @@ public struct WorkspaceView: View {
     }
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
     .sheet(isPresented: $options) { WorkspaceOptionsView(model: model) }
+    .sheet(isPresented: $savedViews) { SavedViewsView(model: model) }
     .sheet(item: $quickFind, onDismiss: openSearchEditor) { find in
       QuickFindView(model: find, incomplete: model.syncResult?.skipped.isEmpty == false) {
         hit, row in
@@ -123,7 +125,7 @@ public struct WorkspaceView: View {
 
   private var canFind: Bool {
     model.client != nil && editor == nil && quickFind == nil && pendingSearchEditor == nil
-      && !settings && !options && !importing
+      && !settings && !options && !savedViews && !importing
   }
 
   private func showQuickFind() {
@@ -217,7 +219,15 @@ public struct WorkspaceView: View {
         } label: {
           VStack(alignment: .leading, spacing: 5) {
             Text(row.label).foregroundStyle(.primary).font(.headline).lineLimit(2)
-            if let date = row.record["updated_at"]?.text {
+            if let columns = model.visibleRecordColumns {
+              ForEach(columns, id: \.self) { column in
+                LabeledContent(
+                  model.properties.first { $0["col"]?.text == column }?["label"]?.text ?? column
+                ) {
+                  Text(row.record[column]?.text ?? "").lineLimit(2)
+                }.font(.caption).foregroundStyle(.secondary)
+              }
+            } else if let date = row.record["updated_at"]?.text {
               Text(date).font(.caption).foregroundStyle(.secondary)
             }
           }.padding(.vertical, 5).frame(maxWidth: .infinity, alignment: .leading).contentShape(
@@ -230,7 +240,17 @@ public struct WorkspaceView: View {
     .safeAreaInset(edge: .top, spacing: 0) {
       VStack(alignment: .leading, spacing: 8) {
         if model.isReplica { SyncSummary(model: model) }
+        if let reason = model.editingUnavailable {
+          Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+            .accessibilityIdentifier("editing-availability")
+        }
         HStack {
+          Button {
+            savedViews = true
+          } label: {
+            Label("Views", systemImage: "rectangle.stack")
+          }.disabled(editor != nil || model.client == nil)
+            .accessibilityIdentifier("saved-views")
           Button {
             options = true
           } label: {
@@ -245,6 +265,10 @@ public struct WorkspaceView: View {
           Spacer()
           Button(action: showQuickFind) { Label("Find", systemImage: "magnifyingglass") }
             .disabled(!canFind).accessibilityIdentifier("quick-find")
+        }
+        if let applied = model.appliedView {
+          Text(applied.name + (model.viewModified ? " · Modified" : ""))
+            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -366,6 +390,9 @@ private struct RecordEditor: View {
               Text(rule["text"]?.text ?? rule["id"]?.text ?? "")
             }
           }
+        }
+        if let reason = model.editingUnavailable {
+          Section { Text(reason).foregroundStyle(.secondary) }
         }
         if model.canWrite && !model.trash {
           ForEach(editor.draft.fields) { field in

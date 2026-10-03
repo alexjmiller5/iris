@@ -243,7 +243,9 @@ struct QuickFindTests {
     let epoch = workspace.workspaceGeneration
     workspace.trash = true
     let context = try workspace.activateSearchTable("topics", workspace: client, generation: epoch)
-    #expect(context.table == "topics" && !workspace.trash && workspace.canWrite)
+    #expect(context.table == "topics" && !workspace.trash && !workspace.canWrite)
+    await workspace.reload()
+    #expect(workspace.canWrite)
     _ = try workspace.activateSearchTable("history", workspace: client, generation: epoch)
     #expect(!workspace.canWrite)
     await workspace.open(demo: true)

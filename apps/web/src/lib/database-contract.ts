@@ -20,6 +20,7 @@ export interface DatabaseOperations {
 	deleteView: { args: CoreArgs<'deleteView'>; result: CoreResult<'deleteView'> };
 	options: { args: CoreArgs<'options'>; result: CoreResult<'options'> };
 	write: { args: CoreArgs<'write'>; result: CoreResult<'write'> };
+	writeability: { args: CoreArgs<'writeability'>; result: CoreResult<'writeability'> };
 	sync: { args: CoreArgs<'sync'> & { token: string }; result: CoreResult<'sync'> };
 }
 export type DatabaseMethod = keyof DatabaseOperations;

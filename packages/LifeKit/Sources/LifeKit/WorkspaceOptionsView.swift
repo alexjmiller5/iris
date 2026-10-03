@@ -32,6 +32,15 @@ struct WorkspaceOptionsView: View {
               Text("Ascending").tag(true)
               Text("Descending").tag(false)
             }.accessibilityIdentifier("sort-direction")
+            if model.sortRules.count > 1 {
+              Text(
+                "Then "
+                  + model.sortRules.dropFirst().map { rule in
+                    (fields.first { $0.id == rule.column }?.label ?? rule.column)
+                      + (rule.direction == .asc ? " ascending" : " descending")
+                  }.joined(separator: ", ")
+              ).font(.caption).foregroundStyle(.secondary)
+            }
           }
         }
         Section {

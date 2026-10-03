@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "7383948e6272389b9625022e1e1bc67174e87a4e2a12f6afb99afbc5d1fa0400";
+export declare const CORE_CONTRACT_HASH = "b32e4976fea4b007cf805b37532565ae7aa3d0a17f10bafa862fa5d4c41fff71";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -230,6 +230,13 @@ export type DeleteViewArgs = {
     id: string;
     expectedUpdatedAt: string;
 };
+export type WriteabilityArgs = {
+    table: string;
+};
+export type Writeability = {
+    writable: boolean;
+    reason: WriteViolation | null;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -286,6 +293,10 @@ export interface CoreOperations {
     deleteView: {
         args: DeleteViewArgs;
         result: SavedViewRecord;
+    };
+    writeability: {
+        args: WriteabilityArgs;
+        result: Writeability;
     };
 }
 export type CoreMethod = keyof CoreOperations;
