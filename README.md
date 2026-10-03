@@ -506,8 +506,34 @@ native testing. Both use synthetic records and loopback interfaces only.
   set `IOS_DEVELOPMENT_TEAM` and `IOS_DEVICE_ID`, then run the iOS `build`
   recipe. `IOS_INSTALL_HOST` can name the Mac paired to the device.
 - Ad Hoc distribution needs the distribution certificate and profile, then
-  `IOS_PROFILE` and the iOS `deploy` recipe. Signed macOS distribution needs
-  Developer ID, notarization, release CI and declarative installation.
+  `IOS_PROFILE` and the iOS `deploy` recipe.
+
+### Mac releases
+
+The tag-only `Release macOS` workflow builds a universal Apple Silicon/Intel
+application, signs it with Developer ID, notarizes and staples it, then publishes
+`LifeUI-vX.Y.Z.zip` and `SHA256SUMS` in GitHub Releases. The version stamped into
+the app comes from the stable `vX.Y.Z` tag. Branch pushes do not publish releases.
+
+Before the first release, bootstrap the project CI account with the `.env.tpl`
+manifest, including its documented access to the shared Apple Signing vault.
+Set the GitHub repository variable `HOMEBREW_TAP_REPOSITORY` to the tap's
+`owner/repository`. The shared tap credential must have write access there.
+The app itself never receives any of these credentials.
+
+After release approval, push the chosen version tag and watch both workflow jobs.
+Signing, notarization, Gatekeeper verification and upload must succeed before the
+cask is updated. If only the cask job fails, rerun that failed job; do not move the
+published tag or replace its archive. Older retries and identical version/hash
+pairs leave the tap unchanged. A different hash for the same version or unsupported
+version/checksum format fails closed. Install through the configured, fully
+qualified tap token, such as `owner/tap/life-ui`. In nix-darwin that token belongs
+in `homebrew.casks`; rebuild the machine configuration. The installed app keeps
+its workspace in Application Support and its device credential in Keychain.
+
+The workflow configuration is prepared; no signed release or cask is published
+by development or tests. The first release still requires signing credentials,
+an approved tag, an installed-app check and declarative machine installation.
 
 No production data is migrated by development or tests.
 
