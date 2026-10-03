@@ -20,15 +20,17 @@ final class RejectionInboxUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["Issues"].waitForNonExistence(timeout: 5))
     let title = app.textFields["field-title"]
     expectValue(title, "Issues save submitted")
-    XCTAssertTrue(app.staticTexts["Autosave paused. Review your draft, then save the record."].exists)
+    XCTAssertTrue(
+      app.staticTexts["Autosave paused. Review your draft, then save the record."].exists)
     XCTAssertFalse(app.textFields["field-locked"].exists)
     XCTAssertFalse(app.textFields["field-retired"].exists)
     XCTAssertFalse(app.textFields["field-removed"].exists)
     XCTAssertFalse(app.textFields["field-updated_at"].exists)
     expectBody(app, "Rejected save body")
-    reveal(app.staticTexts["Locked current"].firstMatch, in: app)
-    XCTAssertFalse(app.staticTexts["Locked rejected"].exists)
-    XCTAssertFalse(app.staticTexts["Removed submitted value"].exists)
+    // Read-only rows expose one combined "column, value" label.
+    reveal(showing("Locked current", in: app), in: app)
+    XCTAssertFalse(showing("Locked rejected", in: app).exists)
+    XCTAssertFalse(showing("Removed submitted value", in: app).exists)
     capture(app, "issues-current-baseline-editable-only")
     keepAndClose(app)
 
@@ -48,7 +50,8 @@ final class RejectionInboxUITests: XCTestCase {
     tap(app.navigationBars["Record"].buttons["Cancel"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 5))
     openIssues(app)
-    XCTAssertTrue(reviewButton(app, id: "issues-save").exists,
+    XCTAssertTrue(
+      reviewButton(app, id: "issues-save").exists,
       "A local correction must not remove a durable rejection before an accepted sync")
     capture(app, "issues-correction-retains-inbox")
     tap(app.navigationBars["Issues"].buttons["Done"])
@@ -158,6 +161,10 @@ final class RejectionInboxUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
   }
 
+  private func showing(_ value: String, in app: XCUIApplication) -> XCUIElement {
+    app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", value)).firstMatch
+  }
+
   private func reveal(
     _ element: XCUIElement, in app: XCUIApplication, down: Bool = false,
     file: StaticString = #filePath, line: UInt = #line
@@ -179,7 +186,8 @@ final class RejectionInboxUITests: XCTestCase {
     for _ in 0..<14 {
       if visible() { break }
       let area = visibleArea()
-      let moveDown = element.exists && element.frame.height > 0 ? element.frame.midY < area.minY : down
+      let moveDown =
+        element.exists && element.frame.height > 0 ? element.frame.midY < area.minY : down
       let distance = min(180, area.height / 2)
       let start = CGPoint(x: area.maxX - 12, y: moveDown ? area.minY + 25 : area.maxY - 25)
       let end = CGPoint(x: start.x, y: start.y + (moveDown ? distance : -distance))
