@@ -141,7 +141,8 @@ export function recordPatch(
 	properties: Property[],
 	draft: Record<string, string>,
 	row: Row | null,
-	explicit: ReadonlySet<string>
+	explicit: ReadonlySet<string>,
+	copied: Row = {}
 ): Row {
 	const patch: Row = row ? { id: row.id } : {};
 	for (const property of properties) {
@@ -154,9 +155,17 @@ export function recordPatch(
 			continue;
 		if (!Object.hasOwn(draft, property.col)) continue;
 		const raw = draft[property.col];
-		if (row ? raw === rawValue(row[property.col]) : raw === '' && !explicit.has(property.col))
+		if (
+			row
+				? raw === rawValue(row[property.col])
+				: !explicit.has(property.col) && !Object.hasOwn(copied, property.col)
+		)
 			continue;
-		patch[property.col] = fieldValue(property, raw);
+		// An untouched copy retains SQLite scalars, including empty text versus NULL.
+		patch[property.col] =
+			!row && !explicit.has(property.col) && Object.hasOwn(copied, property.col)
+				? copied[property.col]
+				: fieldValue(property, raw);
 	}
 	return patch;
 }

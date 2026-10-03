@@ -146,12 +146,24 @@ test('creation omits untouched defaults but preserves explicitly cleared and cop
 		{ col: 'qty', type: 'int' },
 		{ col: 'active', type: 'bool' }
 	];
-	expect(recordPatch(properties, { title: 'New', qty: '', active: '0' }, null, new Set())).toEqual({
+	expect(
+		recordPatch(
+			properties,
+			{ title: 'New', qty: '', active: '0' },
+			null,
+			new Set(['title', 'active'])
+		)
+	).toEqual({
 		title: 'New',
 		active: 0
 	});
 	expect(
-		recordPatch(properties, { title: 'Copy', qty: '', active: '0' }, null, new Set(['qty']))
+		recordPatch(
+			properties,
+			{ title: 'Copy', qty: '', active: '0' },
+			null,
+			new Set(['title', 'active', 'qty'])
+		)
 	).toEqual({ title: 'Copy', qty: null, active: 0 });
 });
 
@@ -169,4 +181,62 @@ test('record form serializes only changed user-editable fields using the same va
 			new Set()
 		)
 	).toEqual({ id: 'a', qty: 'invalid' });
+});
+
+test('creation previews never pin an untouched default', () => {
+	expect(
+		recordPatch([{ col: 'status', default_value: 'Old' }], { status: 'Old' }, null, new Set())
+	).toEqual({});
+	expect(recordPatch([{ col: 'status' }], { status: '' }, null, new Set(['status']))).toEqual({
+		status: null
+	});
+});
+
+test('untouched copied scalars preserve empty strings, null, zero and JSON bytes', () => {
+	const props = [
+		{ col: 'body', type: 'markdown' },
+		{ col: 'nil' },
+		{ col: 'zero', type: 'int' },
+		{ col: 'tags', type: 'multi_select' },
+		{ col: 'fixed', immutable: true }
+	];
+	const copied = { body: '', nil: null, zero: 0, tags: '[ "Unknown" ]', fixed: 'Code' };
+	const draft = duplicateValues(props, copied);
+	expect(recordPatch(props, draft, null, new Set(), copied)).toEqual(copied);
+	expect(recordPatch(props, draft, null, new Set(['body']), copied)).toEqual({
+		...copied,
+		body: null
+	});
+	expect(recordPatch(props, { ...draft, body: 'Edited' }, null, new Set(['body']), copied)).toEqual(
+		{ ...copied, body: 'Edited' }
+	);
+});
+
+test('copy serialization rechecks catalog exclusions without losing set-once creation fields', () => {
+	const copied = {
+		id: 'source',
+		created_at: 'old',
+		updated_at: 'old',
+		deleted_at: 'old',
+		hub_at: 'old',
+		generated: 'old',
+		retired: 'old',
+		unknown: 'old',
+		code: 'Keep'
+	};
+	const properties = [
+		{ col: 'id' },
+		{ col: 'created_at' },
+		{ col: 'updated_at' },
+		{ col: 'deleted_at' },
+		{ col: 'hub_at' },
+		{ col: 'generated', derived_by: 'rule' },
+		{ col: 'retired', deprecated: true },
+		{ col: 'code', immutable: true }
+	];
+	const draft = Object.fromEntries(Object.entries(copied).map(([k, v]) => [k, rawValue(v)]));
+	expect(recordPatch(properties, draft, null, new Set(), copied)).toEqual({ code: 'Keep' });
+	expect(
+		recordPatch(properties, draft, { id: 'saved', code: 'Before' }, new Set(), copied)
+	).toEqual({ id: 'saved' });
 });

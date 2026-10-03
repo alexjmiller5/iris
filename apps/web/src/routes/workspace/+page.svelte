@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { prepareDuplicate } from '$lib/record-duplicate';
 	import { markdownPatch } from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
 	import { reconcileUndo } from '$lib/record-undo';
@@ -244,11 +245,17 @@
 	});
 	let gridDraft = $state<CellDraft | null>(null);
 	let explicitCreation = $state<Set<string>>(new Set());
+	let copiedCreation = $state<Row | null>(null);
 	let gridContext = $state(0);
 	const gridDirty = $derived(
 		!!gridDraft && gridDraft.raw !== rawValue(gridDraft.baseline[gridDraft.cell.column])
 	);
-	const dirty = $derived((editing && JSON.stringify(draft) !== savedDraft) || gridDirty);
+	const dirty = $derived(
+		(editing &&
+			(JSON.stringify(draft) !== savedDraft ||
+				(!selected && (explicitCreation.size > 0 || copiedCreation !== null)))) ||
+			gridDirty
+	);
 	function confirmDiscard() {
 		if (writing || bodySaving || (dirty && !confirm('Discard unsaved changes to this record?')))
 			return false;
@@ -514,28 +521,28 @@
 			target = table,
 			version = editorVersion,
 			request = ++recordOpenVersion;
+		const current = () =>
+			database === workspace &&
+			table === target &&
+			editorVersion === version &&
+			recordOpenVersion === request &&
+			!busy &&
+			!writing &&
+			!bodySaving &&
+			!navigationLoading;
 		try {
-			const found = await workspace.request('rows', {
-				view: { table: target, filters: [{ column: 'id', op: 'eq', value: id }], limit: 1 }
-			});
-			if (
-				database !== workspace ||
-				table !== target ||
-				editorVersion !== version ||
-				recordOpenVersion !== request ||
-				busy
-			)
-				return false;
-			if (!found[0]) throw new Error('This record is no longer available locally.');
-			if (!edit(null)) return false;
-			const copy = duplicateValues(properties, found[0]);
+			const prepared = await prepareDuplicate(workspace, target, id, current);
+			if (!prepared || !current() || !discard()) return false;
+			catalog = prepared.catalog;
+			writePermission = prepared.permission;
+			edit(null, true, true);
+			const copy = duplicateValues(properties, prepared.row);
 			draft = { ...draft, ...copy };
-			explicitCreation = new Set(Object.keys(copy));
+			copiedCreation = Object.fromEntries(Object.keys(copy).map((col) => [col, prepared.row[col]]));
 			notice = 'Review this unsaved copy, then save to create a new record.';
 			return true;
 		} catch (e) {
-			if (database === workspace && table === target && editorVersion === version)
-				error = message(e);
+			if (current()) error = message(e);
 			return false;
 		}
 	}
@@ -1175,9 +1182,10 @@
 		filters = index === undefined ? [] : filters.filter((_, i) => i !== index);
 		await find();
 	}
-	function edit(row: Row | null, reflect = true): boolean {
-		if (!discard()) return false;
+	function edit(row: Row | null, reflect = true, discardConfirmed = false): boolean {
+		if (!discardConfirmed && !discard()) return false;
 		explicitCreation = new Set();
+		copiedCreation = null;
 		undoPaused = false;
 		editorVersion++;
 		selected = row;
@@ -1215,7 +1223,13 @@
 		busy = true;
 		error = '';
 		try {
-			const patch = recordPatch(draftProperties, draft, selected, explicitCreation);
+			const patch = recordPatch(
+				draftProperties,
+				draft,
+				selected,
+				explicitCreation,
+				copiedCreation ?? {}
+			);
 			const stored: Row = await workspace.request('write', {
 				table: target,
 				patch,
@@ -2107,10 +2121,13 @@
 														class="secondary relation-remove"
 														disabled={locked(p)}
 														aria-label={`Remove ${refTitle(p, related ?? { id })}`}
-														onclick={() =>
-															(draft[p.col] = JSON.stringify(
+														onclick={() => {
+															draft[p.col] = JSON.stringify(
 																list(draft[p.col]).filter((value) => value !== id)
-															))}
+															);
+															if (!selected)
+																explicitCreation = new Set([...explicitCreation, p.col]);
+														}}
 													>
 														<IconX size={16} aria-hidden="true" />
 													</button>
@@ -2134,6 +2151,12 @@
 						{#if error}<p role="status" class="failure">{error}</p>{/if}
 						<div class="editor-actions">
 							{@render undoButton()}
+							{#if selected && selected.deleted_at == null}<button
+									type="button"
+									class="secondary"
+									disabled={busy || navigationLoading || readOnly || blocked}
+									onclick={() => duplicateRecord(String(selected!.id))}>Duplicate record</button
+								>{/if}
 							<button
 								type="submit"
 								disabled={busy ||
