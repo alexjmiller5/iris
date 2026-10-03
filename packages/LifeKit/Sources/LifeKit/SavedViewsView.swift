@@ -32,7 +32,7 @@ struct SavedViewsView: View {
       Form {
         Section {
           Button("All records") { choose(nil) }
-          ForEach(model.savedViews, id: \.id) { saved in
+          ForEach(model.savedViews, id: \.byteExactID) { saved in
             HStack(alignment: .top) {
               VStack(alignment: .leading, spacing: 4) {
                 Button(saved.name) { choose(saved) }
@@ -42,13 +42,14 @@ struct SavedViewsView: View {
                 }
               }
               Spacer()
-              if model.appliedView?.id == saved.id {
+              if model.appliedView?.byteExactID == saved.byteExactID {
                 Image(systemName: "checkmark").foregroundStyle(.tint)
                   .accessibilityLabel("Applied view")
               }
               if writable, saved.updatedAt != nil {
                 Button(role: .destructive) {
-                  deleting = model.appliedView?.id == saved.id ? model.appliedView : saved
+                  deleting =
+                    model.appliedView?.byteExactID == saved.byteExactID ? model.appliedView : saved
                 } label: {
                   Image(systemName: "trash")
                 }.accessibilityLabel("Delete \(saved.name)")
@@ -112,7 +113,7 @@ struct SavedViewsView: View {
           Button("Delete view", role: .destructive) {
             Task {
               do {
-                let deletingApplied = model.appliedView?.id == saved.id
+                let deletingApplied = model.appliedView?.byteExactID == saved.byteExactID
                 try await model.deleteSavedView(saved, context: context)
                 guard current else { return }
                 if deletingApplied { name = "" }
