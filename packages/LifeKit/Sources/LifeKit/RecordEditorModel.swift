@@ -135,6 +135,36 @@ final class RecordEditorModel {
     return markdownSaved ? "Saved on this device" : "Unsaved changes"
   }
 
+  /// Prepare a fresh editor before presenting it or changing navigation context.
+  /// Existing recovery variants remain on disk; this review owns its own journal.
+  func installRejectedDraft(submitted: WorkspaceRecord) throws {
+    guard !saving, !dirty, !autosavePaused, !unreadableDraft, !reviewRequired,
+      case .string(let currentID)? = draft.original?["id"],
+      case .string(let submittedID)? = submitted["id"],
+      Data(currentID.utf8) == Data(submittedID.utf8)
+    else {
+      throw WorkspaceError(
+        message: "Open the current saved record before reviewing the rejected edit.", violations: []
+      )
+    }
+    debounceTask?.cancel()
+    let previous = draft
+    let recoveries = recoveryChoices
+    for field in draft.fields {
+      if let value = submitted[field.id] { draft.values[field.id] = field.formValue(value) }
+    }
+    recoveryChoices = []
+    autosavePaused = true
+    do {
+      try persist()
+    } catch {
+      draft = previous
+      recoveryChoices = recoveries
+      autosavePaused = false
+      throw error
+    }
+  }
+
   func setValue(_ value: String, for column: String) {
     guard recovery == nil, draft.values[column].map({ Data($0.utf8) }) != Data(value.utf8) else {
       return
