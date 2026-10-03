@@ -423,6 +423,33 @@ final class WorkspaceModel {
     await reload()
   }
 
+  func requireNavigationReady(workspace: NativeWorkspace, generation: Int) throws {
+    guard client === workspace, workspaceGeneration == generation else {
+      throw WorkspaceError(message: "The workspace changed. Open the destination again.", violations: [])
+    }
+    guard !writingRecord, !undoing, !savingView else {
+      throw WorkspaceError(message: "Wait for the current operation to finish before navigating.", violations: [])
+    }
+  }
+
+  func activateDestination(
+    _ resolved: NativeResolvedDestination, workspace: NativeWorkspace, generation: Int
+  ) throws -> WorkspaceEditingContext {
+    try requireNavigationReady(workspace: workspace, generation: generation)
+    let target = resolved.destination.table
+    guard resolved.catalog.tables.contains(where: { $0["id"] == .string(target) }) else {
+      throw WorkspaceError(message: "Table is no longer available.", violations: [])
+    }
+    // Resolution validates the destination. Recheck the host before installing
+    // it synchronously, including resetting settings for the same table.
+    catalog = resolved.catalog
+    if table == target { resetView() } else { table = target }
+    let context = WorkspaceEditingContext(workspace: workspace, table: target, draftStore: draftStore)
+    try applySavedView(resolved.view, context: context)
+    if resolved.row != nil { trash = resolved.isTrashed }
+    return context
+  }
+
   func makeQuickFind() -> QuickFindModel? {
     guard let client else { return nil }
     let generation = workspaceGeneration
