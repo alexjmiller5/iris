@@ -96,6 +96,8 @@ public struct WorkspaceView: View {
     .safeAreaInset(edge: .top, spacing: 0) { pendingLinkBanner }
     // Receiving a URL only retains it; navigation waits for an explicit Open.
     .onOpenURL { pendingLink.receive($0) }
+    // An open window keeps its workspace context instead of spawning an empty one.
+    .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
     .task { if demo { await model.open(demo: true) } else { await model.resumeConnection() } }
     .task(id: "\(model.services.generation)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
