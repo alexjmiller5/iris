@@ -18,6 +18,9 @@ The hub must allow the web app's origin through CORS.
   visible first, and hidden properties remain available when editing the record.
 - Create/edit typed fields, search related records by their display names,
   write Markdown with rich formatting or source editing, and move records to trash or restore them.
+- Open a selected related record with its arrow button. Opening reads its current
+  full row and prompts before discarding a draft. Multi-reference Remove buttons
+  are separate; missing or trashed targets leave the current editor intact.
 - Required fields, immutable/derived properties, reference validation and
   stale-edit checks use the shared core. Unsaved drafts prompt before leaving.
 - View table relationships and group tables locally. Groups are separate for
@@ -231,6 +234,10 @@ bun scripts/test-search.ts
 bun scripts/test-search-sync.ts /path/to/life-data
 bun scripts/test-saved-views.ts /path/to/life-data
 bun scripts/test-typed-filters.ts /path/to/life-data
+# Open http://life-ui-relations.localhost:5223/workspace?review in its own page.
+bun scripts/test-reference-navigation.ts /path/to/life-data
+# Only while owning that checkout and its dev server: temporarily mutate the route.
+bun scripts/test-reference-mutations.ts /path/to/life-data
 ```
 
 The first test covers validation, Markdown persistence, relations, trash,
@@ -246,6 +253,12 @@ read-side writes before execution, preserve rows/history after invalid defaults,
 and verify ordinary schema replay and sync. Environment overrides:
 `LIFE_UI_TEST_CDP`, `LIFE_UI_TEST_URL`, `LIFE_UI_TEST_HUB`,
 `LIFE_UI_TEST_HUB_PORT`, `LIFE_UI_TEST_ORIGIN`. Test hubs listen on loopback.
+
+Reference navigation checks use real Worker/OPFS reads and a synthetic hub. They
+cover fresh full-row lookup, cross-table IDs, draft cancellation, stale replies,
+read-only references, missing/trashed targets, skipped tables, pending writes,
+destination saved views and narrow layouts. `LIFE_UI_REFERENCE_CASE` selects a
+case by name; `LIFE_UI_TEST_SCREENSHOTS` optionally names an output directory.
 
 ## Core and build ownership
 
