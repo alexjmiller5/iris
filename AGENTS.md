@@ -221,6 +221,12 @@ never reuse a disposed instance or attach the panel identity to the editor.
 Group rows use the existing guarded reference navigation and disable opening while
 an editor write is pending. Keep accessibility identifiers off an enclosing
 DisclosureGroup: SwiftUI can propagate them over individual child controls.
+The macOS table uses byte-exact wrapper identities and opens records through the
+same fresh-row navigation as the list. Saved columns affect presentation only; an explicit empty list
+still leaves the record-opening column. Keep notices and recovery actions bounded
+and scrollable so they cannot consume the grid. Native column resizing is temporary;
+persisted layout comes from the saved-view definition. macOS before 14.4 uses the
+same record list as iOS.
 Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never
