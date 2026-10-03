@@ -186,6 +186,11 @@ public final class NativeWorkspace {
       CoreRequests.Write(
         CoreWriteArgs(table: table, patch: patch, expectedUpdatedAt: expectedUpdatedAt)))
   }
+  public func rejections(_ args: CoreRejectionsArgs = CoreRejectionsArgs()) async throws
+    -> CoreRejectionsPage
+  {
+    try await decode(CoreRequests.Rejections(args))
+  }
   public func status() async throws -> WorkspaceSyncStatus {
     try await decode(CoreRequests.Status(CoreEmptyArgs()))
   }
