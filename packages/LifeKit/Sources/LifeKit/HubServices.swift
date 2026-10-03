@@ -13,5 +13,9 @@ extension CoreUsageSummary {
   typealias Cap = CoreUsageCap
   typealias Principal = CoreUsagePrincipal
 }
-extension CoreUsagePrincipal: Identifiable {}
-extension CoreHubNotification: Identifiable {}
+extension CoreUsagePrincipal: Identifiable {
+  var byteExactID: Data { Data(id.utf8) }
+}
+extension CoreHubNotification: Identifiable {
+  var byteExactID: Data { Data(id.utf8) }
+}

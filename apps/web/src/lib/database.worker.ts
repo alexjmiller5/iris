@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { enrollmentEndpoint } from './enrollment-binding';
+import { rejectionSnapshot } from './rejection-inbox';
 import SQLiteFactory from '../../../../vendor/wa-sqlite/wa-sqlite.mjs';
 import wasmUrl from '../../../../vendor/wa-sqlite/wa-sqlite.wasm?url';
 import * as SQLite from 'wa-sqlite';
@@ -230,11 +231,7 @@ async function snapshot(): Promise<WorkspaceSnapshot> {
 		undo: (await local.undoStatus({})).action,
 		lastSync: status.lastSuccessfulSync,
 		skipped: status.skippedTables,
-		rejected: (await db.all('SELECT * FROM _core_rejected ORDER BY tbl,row_id')).map((row) => ({
-			...row,
-			row: JSON.parse(String(row.row)),
-			errors: JSON.parse(String(row.errors))
-		}))
+		rejected: await rejectionSnapshot(() => local.rejections({ limit: 100, offset: 0 }))
 	};
 }
 
@@ -359,6 +356,8 @@ async function dispatch(request: DatabaseRequest) {
 
 		case 'snapshot':
 			return snapshot();
+		case 'rejections':
+			return local.rejections(args);
 		case 'rows':
 			return (await local.rows(args.view)).map((row) => row.record);
 		case 'referenceSources':

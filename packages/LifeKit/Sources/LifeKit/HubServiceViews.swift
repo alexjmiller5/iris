@@ -63,7 +63,7 @@ struct HubUsageView: View {
           }.accessibilityIdentifier("usage-metric-" + key)
         }
         Section {
-          ForEach(usage.byPrincipal) { principal in
+          ForEach(usage.byPrincipal, id: \.byteExactID) { principal in
             VStack(alignment: .leading, spacing: 6) {
               Text(principal.label ?? principal.id).font(.headline)
               Text(principal.kind).font(.caption).foregroundStyle(.secondary)
@@ -140,7 +140,7 @@ struct HubNotificationsView: View {
       if let feed = services.feed, feed.notifications.isEmpty {
         ContentUnavailableView("No notifications", systemImage: "bell")
       }
-      ForEach((services.feed?.notifications ?? []).reversed()) { notification in
+      ForEach((services.feed?.notifications ?? []).reversed(), id: \.byteExactID) { notification in
         VStack(alignment: .leading, spacing: 8) {
           HStack(alignment: .firstTextBaseline) {
             Text(notification.title).font(.headline)

@@ -3,6 +3,8 @@
 	import { editRevision } from '$lib/record-revision';
 	import { reconcileUndo } from '$lib/record-undo';
 	import FieldEditor from '$lib/FieldEditor.svelte';
+	import RejectedEdits from '$lib/RejectedEdits.svelte';
+	import type { RejectionSnapshot } from '$lib/rejection-inbox';
 	import RecordGrid from '$lib/RecordGrid.svelte';
 	import {
 		cellPatch,
@@ -45,6 +47,7 @@
 		type SavedViewDefinition,
 		type Writeability,
 		type Sort,
+		type RejectedEdit,
 		type UndoAction
 	} from 'life-ui-core/client';
 	import { WorkspaceDatabase } from '$lib/database';
@@ -338,7 +341,8 @@
 	}
 	let lastSync = $state<string | null>(null),
 		pendingEdits = $state(0),
-		rejected = $state<Row[]>([]),
+		rejected = $state<RejectionSnapshot>({ page: null, error: '' }),
+		rejectedCount = $state(0),
 		notice = $state('');
 	let skipped = $state<string[]>([]),
 		maxRows = $state(50000),
@@ -779,48 +783,65 @@
 	function message(e: unknown) {
 		return e instanceof Error ? e.message : 'The operation failed. Your saved data is unchanged.';
 	}
-	function rejectionText(row: Row) {
-		const errors = Array.isArray(row.errors) ? row.errors : [row.errors ?? row.message];
-		return errors
-			.map((e: unknown) =>
-				e && typeof e === 'object'
-					? String((e as Row).message ?? (e as Row).error ?? (e as Row).rule ?? 'Edit rejected')
-					: String(e ?? 'Edit rejected')
-			)
-			.join('\n');
-	}
-	async function reviewRejected(row: Row) {
-		if (!database || !discard()) return;
-		editing = false;
-		await changeTable(String(row.tbl));
+	async function reviewRejected(entry: RejectedEdit) {
+		if (!database || busy || writing || bodySaving || navigationLoading) return;
+		const workspace = database,
+			request = ++recordOpenVersion;
+		let version = editorVersion;
+		const current = () =>
+			database === workspace && editorVersion === version && request === recordOpenVersion && !busy;
 		try {
-			let found: Row[] = await database.request('rows', {
-				view: { table, filters: [{ column: 'id', op: 'eq', value: String(row.row_id) }], limit: 1 }
+			let found = await workspace.request('rows', {
+				view: {
+					table: entry.table,
+					filters: [{ column: 'id', op: 'eq', value: entry.rowID }],
+					limit: 1
+				}
 			});
+			if (!current()) return;
 			if (!found.length)
-				found = await database.request('rows', {
+				found = await workspace.request('rows', {
 					view: {
-						table,
+						table: entry.table,
 						trash: true,
-						filters: [{ column: 'id', op: 'eq', value: String(row.row_id) }],
+						filters: [{ column: 'id', op: 'eq', value: entry.rowID }],
 						limit: 1
 					}
 				});
-			if (!found[0])
+			if (!current()) return;
+			if (!found[0] || found[0].id !== entry.rowID)
 				throw new Error(
 					'This record is not available locally. Include its table and sync before repairing the edit.'
 				);
-			trash = !!found[0].deleted_at;
-			edit(found[0]);
-			if (row.row && typeof row.row === 'object')
-				for (const p of properties.filter((p) => !locked(p))) {
-					const value = (row.row as Row)[p.col];
-					draft[p.col] =
-						value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value);
-				}
+			const latest = await workspace.request('snapshot');
+			if (!current()) return;
+			const permission = await workspace.request('writeability', { table: entry.table });
+			if (!current() || !discard()) return;
+			locationRequest++;
+			resetView();
+			catalog = latest.catalog;
+			table = entry.table;
+			graphVisible = false;
+			trash = found[0].deleted_at != null;
+			writePermission = permission;
+			edit(found[0], false);
+			version = editorVersion;
+			// Rejected values are an explicit review draft. Preserve the fresh row's
+			// revision and keep autosave paused, including while a tombstone is restored.
+			undoPaused = true;
+			for (const p of properties.filter((p) => !p.derived_by && !p.deprecated && !p.immutable)) {
+				if (!Object.hasOwn(entry.submitted, p.col)) continue;
+				const value = entry.submitted[p.col];
+				draft[p.col] =
+					value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value);
+			}
 			notice = 'Review the rejected values, save your correction, then sync.';
+			const openedVersion = editorVersion;
+			await Promise.all([loadRows(), loadViews()]);
+			if (database !== workspace || editorVersion !== openedVersion) return;
+			await reflectLocation();
 		} catch (e) {
-			error = message(e);
+			if (current()) error = message(e);
 		}
 	}
 	async function loadRows() {
@@ -873,7 +894,8 @@
 		lastSync = state.lastSync ?? null;
 		pendingEdits = state.status.pendingUiEdits;
 		undoAction = state.undo;
-		rejected = state.rejected ?? [];
+		rejected = state.rejected;
+		rejectedCount = state.status.rejected;
 		skipped = state.skipped ?? [];
 		if (!table && catalog.tables.length)
 			table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
@@ -1907,15 +1929,15 @@
 						{#if blocked}<p role="status" aria-label="Editing availability" class="notice">
 								{writePermission?.reason?.message ?? 'Checking editing rules…'}
 							</p>{/if}
-						{#if rejected.length}<details class="rejections">
-								<summary>{rejected.length} rejected edits need attention</summary
-								>{#each rejected as r}<p>
-										{String(r.tbl ?? r.table)} / {String(r.row_id ?? r.id)}: {rejectionText(r)}
-									</p>
-									<button class="secondary" onclick={() => reviewRejected(r)}
-										>Review rejected edit</button
-									>{/each}
-							</details>{/if}
+						{#key database}
+							{#if database}<RejectedEdits
+									core={database}
+									total={rejectedCount}
+									snapshot={rejected}
+									disabled={busy || writing || bodySaving || navigationLoading}
+									onreview={reviewRejected}
+								/>{/if}
+						{/key}
 						{#key gridContext}
 							<RecordGrid
 								{rows}
@@ -2438,8 +2460,7 @@
 		white-space: pre-line;
 		overflow-wrap: anywhere;
 	}
-	.notice,
-	.rejections {
+	.notice {
 		font-size: 13px;
 		padding: 12px;
 		background: var(--color-accent-soft);
