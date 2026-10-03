@@ -7,7 +7,8 @@ struct LifeUIApp: App {
     WindowGroup {
       WorkspaceView(
         demo: ProcessInfo.processInfo.arguments.contains("--demo")
-          || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+          || (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            && !ProcessInfo.processInfo.arguments.contains("--normal-startup"))
       ).frame(minWidth: 760, minHeight: 560)
     }
     .defaultSize(width: 1000, height: 720)

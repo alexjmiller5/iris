@@ -111,3 +111,16 @@ test('local saved-view setup rolls schema and catalog back together after a meta
   expect(db.query('SELECT * FROM _schema_log').all()).toEqual(log);
   expect(db.query("SELECT * FROM catalog_properties WHERE tbl='views'").all()).toEqual([]);
 }));
+
+test('native rejection dispatch preserves canonical payloads, exact IDs and bounded pages without initialization', () => withNative(async (request, db) => {
+  expect(await request('rejections')).toEqual({ rejections: [], nextOffset: null });
+  expect(db.query('SELECT name FROM sqlite_master').all()).toEqual([]);
+  db.exec('CREATE TABLE _core_rejected(tbl TEXT,row_id TEXT,row TEXT NOT NULL,errors TEXT NOT NULL,PRIMARY KEY(tbl,row_id))');
+  const records = ['e\u0301', 'é'].map(id => ({ table: 'items', rowID: id, submitted: { id, body: 'Fixture body' }, errors: [{ id, message: 'Rejected', future: { detail: ['value', null] } }] }));
+  for (const entry of records) db.query('INSERT INTO _core_rejected VALUES (?,?,?,?)').run(entry.table, entry.rowID, JSON.stringify(entry.submitted), JSON.stringify(entry.errors));
+  expect(await request('rejections', { limit: 1 })).toEqual({ rejections: [records[0]], nextOffset: 1 });
+  expect(await request('rejections', { limit: 1, offset: 1 })).toEqual({ rejections: [records[1]], nextOffset: null });
+  db.query('UPDATE _core_rejected SET errors=? WHERE row_id=?').run('invalid fixture JSON', 'é');
+  await expect(request('rejections', { limit: 1 })).rejects.toThrow('Invalid stored rejection data');
+  expect(db.query('SELECT count(*) AS n FROM _core_rejected').get()).toEqual({ n: 2 });
+}));

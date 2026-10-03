@@ -31,6 +31,13 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: com.alexmiller.life-ui.open
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes: [life]
   LifeUITests:
     type: bundle.unit-test
     platform: macOS

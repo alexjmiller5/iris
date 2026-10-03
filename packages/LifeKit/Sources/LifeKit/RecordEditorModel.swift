@@ -135,11 +135,72 @@ final class RecordEditorModel {
     return markdownSaved ? "Saved on this device" : "Unsaved changes"
   }
 
-  func setValue(_ value: String, for column: String) {
-    guard recovery == nil, draft.values[column].map({ Data($0.utf8) }) != Data(value.utf8) else {
+  /// Prepare a fresh editor before presenting it or changing navigation context.
+  /// Existing recovery variants remain on disk; this review owns its own journal.
+  func installRejectedDraft(submitted: WorkspaceRecord) throws {
+    guard !saving, !dirty, !autosavePaused, !unreadableDraft, !reviewRequired,
+      case .string(let currentID)? = draft.original?["id"],
+      case .string(let submittedID)? = submitted["id"],
+      Data(currentID.utf8) == Data(submittedID.utf8)
+    else {
+      throw WorkspaceError(
+        message: "Open the current saved record before reviewing the rejected edit.", violations: []
+      )
+    }
+    debounceTask?.cancel()
+    let previous = draft
+    let recoveries = recoveryChoices
+    for field in draft.fields {
+      if let value = submitted[field.id] { draft.values[field.id] = field.formValue(value) }
+    }
+    recoveryChoices = []
+    autosavePaused = true
+    do {
+      try persist()
+    } catch {
+      draft = previous
+      recoveryChoices = recoveries
+      autosavePaused = false
+      throw error
+    }
+  }
+
+  func installDuplicateDraft(
+    from row: WorkspaceRecord, isCurrent: @MainActor () -> Bool = { true }
+  ) throws {
+    guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
+    guard isNew, recordID == nil, !saving, !dirty, !autosavePaused,
+      !unreadableDraft, !reviewRequired, failure == nil
+    else {
+      throw WorkspaceError(message: "Start a new editor before preparing a copy.", violations: [])
+    }
+    let previous = draft
+    let recoveries = recoveryChoices
+    for field in draft.fields {
+      if let value = row[field.id] {
+        draft.setValue(
+          field.formValue(value), for: field.id, preservingEmptyString: value == .string(""))
+      }
+    }
+    recoveryChoices = []
+    do {
+      // Copying is explicit creation intent even when every source column is
+      // excluded. Keep its own nil-recordID journal before the host presents it.
+      try persist(keepEmpty: true)
+    } catch {
+      draft = previous
+      recoveryChoices = recoveries
+      throw error
+    }
+  }
+
+  func setValue(_ value: String, for column: String, explicit: Bool = false) {
+    guard recovery == nil,
+      explicit || draft.values[column].map({ Data($0.utf8) }) != Data(value.utf8),
+      draft.setValue(value, for: column)
+    else {
       return
     }
-    draft.values[column] = value
     if failedPatch?[column] != nil && !reviewRequired && !autosavePaused {
       failedPatch = nil
       failure = nil
@@ -321,13 +382,15 @@ final class RecordEditorModel {
     try await task.value
   }
 
-  private func persist() throws {
+  private func persist(keepEmpty: Bool = false) throws {
     guard !unreadableDraft else {
       throw WorkspaceError(
         message: "The saved draft has been kept. It could not be opened.", violations: [])
     }
     guard recovery == nil else { return }
-    if dirty || failure != nil || pendingWrite != nil || undoUnconfirmed || autosavePaused {
+    if keepEmpty || dirty || failure != nil || pendingWrite != nil || undoUnconfirmed
+      || autosavePaused
+    {
       try store?.save(
         StoredEditorDraft(
           id: journalID, table: table, recordID: recordID, draft: draft,

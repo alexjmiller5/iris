@@ -54,6 +54,33 @@
 		const date = new Date(raw + 'Z');
 		change(!raw ? '' : Number.isFinite(date.getTime()) ? date.toISOString() : raw);
 	}
+	function openLink(type: Property['type'], raw: string): string | null {
+		if (!raw || /[\u0000-\u001f\u007f]/.test(raw)) return null;
+		if (type === 'url') {
+			if (!/^https?:\/\/[^/\\\s]/i.test(raw)) return null;
+			try {
+				const url = new URL(raw);
+				return url.hostname ? url.href : null;
+			} catch {
+				return null;
+			}
+		}
+		if (type === 'email') {
+			try {
+				return raw.includes('@') && !/\s/.test(raw)
+					? 'mailto:' + encodeURIComponent(raw).replaceAll('%40', '@')
+					: null;
+			} catch {
+				return null;
+			}
+		}
+		if (type === 'phone') {
+			const number = raw.replace(/[ ()\-.]/g, '');
+			return /^\+?[0-9]+$/.test(number) ? 'tel:' + number : null;
+		}
+		return null;
+	}
+	const link = $derived(openLink(property.type, value));
 </script>
 
 <div class="field-control">
@@ -185,6 +212,19 @@
 			oninput={(event) => change(event.currentTarget.value)}
 		/>
 	{/if}
+	{#if link}
+		<a
+			class="field-link"
+			href={link}
+			target={property.type === 'url' ? '_blank' : undefined}
+			rel={property.type === 'url' ? 'noopener noreferrer' : undefined}
+			>{property.type === 'email'
+				? 'Compose email'
+				: property.type === 'phone'
+					? 'Call'
+					: 'Open website'}</a
+		>
+	{/if}
 	<button
 		class="clear"
 		type="button"
@@ -256,12 +296,20 @@
 		background: transparent;
 		cursor: pointer;
 	}
-	.clear {
+	button:disabled {
+		opacity: 0.45;
+		cursor: default;
+	}
+	.clear,
+	.field-link {
 		justify-self: start;
 		padding: 2px 0;
 		font: inherit;
 		font-size: 12px;
 		text-decoration: underline;
+	}
+	.field-link {
+		color: var(--color-ink);
 	}
 	small {
 		color: var(--color-muted);

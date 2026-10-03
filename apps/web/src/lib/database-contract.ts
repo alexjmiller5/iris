@@ -1,4 +1,5 @@
-import type { CoreArgs, CoreResult, Row } from 'life-ui-core/client';
+import type { CoreArgs, CoreResult } from 'life-ui-core/client';
+import type { RejectionSnapshot } from './rejection-inbox';
 
 // Host lifecycle and credentials are local to the browser. Shared operations
 // refer to the generated contract, including their argument/result pairing.
@@ -7,7 +8,7 @@ export interface WorkspaceSnapshot {
 	status: CoreResult<'status'>;
 	lastSync: CoreResult<'status'>['lastSuccessfulSync'];
 	skipped: string[];
-	rejected: Row[];
+	rejected: RejectionSnapshot;
 	undo: CoreResult<'undoStatus'>['action'];
 }
 export interface DatabaseOperations {
@@ -31,6 +32,7 @@ export interface DatabaseOperations {
 	open: { args: { demo?: boolean }; result: WorkspaceSnapshot };
 	close: { args: Record<string, never>; result: null };
 	snapshot: { args: Record<string, never>; result: WorkspaceSnapshot };
+	rejections: { args: CoreArgs<'rejections'>; result: CoreResult<'rejections'> };
 	rows: { args: { view: CoreArgs<'rows'> }; result: CoreResult<'rows'>[number]['record'][] };
 	referenceSources: { args: CoreArgs<'referenceSources'>; result: CoreResult<'referenceSources'> };
 	referencedBy: { args: CoreArgs<'referencedBy'>; result: CoreResult<'referencedBy'> };

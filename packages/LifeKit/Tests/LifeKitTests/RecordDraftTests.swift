@@ -39,6 +39,24 @@ struct RecordDraftTests {
     #expect(new.fields.map(\.id) == ["title", "body", "fixed"])
   }
 
+  @Test func newFieldsUseDefaultsUntilExplicitlyLeftEmpty() {
+    let fields: [WorkspaceRecord] = [
+      ["col": .string("status"), "type": .string("select"), "default_value": .string("Draft")],
+      ["col": .string("stamp"), "type": .string("text"), "default_value": .string("sql:1 + 1")],
+      ["col": .string("plain"), "type": .string("text")],
+    ]
+    #expect(
+      fields.map { CatalogField(property: $0).defaultPreview } == ["Draft", "set when saved", nil])
+    var draft = RecordDraft(properties: fields, original: nil)
+    #expect(draft.usesDefault("status") && draft.usesDefault("stamp"))
+    #expect(draft.patch.isEmpty)
+    draft.setValue("", for: "status")
+    #expect(!draft.usesDefault("status") && draft.usesDefault("stamp"))
+    #expect(draft.patch == ["status": .null])
+    let saved = RecordDraft(properties: fields, original: ["id": .string("r"), "status": .null])
+    #expect(!saved.usesDefault("status"), "Existing records never fall back to defaults")
+  }
+
   @Test func receiptKeepsLaterTypingAndTheOriginalFieldSet() {
     var draft = RecordDraft(
       properties: properties,

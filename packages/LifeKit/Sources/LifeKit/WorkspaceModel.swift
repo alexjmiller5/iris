@@ -19,6 +19,11 @@ final class WorkspaceModel {
   var client: NativeWorkspace? {
     didSet {
       if oldValue !== client {
+        linkBinding = nil
+        linkIdentityStore = nil
+        linkError = nil
+        recents?.cancel()
+        recents = nil
         workspaceGeneration += 1
         undoAction = nil
         undoing = false
@@ -29,6 +34,53 @@ final class WorkspaceModel {
     }
   }
   private(set) var workspaceGeneration = 0
+  private(set) var linkBinding: NativeWorkspaceBinding?
+  private(set) var linkError: String?
+  private var linkIdentityStore: NativeLinkIdentityStore?
+  var canCopyLink: Bool {
+    client != nil && !loading && !writingRecord && !undoing && !savingView
+      && (linkBinding != nil || linkIdentityStore != nil)
+  }
+
+  func linkURL(for destination: NativeDestination, context: WorkspaceEditingContext?) throws -> URL
+  {
+    guard let context, context.workspace === client,
+      table.map({ Data($0.utf8) }) == Data(context.table.utf8),
+      Data(destination.table.utf8) == Data(context.table.utf8)
+    else {
+      throw WorkspaceError(message: "The workspace changed. Copy the link again.", violations: [])
+    }
+    try requireNavigationReady(workspace: context.workspace, generation: workspaceGeneration)
+    guard !loading else {
+      throw WorkspaceError(message: "Wait for the workspace to open.", violations: [])
+    }
+    do {
+      if let linkIdentityStore { linkBinding = try linkIdentityStore.create() }
+      let url = try NativeDeepLink(destination: destination, workspace: linkBinding).url
+      linkError = nil
+      return url
+    } catch {
+      linkError = error.localizedDescription
+      throw error
+    }
+  }
+
+  func linkedDestination(_ link: NativeDeepLink) throws -> NativeDestination {
+    guard let client, !loading else {
+      throw WorkspaceError(message: "Open the workspace that this link belongs to.", violations: [])
+    }
+    try requireNavigationReady(workspace: client, generation: workspaceGeneration)
+    do {
+      // Re-read preferences and the opened file stamp. Incoming URLs never create identity.
+      if let linkIdentityStore { linkBinding = try linkIdentityStore.load() }
+      let destination = try link.destination(matching: linkBinding)
+      linkError = nil
+      return destination
+    } catch {
+      linkError = error.localizedDescription
+      throw error
+    }
+  }
   var catalog: WorkspaceCatalog?
   var table: String? {
     didSet { if oldValue != table { resetView() } }
@@ -120,6 +172,7 @@ final class WorkspaceModel {
   var isReplica = false
   var groups: [String: String] = [:]
   private(set) var recoverableDrafts: [StoredEditorDraft] = []
+  private(set) var recents: NativeRecentsModel?
   private var draftStore: EditorDraftStore?
   let services = HubServicesModel()
   private var groupsURL: URL?
@@ -223,8 +276,25 @@ final class WorkspaceModel {
     guard let client, let table else { return nil }
     return WorkspaceEditingContext(workspace: client, table: table, draftStore: draftStore)
   }
+  func refreshedRecordContext(
+    _ resolved: NativeResolvedDestination, workspace: NativeWorkspace, generation: Int
+  ) throws -> WorkspaceEditingContext {
+    try requireNavigationReady(workspace: workspace, generation: generation)
+    guard resolved.destination.table == table, resolved.row != nil,
+      resolved.catalog.tables.contains(where: { $0["id"] == .string(resolved.destination.table) })
+    else {
+      throw WorkspaceError(message: "The table changed. Open the record again.", violations: [])
+    }
+    catalog = resolved.catalog
+    return WorkspaceEditingContext(
+      workspace: workspace, table: resolved.destination.table, draftStore: draftStore)
+  }
   var tables: [WorkspaceRecord] { catalog?.tables ?? [] }
   var properties: [WorkspaceRecord] {
+    Self.properties(in: catalog, table: table)
+  }
+  private static func properties(in catalog: WorkspaceCatalog?, table: String?) -> [WorkspaceRecord]
+  {
     (catalog?.properties ?? []).filter { $0["tbl"]?.text == table }.sorted {
       let left = Double($0["sort"]?.text ?? "") ?? 0
       let right = Double($1["sort"]?.text ?? "") ?? 0
@@ -423,6 +493,115 @@ final class WorkspaceModel {
     await reload()
   }
 
+  func requireNavigationReady(workspace: NativeWorkspace, generation: Int) throws {
+    guard client === workspace, workspaceGeneration == generation else {
+      throw WorkspaceError(
+        message: "The workspace changed. Open the destination again.", violations: [])
+    }
+    guard !writingRecord, !undoing, !savingView else {
+      throw WorkspaceError(
+        message: "Wait for the current operation to finish before navigating.", violations: [])
+    }
+  }
+
+  func makeRejectionInbox() -> RejectionInboxModel? {
+    guard let client else { return nil }
+    let generation = workspaceGeneration
+    return RejectionInboxModel(
+      readStatus: client.status, readPage: client.rejections,
+      isCurrent: { [weak self] in
+        self?.client === client && self?.workspaceGeneration == generation
+      })
+  }
+
+  func prepareRejectionReview(
+    _ entry: CoreRejectedEdit, workspace: NativeWorkspace, generation: Int,
+    isCurrent: () -> Bool = { true }
+  ) async throws -> PreparedRejectionReview {
+    let query = queryKey.map { Data($0.utf8) }
+    func current() -> Bool {
+      isCurrent() && client === workspace && workspaceGeneration == generation
+        && queryKey.map { Data($0.utf8) } == query && !Task.isCancelled
+    }
+    func check() throws {
+      guard current() else { throw CancellationError() }
+      try requireNavigationReady(workspace: workspace, generation: generation)
+    }
+    do {
+      try check()
+      let resolved = try await NativeDestinationResolver(workspace: workspace).resolve(
+        NativeDestination(table: entry.table, rowID: entry.rowID), isCurrent: current)
+      try check()
+      let permission = try await workspace.writeability(table: entry.table)
+      try check()
+      guard permission.writable else {
+        throw WorkspaceError(
+          message: permission.reason?.message ?? "This table cannot be edited on this device.",
+          violations: [])
+      }
+      let context = WorkspaceEditingContext(
+        workspace: workspace, table: entry.table, draftStore: draftStore)
+      let editor = RecordEditorModel(
+        properties: Self.properties(in: resolved.catalog, table: entry.table),
+        original: resolved.row?.record, table: entry.table, store: draftStore
+      ) { patch, baseline in
+        try await self.save(patch, original: baseline, context: context)
+      }
+      try editor.installRejectedDraft(submitted: entry.submitted)
+      return PreparedRejectionReview(
+        resolved: resolved, context: context, editor: editor,
+        generation: generation, sourceQuery: query)
+    } catch {
+      try check()
+      throw error
+    }
+  }
+
+  func activateRejectionReview(
+    _ prepared: PreparedRejectionReview, isCurrent: () -> Bool = { true }
+  ) throws {
+    guard isCurrent(), !Task.isCancelled,
+      queryKey.map({ Data($0.utf8) }) == prepared.sourceQuery
+    else { throw CancellationError() }
+    _ = try activateDestination(
+      prepared.resolved, workspace: prepared.context.workspace,
+      generation: prepared.generation)
+  }
+
+  func activateDestination(
+    _ resolved: NativeResolvedDestination, workspace: NativeWorkspace, generation: Int
+  ) throws -> WorkspaceEditingContext {
+    try requireNavigationReady(workspace: workspace, generation: generation)
+    let target = resolved.destination.table
+    guard resolved.catalog.tables.contains(where: { $0["id"] == .string(target) }) else {
+      throw WorkspaceError(message: "Table is no longer available.", violations: [])
+    }
+    // Resolution validates the destination. Recheck the host before installing
+    // it synchronously, including resetting settings for the same table.
+    catalog = resolved.catalog
+    if table == target { resetView() } else { table = target }
+    let context = WorkspaceEditingContext(
+      workspace: workspace, table: target, draftStore: draftStore)
+    try applySavedView(resolved.view, context: context)
+    if resolved.row != nil { trash = resolved.isTrashed }
+    return context
+  }
+
+  func makeCommandPalette() -> QuickFindCoordinator? {
+    guard let client, let search = makeQuickFind() else { return nil }
+    let generation = workspaceGeneration
+    let current = { [weak self] in
+      self?.client === client && self?.workspaceGeneration == generation
+    }
+    let resolver = NativeDestinationResolver(workspace: client)
+    return QuickFindCoordinator(
+      search: search,
+      metadata: NativePaletteModel(workspace: client, isCurrent: current),
+      resolve: { destination, isCurrent in
+        try await resolver.resolve(destination, isCurrent: isCurrent)
+      }, isCurrent: current)
+  }
+
   func makeQuickFind() -> QuickFindModel? {
     guard let client else { return nil }
     let generation = workspaceGeneration
@@ -552,6 +731,12 @@ final class WorkspaceModel {
       }
       try loadGroups(workspace: demo ? nil : path)
       try prepareDrafts(path: demo ? nil : path)
+      let recentStore =
+        demo
+        ? nil
+        : NativeRecentsStore(
+          root: try resolveLocalURL().deletingLastPathComponent(),
+          workspace: URL(fileURLWithPath: path))
       let workspace = try NativeWorkspace(path: path)
       do {
         if seed { try await workspace.createSample() }
@@ -562,6 +747,16 @@ final class WorkspaceModel {
         throw error
       }
       client = workspace
+      if !demo {
+        do {
+          linkIdentityStore = try NativeLinkIdentityStore(
+            root: resolveLocalURL().deletingLastPathComponent(),
+            workspace: URL(fileURLWithPath: path)
+          ).retainingOpenedFile()
+          linkBinding = try linkIdentityStore?.load()
+        } catch { linkError = error.localizedDescription }
+      }
+      configureRecents(store: recentStore)
       location =
         demo
         ? "Sample workspace · temporary"
@@ -646,6 +841,17 @@ final class WorkspaceModel {
     refreshDrafts()
   }
 
+  private func configureRecents(store: NativeRecentsStore?) {
+    guard let client else { return }
+    let resolver = NativeDestinationResolver(workspace: client)
+    // Forgetting a credential keeps this database open. Its local history
+    // remains usable; replacing/closing the client cancels the old model.
+    let current = { [weak self] in self?.client === client }
+    recents = NativeRecentsModel(
+      store: store,
+      resolve: { try await resolver.resolve($0, isCurrent: current) }, isCurrent: current)
+  }
+
   func refreshDrafts() {
     do { recoverableDrafts = try draftStore?.all() ?? [] } catch {
       self.error = "Saved drafts could not be opened. They have been kept."
@@ -707,8 +913,12 @@ final class WorkspaceModel {
     } catch { self.error = error.localizedDescription }
   }
 
+  nonisolated static func replicaKey(endpoint: String) -> String {
+    SHA256.hash(data: Data(endpoint.utf8)).map { String(format: "%02x", $0) }.joined()
+  }
+
   static func replicaURL(root: URL, endpoint: String) -> URL {
-    let name = SHA256.hash(data: Data(endpoint.utf8)).map { String(format: "%02x", $0) }.joined()
+    let name = replicaKey(endpoint: endpoint)
     return root.appendingPathComponent("replicas", isDirectory: true).appendingPathComponent(
       name + ".sqlite")
   }
@@ -797,6 +1007,8 @@ final class WorkspaceModel {
     scopedURL?.stopAccessingSecurityScopedResource()
     scopedURL = nil
     client = prepared
+    linkBinding = .replica(canonicalEndpoint: hub.endpoint)
+    configureRecents(store: NativeRecentsStore(root: root, workspace: path))
     catalog = nextCatalog
     groups = nextGroups
     groupsURL = nextGroupsURL

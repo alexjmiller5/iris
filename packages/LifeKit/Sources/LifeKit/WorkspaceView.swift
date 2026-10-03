@@ -9,13 +9,23 @@ public struct WorkspaceView: View {
   @State private var options = false
   @State private var savedViews = false
   @State private var showingGraph = false
+  @State private var preferredColumn: NavigationSplitViewColumn = .detail
+  @State private var navigationRequest = 0
+  @State private var openingDestination = false
+  @State private var navigationError: String?
   @State private var tableSearchPresented = false
   @State private var editor: EditorTarget?
   @State private var online: OnlineBrowseModel?
-  @State private var quickFind: QuickFindModel?
-  @State private var pendingSearchEditor: (target: EditorTarget, generation: Int)?
+  @State private var quickFind: QuickFindCoordinator?
+  @State private var rejectionInbox: RejectionInboxModel?
+  @State private var rejectionError: String?
+  @State private var pendingRejection: (review: PreparedRejectionReview, request: Int)?
+  @State private var pendingSearchEditor:
+    (target: EditorTarget, generation: Int, destination: NativeDestination)?
   @State private var pendingReferenceEditor:
     (destination: ReferenceDestination, source: WorkspaceEditingContext, generation: Int)?
+  @State private var pendingLink = PendingNativeLink()
+  @State private var pendingDuplicateEditor: (target: EditorTarget, generation: Int)?
   private let demo: Bool
 
   public init(demo: Bool = false) { self.demo = demo }
@@ -25,8 +35,8 @@ public struct WorkspaceView: View {
       if model.client == nil {
         welcome
       } else {
-        NavigationSplitView {
-          List(selection: $model.table) {
+        NavigationSplitView(preferredCompactColumn: $preferredColumn) {
+          List {
             Button(action: showQuickFind) {
               Label("Find records", systemImage: "magnifyingglass")
             }
@@ -38,14 +48,13 @@ public struct WorkspaceView: View {
                 showingGraph = true
               } label: {
                 Label("Schema graph", systemImage: "point.3.connected.trianglepath.dotted")
-              }
+              }.disabled(!canFind)
             #endif
-            ForEach(model.tables, id: \.["id"]) { table in
-              let id = table["id"]?.text ?? ""
-              NavigationLink(value: id) {
-                Label(id, systemImage: id == "history" ? "clock" : "tablecells")
-              }
-            }
+            WorkspaceSidebar(
+              tables: NativeSidebarTables(model.tables), recents: model.recents,
+              selectedTable: model.table, disabled: !canFind,
+              opening: openingDestination, error: navigationError,
+              onOpen: { openDestination($0) })
           }
           .navigationTitle("Life UI")
           .safeAreaInset(edge: .bottom) {
@@ -58,9 +67,10 @@ public struct WorkspaceView: View {
                 }
                 .disabled(model.syncing).accessibilityIdentifier("sync-now")
               }
-              Button("Hub connection") { settings = true }
+              Button("Hub connection") { settings = true }.disabled(openingDestination)
               Button("Close workspace") { Task { await model.close() } }
             }.padding().frame(maxWidth: .infinity, alignment: .leading)
+              .background(.bar)
           }
         } detail: {
           #if os(macOS)
@@ -68,10 +78,10 @@ public struct WorkspaceView: View {
               SchemaGraphView(
                 catalog: catalog, groups: model.groups,
                 openTable: { table in
-                  model.table = table
-                  showingGraph = false
+                  openDestination(NativeDestination(table: table))
                 }, saveGroups: model.saveGroups
               )
+              .disabled(openingDestination)
               .navigationTitle("Schema graph")
             } else {
               records
@@ -83,21 +93,51 @@ public struct WorkspaceView: View {
         .onChange(of: model.table) { showingGraph = false }
       }
     }
+    .safeAreaInset(edge: .top, spacing: 0) { pendingLinkBanner }
+    // Receiving a URL only retains it; navigation waits for an explicit Open.
+    .onOpenURL { pendingLink.receive($0) }
+    // An open window keeps its workspace context instead of spawning an empty one.
+    .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
     .task { if demo { await model.open(demo: true) } else { await model.resumeConnection() } }
     .task(id: "\(model.services.generation)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
       await model.services.poll()
     }
     .task(id: model.queryKey) { await model.reload() }
+    .task(id: "\(model.workspaceGeneration)|\(scenePhase == .active)") {
+      guard scenePhase == .active else { return }
+      await model.recents?.refresh()
+    }
+    .onChange(of: model.syncing) {
+      if !model.syncing {
+        let recents = model.recents
+        let inbox = rejectionInbox
+        Task {
+          await recents?.refresh()
+          await inbox?.refresh()
+        }
+      }
+    }
     .sheet(item: $editor, onDismiss: finishEditorDismissal) { target in
       RecordEditor(
         model: model, original: target.row, context: target.context, recovered: target.recovered,
+        preparedEditor: target.preparedEditor, linkWaiting: pendingLink.request != nil,
         isCurrent: { editor?.id == target.id },
         onReference: { destination in
           guard editor?.id == target.id, let source = target.context,
             source.workspace === model.client, source.table == model.table
           else { return }
           pendingReferenceEditor = (destination, source, model.workspaceGeneration)
+          editor = nil
+        },
+        onDuplicate: { copy in
+          guard editor?.id == target.id, let source = target.context,
+            source.workspace === model.client, source.table == model.table
+          else { return }
+          pendingDuplicateEditor = (
+            EditorTarget(row: nil, context: source, preparedEditor: copy),
+            model.workspaceGeneration
+          )
           editor = nil
         }, onSaved: { editor = nil })
     }
@@ -120,31 +160,70 @@ public struct WorkspaceView: View {
     }
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
     .sheet(isPresented: $options) { WorkspaceOptionsView(model: model) }
-    .sheet(isPresented: $savedViews) { SavedViewsView(model: model) }
+    .sheet(isPresented: $savedViews) {
+      SavedViewsView(model: model, onChoose: recordNavigationSucceeded)
+    }
     .sheet(item: $quickFind, onDismiss: openSearchEditor) { find in
-      QuickFindView(model: find, incomplete: !model.skippedTables.isEmpty) {
-        hit, row in
+      QuickFindView(model: find, incomplete: !model.skippedTables.isEmpty) { resolved in
         guard find.isCurrent, quickFind === find, editor == nil, let client = model.client else {
-          return
+          throw CancellationError()
         }
-        do {
-          let context = try model.activateSearchTable(
-            hit.table, workspace: client, generation: model.workspaceGeneration)
+        let generation = model.workspaceGeneration
+        let context = try model.activateDestination(
+          resolved, workspace: client, generation: generation)
+        if let row = resolved.row {
           pendingSearchEditor = (
-            EditorTarget(row: row.record, context: context), model.workspaceGeneration
+            EditorTarget(row: row.record, context: context), generation, resolved.destination
           )
-          showingGraph = false
-          quickFind = nil
-        } catch { model.error = error.localizedDescription }
+        }
+        tableSearchPresented = false
+        showingGraph = false
+        preferredColumn = .detail
+        model.error = nil
+        navigationError = nil
+        quickFind = nil
+        if resolved.row == nil { recordNavigationSucceeded(resolved.destination) }
       }
     }
+    .sheet(item: $rejectionInbox, onDismiss: finishRejectionDismissal) { inbox in
+      NavigationStack {
+        List {
+          if let rejectionError {
+            Text(rejectionError).foregroundStyle(.red).textSelection(.enabled)
+          }
+          RejectionInboxView(model: inbox, isBusy: openingDestination) { entry in
+            reviewRejected(entry, inbox: inbox)
+          }
+        }
+        .navigationTitle("Issues")
+        .toolbar {
+          ToolbarItem(placement: .cancellationAction) {
+            Button("Done") { rejectionInbox = nil }
+          }
+        }
+      }
+      #if os(macOS)
+        .frame(minWidth: 520, minHeight: 480)
+      #endif
+      .task { await inbox.refresh() }
+      .onDisappear { inbox.dispose() }
+    }
     .onChange(of: model.workspaceGeneration) {
+      navigationRequest += 1
+      openingDestination = false
+      navigationError = nil
+      preferredColumn = .detail
       online?.cancel()
       online = nil
       quickFind?.cancel()
       quickFind = nil
       pendingSearchEditor = nil
       pendingReferenceEditor = nil
+      pendingDuplicateEditor = nil
+      rejectionInbox?.dispose()
+      rejectionInbox = nil
+      pendingRejection = nil
+      rejectionError = nil
     }
     .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
       switch result {
@@ -155,14 +234,200 @@ public struct WorkspaceView: View {
   }
 
   private var canFind: Bool {
-    model.client != nil && editor == nil && online == nil && quickFind == nil
-      && pendingSearchEditor == nil
+    model.client != nil && !openingDestination && editor == nil && online == nil && quickFind == nil
+      && pendingSearchEditor == nil && pendingDuplicateEditor == nil
+      && pendingReferenceEditor == nil && rejectionInbox == nil && pendingRejection == nil
       && !settings && !options && !savedViews && !importing
+  }
+
+  private func recordNavigationSucceeded(_ destination: NativeDestination) {
+    guard let recents = model.recents else { return }
+    let generation = model.workspaceGeneration
+    Task {
+      guard generation == model.workspaceGeneration else { return }
+      await recents.navigationSucceeded(destination)
+    }
+  }
+
+  private func openRecord(_ row: WorkspaceRow) {
+    guard let table = model.table else { return }
+    // Resolve by ID. The loaded page may have an old revision or omit fields.
+    openDestination(NativeDestination(table: table, rowID: row.id), preservingQuery: true)
+  }
+
+  private func openDestination(
+    _ destination: NativeDestination, preservingQuery: Bool = false,
+    onOpened: (() -> Void)? = nil, onFailed: ((String) -> Void)? = nil
+  ) {
+    guard canFind, let workspace = model.client else { return }
+    let generation = model.workspaceGeneration
+    let query = model.queryKey
+    navigationRequest += 1
+    let request = navigationRequest
+    let recent =
+      preservingQuery
+      ? NativeDestination(
+        table: destination.table, viewID: model.appliedView?.id, rowID: destination.rowID)
+      : destination
+    openingDestination = true
+    navigationError = nil
+    let current = {
+      model.client === workspace && model.workspaceGeneration == generation
+        && navigationRequest == request && model.queryKey == query
+        && editor == nil && quickFind == nil && online == nil
+        && rejectionInbox == nil && pendingRejection == nil
+        && !settings && !options && !savedViews && !importing
+    }
+    Task {
+      defer { if navigationRequest == request { openingDestination = false } }
+      do {
+        let resolved = try await NativeDestinationResolver(workspace: workspace).resolve(
+          destination, isCurrent: current)
+        guard current() else { return }
+        let context: WorkspaceEditingContext
+        if preservingQuery {
+          context = try model.refreshedRecordContext(
+            resolved, workspace: workspace, generation: generation)
+        } else {
+          context = try model.activateDestination(
+            resolved, workspace: workspace, generation: generation)
+        }
+        if !preservingQuery { tableSearchPresented = false }
+        showingGraph = false
+        preferredColumn = .detail
+        if let row = resolved.row { editor = EditorTarget(row: row.record, context: context) }
+        model.error = nil
+        recordNavigationSucceeded(recent)
+        onOpened?()
+      } catch is CancellationError {
+        // A closed or superseded workspace owns the next UI state.
+      } catch {
+        guard current() else { return }
+        navigationError = error.localizedDescription
+        model.error = error.localizedDescription
+        onFailed?(error.localizedDescription)
+        await model.recents?.refresh()
+      }
+    }
+  }
+
+  @ViewBuilder private var pendingLinkBanner: some View {
+    if pendingLink.request != nil || pendingLink.error != nil {
+      VStack(alignment: .leading, spacing: 6) {
+        if pendingLink.request != nil {
+          Text(
+            model.client == nil
+              ? "A link is waiting. Open the workspace it belongs to, then open the link."
+              : "A link is waiting to open.")
+        }
+        if let error = pendingLink.error {
+          Text(error).foregroundStyle(.red).textSelection(.enabled)
+            .accessibilityIdentifier("pending-link-error")
+        }
+        HStack {
+          if pendingLink.request != nil {
+            Button("Open link", action: openPendingLink).disabled(!canFind)
+              .accessibilityIdentifier("open-pending-link")
+          }
+          Button("Dismiss") { pendingLink.dismiss() }
+            .accessibilityIdentifier("dismiss-pending-link")
+        }
+      }
+      .font(.callout).padding(.horizontal).padding(.vertical, 8)
+      .frame(maxWidth: .infinity, alignment: .leading).background(.bar)
+    }
+  }
+
+  private func openPendingLink() {
+    guard let request = pendingLink.requestToOpen(allowed: canFind) else { return }
+    do {
+      let destination = try model.linkedDestination(request.link)
+      openDestination(
+        destination, onOpened: { pendingLink.complete(request.id) },
+        onFailed: { pendingLink.fail(request.id, message: $0) })
+    } catch { pendingLink.fail(request.id, message: error.localizedDescription) }
+  }
+
+  private func copyLink(
+    _ destination: NativeDestination, context: WorkspaceEditingContext?
+  ) throws {
+    let url = try model.linkURL(for: destination, context: context)
+    CopyDraftButton.copy(url.absoluteString)
+  }
+
+  private func showRejections() {
+    guard canFind else { return }
+    rejectionError = nil
+    rejectionInbox = model.makeRejectionInbox()
+  }
+
+  private func reviewRejected(_ entry: CoreRejectedEdit, inbox: RejectionInboxModel) {
+    guard rejectionInbox === inbox, !openingDestination, editor == nil,
+      pendingRejection == nil, let workspace = model.client
+    else { return }
+    let generation = model.workspaceGeneration
+    let query = model.queryKey.map { Data($0.utf8) }
+    navigationRequest += 1
+    let request = navigationRequest
+    openingDestination = true
+    rejectionError = nil
+    let current = {
+      rejectionInbox === inbox && navigationRequest == request
+        && model.client === workspace && model.workspaceGeneration == generation
+        && model.queryKey.map({ Data($0.utf8) }) == query
+        && editor == nil && quickFind == nil && online == nil
+        && pendingSearchEditor == nil && pendingReferenceEditor == nil
+        && !settings && !options && !savedViews && !importing
+    }
+    Task {
+      defer { if navigationRequest == request { openingDestination = false } }
+      do {
+        let review = try await model.prepareRejectionReview(
+          entry, workspace: workspace, generation: generation, isCurrent: current)
+        guard current() else { return }
+        pendingRejection = (review, request)
+        rejectionInbox = nil
+      } catch is CancellationError {
+        // The saved draft survives a cancelled handoff; the newer context owns the UI.
+      } catch {
+        guard current() else { return }
+        rejectionError = error.localizedDescription
+      }
+    }
+  }
+
+  private func finishRejectionDismissal() {
+    guard let pending = pendingRejection else { return }
+    pendingRejection = nil
+    let current = {
+      navigationRequest == pending.request && rejectionInbox == nil
+        && editor == nil && quickFind == nil && online == nil
+        && pendingSearchEditor == nil && pendingReferenceEditor == nil
+        && !settings && !options && !savedViews && !importing
+    }
+    do {
+      try model.activateRejectionReview(pending.review, isCurrent: current)
+      editor = EditorTarget(
+        row: pending.review.resolved.row?.record, context: pending.review.context,
+        preparedEditor: pending.review.editor)
+      tableSearchPresented = false
+      showingGraph = false
+      preferredColumn = .detail
+      model.error = nil
+      navigationError = nil
+      recordNavigationSucceeded(pending.review.resolved.destination)
+    } catch is CancellationError {
+      model.refreshDrafts()
+    } catch {
+      guard current() else { return }
+      model.refreshDrafts()
+      model.error = error.localizedDescription
+    }
   }
 
   private func showQuickFind() {
     guard canFind else { return }
-    quickFind = model.makeQuickFind()
+    quickFind = model.makeCommandPalette()
   }
 
   private func openSearchEditor() {
@@ -173,10 +438,21 @@ public struct WorkspaceView: View {
       pending.target.context?.table == model.table
     else { return }
     editor = pending.target
+    recordNavigationSucceeded(pending.destination)
   }
 
   private func finishEditorDismissal() {
     model.refreshDrafts()
+    if let pending = pendingDuplicateEditor {
+      pendingDuplicateEditor = nil
+      // A superseded copy keeps its journal and stays available as an unsaved draft.
+      guard editor == nil, pending.generation == model.workspaceGeneration,
+        pending.target.context?.workspace === model.client,
+        pending.target.context?.table == model.table
+      else { return }
+      editor = pending.target
+      return
+    }
     guard let pending = pendingReferenceEditor else { return }
     pendingReferenceEditor = nil
     guard editor == nil, pending.generation == model.workspaceGeneration,
@@ -189,6 +465,10 @@ public struct WorkspaceView: View {
         workspace: pending.source.workspace, generation: pending.generation)
       showingGraph = false
       editor = EditorTarget(row: pending.destination.row.record, context: context)
+      recordNavigationSucceeded(
+        NativeDestination(
+          table: pending.destination.table, viewID: model.appliedView?.id,
+          rowID: pending.destination.row.id))
     } catch { model.error = error.localizedDescription }
   }
 
@@ -222,6 +502,9 @@ public struct WorkspaceView: View {
   }
 
   @ViewBuilder private var recordNotices: some View {
+    Button(action: showRejections) {
+      Label("Issues", systemImage: "exclamationmark.bubble")
+    }.disabled(!canFind).accessibilityIdentifier("workspace-issues")
     if let action = model.undoAction {
       Button {
         let context = model.editingContext
@@ -241,6 +524,11 @@ public struct WorkspaceView: View {
           do {
             let current = try await model.recoveryRecord(saved, context: context)
             editor = EditorTarget(row: current, context: context, recovered: saved)
+            if let id = current?["id"]?.text {
+              recordNavigationSucceeded(
+                NativeDestination(
+                  table: context.table, viewID: model.appliedView?.id, rowID: id))
+            }
           } catch { model.error = error.localizedDescription }
         }
       } label: {
@@ -280,7 +568,7 @@ public struct WorkspaceView: View {
       }
       ForEach(model.rows, id: \.byteExactID) { row in
         Button {
-          editor = EditorTarget(row: row.record, context: model.editingContext)
+          openRecord(row)
         } label: {
           VStack(alignment: .leading, spacing: 5) {
             Text(row.label).foregroundStyle(.primary).font(.headline).lineLimit(2)
@@ -316,10 +604,9 @@ public struct WorkspaceView: View {
             rows: model.rows,
             columns: NativeGridColumn.columns(
               properties: model.properties, selected: model.visibleRecordColumns,
-              widths: model.appliedView?.definition?.widths ?? [:])
-          ) { row in
-            editor = EditorTarget(row: row.record, context: model.editingContext)
-          }
+              widths: model.appliedView?.definition?.widths ?? [:]),
+            onOpen: openRecord
+          )
           .id(model.queryKey + [String(model.workspaceGeneration)])
           .overlay {
             if model.rows.isEmpty && !model.loading {
@@ -393,6 +680,17 @@ public struct WorkspaceView: View {
               }
             }.accessibilityIdentifier("view-options")
             Spacer()
+            Button {
+              guard let table = model.table else { return }
+              do {
+                try copyLink(
+                  NativeDestination(table: table, viewID: model.appliedView?.id),
+                  context: model.editingContext)
+              } catch { model.error = error.localizedDescription }
+            } label: {
+              Label("Copy link", systemImage: "link").labelStyle(.iconOnly)
+            }.disabled(!canFind || !model.canCopyLink || model.table == nil)
+              .accessibilityIdentifier("copy-workspace-link")
             Button(action: showQuickFind) { Label("Find", systemImage: "magnifyingglass") }
               .disabled(!canFind).accessibilityIdentifier("quick-find")
           }
@@ -442,6 +740,7 @@ public struct WorkspaceView: View {
           }
         }
       }
+      .disabled(openingDestination)
   }
 }
 
@@ -450,6 +749,7 @@ private struct EditorTarget: Identifiable {
   let row: WorkspaceRecord?
   let context: WorkspaceEditingContext?
   var recovered: StoredEditorDraft? = nil
+  var preparedEditor: RecordEditorModel? = nil
 }
 
 private struct RecordEditor: View {
@@ -457,6 +757,8 @@ private struct RecordEditor: View {
   let context: WorkspaceEditingContext?
   let onSaved: () -> Void
   let recordFields: [CatalogField]
+  let linkWaiting: Bool
+  let onDuplicate: (RecordEditorModel) -> Void
   let isCurrent: @MainActor () -> Bool
   @Environment(\.dismiss) private var dismiss
   @State private var editor: RecordEditorModel
@@ -465,25 +767,35 @@ private struct RecordEditor: View {
   @State private var saving = false
   @State private var discard = false
   @State private var actionFailure: String?
+  @State private var duplicating = false
+  @State private var preparedCopy: RecordEditorModel?
+  @State private var confirmDuplicate = false
   @FocusState private var focusedField: String?
 
   init(
     model: WorkspaceModel, original: WorkspaceRecord?, context: WorkspaceEditingContext?,
-    recovered: StoredEditorDraft?, isCurrent: @escaping @MainActor () -> Bool,
-    onReference: @escaping (ReferenceDestination) -> Void, onSaved: @escaping () -> Void
+    recovered: StoredEditorDraft?, preparedEditor: RecordEditorModel? = nil,
+    linkWaiting: Bool = false, isCurrent: @escaping @MainActor () -> Bool,
+    onReference: @escaping (ReferenceDestination) -> Void,
+    onDuplicate: @escaping (RecordEditorModel) -> Void = { _ in },
+    onSaved: @escaping () -> Void
   ) {
     self.model = model
     self.context = context
     self.onSaved = onSaved
     self.isCurrent = isCurrent
+    self.linkWaiting = linkWaiting
+    self.onDuplicate = onDuplicate
     recordFields = model.properties.map(CatalogField.init)
-    let source = RecordEditorModel(
-      properties: model.properties,
-      original: original, table: context?.table ?? "", store: context?.draftStore,
-      recovered: recovered
-    ) { patch, baseline in
-      try await model.save(patch, original: baseline, context: context)
-    }
+    let source =
+      preparedEditor
+      ?? RecordEditorModel(
+        properties: model.properties,
+        original: original, table: context?.table ?? "", store: context?.draftStore,
+        recovered: recovered
+      ) { patch, baseline in
+        try await model.save(patch, original: baseline, context: context)
+      }
     _editor = State(initialValue: source)
     _referenceNavigation = State(
       initialValue: context.map {
@@ -496,6 +808,12 @@ private struct RecordEditor: View {
   var body: some View {
     NavigationStack {
       Form {
+        if linkWaiting {
+          Section {
+            Text("A link is waiting. Save or close this record to open it.")
+              .foregroundStyle(.secondary).accessibilityIdentifier("link-waiting-editor")
+          }
+        }
         if let action = model.undoAction {
           Section {
             Button {
@@ -592,7 +910,22 @@ private struct RecordEditor: View {
             } header: {
               Text(field.label)
             } footer: {
-              Text(field.help)
+              VStack(alignment: .leading, spacing: 4) {
+                if !field.help.isEmpty { Text(field.help) }
+                if editor.isNew, let preview = field.defaultPreview {
+                  if editor.draft.usesDefault(field.id) {
+                    // Choice pickers already name the default as their empty choice.
+                    if !["select", "multi_select"].contains(field.type) {
+                      Text("Default: \(preview)")
+                    }
+                    Button("Leave empty") { editor.setValue("", for: field.id, explicit: true) }
+                      .accessibilityIdentifier("leave-empty-\(field.id)")
+                  } else if (editor.draft.values[field.id] ?? "").isEmpty {
+                    Text("Saved empty instead of the default.")
+                      .accessibilityIdentifier("empty-instead-of-default-\(field.id)")
+                  }
+                }
+              }
             }
             .disabled(editor.recovery != nil)
           }
@@ -621,6 +954,16 @@ private struct RecordEditor: View {
           }
         }
         if let original = editor.draft.original {
+          if let identity = model.incomingReferencesIdentity(context: context, row: original) {
+            IncomingReferencesView(
+              makeModel: {
+                model.makeIncomingReferences(
+                  context: context, row: original, isCurrent: editorIsCurrent)
+              },
+              canOpen: !editor.saving, onOpenRecord: openReference
+            )
+            .id(identity)
+          }
           Section("Record") {
             ForEach(original.keys.sorted(), id: \.self) { key in
               if !editor.draft.fields.contains(where: { $0.id == key }) || !model.canWrite
@@ -646,6 +989,11 @@ private struct RecordEditor: View {
           }
           if model.canWrite && !editor.isTrashed {
             Section {
+              Button("Duplicate record", action: duplicate)
+                .disabled(
+                  duplicating || editor.saving || editor.recovery != nil || editor.needsReview
+                )
+                .accessibilityIdentifier("duplicate-record")
               Button(
                 "Move to trash", role: .destructive
               ) {
@@ -692,6 +1040,20 @@ private struct RecordEditor: View {
             }.disabled(editor.saving)
           }
         }
+        if let id = editor.draft.original?["id"]?.text, let context {
+          ToolbarItem(placement: .primaryAction) {
+            Button {
+              do {
+                let url = try model.linkURL(
+                  for: NativeDestination(table: context.table, rowID: id), context: context)
+                CopyDraftButton.copy(url.absoluteString)
+                actionFailure = nil
+              } catch { actionFailure = error.localizedDescription }
+            } label: {
+              Label("Copy link", systemImage: "link")
+            }.disabled(!model.canCopyLink).accessibilityIdentifier("copy-record-link")
+          }
+        }
         if model.canWrite && !editor.isTrashed {
           ToolbarItem(placement: .confirmationAction) {
             Button("Save") { save() }.disabled(
@@ -703,6 +1065,29 @@ private struct RecordEditor: View {
       }
       .disabled(saving || editor.undoing || referenceNavigation?.loading == true)
       .interactiveDismissDisabled(saving || editor.saving || editor.dirty || editor.recovery != nil)
+      .confirmationDialog(
+        "Discard unsaved changes and duplicate?", isPresented: $confirmDuplicate,
+        titleVisibility: .visible
+      ) {
+        Button("Discard changes and duplicate", role: .destructive) {
+          guard let copy = preparedCopy else { return }
+          preparedCopy = nil
+          do {
+            try editor.discardDraft()
+            onDuplicate(copy)
+          } catch {
+            discardPreparedCopy(copy)
+            actionFailure = error.localizedDescription
+          }
+        }
+      }
+      .onChange(of: confirmDuplicate) {
+        // Keeping the source draft also removes the unused copy's journal.
+        if !confirmDuplicate, let copy = preparedCopy {
+          preparedCopy = nil
+          discardPreparedCopy(copy)
+        }
+      }
       .confirmationDialog(
         "Discard unsaved changes?", isPresented: $discard, titleVisibility: .visible
       ) {
@@ -759,6 +1144,51 @@ private struct RecordEditor: View {
     Task {
       _ = await referenceNavigation?.open(table: table, id: id)
     }
+  }
+
+  private func duplicate() {
+    guard let context, let id = editor.draft.original?["id"]?.text, !duplicating else { return }
+    focusedField = nil
+    duplicating = true
+    actionFailure = nil
+    Task {
+      defer { duplicating = false }
+      do {
+        // Copy a fresh full row, never the possibly stale or projected editor baseline.
+        let resolved = try await NativeDestinationResolver(workspace: context.workspace).resolve(
+          NativeDestination(table: context.table, rowID: id), isCurrent: editorIsCurrent)
+        guard let row = resolved.row?.record, row["deleted_at"]?.text.nonempty == nil else {
+          throw WorkspaceError(
+            message: "This record is no longer available locally.", violations: [])
+        }
+        guard model.canWrite else {
+          throw WorkspaceError(
+            message: model.editingUnavailable ?? "This table is read-only.", violations: [])
+        }
+        let copy = RecordEditorModel(
+          properties: model.properties, original: nil, table: context.table,
+          store: context.draftStore, recovered: nil
+        ) { patch, baseline in
+          try await model.save(patch, original: baseline, context: context)
+        }
+        try copy.installDuplicateDraft(from: row, isCurrent: editorIsCurrent)
+        guard editorIsCurrent() else {
+          discardPreparedCopy(copy)
+          return
+        }
+        if editor.dirty {
+          preparedCopy = copy
+          confirmDuplicate = true
+        } else {
+          onDuplicate(copy)
+        }
+      } catch is CancellationError {
+      } catch { actionFailure = error.localizedDescription }
+    }
+  }
+
+  private func discardPreparedCopy(_ copy: RecordEditorModel) {
+    do { try copy.discardDraft() } catch { actionFailure = error.localizedDescription }
   }
 
   private func discardSavedDraft(close: Bool) {
@@ -825,7 +1255,15 @@ private struct FieldInput: View {
             }
           }
         }.accessibilityIdentifier("field-\(field.id)")
-      } else if ["json", "multi_select"].contains(field.type) {
+      } else if ["select", "multi_select"].contains(field.type) {
+        NativeChoiceField(
+          field: field, isNew: editor.isNew, value: $value, workspace: workspace,
+          focus: focus, isCurrent: isCurrent)
+      } else if let kind = NativeDateKind(rawValue: field.type) {
+        NativeDateField(field: field, kind: kind, focus: focus, value: $value)
+      } else if ["url", "email", "phone"].contains(field.type) {
+        NativeLinkField(field: field, focus: focus, value: $value)
+      } else if field.type == "json" {
         VStack(alignment: .leading, spacing: 8) {
           Text("JSON source").font(.caption)
             .foregroundStyle(.secondary)
@@ -838,16 +1276,6 @@ private struct FieldInput: View {
           Text("Not set").tag("")
           Text("True").tag("true")
           Text("False").tag("false")
-        }.accessibilityIdentifier("field-\(field.id)")
-      } else if field.type == "select" && !field.options.isEmpty
-        && field.property["options_sql"]?.text.nonempty == nil
-      {
-        Picker(field.label, selection: $value) {
-          Text(field.property["default_value"]?.text.nonempty.map { "Default: \($0)" } ?? "Not set")
-            .tag("")
-          ForEach(Array(Set(field.options + (value.isEmpty ? [] : [value]))).sorted(), id: \.self) {
-            Text($0).tag($0)
-          }
         }.accessibilityIdentifier("field-\(field.id)")
       } else {
         TextField(field.label, text: $value, axis: .vertical)

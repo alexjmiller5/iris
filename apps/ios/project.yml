@@ -35,6 +35,10 @@ targets:
         CFBundleDisplayName: Life UI
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.alexmiller.life-ui.open
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes: [life]
   LifeUITests:
     type: bundle.unit-test
     platform: iOS

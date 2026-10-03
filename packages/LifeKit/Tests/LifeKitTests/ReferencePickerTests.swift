@@ -124,7 +124,7 @@ struct ReferencePickerTests {
     #expect(model.selection.value == #"["missing","existing"]"#)
   }
 
-  @Test func missingReferencesRemainInTheDraftWhenCoreRejectsAnEdit() async throws {
+  @Test func missingReferencesStayStoredAndOnlyCarriedOnesAreRejected() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let topic = try #require(try await workspace.rows(table: "topics", search: "Ideas").first)
@@ -147,15 +147,22 @@ struct ReferencePickerTests {
     draft.values["title"] = "Unrelated edit"
     #expect(draft.patch["topic"] == nil)
     #expect(draft.patch["related"] == nil)
+    // Like the hub, an edit only claims the cells it carries.
+    let edited = try await workspace.write(
+      table: "notes", patch: draft.patch, expectedUpdatedAt: created["updated_at"]?.text)
+    #expect(edited["topic"] == created["topic"])
+    #expect(edited["related"] == created["related"])
     do {
       _ = try await workspace.write(
-        table: "notes", patch: draft.patch, expectedUpdatedAt: created["updated_at"]?.text)
-      Issue.record("Missing references were silently accepted")
+        table: "notes",
+        patch: ["id": try #require(created["id"]), "related": try #require(created["related"])],
+        expectedUpdatedAt: edited["updated_at"]?.text)
+      Issue.record("A carried missing reference was silently accepted")
     } catch let error as WorkspaceError {
       #expect(error.violations.contains { $0.rule == "ref" })
     }
     let stored = try #require(
-      try await workspace.rows(table: "notes", search: "Missing reference fixture").first)
+      try await workspace.rows(table: "notes", search: "Unrelated edit").first)
     #expect(stored.record["topic"] == created["topic"])
     #expect(stored.record["related"] == created["related"])
     #expect(draft.values["related"] == created["related"]?.text)

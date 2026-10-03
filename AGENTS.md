@@ -81,12 +81,28 @@ persist only destination tuples; their model records a visit only after the host
 commits navigation. A failed preference read keeps new visits in memory and must
 never replace unread history. The temporary sample uses memory-only recents.
 
+Native Quick Find combines table/view metadata with the existing record search.
+Discover metadata once per opening except for explicit retries, keeping paging
+and metadata failures independent. Retain selection by exact destination identity
+as results arrive, and keep unavailable choices visible with their reason.
+Resolve every choice freshly before host activation. Closing disposes both reads;
+record navigation is recorded only after the pending editor actually installs.
+
 Web destination URLs carry only table, stable saved-view and record identifiers.
 Resolve them against the explicitly opened workspace's fresh catalog, saved view
 and full row. Use SvelteKit navigation hooks for browser history so cancelling
 Back restores the URL as well as the draft. Do not use shallow history entries
 that bypass those hooks. Ignore superseded lookup replies and block writes while
 resolving a linked record. Unsaved view settings and credentials stay out of URLs.
+
+Native `life://open/v1` links follow `docs/native-deep-links.md`. Receiving a URL
+only fills the single pending-link banner; it never opens, enrolls or switches a
+workspace. Open requires the same idle state as Find, matches the retained binding
+and reuses `openDestination`; clear the request only after the destination
+installs, and keep it with its error otherwise. Copy only after encoding and
+identity persistence succeed. Native Duplicate reads a fresh full active row into
+a new prepared editor, confirms discard only for a dirty source, and removes the
+unused copy's journal when the user keeps editing.
 
 Saved views use the core contract and the canonical `core/schema/saved-views.json`
 manifest vendored by `bundle-core.ts`. Only explicit app-owned local/sample
@@ -106,12 +122,18 @@ alerts by event id, and never expose bearer tokens in device lists. First contac
 baselines history; delivery checkpoints advance after successful scheduling.
 Persist alert IDs byte for byte and compare their UTF-8 bytes; Swift String
 sets can collapse distinct event IDs. Checkpoint files retain their JSON arrays.
+Notification and usage-device rows also use byte-exact keys. Keep the original
+event IDs in mark-read requests.
 Native permission is requested only by the explicit Enable alerts action.
 Usage is deployment-scoped; provider-wide billing APIs do not belong in clients.
 
 ## Data integrity
 
 Components call the shared write path; no component SQL writes.
+Typed web link actions are presentation only: keep the original draft text,
+restrict websites to HTTP(S), encode email recipient text and reject phone
+service codes. Keep open actions available on read-only properties and isolate
+external tabs from the editor. Malformed source must not break rendering.
 The SQL adapter read path accepts exactly one read-only statement. Parse the
 whole input before stepping; reject writes and connection-changing commands
 from catalog options/default expressions. Trusted schema replay stays separate. Pass the opened
@@ -121,6 +143,14 @@ silently discarding later typing. Web body autosave writes only editable Markdow
 columns on existing rows; it updates the acknowledged baseline without replacing
 the live draft. Failed identical patches must not loop. Preserve unknown existing
 multi-select values.
+
+Native catalog choices load through `NativeWorkspace.options`; controls only
+change draft bindings. Keep selected unknown choices and exact UTF-8 option keys,
+and expose malformed multi-select source for explicit repair. Late option replies
+must not replace a closed editor's state. Date controls preserve untouched source
+and use explicit UTC for datetimes; invalid values never silently become today.
+Link actions require explicit taps and supported schemes. Core remains the only
+validator and writer.
 
 Session Undo uses the core's one volatile receipt. Display the action as
 "Undo last saved change" and submit that displayed receipt ID; never reconstruct
@@ -136,8 +166,13 @@ unchanged affected cell; leave another row's cell draft untouched. Creation Undo
 retains the draft beside a read-only tombstone, and Restore preserves it.
 
 Native recovery journals are private, atomic and isolated per editor. Persist
-the latest draft and any unacknowledged write before awaiting its receipt. Keep
-app-owned workspace identities stable across container relocation; external
+the latest draft and any unacknowledged write before awaiting its receipt.
+Keep new-record defaults omitted until a field is explicitly edited. An explicit
+clear is null, while copied SQL empty text stays an empty string; unchanged
+Markdown snapshots do not count as edits. Duplicate preparation uses a new
+nil-recordID journal, preserves older variants and never writes a database row
+before Save.
+Keep app-owned workspace identities stable across container relocation; external
 databases use canonical paths. Recovery never rebases an old draft implicitly.
 Copy/review into a fresh editor or explicitly discard the retained draft.
 Record and reference IDs are opaque UTF-8 values. Native equality, collection
@@ -180,8 +215,14 @@ view generation so a table round trip cannot revive an old panel.
 Incoming row deduplication and SwiftUI row identity use `byteExactID` (UTF-8
 bytes), since Swift String equality merges some distinct SQLite record IDs.
 Keep the original String ID for requests and navigation.
-The macOS table uses byte-exact wrapper identities and passes full rows to the
-existing editor. Saved columns affect presentation only; an explicit empty list
+Native saved-record editors mount incoming references as a separate child section.
+Dispose and recreate its model when a lazy Form removes and restores that child;
+never reuse a disposed instance or attach the panel identity to the editor.
+Group rows use the existing guarded reference navigation and disable opening while
+an editor write is pending. Keep accessibility identifiers off an enclosing
+DisclosureGroup: SwiftUI can propagate them over individual child controls.
+The macOS table uses byte-exact wrapper identities and opens records through the
+same fresh-row navigation as the list. Saved columns affect presentation only; an explicit empty list
 still leaves the record-opening column. Keep notices and recovery actions bounded
 and scrollable so they cannot consume the grid. Native column resizing is temporary;
 persisted layout comes from the saved-view definition. macOS before 14.4 uses the
@@ -198,6 +239,30 @@ into local rows, FTS, cursors, coverage or pending edits. Preserve server paging
 cursors when deduplicating IDs, re-read a selected ID, show tombstones, and
 invalidate late replies on close or workspace/connection changes. Caps are
 shown without automatic retries or alternate routes.
+Web rejected edits come from the generated core `rejections` operation, never host SQL
+or JSON decoding of bookkeeping tables. The inbox loads 100 at a time and shows
+the independent status total. A malformed page remains visible with Retry, keeps
+loaded entries and its offset, and never deletes stored data or blocks opening
+local records. Reset paging after a refreshed snapshot; ignore replies from older
+snapshots or closed workspaces. Review uses a fresh full local row and its revision,
+with rejected values held as a draft and autosave paused until explicit Save.
+Tombstones remain read-only until Restore, preserving that review draft. A saved
+correction stays in the inbox until sync accepts it.
+The native inbox model uses the same generated read operation and keeps its status
+total optional until that read succeeds. It pages by core offsets, preserves exact
+UTF-8 table/row identities, and requires a workspace-current closure plus disposal
+on close. The workspace Issues sheet owns refresh, paging and disposal, including
+refresh after sync and reopening offline. Prepare the review against fresh catalog,
+full row and writeability before dismissing Issues. Recheck workspace, query and
+request identity after dismissal, then install the already-persisted editor and
+record recents. A cancelled handoff keeps its journal and never changes navigation.
+Prepare rejected values with `RecordEditorModel.installRejectedDraft` on a fresh
+editor before changing navigation. It preserves the current row/revision, copies
+only loaded editable fields and persists a distinct, paused journal. Keep existing
+recovery variants; never resume an old journal to obtain a fresh rejection review.
+Journal failures abort presentation. Explicit Save and Restore use the normal
+writer; only accepted sync receipts remove durable inbox entries.
+
 Pending UI edits await the core's own valid receipt; this is not the CLI queue.
 Never report a write as saved or a round as synced before its promise succeeds.
 Web sync failures also broadcast database changes: individual pulls and receipts

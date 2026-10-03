@@ -247,6 +247,80 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertEqual(source.value as? String, "")
   }
 
+  func testDuplicateCopiesTheSavedRecordAndDiscardsDirtySourceOnlyAfterConfirmation() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    let name = "Duplicate source " + UUID().uuidString.prefix(8)
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    let title = app.textFields["field-title"]
+    tapWhenReady(title)
+    title.typeText(name)
+    tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
+    XCTAssertTrue(app.navigationBars["New record"].waitForNonExistence(timeout: 10))
+    openRecord(app, title: name)
+    tapWhenReady(title)
+    title.typeText(" dirty")
+    let dirty = try XCTUnwrap(title.value as? String)
+    let duplicate = app.buttons["duplicate-record"]
+    for _ in 0..<10 where !duplicate.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(duplicate)
+    let confirmation = app.sheets["Discard unsaved changes and duplicate?"]
+    XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+    // iOS presents this confirmation as a popover; tapping outside keeps editing.
+    let outside = app.navigationBars["Record"].staticTexts["Record"]
+    XCTAssertFalse(confirmation.frame.intersects(outside.frame))
+    outside.tap()
+    XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
+    for _ in 0..<10 where !title.isHittable { app.swipeDown() }
+    XCTAssertEqual(title.value as? String, dirty)
+    for _ in 0..<10 where !duplicate.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(duplicate)
+    tapWhenReady(app.buttons["Discard changes and duplicate"])
+    XCTAssertTrue(app.navigationBars["New record"].waitForExistence(timeout: 10))
+    XCTAssertEqual(title.value as? String, name, "The copy starts from the saved row")
+    tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
+    XCTAssertTrue(app.navigationBars["New record"].waitForNonExistence(timeout: 10))
+    let copies = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name))
+    let both = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in MainActor.assumeIsolated { copies.count == 2 } },
+      object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [both], timeout: 10), .completed)
+    XCTAssertEqual(
+      app.buttons.matching(NSPredicate(format: "label CONTAINS %@", " dirty")).count, 0,
+      "Discarding the source draft must not save it")
+    XCTAssertFalse(
+      app.buttons["resume-unsaved-draft"].exists,
+      "Keeping the source and saving the copy leave no orphaned journal")
+  }
+
+  func testLeaveEmptySavesNullInsteadOfTheCatalogDefault() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    let name = "Leave empty " + UUID().uuidString.prefix(8)
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    let title = app.textFields["field-title"]
+    tapWhenReady(title)
+    title.typeText(name)
+    let leaveEmpty = app.buttons["leave-empty-status"]
+    for _ in 0..<10 where !leaveEmpty.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(leaveEmpty)
+    XCTAssertTrue(app.staticTexts["empty-instead-of-default-status"].waitForExistence(timeout: 5))
+    XCTAssertFalse(leaveEmpty.exists)
+    tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
+    XCTAssertTrue(app.navigationBars["New record"].waitForNonExistence(timeout: 10))
+    openRecord(app, title: name)
+    let status = app.buttons["field-status"]
+    for _ in 0..<10 where !status.isHittable { scrollRecordFormUp(app) }
+    let shown = status.label + " " + ((status.value as? String) ?? "")
+    XCTAssertTrue(shown.contains("Not set"), shown)
+    XCTAssertFalse(shown.contains("Draft"), "The catalog default must not be applied: \(shown)")
+    XCTAssertFalse(app.buttons["leave-empty-status"].exists, "Saved records have no defaults")
+  }
+
   func testOnlineBrowseOpensReadOnlyFreshRecordAndKeepsLocalEditorSeparate() throws {
     guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
       throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")

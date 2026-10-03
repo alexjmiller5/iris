@@ -45,6 +45,9 @@ storage transfer is required.
   visible first, and hidden properties remain available when editing the record.
 - Create/edit typed fields, search related records by their display names,
   write Markdown with rich formatting or source editing, and move records to trash or restore them.
+- Website, email and phone fields offer explicit open actions. Websites open in
+  a separate tab; the draft stays in the editor. Open actions also work when a
+  property's editing control is disabled.
 - Open a selected related record with its arrow button. Opening reads its current
   full row and prompts before discarding a draft. Multi-reference Remove buttons
   are separate; missing or trashed targets leave the current editor intact.
@@ -126,27 +129,67 @@ Markdown, and trash/restore rows. Sort and filter controls reset when
 changing tables or workspaces. Reference fields offer searchable record names;
 single and multiple choices save their underlying IDs through shared core.
 Unavailable selections remain in the draft until explicitly removed. Core
-rejects a save if its references are missing from the local replica.
+rejects a save that carries references missing from the local replica. Like the
+hub, an edit is judged only on the cells it carries, so stored values in other
+fields (including deprecated ones) do not block it.
 Selected references have a separate **Open** action, including on read-only
 records. Opening reads the complete current local row. Missing targets keep the
 source editor open with an explanation; skipped tables can still contain local
 records. Unsaved changes require **Discard changes and open** or **Keep editing**,
 and unrelated recovery drafts remain available.
+
+**Incoming references** groups stored records that link to the open record by
+source table and field. Expand a group to load 20 records, then choose **Load
+more records** for the next page. Opening a result uses the same fresh-row and
+unsaved-draft checks as other reference links. Read-only records remain
+navigable. Skipped-table coverage is shown explicitly, including after reopening
+offline; an empty local group does not imply that the hub has no matching rows.
+Scrolling and opening Markdown preserve the surrounding record draft.
+
 Catalog rules, read-only tables, validation, history and stale-revision checks
 come from shared core. An editor also captures its workspace and table, so
 changing connections cannot redirect a save. Unsaved drafts require explicit
 discard.
+
+The sidebar lists device-local recent destinations and a collapsible System
+tables section ([native recents](docs/native-recents.md)). **Find** (Cmd+K on the
+Mac) searches tables, saved views and records; each choice is re-read before it
+opens. **Copy link** in the records header copies a `life://` link to the table
+and applied saved view; the record editor copies a link to the saved record.
+Received links wait in a banner until **Open link** is chosen in the matching
+workspace, and never open a workspace, switch connections or replace an open
+editor ([link contract](docs/native-deep-links.md)). **Duplicate record** copies
+the current saved row into a new unsaved draft; nothing is written until Save.
+New records show each field's catalog default; **Leave empty** saves an empty
+value instead of that default.
+Select fields show catalog choices and their descriptions. Multi-select fields
+show removable choices and an **Add choice** menu. Choices supplied by a catalog
+query load from the open workspace and can be retried after an error. Unknown
+stored choices stay selected until explicitly removed; core still validates Save.
+**Edit JSON source** keeps malformed multi-select values available for repair.
+Opening a control does not rewrite its stored source.
+
+Dates retain their text source beside a native picker, with **Clear date** for an
+explicit unset value. Datetimes display in UTC; untouched milliseconds remain
+intact. An invalid date stays visible until edited or explicitly replaced.
+Boolean fields distinguish **Not set**, **True** and **False**. Website, email
+and phone fields offer explicit system open actions for supported addresses.
 Editing controls use core's current table advisory and show why editing is
 unavailable. The advisory refreshes after successful or failed sync; incomplete
 invariant coverage leaves records browsable. Saved-view writes check the views
 table separately. Every actual write rechecks its conditions transactionally.
 
-**Find** searches across locally stored tables using the shared FTS5 index;
-on macOS, press **Cmd+K**. Results show record names, table names and matching
-snippets, with 50 results per request. Opening a match reads the full current
-row and respects read-only tables. Find is unavailable while a record editor
-is open, so it cannot replace an unsaved draft. **Search this table** remains
-available for the current table. Skipped sync tables can make results incomplete.
+**Quick Find** offers tables and saved views before typing; on macOS, press
+**Cmd+K**. Type to filter destinations and search locally stored records through
+the shared FTS5 index. Use Up/Down to choose a result, then tap it or use the
+keyboard’s Go action on iOS. Unavailable views
+retain their reason, and metadata failures can be retried separately from record
+search. Record matches show names, table names and matching snippets, with 50
+records per request. Opening a destination reads its current view or full row,
+including trashed rows, and respects read-only tables. Find is unavailable while
+a record editor is open, so it cannot replace an unsaved draft. **Search this
+table** remains available for the current table. Skipped sync tables can make
+results incomplete.
 
 **Views** opens saved views for the current table. Apply a view, save the current
 settings as a new view, update its name or settings, or delete it without deleting
@@ -235,7 +278,12 @@ An established Keychain-backed replica reopens offline without requiring a fresh
 session response. Cached records appear before sync finishes. **Sync now** sends
 and receives updates; failures keep local records and edits available. Durable
 pending/rejected counts and the last successful sync remain visible while
-scrolling, with rejection details in the record list. **Forget saved connection**
+scrolling. Open **Issues** to page through durable rejected edits, including after
+reopening offline. **Review edit** opens the current local record with the rejected
+editable values held in a paused draft. Save a correction, then sync; only an
+accepted sync removes the inbox entry. Trashed records require Restore first,
+which keeps the review draft. A failed or cancelled review keeps existing drafts
+and navigation intact. **Forget saved connection**
 removes the local Keychain entry and keeps the replica; it does not revoke the
 device at the hub. Use the hub's device controls to revoke access separately.
 
@@ -364,6 +412,10 @@ LIFE_UI_TEST_HUB_PORT=5201 LIFE_UI_TEST_ORIGIN=http://localhost:5196 \
   bun scripts/test-hub.ts /path/to/life-data
 # Open http://localhost:5196/workspace in another dedicated test page.
 bun scripts/test-rejections.ts
+# Durable inbox: 205 real hub rejections, bounded paging, corrupt-page retries,
+# paused repair/Restore, accepted receipts, offline reopen and stale replies.
+# Reserve http://life-ui-rejections.localhost:5238/workspace?review first.
+bun scripts/test-rejection-inbox.ts <life-data-checkout>
 # Open http://life-ui-write-fixes.localhost:5196/workspace?review in its own page.
 bun scripts/test-workspace-regressions.ts /path/to/life-data
 # Open http://life-ui-sql-integrity.localhost:5198/workspace?review in its own page.
@@ -495,14 +547,16 @@ and iOS retain the record list. Native inline editing and Notes migration remain
 open work.
 The web sidebar includes device-local recent destinations and a collapsible
 System tables section. See [sidebar navigation](docs/sidebar-recents.md) for
-storage and availability behavior. Native sidebar parity remains open work.
+storage and availability behavior. Native Find activation with a hardware Return
+key and Mac Cmd+K have not been verified on a physical keyboard.
 
-Native references use named pickers and local record links; multi-select and JSON fields use source
+Native references use named pickers and local record links. Select and multi-select
+fields show catalog choices; malformed selections and JSON fields retain source
 editors. Native browse supports saved views, search, sort, combined filters,
 trash and pages of 100 rows. The Mac table honors saved column order and widths;
 resizing its columns is temporary. Native does not provide a saved grid-width or
-secondary-sort editor. Rejected edits retain
-their data and show errors; a dedicated repair workflow remains open. Sync
+secondary-sort editor. The Issues sheet
+retains rejected values and supports local correction with an explicit Save. Sync
 runs on connection and explicit request,
 not in the background. Native device approval installs a dedicated credential
 only after the hub session is validated; manual token entry is also available.

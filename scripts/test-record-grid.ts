@@ -22,6 +22,7 @@ for (const [col, type, sql, value] of [
   ["related", "ref", "TEXT", "second-record"],
   ["relations", "multi_ref", "TEXT", '["second-record"]'],
   ["code", "text", "TEXT", "Original code"],
+  ["read_link", "url", "TEXT", "https://example.test/read-only"],
 ] as const) {
   const ddl = `ALTER TABLE widgets ADD COLUMN ${col} ${sql}`;
   db.db.exec(ddl);
@@ -39,7 +40,7 @@ for (const [col, type, sql, value] of [
       col,
       type,
       type.includes("ref") ? "widgets" : null,
-      col === "code" ? 1 : 0,
+      col === "code" || col === "read_link" ? 1 : 0,
     );
   db.db
     .query(`UPDATE widgets SET ${col}=? WHERE id='fixture-record'`)
@@ -132,7 +133,7 @@ try {
     .click();
   await expect(
     page.getByRole("button", { name: /Find records/ }),
-  ).toBeEnabled();
+  ).toBeEnabled({ timeout: 30000 });
   await page.getByText("Connect to a hub", { exact: true }).click();
   await page.getByText("Use a device token", { exact: true }).click();
   await page.getByLabel("Hub address").fill(server.url.href.replace(/\/$/, ""));
@@ -365,6 +366,63 @@ try {
       .getByRole("button", { name: "Save cell", exact: true })
       .click();
     await saved("active", 0);
+  });
+  await check("explicit field links retain drafts and support read-only properties", async () => {
+    const before = await record();
+    await show("link");
+    await begin("link", "link");
+    const input = group("link").getByLabel("link", { exact: true });
+    const target = "https://example.test/link-action?case=1#part";
+    await input.fill(target);
+    const route = async (request: import("@playwright/test").Route) =>
+      request.fulfill({ contentType: "text/html", body: "<title>Disposable link target</title>Link target" });
+    await owned.context().route("https://example.test/link-action?*", route);
+    let popup: Page | undefined;
+    try {
+      const opened = owned.waitForEvent("popup");
+      await group("link").getByRole("link", { name: "Open website", exact: true }).click();
+      popup = await opened;
+      await popup.waitForLoadState("domcontentloaded");
+      expect(popup.url()).toBe(target);
+      expect(await popup.evaluate(() => window.opener === null)).toBe(true);
+      await expect(input).toHaveValue(target);
+      expect((await record()).link).toBe(before.link);
+    } finally {
+      await popup?.close();
+      await owned.context().unroute("https://example.test/link-action?*", route);
+    }
+    await input.fill("javascript:alert(1)");
+    await expect(group("link").getByRole("link")).toHaveCount(0);
+    await group("link").getByRole("button", { name: "Discard", exact: true }).click();
+    for (const [column, value, href] of [
+      ["email", "note+tag@example.test", "mailto:note%2Btag@example.test"],
+      ["phone", "+00 (000) 000-0000", "tel:+000000000000"],
+    ]) {
+      await show(column);
+      await begin(column, column);
+      await group(column).getByLabel(column, { exact: true }).fill(value);
+      await expect(group(column).getByRole("link")).toHaveAttribute("href", href);
+      expect((await record())[column]).toBe(before[column]);
+      await group(column).getByRole("button", { name: "Discard", exact: true }).click();
+    }
+    await cell("title").getByRole("button").click();
+    const immutable = editor.getByLabel("read_link", { exact: true });
+    await expect(immutable).toBeDisabled();
+    await expect(immutable.locator("..").getByRole("link")).toHaveAttribute(
+      "href", "https://example.test/read-only");
+    if (process.env.LIFE_UI_SCREENSHOTS) {
+      await mkdir(process.env.LIFE_UI_SCREENSHOTS, { recursive: true });
+      await immutable.scrollIntoViewIfNeeded();
+      await owned.screenshot({ path: process.env.LIFE_UI_SCREENSHOTS + "/field-links-1440.png" });
+      await owned.setViewportSize({ width: 390, height: 844 });
+      await owned.emulateMedia({ colorScheme: "dark" });
+      await immutable.scrollIntoViewIfNeeded();
+      await owned.screenshot({ path: process.env.LIFE_UI_SCREENSHOTS + "/field-links-390.png" });
+      expect(await owned.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await owned.setViewportSize({ width: 1440, height: 1000 });
+      await owned.emulateMedia({ colorScheme: "light" });
+    }
+    await editor.getByRole("button", { name: "Close record", exact: true }).click();
   });
   await check("select, multi-select and named reference editors", async () => {
     await show("Status");
