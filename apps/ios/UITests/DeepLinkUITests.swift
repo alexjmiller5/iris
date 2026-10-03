@@ -27,6 +27,14 @@ final class DeepLinkUITests: XCTestCase {
     element.tap()
   }
 
+  /// The shared simulator workspace can hold other fixture tables; use the sample notes.
+  private func openNotes(_ app: XCUIApplication) {
+    if app.navigationBars["notes"].waitForExistence(timeout: 3) { return }
+    tap(app.navigationBars.buttons["BackButton"].firstMatch)
+    tap(app.buttons["sidebar-table-notes"])
+    XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 10))
+  }
+
   private func copiedURL(_ button: XCUIElement) throws -> URL {
     UIPasteboard.general.string = "clipboard sentinel"
     tap(button)
@@ -43,6 +51,7 @@ final class DeepLinkUITests: XCTestCase {
   func testCopyAndColdURLRemainPendingUntilTheMatchingLocalWorkspaceIsOpened() throws {
     let app = try application()
     tap(app.buttons["open-local"])
+    openNotes(app)
     let url = try copiedURL(app.buttons["copy-workspace-link"])
     let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
     XCTAssertEqual(Set(items.map(\.name)), ["local", "table"])
@@ -65,6 +74,7 @@ final class DeepLinkUITests: XCTestCase {
   func testIncomingRecordLinkKeepsDirtyEditorAndCancelledDiscardUntilExplicitOpen() throws {
     let app = try application()
     tap(app.buttons["open-local"])
+    openNotes(app)
     tap(app.buttons["new-record"])
     let title = app.textFields["field-title"]
     tap(title)
