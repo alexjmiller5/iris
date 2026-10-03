@@ -96,6 +96,8 @@ endpoints here. life-core owns service validation, feed pagination and presentat
 policy. Isolate cached state by signed-in deployment, deduplicate native/feed
 alerts by event id, and never expose bearer tokens in device lists. First contact
 baselines history; delivery checkpoints advance after successful scheduling.
+Persist alert IDs byte for byte and compare their UTF-8 bytes; Swift String
+sets can collapse distinct event IDs. Checkpoint files retain their JSON arrays.
 Native permission is requested only by the explicit Enable alerts action.
 Usage is deployment-scoped; provider-wide billing APIs do not belong in clients.
 

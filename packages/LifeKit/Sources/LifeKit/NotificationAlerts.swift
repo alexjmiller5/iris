@@ -10,7 +10,8 @@ import UserNotifications
 struct NotificationAlertState: Codable {
   var enabled = false
   var baseline: Int?
-  var deliveredIDs: Set<String> = []
+  // Keep the existing JSON array format without String Set's Unicode folding.
+  var deliveredIDs: [String] = []
 }
 
 @MainActor final class NotificationAlerts {
@@ -41,14 +42,16 @@ struct NotificationAlertState: Codable {
     _ presentation: NotificationPresentation, endpoint: String, isCurrent: () -> Bool = { true }
   ) async throws {
     var next = try state(endpoint: endpoint)
+    var delivered = Set(next.deliveredIDs.map { Data($0.utf8) })
     if next.enabled {
       for notification in presentation.notifications
-      where !next.deliveredIDs.contains(notification.id) {
+      where !delivered.contains(Data(notification.id.utf8)) {
         try Task.checkCancellation()
         guard isCurrent() else { throw CancellationError() }
         try await delivery.present(
           notification, identifier: "life-ui." + digest(endpoint) + "." + digest(notification.id))
-        next.deliveredIDs.insert(notification.id)
+        next.deliveredIDs.append(notification.id)
+        delivered.insert(Data(notification.id.utf8))
         // Preserve successful IDs across retries if a later delivery fails.
         try save(next, endpoint: endpoint)
       }
