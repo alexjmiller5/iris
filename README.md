@@ -8,9 +8,30 @@ query, write and sync implementation. No PWA or analytics.
 
 Open the app, then choose **Open my workspace** or **Try sample workspace**.
 The sample has its own persistent database and cannot sync to an account.
-Your workspace accepts a hub URL and app-issued device token. The token stays
-in memory for that browser session; stored rows remain available without it.
-The hub must allow the web app's origin through CORS.
+In **Connect to a hub**, enter its address and choose **Approve this browser**.
+Open the approval page, compare the displayed code, and approve through the hub's
+owner sign-in. Return to Life UI while it waits for approval. The browser creates
+its own device token; only its SHA-256 fingerprint appears in the approval link.
+The token stays in memory for that browser session. The hub must allow this web
+app's origin through CORS, including its existing session endpoint.
+
+**Use a device token** is an explicit alternative: paste a dedicated full device
+token, then choose **Sync now**. New credentials are validated before replacing
+the current connection; root/admin and restricted tokens cannot open replicas.
+A hub cap still permits enrollment and usage/notification access. Download limits
+remain separate from enrollment.
+
+Approval waits up to five minutes. Cancel, a different address, workspace changes
+or a replacement attempt stop it and invalidate late responses. Cancellation
+attempts to revoke only the newly generated candidate. An unauthorized cleanup
+response does not prove cancellation: approval links do not expire at the hub,
+so revoke an abandoned device through the hub if it is approved later.
+
+Closing or switching workspaces forgets the in-memory credential and preserves
+local rows for offline use. Forgetting is not revocation. Revoke an established
+device through the hub's device management page. A replacement browser/device
+creates a fresh credential through the same approval flow; no token export or
+storage transfer is required.
 
 - Browse catalog tables, search and sort records. Added filters combine with AND;
   remove individual filter chips or clear them together.
@@ -244,6 +265,14 @@ canonical; `just gen` regenerates the ignored Xcode projects.
 cache paths, which default under `~/Library/Developer`.
 
 Browser smoke tests attach to a dedicated, already-open Chrome CDP page:
+The enrollment runner uses only `http://life-ui-enrollment.localhost:5230/workspace?review`
+and disposable actual Worker auth state:
+
+```sh
+bun scripts/test-enrollment-host.ts /path/to/life-data
+bun scripts/test-enrollment.ts /path/to/life-data
+```
+
 Run them sequentially: concurrent Playwright connections to one browser can
 interfere with each other's confirmation dialogs. Keep source generators and
 type checks idle during these tests to avoid development-server reloads.

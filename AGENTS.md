@@ -118,7 +118,18 @@ can commit before a later request fails. Refresh rows, counts and writeability
 in every open tab while retaining editor drafts and the original sync error.
 
 Credentials cross the supported client seam as a hub URL and app-issued token.
-Browser tokens are session-only; native tokens use Keychain. Provider credentials
+Browser tokens are session-only; native tokens use Keychain.
+Browser enrollment consumes generated core approval/session/poll/revocation
+operations. Hosts own Web Crypto (24 random bytes plus SHA-256), monotonic timing,
+fixed bounded GET/POST session transport and cancellation. Never duplicate core
+identity or replica eligibility policy. Check the existing main-schema core and
+Python hub bindings before showing an approval link or sending session credentials;
+sync rechecks its authoritative binding before transport. Reject late results
+on cancellation, timeout, replacement or workspace closure. Publish a validated
+replacement connection only after sync succeeds or its exact cap response, and
+preserve the current connection on failures. Cancel attempts cleanup only for its
+own candidate; unauthorized is not revocation proof. Approval URLs carry a hash,
+never a bearer. Manual credentials use the same core session validation. Provider credentials
 stay service-side. Native SQL callbacks are trusted JSC-only, never exposed to
 web content. WebKit input uses parsed arguments and validated messages; the graph
 resource forbids navigation/network and contains its own script/style CSP hashes.

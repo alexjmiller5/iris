@@ -40,7 +40,7 @@ test('navigation fixture permits only its exact reserved host and review path', 
 
 // Exercise each real runner before it can load a fixture or attach to Chrome.
 // Removing the origin guard must fail these tests without clearing any storage.
-const scripts = ['test-services.ts', 'test-sql-integrity.ts', 'test-workspace-regressions.ts', 'test-markdown-editor.ts', 'test-editor-island.ts', 'test-body-autosave.ts', 'test-search.ts', 'test-search-sync.ts', 'test-typed-filters.ts', 'test-saved-views.ts', 'test-table-invariants.ts', 'test-partial-sync.ts', 'test-reference-navigation.ts', 'test-reference-mutations.ts', 'test-workspace-navigation.ts', 'test-navigation-mutations.ts', 'test-command-palette.ts', 'test-command-palette-mutations.ts'];
+const scripts = ['test-enrollment.ts', 'test-services.ts', 'test-sql-integrity.ts', 'test-workspace-regressions.ts', 'test-markdown-editor.ts', 'test-editor-island.ts', 'test-body-autosave.ts', 'test-search.ts', 'test-search-sync.ts', 'test-typed-filters.ts', 'test-saved-views.ts', 'test-table-invariants.ts', 'test-partial-sync.ts', 'test-reference-navigation.ts', 'test-reference-mutations.ts', 'test-workspace-navigation.ts', 'test-navigation-mutations.ts', 'test-command-palette.ts', 'test-command-palette-mutations.ts'];
 const unsafe = [
 	'https://example.com/workspace?review',
 	'http://localhost:5198/workspace?review',
@@ -63,3 +63,8 @@ for (const script of scripts) {
 		});
 	}
 }
+
+test('enrollment storage reset requires exactly the reserved origin and port',()=>{
+ expect(disposableOrigin('http://life-ui-enrollment.localhost:5230/workspace?review')).toBe('http://life-ui-enrollment.localhost:5230');
+ for(const address of ['http://life-ui-enrollment.localhost:5231/workspace?review','http://life-ui-enrollment.localhost/workspace?review','https://life-ui-enrollment.localhost:5230/workspace?review','http://life-ui-enrollment.localhost:5230/workspace','http://life-ui-enrollment.localhost.example.test:5230/workspace?review'])expect(()=>disposableOrigin(address)).toThrow('Refusing reset');
+});

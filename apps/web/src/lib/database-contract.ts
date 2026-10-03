@@ -10,6 +10,23 @@ export interface WorkspaceSnapshot {
 	rejected: Row[];
 }
 export interface DatabaseOperations {
+	enrollmentEndpoint: { args: { endpoint: string }; result: string };
+	enrollmentApproval: {
+		args: CoreArgs<'enrollmentApproval'>;
+		result: CoreResult<'enrollmentApproval'>;
+	};
+	validateDeviceSession: {
+		args: CoreArgs<'validateDeviceSession'>;
+		result: CoreResult<'validateDeviceSession'>;
+	};
+	enrollmentPollResult: {
+		args: CoreArgs<'enrollmentPollResult'>;
+		result: CoreResult<'enrollmentPollResult'>;
+	};
+	sessionRevocationResult: {
+		args: CoreArgs<'sessionRevocationResult'>;
+		result: CoreResult<'sessionRevocationResult'>;
+	};
 	open: { args: { demo?: boolean }; result: WorkspaceSnapshot };
 	close: { args: Record<string, never>; result: null };
 	snapshot: { args: Record<string, never>; result: WorkspaceSnapshot };

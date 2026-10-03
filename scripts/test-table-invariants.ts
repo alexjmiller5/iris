@@ -45,7 +45,7 @@ try {
   await page.goto(url);
   const open=async()=>{
     await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
-    await page.getByText('Connect to a hub',{exact:true}).click();
+    await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
     await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));
     await page.getByLabel('Device token').fill('fixture');
   };
@@ -113,7 +113,7 @@ try {
   const ddl='CREATE TRIGGER widgets_marker AFTER UPDATE ON widgets BEGIN SELECT 1; END';
   db.db.exec(ddl);
   db.db.query('INSERT INTO _schema_log(applied_at,ddl) VALUES (?,?)').run(new Date().toISOString(),ddl);
-  await page.getByText('Connect to a hub',{exact:true}).click();
+  await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
   await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));
   await page.getByLabel('Device token').fill('fixture');
   await sync();

@@ -41,7 +41,7 @@ try{
  });
  await page.goto(url);
  await page.getByRole('button' ,{name:'Open my workspace',exact:true}).click();
- await page.getByText('Connect to a hub',{exact:true}).click();
+ await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
  await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));await page.getByLabel('Device token').fill('fixture');
  await page.getByRole('button',{name:'Sync now',exact:true}).click();
  await page.getByRole('navigation',{name:'Tables'}).getByRole('button',{name:'widgets',exact:true}).click();
@@ -101,7 +101,7 @@ try{
  await page.getByLabel('View name',{exact:true}).fill('My unsaved rename');
  const remoteRevision=new Date(Date.now()+1000).toISOString();
  db.db.query('UPDATE views SET name=?,updated_at=?,hub_at=? WHERE id=?').run('Renamed elsewhere',remoteRevision,remoteRevision,copyId);
- await page.getByText('Connect to a hub',{exact:true}).click();
+ await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
  await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));
  await page.getByLabel('Device token').fill('fixture');
  await page.getByRole('button',{name:'Sync now',exact:true}).click();

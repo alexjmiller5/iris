@@ -7,6 +7,10 @@ if(!source)throw new Error('Usage: bun scripts/test-hub.ts <life-data-checkout>'
 const {default:worker}=await import(resolve(source,'worker/src/index.js'));
 const {D1Shim}=await import(resolve(source,'worker/test/d1shim.js'));
 const db=new D1Shim();
+const auth=new D1Shim();
+const {ensureAuthReady,hashToken}=await import(resolve(source,'worker/src/auth.js'));
+await ensureAuthReady(auth);
+await auth.prepare('INSERT INTO _tokens(hash,name,scopes) VALUES(?,?,?)').bind(await hashToken('fixture'),'device:fixture','full').run();
 db.db.exec('CREATE TABLE _schema_log(id INTEGER PRIMARY KEY,applied_at TEXT,ddl TEXT)');
 const system=`id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),deleted_at TEXT,hub_at TEXT`;
 for(const [name,columns] of Object.entries({
@@ -25,6 +29,6 @@ INSERT INTO catalog_properties(id,tbl,col,label,sort,type,required) VALUES ('wid
 INSERT INTO widgets(id,title,body,quantity) VALUES ('fixture-record','Fixture record','# From the hub',4);`);
 const port=Number(process.env.LIFE_UI_TEST_HUB_PORT??5200);
 const server=Bun.serve({hostname:'127.0.0.1',port,fetch(request){
-  return worker.fetch(request,{DB:db,HUB_TOKEN:'fixture',CORS_ORIGINS:process.env.LIFE_UI_TEST_ORIGIN??'http://127.0.0.1:5197'},{waitUntil(p:Promise<unknown>){void p.catch(()=>{});}});
+  return worker.fetch(request,{DB:db,HUB_TOKEN:'fixture-root',AUTH_DB:auth,CORS_ORIGINS:process.env.LIFE_UI_TEST_ORIGIN??'http://127.0.0.1:5197'},{waitUntil(p:Promise<unknown>){void p.catch(()=>{});}});
 }});
 console.log(`Synthetic hub listening at ${server.url}`);

@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "bun run --cwd apps/web dev",
-    "test": "bun test scripts/test-origin.test.ts scripts/contract.test.ts && bun run --cwd apps/web test",
+    "test": "bun test scripts/enrollment-binding.test.ts scripts/test-origin.test.ts scripts/contract.test.ts && bun run --cwd apps/web test",
     "check": "bun run check:contract && bun run check:bridge && bun run --cwd apps/web check",
     "build": "bun run --cwd apps/web build",
     "bundle:core": "bun scripts/bundle-core.ts",

@@ -33,6 +33,10 @@
 	import { WorkspaceDatabase } from '$lib/database';
 	import SchemaGraph from '$lib/SchemaGraph.svelte';
 	import HubServices from '$lib/HubServices.svelte';
+	import HubEnrollment from '$lib/HubEnrollment.svelte';
+	import type { HubConnection } from '$lib/device-enrollment';
+	let enrollment = $state<HubEnrollment>();
+	let enrolling = $state(false);
 	import SearchDialog from '$lib/SearchDialog.svelte';
 	import {
 		loadDestinations,
@@ -63,7 +67,7 @@
 		}
 	}
 
-	let database: WorkspaceDatabase | null = null;
+	let database = $state<WorkspaceDatabase | null>(null);
 	let ready = $state(false),
 		online = $state(true);
 	onMount(() => {
@@ -919,49 +923,65 @@
 		}
 	}
 	async function syncNow() {
-		if (!database || busy) return;
+		if (!database || busy || enrolling) return;
+		if (!connectedHub || connectedHub.endpoint !== endpoint || connectedHub.token !== token) {
+			await enrollment?.connectManual();
+			return;
+		}
+		await syncConnection(connectedHub, () => true).catch(() => {});
+	}
+	async function syncConnection(candidate: HubConnection, isCurrent: () => boolean) {
+		if (!database || busy || !isCurrent()) throw new Error('Connection is no longer current.');
 		const workspace = database;
-		let connection: { endpoint: string; token: string } | null = null;
+		const current = () => database === workspace && isCurrent();
+		let connection: HubConnection | null = null;
+		let accepted = false;
+		let failure: unknown;
 		busy = true;
 		error = '';
 		notice = 'Syncing';
 		try {
-			// A rejected endpoint switch must not change the service connection.
-			const hub = createHttpHub(endpoint, token, fetch);
-			connection = { endpoint: hub.endpoint, token };
+			const hub = createHttpHub(candidate.endpoint, candidate.token, fetch);
+			connection = { endpoint: hub.endpoint, token: candidate.token };
 			const result = await workspace.request('sync', {
 				...connection,
 				maxRows,
 				tables: $state.snapshot(included)
 			});
-			if (database !== workspace) return;
-			connectedHub = connection;
+			if (!current()) return;
+			accepted = true;
 			try {
 				localStorage.setItem('life-ui:replica', JSON.stringify({ maxRows, tables: included }));
 			} catch {
-				/* Sync remains valid when preference persistence is unavailable. */
+				/* Preference storage does not affect sync. */
 			}
 			notice = result.rejected.length
 				? 'Some edits need attention'
 				: `Synced: ${result.pulled} received, ${result.pushed} sent`;
-			await refresh();
 		} catch (e) {
-			if (database !== workspace) return;
-			// The core checks replica identity before HTTP. A cap must still let
-			// this deployment's usage and notifications explain the paused sync.
-			if (connection && message(e) === 'hub HTTP 429') connectedHub = connection;
+			if (!current()) return;
+			// Core binding checks precede HTTP. A cap still permits usage/notifications.
+			accepted = !!connection && message(e) === 'hub HTTP 429';
+			failure = e;
 			error = message(e);
 			notice = 'Sync did not finish. Local records remain available.';
-			// A failed round can still have committed pulls and individual receipts.
-			await refresh().catch(async (refreshError) => {
-				if (database !== workspace) return;
-				await loadWriteability();
-				if (database === workspace)
-					error = `${message(e)} Could not refresh local records: ${message(refreshError)}`;
-			});
 		} finally {
-			busy = false;
+			if (current()) {
+				// A refresh failure must not revoke a successfully installed credential.
+				await refresh().catch(async (e) => {
+					if (!current()) return;
+					await loadWriteability();
+					if (current()) error = `${error} Could not refresh local records: ${message(e)}`.trim();
+				});
+				if (current() && accepted && connection) {
+					connectedHub = connection;
+					endpoint = connection.endpoint;
+					token = connection.token;
+				}
+			}
+			if (database === workspace) busy = false;
 		}
+		if (current() && !accepted) throw failure ?? new Error('Connection failed.');
 	}
 	async function find() {
 		offset = 0;
@@ -1197,18 +1217,16 @@
 				{#if !demo}
 					{#key connectedHub}<HubServices connection={connectedHub} />{/key}
 					<details class="connect">
-						<summary>Connect to a hub</summary><label for="endpoint">Hub address</label><input
-							id="endpoint"
-							type="url"
-							bind:value={endpoint}
-							placeholder="https://your-hub.example"
-						/><label for="token">Device token</label><input
-							id="token"
-							type="password"
-							bind:value={token}
-							autocomplete="off"
-						/>
-						<p class="hint">Use your scoped device token. It stays in memory for this session.</p>
+						<summary>Connect to a hub</summary>
+						{#if database}{#key database}<HubEnrollment
+									core={database}
+									bind:this={enrollment}
+									bind:endpoint
+									bind:token
+									bind:pending={enrolling}
+									disabled={busy}
+									onconnect={syncConnection}
+								/>{/key}{/if}
 						<label for="max-rows">Automatic sync row limit</label><input
 							id="max-rows"
 							type="number"
@@ -1220,7 +1238,7 @@
 							Larger tables stay out of automatic sync. Catalogs always sync. Local rows are
 							retained.
 						</p>
-						<button onclick={syncNow} disabled={busy || !endpoint || !token}
+						<button onclick={syncNow} disabled={busy || enrolling || !endpoint || !token}
 							><IconRefresh size={16} /> Sync now</button
 						>
 					</details>

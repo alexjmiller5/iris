@@ -15,7 +15,7 @@ try{
   page.setDefaultTimeout(10000);
   await page.reload();
   await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
-  await page.getByText('Connect to a hub',{exact:true}).click();
+  await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
   await page.getByLabel('Hub address').fill(hub);
   await page.getByLabel('Device token').fill('fixture');
   await page.getByRole('button',{name:'Sync now',exact:true}).click();

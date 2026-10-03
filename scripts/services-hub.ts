@@ -6,14 +6,14 @@ export async function servicesHub(source: string, usageSource: string, origin: s
 	const { D1Shim } = await import(resolve(usageSource, 'worker/test/d1shim.js'));
 	const { withUsage, ensureUsage, notify, period } = await import(resolve(usageSource, 'worker/src/usage.js'));
 	const { authenticate, allowed, SWEEP_CRON } = await import(resolve(usageSource, 'worker/src/index.js'));
-	const { ensureAuthReady } = await import(resolve(usageSource, 'worker/src/auth.js'));
+	const { ensureAuthReady, hashToken } = await import(resolve(usageSource, 'worker/src/auth.js'));
 	const auth = new D1Shim();
 	const requests: { path: string; authenticated: boolean }[] = [];
 	await ensureAuthReady(auth);
 	await ensureUsage(auth);
 	const window = period(new Date(), 1);
 	await auth.prepare('INSERT INTO _tokens(hash,name,scopes,label) VALUES (?,?,?,?)')
-		.bind('fixture-hash', 'device:example', 'full', 'Example device').run();
+		.bind(await hashToken('fixture'), 'device:example', 'full', 'Example device').run();
 	await auth.prepare('INSERT INTO _usage(period,principal,rows_read,rows_written,requests,updated_at) VALUES (?,?,?,?,?,?)')
 		.bind(window.start, 'device:example', 1234, 56, 78, new Date().toISOString()).run();
 	for (let i = 1; i <= 205; i++) {

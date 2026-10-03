@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { enrollmentEndpoint } from './enrollment-binding';
 import SQLiteFactory from '../../../../vendor/wa-sqlite/wa-sqlite.mjs';
 import wasmUrl from '../../../../vendor/wa-sqlite/wa-sqlite.wasm?url';
 import * as SQLite from 'wa-sqlite';
@@ -255,6 +256,17 @@ async function dispatch(request: DatabaseRequest) {
 	}
 	if (connection === undefined) throw new Error('Open a workspace first.');
 	switch (method) {
+		case 'enrollmentEndpoint':
+			return enrollmentEndpoint(db, createHttpHub(args.endpoint, 'endpoint-check', fetch).endpoint);
+		case 'enrollmentApproval':
+			return local.enrollmentApproval(args);
+		case 'validateDeviceSession':
+			return local.validateDeviceSession(args);
+		case 'enrollmentPollResult':
+			return local.enrollmentPollResult(args);
+		case 'sessionRevocationResult':
+			return local.sessionRevocationResult(args);
+
 		case 'snapshot':
 			return snapshot();
 		case 'rows':
