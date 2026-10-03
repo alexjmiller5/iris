@@ -69,6 +69,12 @@ stays separate from editing/removal permissions, and skipped tables may still
 contain navigable local rows. Preserve the source editor on unavailable targets
 or canceled discard; stale lookup successes and errors must not change context.
 
+Web recents store at most eight table/view/row identity tuples per workspace,
+with labels resolved from current local data. Record only completed navigation;
+preserve unavailable entries with a reason and an explicit Remove action.
+Preference read failures must not overwrite the unread stored history. System
+table grouping uses core catalog `readOnly`, never host naming conventions.
+
 Web destination URLs carry only table, stable saved-view and record identifiers.
 Resolve them against the explicitly opened workspace's fresh catalog, saved view
 and full row. Use SvelteKit navigation hooks for browser history so cancelling

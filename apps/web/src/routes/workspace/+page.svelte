@@ -14,7 +14,12 @@
 	} from '$lib/record-grid';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
-	import { destinationURL, readDestination, resolveDestination } from '$lib/workspace-navigation';
+	import {
+		destinationURL,
+		readDestination,
+		resolveDestination,
+		type Destination
+	} from '$lib/workspace-navigation';
 	import {
 		IconDatabase,
 		IconPlus,
@@ -58,6 +63,92 @@
 	} from '$lib/command-palette';
 	import ColumnSettings from '$lib/ColumnSettings.svelte';
 	import SavedViews from '$lib/SavedViews.svelte';
+	import SidebarTables from '$lib/SidebarTables.svelte';
+	import SidebarRecents from '$lib/SidebarRecents.svelte';
+	import {
+		describeRecent,
+		loadRecentEntries,
+		parseRecents,
+		recentKey,
+		rememberRecent,
+		serializeRecents,
+		type RecentEntry
+	} from '$lib/sidebar-recents';
+	let recentDestinations = $state<Destination[]>([]);
+	let recentEntries = $state<RecentEntry[]>([]);
+	let recentStorageError = $state('');
+	let recentReadError = $state('');
+	let recentsRequest = 0;
+	const recentsStorageKey = () => `life-ui:recents:${demo ? 'demo' : 'workspace'}`;
+	function readRecents() {
+		recentsRequest++;
+		recentEntries = [];
+		recentStorageError = '';
+		recentReadError = '';
+		try {
+			recentDestinations = parseRecents(localStorage.getItem(recentsStorageKey()));
+		} catch {
+			recentDestinations = [];
+			recentReadError =
+				'Recents could not be read on this device. New recents remain available until this workspace closes.';
+		}
+	}
+	function persistRecents() {
+		if (recentReadError) return;
+		try {
+			localStorage.setItem(recentsStorageKey(), serializeRecents(recentDestinations));
+			recentStorageError = '';
+		} catch {
+			recentStorageError =
+				'Recents could not be saved on this device. They remain available until this workspace closes.';
+		}
+	}
+	function refreshRecentLabels() {
+		const workspace = database,
+			scope = demo,
+			request = ++recentsRequest;
+		if (!workspace) return;
+		void loadRecentEntries(
+			$state.snapshot(recentDestinations),
+			async (destination) =>
+				describeRecent(destination, await resolveDestination(workspace, destination, '')),
+			(entries) => {
+				recentEntries = entries;
+			},
+			() => database === workspace && demo === scope && request === recentsRequest
+		);
+	}
+	function recordRecent() {
+		const destination = currentDestination();
+		if (!destination.table) return;
+		recentDestinations = rememberRecent(recentDestinations, destination);
+		persistRecents();
+		refreshRecentLabels();
+	}
+	function removeRecent(destination: Destination) {
+		recentDestinations = recentDestinations.filter(
+			(entry) => recentKey(entry) !== recentKey(destination)
+		);
+		persistRecents();
+		refreshRecentLabels();
+	}
+	async function openRecent(destination: Destination) {
+		const workspace = database,
+			version = editorVersion;
+		const current = () =>
+			database === workspace &&
+			editorVersion === version &&
+			!findVisible &&
+			recentDestinations.some((entry) => recentKey(entry) === recentKey(destination));
+		try {
+			await openDestination(destination, current);
+		} catch (e) {
+			if (current()) {
+				error = message(e);
+				refreshRecentLabels();
+			}
+		}
+	}
 	import RemoteBrowser from '$lib/RemoteBrowser.svelte';
 	let onlineBrowser = $state<{
 		workspace: WorkspaceDatabase;
@@ -216,7 +307,10 @@
 			version = editorVersion;
 			await Promise.all([loadRows(), loadViews(), loadWriteability()]);
 			await tick();
-			if (current() && resolved.row) recordHeading?.focus();
+			if (current()) {
+				if (resolved.row) recordHeading?.focus();
+				recordRecent();
+			}
 		} catch (e) {
 			if (current()) error = message(e);
 		} finally {
@@ -782,11 +876,9 @@
 		rejected = state.rejected ?? [];
 		skipped = state.skipped ?? [];
 		if (!table && catalog.tables.length)
-			table = tableName(
-				catalog.tables.find((t) => !/^catalog_|^history$|^provenance$/.test(tableName(t))) ??
-					catalog.tables[0]
-			);
+			table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
 		await Promise.all([loadRows(), loadViews(), loadWriteability()]);
+		if (database === workspace) refreshRecentLabels();
 	}
 	function resetView() {
 		undoPaused = false;
@@ -838,6 +930,7 @@
 			database = new WorkspaceDatabase();
 			await database.request('open', { demo: sample });
 			demo = sample;
+			readRecents();
 			try {
 				const prefs = JSON.parse(localStorage.getItem('life-ui:replica') ?? '{}');
 				maxRows = Number.isSafeInteger(prefs.maxRows) && prefs.maxRows >= 0 ? prefs.maxRows : 50000;
@@ -875,7 +968,10 @@
 			const linked = new URL(window.location.href);
 			if (['table', 'view', 'row'].some((key) => linked.searchParams.has(key)))
 				await restoreLocation(linked);
-			else await reflectLocation(true);
+			else {
+				await reflectLocation(true);
+				recordRecent();
+			}
 		} catch (e) {
 			error = message(e);
 			opened = false;
@@ -891,10 +987,15 @@
 		graphVisible = false;
 		table = name;
 		const version = editorVersion;
+		let loaded = true;
 		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {
+			loaded = false;
 			if (editorVersion === version) error = message(e);
 		});
-		if (editorVersion === version) await reflectLocation();
+		if (editorVersion === version) {
+			await reflectLocation();
+			if (loaded && editorVersion === version) recordRecent();
+		}
 	}
 
 	function viewDefinition(): SavedViewDefinition {
@@ -930,7 +1031,10 @@
 		applyView(view ?? null);
 		const version = editorVersion;
 		await loadRows();
-		if (version === editorVersion) await reflectLocation();
+		if (version === editorVersion) {
+			await reflectLocation();
+			if (version === editorVersion) recordRecent();
+		}
 		return true;
 	}
 	function applyView(view: SavedViewRecord | null) {
@@ -1339,38 +1443,47 @@
 		await tick();
 		if (database !== workspace || editorVersion !== openedVersion) return false;
 		recordHeading?.focus();
+		let loaded = true;
 		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {
+			loaded = false;
 			if (database === workspace && editorVersion === openedVersion) error = message(e);
 		});
 		if (database !== workspace || editorVersion !== openedVersion) return false;
 		await reflectLocation();
+		if (loaded && database === workspace && editorVersion === openedVersion) recordRecent();
 		return true;
 	}
 	function openSearchHit(hit: SearchHit) {
 		const version = findVersion;
 		return openRecord(hit, () => findVisible && findVersion === version);
 	}
-	async function openSearchDestination(destination: PaletteDestination): Promise<boolean> {
+	function openSearchDestination(destination: PaletteDestination): Promise<boolean> {
+		const version = findVersion;
+		return openDestination(
+			{
+				table: destination.table,
+				view: destination.kind === 'view' ? destination.id : null,
+				row: null
+			},
+			() => findVisible && findVersion === version
+		);
+	}
+	async function openDestination(
+		destination: Destination,
+		sourceIsCurrent: () => boolean
+	): Promise<boolean> {
 		if (!database || busy || writing || bodySaving) return false;
 		const workspace = database,
-			version = findVersion,
-			sourceEditor = editorVersion;
+			sourceEditor = editorVersion,
+			request = ++recordOpenVersion;
 		const current = () =>
 			database === workspace &&
-			findVisible &&
-			findVersion === version &&
-			editorVersion === sourceEditor;
+			editorVersion === sourceEditor &&
+			request === recordOpenVersion &&
+			sourceIsCurrent();
 		let resolved;
 		try {
-			resolved = await resolveDestination(
-				workspace,
-				{
-					table: destination.table,
-					view: destination.kind === 'view' ? destination.id : null,
-					row: null
-				},
-				table
-			);
+			resolved = await resolveDestination(workspace, destination, table);
 		} catch (e) {
 			if (current()) throw e;
 			return false;
@@ -1383,13 +1496,25 @@
 		table = resolved.table;
 		graphVisible = false;
 		applyView(resolved.view);
+		if (resolved.row) {
+			trash = !!resolved.row.deleted_at;
+			edit(resolved.row, false);
+		}
 		showFind(false);
 		const openedVersion = editorVersion;
+		let loaded = true;
 		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {
+			loaded = false;
 			if (database === workspace && editorVersion === openedVersion) error = message(e);
 		});
 		if (database !== workspace || editorVersion !== openedVersion) return false;
 		await reflectLocation();
+		if (database !== workspace || editorVersion !== openedVersion) return false;
+		if (loaded) recordRecent();
+		if (resolved.row) {
+			await tick();
+			recordHeading?.focus();
+		}
 		return true;
 	}
 	async function openRelatedRecord(
@@ -1418,6 +1543,7 @@
 		editorVersion++;
 		database?.close();
 		database = null;
+		recentsRequest++;
 	});
 </script>
 
@@ -1520,13 +1646,20 @@
 				<button class="secondary" onclick={() => showFind(true)} disabled={busy}
 					><IconSearch size={16} /> Find records <kbd>⌘K</kbd></button
 				>
-				<nav aria-label="Tables">
-					{#each catalog.tables as t (t.id)}<button
-							class:active={tableName(t) === table}
-							onclick={() => changeTable(tableName(t))}
-							><IconDatabase size={16} />{tableName(t)}</button
-						>{/each}
-				</nav>
+				<SidebarTables
+					tables={catalog.tables}
+					current={table}
+					disabled={busy || writing || bodySaving}
+					onchoose={changeTable}
+				/>
+				<SidebarRecents
+					entries={recentEntries}
+					current={currentDestination()}
+					busy={busy || writing || bodySaving}
+					storageError={[recentReadError, recentStorageError].filter(Boolean).join(' ')}
+					onchoose={openRecent}
+					onremove={removeRecent}
+				/>
 				<button
 					class="secondary"
 					onclick={() => {
@@ -1579,6 +1712,9 @@
 						if (!discard()) return;
 						database?.close();
 						database = null;
+						recentsRequest++;
+						recentDestinations = [];
+						recentEntries = [];
 						opened = false;
 						showFind(false);
 						resetView();
@@ -2080,6 +2216,7 @@
 		min-height: 100svh;
 	}
 	.tables {
+		min-width: 0;
 		background: var(--color-paper);
 		border-right: 1px solid var(--color-rule);
 		padding: 24px 16px;
@@ -2105,24 +2242,6 @@
 		color: var(--color-muted);
 		font-weight: 400;
 		margin-top: 5px;
-	}
-	nav {
-		display: grid;
-		gap: 3px;
-		max-height: 50vh;
-		overflow: auto;
-	}
-	nav button {
-		justify-content: start;
-		background: none;
-		color: var(--color-muted);
-		font-weight: 500;
-		overflow-wrap: anywhere;
-		text-align: left;
-	}
-	nav button.active {
-		color: var(--color-accent);
-		background: var(--color-accent-soft);
 	}
 	.sync-state {
 		margin-top: auto;
@@ -2404,10 +2523,6 @@
 			border-right: 0;
 			border-bottom: 1px solid var(--color-rule);
 			gap: 14px;
-		}
-		.tables nav {
-			display: flex;
-			overflow: auto;
 		}
 		.workspace-label {
 			display: none;

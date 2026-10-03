@@ -177,7 +177,7 @@ try {
     name: "Record editor",
     exact: true,
   });
-  const tables = page.getByRole("navigation", { name: "Tables" });
+  const tables = page.getByRole("navigation", { name: "Tables", exact: true });
   const query = () => new URL(page.url()).searchParams;
   async function opened(address = url, reload = false) {
     accept = true;
@@ -253,7 +253,11 @@ try {
     await page.getByLabel("Device token").fill("fixture");
     const sync = page.getByRole("button", { name: "Sync now", exact: true });
     await sync.click();
-    await expect(sync).toBeEnabled({ timeout: 30000 });
+    await expect(sync).toBeEnabled({ timeout: 30000 }).catch(async (error) => {
+      console.error("Connection state:", await page.locator("body").innerText());
+      console.error("Worker calls:", await page.evaluate(() => (window as any).calls));
+      throw error;
+    });
   }
   await opened();
   await connect();
@@ -722,6 +726,10 @@ try {
   accept = true;
   const page = ownedPage;
   await page?.evaluate(() => (window as any).release?.()).catch(() => {});
+  if (page && await page.getByRole("button", {name:"Switch workspace",exact:true}).count()) {
+    await page.getByRole("button", {name:"Switch workspace",exact:true}).click();
+    await expect.poll(()=>page.workers().length).toBe(0);
+  }
   await page?.goto(url).catch(() => {});
   await browser.close();
   server.stop(true);

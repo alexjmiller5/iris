@@ -489,6 +489,9 @@ Online browsing is explicit and read-only. Native table search and
 cross-table Find both use the shared local FTS5 index.
 The web grid supports inline keyboard editing. Native grid editing and Notes
 migration remain open work.
+The web sidebar includes device-local recent destinations and a collapsible
+System tables section. See [sidebar navigation](docs/sidebar-recents.md) for
+storage and availability behavior. Native sidebar parity remains open work.
 
 Native references use named pickers and local record links; multi-select and JSON fields use source
 editors. Native browse supports saved views, search, sort, combined filters,
