@@ -113,7 +113,6 @@ deploy: gen
       -archivePath "$archive" \
       CODE_SIGN_STYLE=Manual \
       CODE_SIGN_IDENTITY="Apple Distribution" \
-      PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE" \
       DEVELOPMENT_TEAM="$IOS_DEVELOPMENT_TEAM" \
       clean archive
     bundle=$(plutil -extract CFBundleIdentifier raw -o - "$archive/Products/Applications/{{app}}.app/Info.plist")

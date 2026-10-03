@@ -29,6 +29,10 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
+      configs:
+        # Only the app takes the Ad Hoc profile; package resource bundles cannot.
+        release:
+          PROVISIONING_PROFILE_SPECIFIER: ${IOS_PROFILE}
     info:
       path: App/Info.plist
       properties:
