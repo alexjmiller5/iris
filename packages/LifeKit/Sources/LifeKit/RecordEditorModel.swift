@@ -9,6 +9,62 @@ final class RecordEditorModel {
   private(set) var failure: String?
   private(set) var violations: [Violation] = []
   private(set) var saving = false
+  private(set) var autosavePaused = false
+  private var undoUnconfirmed = false
+  private(set) var undoing = false
+  var isTrashed: Bool { draft.original?["deleted_at"]?.text.nonempty != nil }
+
+  func performUndo(
+    _ action: CoreUndoAction,
+    isCurrent: @MainActor () -> Bool = { true },
+    collect: @MainActor () async throws -> Void = {},
+    operation: @MainActor () async throws -> WorkspaceRecord
+  ) async throws {
+    guard !saving, recovery == nil, !unreadableDraft, !reviewRequired, isCurrent() else {
+      throw WorkspaceError(message: "Finish the current operation before undoing.", violations: [])
+    }
+    debounceTask?.cancel()
+    autosavePaused = true
+    undoUnconfirmed = true
+    undoing = true
+    saving = true
+    defer {
+      undoing = false
+      saving = false
+    }
+    do {
+      // Only draft/review state is durable. The core receipt stays in memory.
+      try persist()
+      try await collect()
+      guard isCurrent(), !Task.isCancelled else {
+        throw WorkspaceError(
+          message: "The editor changed. Your draft has been kept.", violations: [])
+      }
+      // setValue reports journal failures to the UI without throwing. Recheck
+      // durability after collecting the live document, before any inverse write.
+      try persist()
+      let receipt = try await operation()
+      guard isCurrent() else {
+        throw WorkspaceError(
+          message: "The editor changed. Your draft has been kept for review.", violations: [])
+      }
+      if action.table == table && action.rowId == draft.original?["id"]?.text {
+        draft.reconcileUndo(receipt)
+      }
+      undoUnconfirmed = false
+      autosavePaused = dirty || isTrashed
+      failedPatch = nil
+      failure = nil
+      violations = []
+      try persist()
+    } catch {
+      undoUnconfirmed = false
+      failure = error.localizedDescription
+      violations = (error as? WorkspaceError)?.violations ?? []
+      try? persist()
+      throw error
+    }
+  }
   private var failedPatch: WorkspaceRecord?
   private var debounceTask: Task<Void, Never>?
   private var inFlight: Task<Void, any Error>?
@@ -67,7 +123,10 @@ final class RecordEditorModel {
   }
   var status: String {
     if let failure { return failure }
+    if undoing { return "Undoing saved change…" }
     if saving { return "Saving…" }
+    if isTrashed { return "This record is in the trash. Restore it before saving your draft." }
+    if autosavePaused { return "Autosave paused. Review your draft, then save the record." }
     if isNew { return "Draft · Save the record to keep it" }
     return markdownSaved ? "Saved on this device" : "Unsaved changes"
   }
@@ -75,7 +134,7 @@ final class RecordEditorModel {
   func setValue(_ value: String, for column: String) {
     guard recovery == nil, draft.values[column] != value else { return }
     draft.values[column] = value
-    if failedPatch?[column] != nil && !reviewRequired {
+    if failedPatch?[column] != nil && !reviewRequired && !autosavePaused {
       failedPatch = nil
       failure = nil
       violations = []
@@ -84,7 +143,9 @@ final class RecordEditorModel {
       failure = "Could not keep a recovery draft. " + error.localizedDescription
       return
     }
-    guard !isNew, draft.fields.contains(where: { $0.id == column && $0.type == "markdown" }) else {
+    guard !isNew, !autosavePaused, !isTrashed,
+      draft.fields.contains(where: { $0.id == column && $0.type == "markdown" })
+    else {
       return
     }
     debounceTask?.cancel()
@@ -108,7 +169,9 @@ final class RecordEditorModel {
     let changed = draft.original?["updated_at"] != recovery.draft.original?["updated_at"]
     draft = recovery.draft
     pendingWrite = recovery.pendingWrite
-    reviewRequired = pendingWrite != nil
+    undoUnconfirmed = recovery.undoUnconfirmed == true
+    autosavePaused = recovery.autosavePaused == true
+    reviewRequired = pendingWrite != nil || undoUnconfirmed
     failure =
       reviewRequired
       ? "A previous save did not finish confirming. Your draft has been kept for review."
@@ -159,6 +222,9 @@ final class RecordEditorModel {
 
   func flushMarkdown(retry: Bool = false) async throws {
     debounceTask?.cancel()
+    guard !undoing, !autosavePaused, !isTrashed else {
+      throw WorkspaceError(message: status, violations: violations)
+    }
     if retry { failedPatch = nil }
     guard !isNew else {
       try persist()
@@ -181,8 +247,14 @@ final class RecordEditorModel {
 
   func saveAll(_ explicitPatch: WorkspaceRecord? = nil) async throws {
     debounceTask?.cancel()
+    guard !undoing else {
+      throw WorkspaceError(message: "Wait for Undo to finish.", violations: [])
+    }
     while let inFlight { try await inFlight.value }
     try checkRecovery()
+    guard !isTrashed || explicitPatch?["deleted_at"] == .null else {
+      throw WorkspaceError(message: "Restore this record before saving the draft.", violations: [])
+    }
     failedPatch = nil
     let patch = explicitPatch ?? draft.patch
     if isNew || patch.keys.contains(where: { $0 != "id" }) {
@@ -191,6 +263,8 @@ final class RecordEditorModel {
       if let failure { throw WorkspaceError(message: failure, violations: violations) }
       try persist()
     }
+    if explicitPatch == nil { autosavePaused = false }
+    try persist()
   }
 
   private func checkRecovery() throws {
@@ -247,11 +321,12 @@ final class RecordEditorModel {
         message: "The saved draft has been kept. It could not be opened.", violations: [])
     }
     guard recovery == nil else { return }
-    if dirty || failure != nil || pendingWrite != nil {
+    if dirty || failure != nil || pendingWrite != nil || undoUnconfirmed || autosavePaused {
       try store?.save(
         StoredEditorDraft(
           id: journalID, table: table, recordID: recordID, draft: draft,
-          failure: failure, failedPatch: failedPatch, pendingWrite: pendingWrite))
+          failure: failure, failedPatch: failedPatch, pendingWrite: pendingWrite,
+          autosavePaused: autosavePaused, undoUnconfirmed: undoUnconfirmed))
     } else {
       try store?.remove(table: table, recordID: recordID, draftID: journalID)
     }

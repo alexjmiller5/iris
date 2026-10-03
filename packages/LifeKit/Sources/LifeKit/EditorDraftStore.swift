@@ -15,11 +15,14 @@ struct StoredEditorDraft: Codable, Identifiable {
   let failure: String?
   let failedPatch: WorkspaceRecord?
   let pendingWrite: PendingEditorWrite?
+  let autosavePaused: Bool?
+  let undoUnconfirmed: Bool?
   let modifiedAt: Date
 
   init(
     id: String = UUID().uuidString, table: String, recordID: String?, draft: RecordDraft,
     failure: String?, failedPatch: WorkspaceRecord?, pendingWrite: PendingEditorWrite? = nil,
+    autosavePaused: Bool? = nil, undoUnconfirmed: Bool? = nil,
     modifiedAt: Date = Date()
   ) {
     self.id = id
@@ -29,6 +32,8 @@ struct StoredEditorDraft: Codable, Identifiable {
     self.failure = failure
     self.failedPatch = failedPatch
     self.pendingWrite = pendingWrite
+    self.autosavePaused = autosavePaused
+    self.undoUnconfirmed = undoUnconfirmed
     self.modifiedAt = modifiedAt
   }
 }

@@ -14,6 +14,8 @@ The hub must allow the web app's origin through CORS.
 
 - Browse catalog tables, search and sort records. Added filters combine with AND;
   remove individual filter chips or clear them together.
+- **Find records** (Cmd+K or Ctrl+K) searches records and offers tables and saved
+  views in one keyboard list. Unavailable views explain why they cannot open.
 - **Columns** chooses, reorders and sizes the displayed properties. Record stays
   visible first, and hidden properties remain available when editing the record.
 - Create/edit typed fields, search related records by their display names,
@@ -135,6 +137,20 @@ and awaits the local write. Other property changes and new records still require
 receipts advance the editor's revision without replacing those changes. A failed
 identical edit waits for a change or explicit retry. The status says **Saved on
 this device** only after the write succeeds; hub synchronization is separate.
+
+**Undo last saved change** reverses the last successful record write in the open
+workspace, including creation, edits, trash and restore. Each Markdown autosave
+is a separate saved change. Undo revalidates the inverse and creates fresh history;
+it does not restore old timestamps. Success consumes the action, with no redo,
+and closing the workspace forgets it. Text-editor undo remains separate.
+An open editor's newer draft stays intact, including when Undo affects another
+record. Its autosave pauses
+until an explicit **Save**, also after a failed Undo. While paused, Markdown
+**Done** keeps the draft without saving it. Undoing a creation can put the record
+in trash; use **Restore record**, then review and save the retained draft separately.
+The live Markdown snapshot must be safely journaled before Undo can run.
+An interrupted Undo with no confirmed result keeps the draft for the same
+copy-and-review recovery flow described below; Undo receipts are never persisted.
 
 Drafts are kept as private, atomic files in Application Support, isolated by the
 database location, record and editor. App-owned databases use paths relative to
@@ -498,3 +514,16 @@ No production data is migrated by development or tests.
 The browser SQLite build is pinned and reproducible through Nix. See
 [vendor/wa-sqlite](vendor/wa-sqlite/README.md) for regeneration and the real OPFS
 FTS5 regression fixture. Normal app builds consume the committed JS/WASM pair.
+
+Undo last saved change reverses the latest successful row create, edit, trash or
+restore in the current workspace session. It uses the same rules and revision
+checks as an ordinary edit. Newer unsaved drafts stay visible and body autosave
+pauses until you review and save them. Undoing creation moves the record to Trash;
+Restore makes its retained draft editable again. Reopening clears this action.
+The Markdown editor's text Undo is separate.
+
+Run the real OPFS Undo checks against a reserved fixture origin:
+
+```sh
+LIFE_UI_TEST_URL=http://life-ui-markdown.localhost:5198/workspace?review bun scripts/test-session-undo.ts /path/to/life-data
+```

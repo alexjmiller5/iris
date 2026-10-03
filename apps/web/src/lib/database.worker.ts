@@ -227,6 +227,7 @@ async function snapshot(): Promise<WorkspaceSnapshot> {
 	return {
 		catalog: await readCatalog(db),
 		status,
+		undo: (await local.undoStatus({})).action,
 		lastSync: status.lastSuccessfulSync,
 		skipped: status.skippedTables,
 		rejected: (await db.all('SELECT * FROM _core_rejected ORDER BY tbl,row_id')).map((row) => ({
@@ -379,6 +380,10 @@ async function dispatch(request: DatabaseRequest) {
 			return local.options(args);
 		case 'write':
 			return local.write(args);
+		case 'undo':
+			return local.undo(args);
+		case 'undoStatus':
+			return local.undoStatus(args);
 		case 'writeability':
 			return local.writeability(args);
 		case 'sync': {
@@ -435,7 +440,7 @@ scope.onmessage = ({ data }) => {
 				dispatch(data as DatabaseRequest)
 			);
 			respond({ id: data.id, result });
-			if (['write', 'sync', 'saveView', 'deleteView'].includes(data.method)) {
+			if (['write', 'undo', 'sync', 'saveView', 'deleteView'].includes(data.method)) {
 				channel?.postMessage({ changed: true });
 				respond({ changed: true });
 			}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { markdownPatch } from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
+	import { reconcileUndo } from '$lib/record-undo';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
@@ -15,7 +16,8 @@
 		IconSearch,
 		IconX,
 		IconDeviceFloppy,
-		IconLink
+		IconLink,
+		IconArrowBackUp
 	} from '@tabler/icons-svelte';
 	import {
 		createHttpHub,
@@ -28,12 +30,18 @@
 		type SavedViewRecord,
 		type SavedViewDefinition,
 		type Writeability,
-		type Sort
+		type Sort,
+		type UndoAction
 	} from 'life-ui-core/client';
 	import { WorkspaceDatabase } from '$lib/database';
 	import SchemaGraph from '$lib/SchemaGraph.svelte';
 	import HubServices from '$lib/HubServices.svelte';
 	import SearchDialog from '$lib/SearchDialog.svelte';
+	import {
+		loadDestinations,
+		type NavigationState,
+		type PaletteDestination
+	} from '$lib/command-palette';
 	import ColumnSettings from '$lib/ColumnSettings.svelte';
 	import SavedViews from '$lib/SavedViews.svelte';
 	import RemoteBrowser from '$lib/RemoteBrowser.svelte';
@@ -45,9 +53,23 @@
 	let connectedHub = $state<{ endpoint: string; token: string } | null>(null);
 	let findVisible = $state(false);
 	let findVersion = 0;
+	let findNavigation = $state<NavigationState>({ destinations: [], loading: false, error: '' });
 	function showFind(visible: boolean) {
 		findVersion++;
 		findVisible = visible;
+		findNavigation = { destinations: [], loading: false, error: '' };
+		if (visible && database) {
+			const workspace = database,
+				version = findVersion;
+			void loadDestinations(
+				catalog.tables.map(tableName),
+				(target) => workspace.request('listViews', { table: target }),
+				(state) => {
+					findNavigation = state;
+				},
+				() => database === workspace && findVisible && findVersion === version
+			);
+		}
 	}
 
 	let database = $state<WorkspaceDatabase | null>(null);
@@ -72,6 +94,8 @@
 			onlineBrowser = null;
 	});
 	let writing = $state(false);
+	let undoAction = $state<UndoAction | null>(null);
+	let undoPaused = $state(false);
 	let bodySaving = $state(false),
 		bodyFailure = $state('');
 	let editorVersion = $state(0);
@@ -308,9 +332,10 @@
 			!bodyPatch ||
 			navigationLoading ||
 			busy ||
+			undoPaused ||
 			readOnly ||
 			blocked ||
-			trash ||
+			selected?.deleted_at != null ||
 			bodyFailure === bodySaveKey
 		)
 			return;
@@ -320,7 +345,16 @@
 		return () => clearTimeout(timer);
 	});
 	async function saveBody(patch: Row, key: string) {
-		if (!database || !selected || !editing || busy || key !== bodySaveKey) return;
+		if (
+			!database ||
+			!selected ||
+			!editing ||
+			busy ||
+			undoPaused ||
+			selected.deleted_at != null ||
+			key !== bodySaveKey
+		)
+			return;
 		const workspace = database,
 			version = editorVersion,
 			target = table;
@@ -361,6 +395,7 @@
 	const locked = (p: Property) =>
 		navigationLoading ||
 		writing ||
+		selected?.deleted_at != null ||
 		!!p.derived_by ||
 		!!p.deprecated ||
 		!!(selected && p.immutable) ||
@@ -538,6 +573,7 @@
 		catalog = state.catalog;
 		lastSync = state.lastSync ?? null;
 		pendingEdits = state.status.pendingUiEdits;
+		undoAction = state.undo;
 		rejected = state.rejected ?? [];
 		skipped = state.skipped ?? [];
 		if (!table && catalog.tables.length)
@@ -548,6 +584,7 @@
 		await Promise.all([loadRows(), loadViews(), loadWriteability()]);
 	}
 	function resetView() {
+		undoPaused = false;
 		permissionRequest++;
 		writePermission = null;
 		editorVersion++;
@@ -805,6 +842,7 @@
 	}
 	function edit(row: Row | null, reflect = true) {
 		if (!discard()) return;
+		undoPaused = false;
 		editorVersion++;
 		selected = row;
 		bodyFailure = '';
@@ -832,7 +870,7 @@
 		return values;
 	}
 	async function save() {
-		if (!database || busy || navigationLoading || !editing) return;
+		if (!database || busy || navigationLoading || !editing || selected?.deleted_at != null) return;
 		const workspace = database,
 			version = editorVersion,
 			target = table;
@@ -873,6 +911,7 @@
 			savedDraft = JSON.stringify(draft);
 			bodyFailure = '';
 			notice = 'Saved on this device';
+			undoPaused = false;
 			await refresh();
 			await reflectLocation(true);
 		} catch (e) {
@@ -884,9 +923,44 @@
 			}
 		}
 	}
+	async function undoLastSavedChange() {
+		if (!database || !undoAction || busy || navigationLoading) return;
+		const workspace = database,
+			action = undoAction,
+			version = editorVersion;
+		undoPaused = true;
+		writing = true;
+		busy = true;
+		error = '';
+		try {
+			const receipt = await workspace.request('undo', { receiptId: action.receiptId });
+			if (database !== workspace || editorVersion !== version) return;
+			if (editing && selected && table === action.table && selected.id === action.rowId) {
+				const reconciled = reconcileUndo(draft, rowDraft(selected), rowDraft(receipt));
+				selected = receipt;
+				draft = reconciled.values;
+				savedDraft = reconciled.baseline;
+				undoPaused = reconciled.dirty;
+			} else {
+				undoPaused = dirty;
+			}
+			bodyFailure = '';
+			notice = `Undid the last saved change in ${action.table}`;
+			await refresh();
+		} catch (e) {
+			if (database === workspace && editorVersion === version) error = message(e);
+		} finally {
+			if (database === workspace) {
+				writing = false;
+				busy = false;
+			}
+		}
+	}
 	async function toggleTrash() {
 		if (!database || !selected || busy || navigationLoading) return;
-		if (!discard()) return;
+		const restoring = selected.deleted_at != null;
+		const preserveDraft = restoring && undoPaused;
+		if (!preserveDraft && !discard()) return;
 		const workspace = database,
 			version = editorVersion,
 			target = table;
@@ -894,16 +968,24 @@
 		busy = true;
 		error = '';
 		try {
-			await workspace.request('write', {
+			const receipt = await workspace.request('write', {
 				table: target,
-				patch: { id: selected.id, deleted_at: trash ? null : true },
+				patch: { id: selected.id, deleted_at: restoring ? null : true },
 				expectedUpdatedAt: editRevision(selected)
 			});
 			if (database !== workspace || editorVersion !== version || table !== target) return;
-			editorVersion++;
-			editing = false;
-			selected = null;
-			notice = trash ? 'Record restored' : 'Moved to trash';
+			if (preserveDraft) {
+				const reconciled = reconcileUndo(draft, rowDraft(selected), rowDraft(receipt));
+				selected = receipt;
+				draft = reconciled.values;
+				savedDraft = reconciled.baseline;
+				undoPaused = reconciled.dirty;
+			} else {
+				editorVersion++;
+				editing = false;
+				selected = null;
+			}
+			notice = restoring ? 'Record restored' : 'Moved to trash';
 			await refresh();
 			await reflectLocation(true);
 		} catch (e) {
@@ -1033,6 +1115,48 @@
 		const version = findVersion;
 		return openRecord(hit, () => findVisible && findVersion === version);
 	}
+	async function openSearchDestination(destination: PaletteDestination): Promise<boolean> {
+		if (!database || busy || writing || bodySaving) return false;
+		const workspace = database,
+			version = findVersion,
+			sourceEditor = editorVersion;
+		const current = () =>
+			database === workspace &&
+			findVisible &&
+			findVersion === version &&
+			editorVersion === sourceEditor;
+		let resolved;
+		try {
+			resolved = await resolveDestination(
+				workspace,
+				{
+					table: destination.table,
+					view: destination.kind === 'view' ? destination.id : null,
+					row: null
+				},
+				table
+			);
+		} catch (e) {
+			if (current()) throw e;
+			return false;
+		}
+		if (!current() || busy || writing || bodySaving || !discard()) return false;
+		locationRequest++;
+		navigationLoading = false;
+		resetView();
+		catalog = resolved.catalog;
+		table = resolved.table;
+		graphVisible = false;
+		applyView(resolved.view);
+		showFind(false);
+		const openedVersion = editorVersion;
+		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {
+			if (database === workspace && editorVersion === openedVersion) error = message(e);
+		});
+		if (database !== workspace || editorVersion !== openedVersion) return false;
+		await reflectLocation();
+		return true;
+	}
 	async function openReference(p: Property, id: string, button: HTMLButtonElement) {
 		if (!p.ref_table || busy || relationOpening === editorVersion) return;
 		const workspace = database,
@@ -1058,6 +1182,19 @@
 		database = null;
 	});
 </script>
+
+{#snippet undoButton()}
+	<button
+		type="button"
+		class="secondary"
+		onclick={undoLastSavedChange}
+		disabled={!undoAction || busy || navigationLoading}
+		title={undoAction
+			? `Last saved change in ${undoAction.table}`
+			: 'No saved change to undo in this session'}
+		><IconArrowBackUp size={16} />Undo last saved change</button
+	>
+{/snippet}
 
 <svelte:head><title>Workspace | Life UI</title></svelte:head>
 <svelte:window
@@ -1120,6 +1257,10 @@
 			onchoose={openSearchHit}
 			onclose={() => showFind(false)}
 			incomplete={skipped.length > 0}
+			destinations={findNavigation.destinations}
+			navigationLoading={findNavigation.loading}
+			navigationError={findNavigation.error}
+			onnavigate={openSearchDestination}
 		/>
 	{/if}
 	<fieldset class="workspace-controls" disabled={writing} aria-label="Workspace controls">
@@ -1210,13 +1351,16 @@
 				>
 			</aside>
 			<main class="records">
-				{#if table && !editing}<div class="link-toolbar">
-						<button
-							class="secondary"
-							onclick={copyLink}
-							disabled={navigationLoading || (editing && !selected)}
-							><IconLink size={16} /> Copy link</button
-						>
+				{#if !editing && (table || undoAction)}<div class="link-toolbar">
+						{#if table && !editing}
+							<button
+								class="secondary"
+								onclick={copyLink}
+								disabled={navigationLoading || (editing && !selected)}
+								><IconLink size={16} /> Copy link</button
+							>
+						{/if}
+						{@render undoButton()}
 					</div>{/if}
 				{#if navigationLoading}<p role="status" class="hint">Opening link…</p>{/if}
 				{#if error}<p role="alert" class="failure">{error}</p>{/if}
@@ -1482,6 +1626,11 @@
 							>
 						</div>
 					</header>
+					{#if undoPaused}<p class="hint" role="status" aria-label="Draft review">
+							Your unsaved draft is kept. {selected?.deleted_at != null
+								? 'Restore the record, then review and save your draft.'
+								: 'Review it and choose Save record to continue.'} Body autosave is paused.
+						</p>{/if}
 					{#if draftProperties.some((p) => p.type === 'markdown')}
 						<p role="status" aria-label="Body save status" class="hint">
 							{bodySaving
@@ -1659,16 +1808,20 @@
 						{/each}
 						{#if error}<p role="status" class="failure">{error}</p>{/if}
 						<div class="editor-actions">
+							{@render undoButton()}
 							<button
 								type="submit"
-								disabled={busy || navigationLoading || readOnly || blocked || trash}
-								><IconDeviceFloppy size={17} />Save record</button
+								disabled={busy ||
+									navigationLoading ||
+									readOnly ||
+									blocked ||
+									selected?.deleted_at != null}><IconDeviceFloppy size={17} />Save record</button
 							>{#if selected}<button
 									type="button"
 									class="secondary"
 									onclick={toggleTrash}
 									disabled={busy || navigationLoading || readOnly || blocked}
-									>{trash ? 'Restore record' : 'Move to trash'}</button
+									>{selected.deleted_at != null ? 'Restore record' : 'Move to trash'}</button
 								>{/if}
 						</div>
 					</form>

@@ -24,9 +24,24 @@ export declare function writeability(db: SqlDriver, args: WriteabilityArgs): Pro
  * Forms should pass expectedUpdatedAt from their selected row. A stale edit
  * fails with rule='conflict'; omit it for unconditional merges into current data.
  */
-export declare function writeRow(db: SqlDriver, table: string, patch: Row, options?: {
+export declare function writeRow(db: SqlDriver, table: string, patch: Row, options?: WriteOptions): Promise<Row>;
+type WriteOptions = {
     now?: () => Date;
     id?: () => string;
     origin?: string;
     expectedUpdatedAt?: string;
-}): Promise<Row>;
+};
+/** Internal transaction result, never a client-supplied inverse or a wire DTO. */
+export type WriteCapture = {
+    before: Row | null;
+    after: Row;
+    columns: string[];
+    shape: string;
+    receiptId: string;
+};
+/** One write implementation. Capture is returned only after transaction commit;
+ * the session publishes it afterwards, never via a callback inside the transaction. */
+export declare function commitWrite(db: SqlDriver, table: string, patch: Row, options?: WriteOptions, capture?: boolean, expected?: Pick<WriteCapture, 'shape' | 'after'>): Promise<{
+    row: Row;
+    capture: WriteCapture | null;
+}>;

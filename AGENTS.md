@@ -48,6 +48,9 @@ inside the same serialized request as the query. No client scan fallback or
 parallel search implementation. Cross-table results carry table/id identities;
 opening one must re-read it, respect unsaved drafts and ignore a cancelled dialog.
 Search covers locally replicated rows and identifies skipped-table incompleteness.
+The web command palette also lists tables and saved views. Read saved views once
+per opening through the core, preserve selection by kind/table/id as entries
+arrive, and re-resolve destinations before navigating. Closing cancels late replies.
 Selected relation actions share the guarded full-row opening path. Navigation
 stays separate from editing/removal permissions, and skipped tables may still
 contain navigable local rows. Preserve the source editor on unavailable targets
@@ -89,6 +92,15 @@ silently discarding later typing. Web body autosave writes only editable Markdow
 columns on existing rows; it updates the acknowledged baseline without replacing
 the live draft. Failed identical patches must not loop. Preserve unknown existing
 multi-select values.
+
+Session Undo uses the core's one volatile receipt. Display the action as
+"Undo last saved change" and submit that displayed receipt ID; never reconstruct
+inverses or expose history as undo. Pause body autosave before the request without
+flushing the draft. Merge unchanged fields from the returned row while preserving
+newer drafts; those drafts require an explicit Save before autosave resumes.
+Failures retain the draft and action. A returned tombstone stays read-only until
+explicit Restore, which also preserves the retained draft. Text-editor Undo stays
+separate. Reopening a workspace clears the session action.
 
 Native recovery journals are private, atomic and isolated per editor. Persist
 the latest draft and any unacknowledged write before awaiting its receipt. Keep

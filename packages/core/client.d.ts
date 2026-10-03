@@ -1,2 +1,2 @@
-// Generated from life-core. SHA-256: 6ed82bb6ee77e9d71e1a1f711ea54b13a94469af19b776821320f866f367367c
+// Generated from life-core. SHA-256: 48aa05d87537d63a79c43ad059bff06a82e545266e3e74fc4182ab6daab64ddd
 export * from './index.d.ts';

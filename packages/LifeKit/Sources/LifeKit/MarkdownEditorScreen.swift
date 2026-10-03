@@ -8,6 +8,9 @@ struct MarkdownEditorScreen: View {
   @Binding var value: String
   let label: String
   let editor: RecordEditorModel
+  let undoAction: CoreUndoAction?
+  let undo: ((CoreUndoAction) async throws -> WorkspaceRecord)?
+  let isCurrent: @MainActor () -> Bool
   @State private var session: MarkdownEditorSession
   @State private var nativeSource = false
   @State private var finishing = false
@@ -20,10 +23,18 @@ struct MarkdownEditorScreen: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.scenePhase) private var scenePhase
 
-  init(value: Binding<String>, label: String, editor: RecordEditorModel) {
+  init(
+    value: Binding<String>, label: String, editor: RecordEditorModel,
+    undoAction: CoreUndoAction? = nil,
+    undo: ((CoreUndoAction) async throws -> WorkspaceRecord)? = nil,
+    isCurrent: @escaping @MainActor () -> Bool = { true }
+  ) {
     _value = value
     self.label = label
     self.editor = editor
+    self.undoAction = undoAction
+    self.undo = undo
+    self.isCurrent = isCurrent
     _session = State(initialValue: MarkdownEditorSession(value: value.wrappedValue, label: label))
   }
 
@@ -33,11 +44,37 @@ struct MarkdownEditorScreen: View {
         Text(finishFailure ?? editor.status)
           .font(.caption).foregroundStyle(editor.failure == nil ? Color.secondary : Color.red)
           .accessibilityIdentifier("markdown-save-status")
-        if editor.failure != nil && !editor.isNew && !editor.needsReview {
+        if editor.failure != nil && !editor.isNew && !editor.needsReview && !editor.autosavePaused
+          && !editor.isTrashed
+        {
           Button("Retry") { finish(retry: true, close: false) }.disabled(finishing || editor.saving)
         }
       }.padding(.horizontal)
-      if editor.failure != nil || finishFailure != nil {
+      if let action = undoAction, let undo {
+        Button {
+          finishing = true
+          finishFailure = nil
+          Task {
+            do {
+              try await editor.performUndo(
+                action, isCurrent: isCurrent, collect: { try await collect(lock: true) }
+              ) {
+                try await undo(action)
+              }
+              if session.document.value != value || session.document.readOnly != editor.isTrashed {
+                session.begin(value: value, label: label, readOnly: editor.isTrashed)
+              }
+            } catch { finishFailure = error.localizedDescription }
+            session.resumeEditing?()
+            finishing = false
+          }
+        } label: {
+          Label("Undo last saved change", systemImage: "arrow.uturn.backward")
+        }
+        .disabled(finishing || editor.saving || editor.needsReview)
+        .accessibilityIdentifier("undo-markdown").padding(.horizontal)
+      }
+      if editor.failure != nil || finishFailure != nil || editor.autosavePaused {
         VStack(alignment: .leading, spacing: 8) {
           if editor.needsReview {
             Text(
@@ -78,7 +115,7 @@ struct MarkdownEditorScreen: View {
                   session.editSource($0)
                 })
             )
-            .font(.system(.body, design: .monospaced))
+            .font(.system(.body, design: .monospaced)).disabled(editor.isTrashed)
             .accessibilityLabel("\(label) Markdown source")
             .accessibilityIdentifier("markdown-source-fallback")
           }.padding()
@@ -101,7 +138,7 @@ struct MarkdownEditorScreen: View {
     .disabled(finishing)
     .onAppear {
       session.onChange = { value = $0 }
-      session.begin(value: value, label: label, readOnly: false)
+      session.begin(value: value, label: label, readOnly: editor.isTrashed)
     }
     .onChange(of: scenePhase) { _, phase in
       if phase == .inactive { flushInBackground() }
@@ -125,7 +162,11 @@ struct MarkdownEditorScreen: View {
     Task {
       do {
         try await collect(lock: close)
-        try await editor.flushMarkdown(retry: retry)
+        if editor.autosavePaused || editor.isTrashed {
+          try editor.keepDraft()
+        } else {
+          try await editor.flushMarkdown(retry: retry)
+        }
         if close { dismiss() }
       } catch {
         finishFailure = error.localizedDescription

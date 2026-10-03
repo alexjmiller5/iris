@@ -20,6 +20,9 @@ final class WorkspaceModel {
     didSet {
       if oldValue !== client {
         workspaceGeneration += 1
+        undoAction = nil
+        undoing = false
+        writingRecord = false
         resetView()
       }
     }
@@ -67,6 +70,51 @@ final class WorkspaceModel {
   var syncing = false
   var syncResult: WorkspaceSyncResult?
   var syncStatus: WorkspaceSyncStatus?
+  private(set) var undoAction: CoreUndoAction?
+  private(set) var undoing = false
+  private var writingRecord = false
+
+  @discardableResult
+  func undo(_ action: CoreUndoAction, context: WorkspaceEditingContext?) async throws
+    -> WorkspaceRecord
+  {
+    guard let context, context.workspace === client, context.table == table,
+      action == undoAction, !undoing, !writingRecord, !savingView
+    else {
+      throw WorkspaceError(
+        message:
+          "This saved change is no longer ready to undo. Reopen it after the current operation finishes.",
+        violations: [])
+    }
+    let generation = workspaceGeneration
+    undoing = true
+    defer { if generation == workspaceGeneration { undoing = false } }
+    do {
+      let receipt = try await context.workspace.undo(receiptID: action.receiptId)
+      guard context.workspace === client, generation == workspaceGeneration,
+        context.table == table
+      else {
+        throw WorkspaceError(
+          message:
+            "The workspace changed while undoing. Reopen the record to review its saved state.",
+          violations: [])
+      }
+      undoAction = nil
+      await reload()
+      guard context.workspace === client, generation == workspaceGeneration, context.table == table
+      else {
+        throw WorkspaceError(
+          message: "The workspace changed while refreshing Undo. Reopen the record.", violations: []
+        )
+      }
+      return receipt
+    } catch {
+      if context.workspace === client, generation == workspaceGeneration {
+        await reload()
+      }
+      throw error
+    }
+  }
   var connection: HubCredentials?
   var isReplica = false
   var groups: [String: String] = [:]
@@ -284,7 +332,7 @@ final class WorkspaceModel {
 
   func applySavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?) throws {
     let context = try requireViewContext(context)
-    guard !savingView else {
+    guard !savingView, !undoing else {
       throw WorkspaceError(message: "Wait for the saved view to finish saving.", violations: [])
     }
     if let saved {
@@ -314,7 +362,7 @@ final class WorkspaceModel {
 
   func saveCurrentView(name: String, update: Bool, context: WorkspaceEditingContext?) async throws {
     let context = try requireViewContext(context)
-    guard !savingView else {
+    guard !savingView, !undoing else {
       throw WorkspaceError(
         message: "A saved view operation is already in progress.", violations: [])
     }
@@ -341,12 +389,13 @@ final class WorkspaceModel {
     savedViews.removeAll { $0.id == saved.id }
     savedViews.append(saved)
     savedViews.sort { $0.name == $1.name ? $0.id < $1.id : $0.name < $1.name }
+    await reload()
   }
 
   func deleteSavedView(_ saved: CoreSavedViewRecord, context: WorkspaceEditingContext?) async throws
   {
     let context = try requireViewContext(context)
-    guard !savingView, saved.tbl == context.table, let updatedAt = saved.updatedAt else {
+    guard !savingView, !undoing, saved.tbl == context.table, let updatedAt = saved.updatedAt else {
       throw WorkspaceError(message: "Reopen this saved view before deleting it.", violations: [])
     }
     let generation = viewGeneration
@@ -364,6 +413,7 @@ final class WorkspaceModel {
     savingView = false
     savedViews.removeAll { $0.id == saved.id }
     if appliedView?.id == saved.id { try applySavedView(nil, context: context) }
+    await reload()
   }
 
   func makeQuickFind() -> QuickFindModel? {
@@ -513,8 +563,10 @@ final class WorkspaceModel {
         limit: 100, offset: more ? rows.count : 0, trash: trash, search: search)
       let result = try await client.rows(view: view)
       let status = isReplica ? try await client.status() : nil
+      let undo = try await client.undoStatus()
       guard request == revision, self.client === client, query == queryKey else { return }
       syncStatus = status
+      undoAction = undo.action
       rows = more ? rows + result : result
       canLoadMore = result.count == 100
     } catch {
@@ -536,6 +588,13 @@ final class WorkspaceModel {
       throw WorkspaceError(
         message: "The workspace or table changed. Reopen the record before saving.", violations: [])
     }
+    guard !undoing, !writingRecord else {
+      throw WorkspaceError(
+        message: "Wait for the current record operation to finish.", violations: [])
+    }
+    let generation = workspaceGeneration
+    writingRecord = true
+    defer { if generation == workspaceGeneration { writingRecord = false } }
     let receipt = try await context.workspace.write(
       table: context.table, patch: patch, expectedUpdatedAt: original?["updated_at"]?.text)
     await reload()

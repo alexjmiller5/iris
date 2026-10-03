@@ -176,6 +176,12 @@ public final class NativeWorkspace {
   public func status() async throws -> WorkspaceSyncStatus {
     try await decode(CoreRequests.Status(CoreEmptyArgs()))
   }
+  public func undoStatus() async throws -> CoreUndoStatus {
+    try await decode(CoreRequests.UndoStatus(CoreEmptyArgs()))
+  }
+  public func undo(receiptID: String) async throws -> WorkspaceRecord {
+    try await decode(CoreRequests.Undo(CoreUndoArgs(receiptId: receiptID)))
+  }
 
   func usage(using transport: HubTransport) async throws -> UsageSummary {
     try await decode(

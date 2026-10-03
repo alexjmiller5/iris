@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "b1cc3357e8c30ad1007a1c976eda5cd7b1587f97e58279860dc7cb344cd953ab";
+export declare const CORE_CONTRACT_HASH = "89c4c5b6667fd05bb3af159a70c0b9112b7af73260d70b294e7b9cdbe14ad21f";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -261,6 +261,19 @@ export type RemoteRowArgs = {
 export type RemoteRowResult = {
     row: RemoteRecord | null;
 };
+export type UndoKind = "create" | "edit" | "trash" | "restore";
+export type UndoAction = {
+    receiptId: string;
+    table: string;
+    rowId: string;
+    kind: UndoKind;
+};
+export type UndoStatus = {
+    action: UndoAction | null;
+};
+export type UndoArgs = {
+    receiptId: string;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -329,6 +342,14 @@ export interface CoreOperations {
     remoteRow: {
         args: RemoteRowArgs;
         result: RemoteRowResult;
+    };
+    undoStatus: {
+        args: EmptyArgs;
+        result: UndoStatus;
+    };
+    undo: {
+        args: UndoArgs;
+        result: Row;
     };
 }
 export type CoreMethod = keyof CoreOperations;

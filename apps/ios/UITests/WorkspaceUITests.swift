@@ -3,6 +3,77 @@ import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testUndoCreationRetainsDraftAndMarkdownUndoUsesSavedReceipt() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    let title = app.textFields["field-title"]
+    tapWhenReady(title)
+    title.typeText("Undo fixture")
+    tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
+    openRecord(app, title: "Undo fixture")
+    tapWhenReady(title)
+    title.typeText("newer draft ")
+    let draftTitle = try XCTUnwrap(title.value as? String)
+    XCTAssertTrue(draftTitle.contains("newer draft") && draftTitle.contains("Undo fixture"))
+    let undo = app.buttons["undo-editor"]
+    for _ in 0..<6 where !undo.isHittable { app.swipeDown() }
+    tapWhenReady(undo)
+    let restore = app.buttons["trash-record"]
+    let trashed = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated { restore.exists && restore.label == "Restore record" }
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [trashed], timeout: 5), .completed)
+    for _ in 0..<10 where !restore.isHittable { scrollRecordFormUp(app) }
+    let keptDraft = XCTAttachment(screenshot: app.screenshot())
+    keptDraft.name = "native-undo-tombstone-kept-draft"
+    keptDraft.lifetime = .keepAlways
+    add(keptDraft)
+    tapWhenReady(restore)
+    for _ in 0..<10 where !title.isHittable { app.swipeDown() }
+    XCTAssertEqual(title.value as? String, draftTitle)
+    tapWhenReady(app.navigationBars["Record"].buttons["save-record"])
+    openRecord(app, title: draftTitle)
+    let body = app.buttons["field-body"]
+    for _ in 0..<10 where !body.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    let source = app.webViews.textViews["Body"]
+    tapWhenReady(source)
+    source.typeText("Saved body for Undo")
+    let saved = app.staticTexts["markdown-save-status"]
+    let savedState = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated { saved.label == "Saved on this device" }
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [savedState], timeout: 10), .completed)
+    let offered = XCTAttachment(screenshot: app.screenshot())
+    offered.name = "native-undo-last-saved-change"
+    offered.lifetime = .keepAlways
+    add(offered)
+    tapWhenReady(app.buttons["undo-markdown"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    let undone = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated { source.value as? String == "" }
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [undone], timeout: 5), .completed)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-undo-markdown"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    tapWhenReady(app.buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    openRecord(app, title: draftTitle)
+    for _ in 0..<10 where !body.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    XCTAssertEqual(source.value as? String, "")
+  }
+
   func testOnlineBrowseOpensReadOnlyFreshRecordAndKeepsLocalEditorSeparate() throws {
     guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
       throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")

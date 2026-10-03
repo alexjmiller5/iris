@@ -223,6 +223,18 @@ public struct WorkspaceView: View {
 
   private var records: some View {
     List {
+      if let action = model.undoAction {
+        Button {
+          let context = model.editingContext
+          Task {
+            do { try await model.undo(action, context: context) } catch {
+              model.error = error.localizedDescription
+            }
+          }
+        } label: {
+          Label("Undo last saved change", systemImage: "arrow.uturn.backward")
+        }.disabled(model.undoing || !canFind).accessibilityIdentifier("undo-saved-change")
+      }
       ForEach(model.recoverableDrafts.filter { $0.table == model.table }) { saved in
         Button {
           guard let context = model.editingContext else { return }
@@ -390,6 +402,7 @@ private struct RecordEditor: View {
   let context: WorkspaceEditingContext?
   let onSaved: () -> Void
   let recordFields: [CatalogField]
+  let isCurrent: @MainActor () -> Bool
   @Environment(\.dismiss) private var dismiss
   @State private var editor: RecordEditorModel
   @State private var referenceNavigation: ReferenceNavigationModel?
@@ -401,12 +414,13 @@ private struct RecordEditor: View {
 
   init(
     model: WorkspaceModel, original: WorkspaceRecord?, context: WorkspaceEditingContext?,
-    recovered: StoredEditorDraft?, isCurrent: @escaping () -> Bool,
+    recovered: StoredEditorDraft?, isCurrent: @escaping @MainActor () -> Bool,
     onReference: @escaping (ReferenceDestination) -> Void, onSaved: @escaping () -> Void
   ) {
     self.model = model
     self.context = context
     self.onSaved = onSaved
+    self.isCurrent = isCurrent
     recordFields = model.properties.map(CatalogField.init)
     let source = RecordEditorModel(
       properties: model.properties,
@@ -427,6 +441,37 @@ private struct RecordEditor: View {
   var body: some View {
     NavigationStack {
       Form {
+        if let action = model.undoAction {
+          Section {
+            Button {
+              focusedField = nil
+              Task {
+                do {
+                  try await editor.performUndo(action, isCurrent: editorIsCurrent) {
+                    try await model.undo(action, context: context)
+                  }
+                  actionFailure = nil
+                } catch { actionFailure = error.localizedDescription }
+              }
+            } label: {
+              Label("Undo last saved change", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(
+              editor.saving || editor.recovery != nil || editor.needsReview || model.undoing
+            )
+            .accessibilityIdentifier("undo-editor")
+          }
+        }
+        if editor.autosavePaused || editor.isTrashed {
+          Section {
+            Text(editor.status).foregroundStyle(.secondary)
+            if editor.isTrashed && model.canWrite, let id = editor.draft.original?["id"] {
+              Button("Restore record") { save(["id": id, "deleted_at": .null]) }
+                .disabled(editor.recovery != nil || editor.needsReview)
+                .accessibilityIdentifier("trash-record")
+            }
+          }
+        }
         if editor.recovery != nil {
           Section("Unsaved draft") {
             Text("Continue your unsaved changes or start with the saved record.")
@@ -470,12 +515,14 @@ private struct RecordEditor: View {
         if let reason = model.editingUnavailable {
           Section { Text(reason).foregroundStyle(.secondary) }
         }
-        if model.canWrite && !model.trash {
+        if model.canWrite && !editor.isTrashed {
           ForEach(editor.draft.fields) { field in
             Section {
               FieldInput(
                 field: field, workspace: context?.workspace, focus: $focusedField,
                 editor: editor, onOpenReference: openReference,
+                undoAction: model.undoAction, undo: { try await model.undo($0, context: context) },
+                isCurrent: editorIsCurrent,
                 referenceAvailability: referenceAvailability(field),
                 value: Binding(
                   get: { editor.draft.values[field.id] ?? "" },
@@ -495,6 +542,18 @@ private struct RecordEditor: View {
             .disabled(editor.recovery != nil)
           }
         }
+        if editor.isTrashed && editor.dirty {
+          Section("Kept draft") {
+            Text("Restore the record first, then review and save these changes.")
+            ForEach(editor.draft.fields.filter { editor.draft.patch[$0.id] != nil }) { field in
+              LabeledContent(field.label) {
+                Text(editor.draft.values[field.id] ?? "").textSelection(.enabled)
+              }
+              CopyDraftButton(
+                title: "Copy \(field.label)", value: editor.draft.values[field.id] ?? "")
+            }
+          }
+        }
         if !editor.draft.unknownValues.isEmpty {
           Section("Unavailable fields") {
             Text("These draft values have been kept and will not be included when saving.")
@@ -510,7 +569,7 @@ private struct RecordEditor: View {
           Section("Record") {
             ForEach(original.keys.sorted(), id: \.self) { key in
               if !editor.draft.fields.contains(where: { $0.id == key }) || !model.canWrite
-                || model.trash
+                || editor.isTrashed
               {
                 if let field = recordFields.first(where: { $0.id == key }),
                   ["ref", "multi_ref"].contains(field.type), let workspace = context?.workspace,
@@ -530,13 +589,12 @@ private struct RecordEditor: View {
               }
             }
           }
-          if model.canWrite {
+          if model.canWrite && !editor.isTrashed {
             Section {
               Button(
-                model.trash ? "Restore record" : "Move to trash",
-                role: model.trash ? nil : .destructive
+                "Move to trash", role: .destructive
               ) {
-                save(["id": original["id"]!, "deleted_at": model.trash ? .null : .bool(true)])
+                save(["id": original["id"]!, "deleted_at": .bool(true)])
               }.accessibilityIdentifier("trash-record").disabled(editor.recovery != nil)
             }
           }
@@ -544,7 +602,9 @@ private struct RecordEditor: View {
         if let failure = actionFailure ?? editor.failure {
           Section {
             Text(failure).foregroundStyle(.red).textSelection(.enabled)
-            if !editor.isNew && editor.recovery == nil && !editor.needsReview {
+            if !editor.isNew && editor.recovery == nil && !editor.needsReview
+              && !editor.autosavePaused && !editor.isTrashed
+            {
               Button("Retry Markdown save") {
                 Task {
                   do {
@@ -564,7 +624,7 @@ private struct RecordEditor: View {
       .navigationTitle(editor.isNew ? "New record" : "Record")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
-          if editor.failure != nil {
+          if editor.failure != nil || editor.autosavePaused {
             Button("Keep draft and close") {
               do {
                 try editor.keepDraft()
@@ -577,7 +637,7 @@ private struct RecordEditor: View {
             }.disabled(editor.saving)
           }
         }
-        if model.canWrite && !model.trash {
+        if model.canWrite && !editor.isTrashed {
           ToolbarItem(placement: .confirmationAction) {
             Button("Save") { save() }.disabled(
               saving || editor.recovery != nil || editor.needsReview
@@ -586,7 +646,7 @@ private struct RecordEditor: View {
           }
         }
       }
-      .disabled(saving || referenceNavigation?.loading == true)
+      .disabled(saving || editor.undoing || referenceNavigation?.loading == true)
       .interactiveDismissDisabled(saving || editor.saving || editor.dirty || editor.recovery != nil)
       .confirmationDialog(
         "Discard unsaved changes?", isPresented: $discard, titleVisibility: .visible
@@ -623,6 +683,10 @@ private struct RecordEditor: View {
     #if os(macOS)
       .frame(minWidth: 520, minHeight: 560)
     #endif
+  }
+
+  private func editorIsCurrent() -> Bool {
+    isCurrent() && context?.workspace === model.client && context?.table == model.table
   }
 
   private func referenceAvailability(_ field: CatalogField) -> String? {
@@ -673,6 +737,9 @@ private struct FieldInput: View {
   let focus: FocusState<String?>.Binding
   let editor: RecordEditorModel
   let onOpenReference: (String, String) -> Void
+  let undoAction: CoreUndoAction?
+  let undo: (CoreUndoAction) async throws -> WorkspaceRecord
+  let isCurrent: @MainActor () -> Bool
   let referenceAvailability: String?
   @Binding var value: String
 
@@ -690,8 +757,11 @@ private struct FieldInput: View {
         }
       } else if field.type == "markdown" {
         NavigationLink {
-          MarkdownEditorScreen(value: $value, label: field.label, editor: editor)
-            .onAppear { focus.wrappedValue = nil }
+          MarkdownEditorScreen(
+            value: $value, label: field.label, editor: editor,
+            undoAction: undoAction, undo: undo, isCurrent: isCurrent
+          )
+          .onAppear { focus.wrappedValue = nil }
         } label: {
           VStack(alignment: .leading, spacing: 6) {
             Text("Edit Markdown")

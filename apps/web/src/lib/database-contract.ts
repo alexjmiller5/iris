@@ -8,6 +8,7 @@ export interface WorkspaceSnapshot {
 	lastSync: CoreResult<'status'>['lastSuccessfulSync'];
 	skipped: string[];
 	rejected: Row[];
+	undo: CoreResult<'undoStatus'>['action'];
 }
 export interface DatabaseOperations {
 	open: { args: { demo?: boolean }; result: WorkspaceSnapshot };
@@ -25,6 +26,8 @@ export interface DatabaseOperations {
 	deleteView: { args: CoreArgs<'deleteView'>; result: CoreResult<'deleteView'> };
 	options: { args: CoreArgs<'options'>; result: CoreResult<'options'> };
 	write: { args: CoreArgs<'write'>; result: CoreResult<'write'> };
+	undo: { args: CoreArgs<'undo'>; result: CoreResult<'undo'> };
+	undoStatus: { args: CoreArgs<'undoStatus'>; result: CoreResult<'undoStatus'> };
 	writeability: { args: CoreArgs<'writeability'>; result: CoreResult<'writeability'> };
 	sync: { args: CoreArgs<'sync'> & { token: string }; result: CoreResult<'sync'> };
 }

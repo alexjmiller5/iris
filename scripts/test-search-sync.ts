@@ -56,14 +56,16 @@ try {
  await input.fill('ocean');
  await expect(result).toBeVisible();
  await input.fill('celest');
- await expect(search).toContainText('No records found.');
+ await expect(search).toContainText('No matches.');
+ await expect(search.getByRole('option')).toHaveCount(0);
  await page.keyboard.press('Escape');
  await page.getByRole('button', {name:'Field guide', exact:true}).click();
  await page.getByRole('button', {name:'Move to trash', exact:true}).click();
  await expect(sync).toBeEnabled();
  await page.keyboard.press('Meta+k');
  await input.fill('ocean');
- await expect(search).toContainText('No records found.');
+ await expect(search).toContainText('No matches.');
+ await expect(search.getByRole('option')).toHaveCount(0);
  await page.keyboard.press('Escape');
  console.log('PASS: search crosses table schemas, reindexes sync pulls and excludes trash');
 } finally {
