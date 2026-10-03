@@ -48,6 +48,10 @@ inside the same serialized request as the query. No client scan fallback or
 parallel search implementation. Cross-table results carry table/id identities;
 opening one must re-read it, respect unsaved drafts and ignore a cancelled dialog.
 Search covers locally replicated rows and identifies skipped-table incompleteness.
+Selected relation actions share the guarded full-row opening path. Navigation
+stays separate from editing/removal permissions, and skipped tables may still
+contain navigable local rows. Preserve the source editor on unavailable targets
+or canceled discard; stale lookup successes and errors must not change context.
 
 Saved views use the core contract and the canonical `core/schema/saved-views.json`
 manifest vendored by `bundle-core.ts`. Only explicit app-owned local/sample

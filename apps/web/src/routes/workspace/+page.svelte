@@ -2,7 +2,7 @@
 	import { markdownPatch } from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
 	import {
 		IconDatabase,
@@ -10,6 +10,7 @@
 		IconRefresh,
 		IconTrash,
 		IconArrowLeft,
+		IconArrowUpRight,
 		IconSearch,
 		IconX,
 		IconDeviceFloppy
@@ -56,6 +57,9 @@
 	let bodySaving = $state(false),
 		bodyFailure = $state('');
 	let editorVersion = $state(0);
+	let relationOpening = $state<number | null>(null);
+	let recordHeading = $state<HTMLHeadingElement>();
+	let recordOpenVersion = 0;
 	let catalog = $state<{ tables: Row[]; properties: Property[]; rules: Row[] }>({
 		tables: [],
 		properties: [],
@@ -854,33 +858,72 @@
 		if (!database) throw new Error('Open a workspace first.');
 		return database.request('search', { text, offset, limit: 50 });
 	}
-	async function openSearchHit(hit: SearchHit) {
+	async function openRecord(target: { table: string; id: string }, sourceIsCurrent: () => boolean) {
 		if (!database || busy) return false;
 		const workspace = database,
 			version = editorVersion,
-			searchVersion = findVersion;
-		const found = await workspace.request('rows', {
-			view: { table: hit.table, filters: [{ column: 'id', op: 'eq', value: hit.id }], limit: 1 }
-		});
-		if (
-			database !== workspace ||
-			version !== editorVersion ||
-			busy ||
-			!findVisible ||
-			searchVersion !== findVersion
-		)
+			request = ++recordOpenVersion;
+		const current = () =>
+			database === workspace &&
+			version === editorVersion &&
+			request === recordOpenVersion &&
+			!busy &&
+			sourceIsCurrent();
+		let found: Row[];
+		try {
+			// Picker labels and saved-view projections are not editable record snapshots.
+			found = await workspace.request('rows', {
+				view: {
+					table: target.table,
+					filters: [{ column: 'id', op: 'eq', value: target.id }],
+					limit: 1
+				}
+			});
+		} catch (e) {
+			if (current()) throw e;
 			return false;
-		if (!found[0]) throw new Error('This record is no longer available. Try searching again.');
+		}
+		if (!current()) return false;
+		if (!found[0])
+			throw new Error(
+				'This record is not available locally. It may be missing, in the trash, or outside this replica.'
+			);
 		if (!discard()) return false;
 		resetView();
-		table = hit.table;
+		table = target.table;
 		graphVisible = false;
 		edit(found[0]);
 		showFind(false);
-		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch(
-			(e) => (error = message(e))
-		);
+		const openedVersion = editorVersion;
+		await tick();
+		if (database !== workspace || editorVersion !== openedVersion) return false;
+		recordHeading?.focus();
+		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {
+			if (database === workspace && editorVersion === openedVersion) error = message(e);
+		});
 		return true;
+	}
+	function openSearchHit(hit: SearchHit) {
+		const version = findVersion;
+		return openRecord(hit, () => findVisible && findVersion === version);
+	}
+	async function openReference(p: Property, id: string, button: HTMLButtonElement) {
+		if (!p.ref_table || busy || relationOpening === editorVersion) return;
+		const workspace = database,
+			version = editorVersion;
+		const current = () =>
+			database === workspace && editorVersion === version && editing && !findVisible;
+		relationOpening = version;
+		error = '';
+		try {
+			await openRecord({ table: p.ref_table, id }, current);
+		} catch (e) {
+			if (current()) error = message(e);
+		} finally {
+			if (relationOpening === version) relationOpening = null;
+			await tick();
+			if (current() && !busy && button.isConnected) button.focus();
+		}
 	}
 	onDestroy(() => {
 		editorVersion++;
@@ -1253,7 +1296,9 @@
 									? 'Unsaved changes'
 									: 'Saved'}
 							</p>
-							<h2>{selected ? title(selected) : 'Untitled'}</h2>
+							<h2 bind:this={recordHeading} tabindex="-1">
+								{selected ? title(selected) : 'Untitled'}
+							</h2>
 						</div>
 						<button
 							class="icon-button secondary"
@@ -1331,22 +1376,49 @@
 													>{refTitle(p, r)}</option
 												>{/each}</select
 										>
-										<div class="chips">
-											{#each list(draft[p.col]) as id}<button
+									{/if}
+									<div
+										class="relation-links"
+										role="group"
+										aria-label={`${label(p)} related records`}
+									>
+										{#each p.type === 'ref' ? [draft[p.col]].filter(Boolean) : list(draft[p.col]) as id}
+											{@const related = (references[p.col] ?? []).find((row) => row.id === id)}
+											{@const available =
+												!!p.ref_table && catalog.tables.some((target) => target.id === p.ref_table)}
+											<div class="relation">
+												<button
 													type="button"
-													class="secondary"
-													disabled={locked(p)}
-													aria-label={`Remove ${refTitle(p, (references[p.col] ?? []).find((r) => r.id === id) ?? { id })}`}
-													onclick={() =>
-														(draft[p.col] = JSON.stringify(
-															list(draft[p.col]).filter((x) => x !== id)
-														))}
-													>{refTitle(
-														p,
-														(references[p.col] ?? []).find((r) => r.id === id) ?? { id }
-													)}<IconX size={14} /></button
-												>{/each}
-										</div>{/if}
+													class="secondary relation-open"
+													aria-label={`Open ${refTitle(p, related ?? { id })}`}
+													disabled={busy || relationOpening === editorVersion || !available}
+													onclick={(event) => openReference(p, id, event.currentTarget)}
+												>
+													<span>{refTitle(p, related ?? { id })}</span><IconArrowUpRight
+														size={16}
+														aria-hidden="true"
+													/>
+												</button>
+												{#if p.type === 'multi_ref'}
+													<button
+														type="button"
+														class="secondary relation-remove"
+														disabled={locked(p)}
+														aria-label={`Remove ${refTitle(p, related ?? { id })}`}
+														onclick={() =>
+															(draft[p.col] = JSON.stringify(
+																list(draft[p.col]).filter((value) => value !== id)
+															))}
+													>
+														<IconX size={16} aria-hidden="true" />
+													</button>
+												{/if}
+											</div>
+											{#if !available}<span class="hint"
+													>Related table is not available on this device.</span
+												>{/if}
+										{/each}
+									</div>
 								{:else if p.type === 'multi_select'}<select
 										id={`field-${p.col}`}
 										multiple
@@ -1622,11 +1694,35 @@
 		max-width: 520px;
 		line-height: 1.6;
 	}
-	.chips {
+	.relation-links {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
 		margin-top: 8px;
+	}
+	.relation {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		max-width: 100%;
+	}
+	.relation-open {
+		min-width: 0;
+		max-width: 100%;
+		text-align: left;
+	}
+	.relation-open span {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.relation-open :global(svg) {
+		flex: none;
+	}
+	.relation-remove {
+		flex: none;
+		min-width: 36px;
+		min-height: 36px;
+		padding: 6px;
 	}
 	.filters {
 		display: flex;
