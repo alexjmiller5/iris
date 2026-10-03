@@ -132,6 +132,15 @@ records. Opening reads the complete current local row. Missing targets keep the
 source editor open with an explanation; skipped tables can still contain local
 records. Unsaved changes require **Discard changes and open** or **Keep editing**,
 and unrelated recovery drafts remain available.
+
+**Incoming references** groups stored records that link to the open record by
+source table and field. Expand a group to load 20 records, then choose **Load
+more records** for the next page. Opening a result uses the same fresh-row and
+unsaved-draft checks as other reference links. Read-only records remain
+navigable. Skipped-table coverage is shown explicitly, including after reopening
+offline; an empty local group does not imply that the hub has no matching rows.
+Scrolling and opening Markdown preserve the surrounding record draft.
+
 Catalog rules, read-only tables, validation, history and stale-revision checks
 come from shared core. An editor also captures its workspace and table, so
 changing connections cannot redirect a save. Unsaved drafts require explicit
