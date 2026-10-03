@@ -90,6 +90,8 @@ The core bundle source hash includes the manifest. Keep the applied view's
 revision until the user reopens it, even when a refreshed list has a newer one.
 Definitions control layout; edit queries must return full rows, not the
 saved definition's SQL column projection. Preserve imported multi-column sorts.
+Saved-view IDs also require byte-exact list and selection identity. Use the
+applied revision for deletion only when its ID bytes match the chosen view.
 
 The usage/notifications API is owned by life-data; never add competing hub
 endpoints here. life-core owns service validation, feed pagination and presentation

@@ -390,9 +390,12 @@ final class WorkspaceModel {
         message: "The selected view changed while saving. Reopen saved views.", violations: [])
     }
     appliedView = saved
-    savedViews.removeAll { $0.id == saved.id }
+    savedViews.removeAll { $0.byteExactID == saved.byteExactID }
     savedViews.append(saved)
-    savedViews.sort { $0.name == $1.name ? $0.id < $1.id : $0.name < $1.name }
+    savedViews.sort {
+      $0.name == $1.name
+        ? $0.byteExactID.lexicographicallyPrecedes($1.byteExactID) : $0.name < $1.name
+    }
     await reload()
   }
 
@@ -415,8 +418,8 @@ final class WorkspaceModel {
         message: "The selected view changed while deleting. Reopen saved views.", violations: [])
     }
     savingView = false
-    savedViews.removeAll { $0.id == saved.id }
-    if appliedView?.id == saved.id { try applySavedView(nil, context: context) }
+    savedViews.removeAll { $0.byteExactID == saved.byteExactID }
+    if appliedView?.byteExactID == saved.byteExactID { try applySavedView(nil, context: context) }
     await reload()
   }
 

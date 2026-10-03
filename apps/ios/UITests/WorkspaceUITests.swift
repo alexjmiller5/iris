@@ -3,6 +3,48 @@ import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testDeletingAnotherByteDistinctSavedViewKeepsTheAppliedView() throws {
+    try XCTSkipIf(
+      ProcessInfo.processInfo.environment["LIFE_UI_TEST_SAVED_VIEW_ID_SIMULATOR"] == nil,
+      "Seed the two-view fixture on an explicitly selected disposable simulator first.")
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    openLocalWorkspace(app)
+    tapWhenReady(app.buttons["saved-views"])
+    XCTAssertTrue(app.buttons["Opaque first view"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["Opaque second view"].exists)
+    tapWhenReady(app.buttons["Opaque first view"])
+    tapWhenReady(app.buttons["saved-views"])
+    XCTAssertEqual(app.textFields["saved-view-name"].value as? String, "Opaque first view")
+    tapWhenReady(app.buttons["Delete Opaque second view"])
+    tapWhenReady(app.buttons["Delete view"])
+    XCTAssertTrue(app.buttons["Delete Opaque second view"].waitForNonExistence(timeout: 5))
+    let retainedName = app.textFields["saved-view-name"].value as? String
+    tapWhenReady(app.navigationBars["Saved views"].buttons["Done"])
+    app.terminate()
+    app.launch()
+    openLocalWorkspace(app)
+    tapWhenReady(app.buttons["saved-views"])
+    let loaded = app.buttons["Refresh views"]
+    XCTAssertTrue(loaded.waitForExistence(timeout: 5))
+    let ready = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated { loaded.isEnabled }
+      }, object: loaded)
+    XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-byte-distinct-saved-view-delete"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    XCTAssertTrue(
+      app.buttons["Opaque first view"].exists,
+      "Deleting the second stored view must not delete the applied first view")
+    XCTAssertFalse(app.buttons["Opaque second view"].exists)
+    XCTAssertEqual(
+      retainedName, "Opaque first view", "Deleting another view must keep the applied name")
+  }
+
   func testRecoveryAndSaveKeepByteDistinctRecordIDsSeparate() throws {
     guard ProcessInfo.processInfo.environment["LIFE_UI_TEST_OPAQUE_ID_SIMULATOR"] != nil else {
       throw XCTSkip(
