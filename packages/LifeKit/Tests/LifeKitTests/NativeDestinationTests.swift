@@ -129,6 +129,32 @@ struct NativeDestinationTests {
     try await workspace.close()
   }
 
+  @Test(arguments: [false, true])
+  func realCoreCollatedRowAliasesDoNotResolveAnotherOpaqueID(_ trashed: Bool) async throws {
+    let runtime = try LifeCoreRuntime()
+    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await workspace.createSample()
+    runtime.context.evaluateScript(
+      #"""
+      LifeSql.run(`CREATE TABLE collated (id TEXT PRIMARY KEY COLLATE NOCASE,
+        created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT, title TEXT)`);
+      LifeSql.run("INSERT INTO catalog_tables(id,kind,display) VALUES ('collated','table','title')");
+      LifeSql.run("INSERT INTO collated(id,title) VALUES ('A','Exact stored identity')");
+      """#)
+    if trashed { runtime.context.evaluateScript(#"LifeSql.run("UPDATE collated SET deleted_at='deleted'")"#) }
+    #expect(runtime.context.exception == nil)
+    let aliased = try await workspace.rows(view: CoreView(table: "collated",
+      filters: [CoreFilter(column: "id", op: .eq, value: .string("a"))], limit: 1, trash: trashed))
+    #expect(aliased.count == 1 && aliased.first.map { Data($0.id.utf8) } == Data("A".utf8))
+    let resolver = NativeDestinationResolver(workspace: workspace)
+    let exact = try await resolver.resolve(NativeDestination(table: "collated", rowID: "A"), isCurrent: { true })
+    #expect(exact.label == "Exact stored identity" && exact.isTrashed == trashed)
+    await #expect(throws: WorkspaceError.self) {
+      try await resolver.resolve(NativeDestination(table: "collated", rowID: "a"), isCurrent: { true })
+    }
+    try await workspace.close()
+  }
+
   @Test(arguments: ["otherTable", "tombstone", "unavailable", "definition", "query"])
   func invalidViewMetadataNeverReadsARecord(_ invalid: String) async throws {
     var view = savedView()

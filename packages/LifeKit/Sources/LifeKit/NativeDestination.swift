@@ -91,7 +91,10 @@ struct NativeDestinationResolver {
           let found = try await rows(CoreView(table: destination.table,
             filters: [CoreFilter(column: "id", op: .eq, value: .string(rowID))], limit: 1, trash: trash))
           try checkCurrent()
-          if let first = found.first { row = first; break }
+          if let first = found.first, Data(first.id.utf8) == Data(rowID.utf8) {
+            row = first
+            break
+          }
         }
         guard row != nil else {
           throw WorkspaceError(message: "Record is no longer available", violations: [])
