@@ -6,6 +6,67 @@ import Testing
 
 @Suite(.serialized) @MainActor
 struct HubSyncTests {
+  @Test func compilerDependenciesPermitUnrelatedSkipsButRequireActualHistoryReads() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let runtime = try LifeCoreRuntime()
+    let hubPath = directory.appendingPathComponent("hub.sqlite").path
+    let seed = try NativeWorkspace(path: hubPath, runtime: runtime)
+    try await seed.createSample()
+    runtime.context.evaluateScript(
+      #"""
+      const ddl = `CREATE TABLE provenance (id TEXT PRIMARY KEY, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT, detail TEXT)`;
+      LifeSql.run(ddl);
+      LifeSql.run('INSERT INTO _schema_log(ddl) VALUES (?)', [ddl]);
+      LifeSql.run("INSERT INTO catalog_tables(id,kind,display) VALUES ('provenance','table','detail')");
+      LifeSql.run("INSERT INTO catalog_properties(id,tbl,col,type) VALUES ('provenance.detail','provenance','detail','text')");
+      LifeSql.run("INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
+        ['fixture-local','notes','invariant',1,"SELECT id FROM changed WHERE title='Blocked'",'Synthetic rule.']);
+      """#)
+    #expect(runtime.context.exception == nil)
+    try await seed.close()
+    try HubFixture.state.load(path: hubPath)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [HubFixture.self]
+    let hub = try HubTransport(
+      endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
+      configuration: configuration)
+    let replicaRuntime = try LifeCoreRuntime()
+    let replica = try NativeWorkspace(
+      path: directory.appendingPathComponent("replica.sqlite").path, runtime: replicaRuntime)
+    let partial = try await replica.sync(
+      using: hub, tables: ["history": false, "provenance": false])
+    #expect(Set(partial.skipped).isSuperset(of: ["history", "provenance"]))
+    #expect(try await replica.writeability(table: "notes").writable)
+    let row = try #require(try await replica.rows(table: "notes").first)
+    await #expect(throws: WorkspaceError.self) {
+      try await replica.write(
+        table: "notes", patch: ["id": .string(row.id), "title": .string("Blocked")],
+        expectedUpdatedAt: row.record["updated_at"]?.text)
+    }
+    #expect(try await replica.rows(table: "notes").first?.record == row.record)
+    #expect(try await replica.status().pendingUiEdits == 0)
+    _ = try await replica.write(
+      table: "notes", patch: ["id": .string(row.id), "title": .string("Allowed partial")],
+      expectedUpdatedAt: row.record["updated_at"]?.text)
+    _ = try await replica.sync(using: hub, tables: ["history": false, "provenance": false])
+    #expect(try await replica.status().pendingUiEdits == 0)
+    #expect(
+      HubFixture.state.record(table: "notes", id: row.id)?["title"] == .string("Allowed partial"))
+    HubFixture.state.changeRule(
+      "fixture-local", sql: "SELECT id FROM changed WHERE (SELECT count(*) FROM history)<0")
+    _ = try await replica.sync(using: hub, tables: ["history": false, "provenance": false])
+    let blocked = try await replica.writeability(table: "notes")
+    #expect(!blocked.writable && blocked.reason?.message.contains("history") == true)
+    _ = try await replica.sync(using: hub, tables: ["history": true, "provenance": false])
+    #expect(try await replica.writeability(table: "notes").writable)
+    // Older hosts keep the conservative global gate when the optional capability is absent.
+    replicaRuntime.context.evaluateScript("delete LifeSql.readDependencies")
+    #expect(!((try await replica.writeability(table: "notes")).writable))
+    try await replica.close()
+  }
+
   @Test func editingAdvisoryTracksFullSyncMissingHistoryAndInterruptedRefresh() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -17,7 +78,7 @@ struct HubSyncTests {
     runtime.context.evaluateScript(
       """
       LifeSql.run("INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
-        ['fixture-title','notes','invariant',1,"SELECT id FROM changed WHERE title = 'Blocked'",'Fixture title is blocked.']);
+        ['fixture-title','notes','invariant',1,"SELECT id FROM changed WHERE title = 'Blocked' OR (SELECT count(*) FROM history)<0",'Fixture title is blocked.']);
       LifeSql.run("INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
         ['fixture-view','views','invariant',1,"SELECT id FROM changed WHERE name = 'Blocked'",'Fixture view is blocked.']);
       """)
@@ -66,7 +127,7 @@ struct HubSyncTests {
     #expect(model.editingUnavailable?.contains("history") == true)
     #expect(model.rows.first?.label == "Allowed")
     try await model.refreshSavedViews(context: context)
-    #expect(model.viewsWriteability?.writable == false)
+    #expect(model.viewsWriteability?.writable == true)
     await model.synchronize()
     #expect(model.canWrite)
     HubFixture.state.failPull("notes")
@@ -202,6 +263,18 @@ private final class FixtureState: @unchecked Sendable {
     lock.withLock { tables[table]?.first { $0["id"]?.text == id } }
   }
   func rowCount(table: String) -> Int { lock.withLock { tables[table]?.count ?? 0 } }
+  func changeRule(_ id: String, sql: String) {
+    lock.withLock {
+      guard let index = tables["catalog_rules"]?.firstIndex(where: { $0["id"]?.text == id }) else {
+        return
+      }
+      tables["catalog_rules"]?[index]["sql"] = .string(sql)
+      let formatter = ISO8601DateFormatter()
+      formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      tables["catalog_rules"]?[index]["updated_at"] = .string(
+        formatter.string(from: Date(timeIntervalSinceNow: 1)))
+    }
+  }
   @MainActor func load(path: String) throws {
     try lock.withLock {
       let bridge = try SQLiteBridge(path: path)
@@ -217,10 +290,15 @@ private final class FixtureState: @unchecked Sendable {
         return try JSONDecoder().decode([WorkspaceRecord].self, from: Data(json.utf8))
       }
       schema = try records("SELECT applied_at,ddl FROM _schema_log ORDER BY id")
+      tables = [:]
+      let existing = Set(
+        try records("SELECT name FROM sqlite_schema WHERE type='table'").compactMap {
+          $0["name"]?.text
+        })
       for name in [
         "notes", "topics", "catalog_tables", "catalog_properties", "catalog_rules", "history",
-        "views",
-      ] {
+        "views", "provenance",
+      ] where existing.contains(name) {
         tables[name] = try records("SELECT * FROM \(name)")
       }
       status = 200

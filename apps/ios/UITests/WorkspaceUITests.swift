@@ -3,6 +3,99 @@ import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testReadOnlyReferenceOpensWithoutSelectionOrRemovalAndMissingStaysPut() throws {
+    try XCTSkipIf(
+      ProcessInfo.processInfo.environment["LIFE_UI_TEST_REFERENCE_SIMULATOR"] == nil,
+      "Seed the reference fixture on a disposable simulator first.")
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    openLocalWorkspace(app)
+    openRecord(app, title: "Navigation read-only fixture")
+    XCTAssertFalse(app.buttons["save-record"].exists)
+    XCTAssertFalse(app.buttons["field-topic"].exists)
+    let missing = app.buttons["Open Unavailable"]
+    for _ in 0..<8 where !missing.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(missing)
+    XCTAssertTrue(
+      app.staticTexts.matching(
+        NSPredicate(
+          format: "label BEGINSWITH %@",
+          "This record is not available locally.")
+      ).firstMatch.waitForExistence(timeout: 5))
+    tapWhenReady(app.alerts["Cannot open record"].buttons["OK"])
+    XCTAssertTrue(app.navigationBars["Record"].exists)
+    let open = app.buttons["Open Field notes"]
+    for _ in 0..<8 where !open.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(open)
+    let title = app.textFields["field-title"]
+    let opened = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated { title.value as? String == "Field notes" }
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [opened], timeout: 10), .completed)
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    let returned = app.navigationBars["topics"].waitForExistence(timeout: 5)
+    if !returned {
+      let screenshot = XCTAttachment(screenshot: app.screenshot())
+      screenshot.name = "reference-return-state"
+      screenshot.lifetime = .keepAlways
+      add(screenshot)
+    }
+    XCTAssertTrue(returned, app.debugDescription)
+  }
+
+  func testReferenceOpenKeepsCancelledDraftAndHandsOffToOneFreshEditor() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    let title = app.textFields["field-title"]
+    tapWhenReady(title)
+    title.typeText("Navigation fixture")
+    let topic = app.buttons["field-topic"]
+    for _ in 0..<8 where !topic.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(topic)
+    tapWhenReady(app.buttons["Field notes"])
+    let related = app.buttons["field-related"]
+    for _ in 0..<8 where !related.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(related)
+    tapWhenReady(app.buttons["Ideas"])
+    tapWhenReady(app.navigationBars["Related topics"].buttons["Done"])
+    tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
+    tapWhenReady(
+      app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Navigation fixture"))
+        .firstMatch)
+    tapWhenReady(title)
+    title.typeText(" unsaved")
+    let unsaved = try XCTUnwrap(title.value as? String)
+    XCTAssertTrue(unsaved.contains("unsaved") && unsaved.contains("Navigation fixture"))
+    let openTopic = app.buttons["Open Field notes"]
+    for _ in 0..<8 where !openTopic.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(openTopic)
+    tapWhenReady(app.buttons["Keep editing"])
+    XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
+    XCTAssertEqual(title.value as? String, unsaved)
+    let openRelated = app.buttons["Open Ideas"]
+    for _ in 0..<8 where !openRelated.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(openRelated)
+    tapWhenReady(app.buttons["Discard changes and open"])
+    let opened = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated { title.value as? String == "Ideas" }
+      },
+      object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [opened], timeout: 10), .completed)
+    XCTAssertEqual(app.navigationBars.matching(identifier: "Record").count, 1)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-reference-navigation"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    XCTAssertTrue(app.navigationBars["topics"].waitForExistence(timeout: 5))
+  }
+
   func testSavedViewsApplyPersistRenameAndDeleteWithoutProjectingEditor() throws {
     try XCTSkipIf(
       ProcessInfo.processInfo.environment["LIFE_UI_TEST_SAVED_VIEWS_SIMULATOR"] == nil,

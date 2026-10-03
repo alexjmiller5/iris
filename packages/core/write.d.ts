@@ -16,7 +16,8 @@ export declare function writeability(db: SqlDriver, args: WriteabilityArgs): Pro
  * deleted_at:true requests deletion at the new revision; null restores.
  * now/id are host/test seams; id generates row IDs only. History IDs always
  * come from SQLite. No caller may supply created_at, updated_at or hub_at.
- * Table invariants require verified global schema coverage. The one-row
+ * Table invariants require verified dependency coverage (global without a
+ * compiler metadata adapter). The one-row
  * before/changed contexts preserve SQLite values; custom effects stay closed.
  * Custom triggers anywhere in main/temp block writes. Exact main timestamp
  * triggers and queue-only search triggers are supported.

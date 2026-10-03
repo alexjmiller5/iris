@@ -9,9 +9,12 @@ public struct WorkspaceView: View {
   @State private var options = false
   @State private var savedViews = false
   @State private var showingGraph = false
+  @State private var tableSearchPresented = false
   @State private var editor: EditorTarget?
   @State private var quickFind: QuickFindModel?
   @State private var pendingSearchEditor: (target: EditorTarget, generation: Int)?
+  @State private var pendingReferenceEditor:
+    (destination: ReferenceDestination, source: WorkspaceEditingContext, generation: Int)?
   private let demo: Bool
 
   public init(demo: Bool = false) { self.demo = demo }
@@ -85,10 +88,17 @@ public struct WorkspaceView: View {
       await model.services.poll()
     }
     .task(id: model.queryKey) { await model.reload() }
-    .sheet(item: $editor, onDismiss: { model.refreshDrafts() }) { target in
+    .sheet(item: $editor, onDismiss: finishEditorDismissal) { target in
       RecordEditor(
         model: model, original: target.row, context: target.context, recovered: target.recovered,
-        onSaved: { editor = nil })
+        isCurrent: { editor?.id == target.id },
+        onReference: { destination in
+          guard editor?.id == target.id, let source = target.context,
+            source.workspace === model.client, source.table == model.table
+          else { return }
+          pendingReferenceEditor = (destination, source, model.workspaceGeneration)
+          editor = nil
+        }, onSaved: { editor = nil })
     }
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
     .sheet(isPresented: $options) { WorkspaceOptionsView(model: model) }
@@ -114,6 +124,7 @@ public struct WorkspaceView: View {
       quickFind?.cancel()
       quickFind = nil
       pendingSearchEditor = nil
+      pendingReferenceEditor = nil
     }
     .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
       switch result {
@@ -141,6 +152,23 @@ public struct WorkspaceView: View {
       pending.target.context?.table == model.table
     else { return }
     editor = pending.target
+  }
+
+  private func finishEditorDismissal() {
+    model.refreshDrafts()
+    guard let pending = pendingReferenceEditor else { return }
+    pendingReferenceEditor = nil
+    guard editor == nil, pending.generation == model.workspaceGeneration,
+      pending.source.workspace === model.client, pending.source.table == model.table
+    else { return }
+    do {
+      tableSearchPresented = false
+      let context = try model.activateSearchTable(
+        pending.destination.table,
+        workspace: pending.source.workspace, generation: pending.generation)
+      showingGraph = false
+      editor = EditorTarget(row: pending.destination.row.record, context: context)
+    } catch { model.error = error.localizedDescription }
   }
 
   private var welcome: some View {
@@ -276,7 +304,9 @@ public struct WorkspaceView: View {
       .background(.regularMaterial)
     }
     .navigationTitle(model.table ?? "Workspace")
-    .searchable(text: $model.search, prompt: "Search this table")
+    .searchable(
+      text: $model.search, isPresented: $tableSearchPresented, prompt: "Search this table"
+    )
     .refreshable { await model.reload() }
     .toolbar {
       ToolbarItemGroup(placement: .primaryAction) {
@@ -324,8 +354,11 @@ private struct RecordEditor: View {
   let model: WorkspaceModel
   let context: WorkspaceEditingContext?
   let onSaved: () -> Void
+  let recordFields: [CatalogField]
   @Environment(\.dismiss) private var dismiss
   @State private var editor: RecordEditorModel
+  @State private var referenceNavigation: ReferenceNavigationModel?
+  @State private var confirmReference = false
   @State private var saving = false
   @State private var discard = false
   @State private var actionFailure: String?
@@ -333,18 +366,26 @@ private struct RecordEditor: View {
 
   init(
     model: WorkspaceModel, original: WorkspaceRecord?, context: WorkspaceEditingContext?,
-    recovered: StoredEditorDraft?, onSaved: @escaping () -> Void
+    recovered: StoredEditorDraft?, isCurrent: @escaping () -> Bool,
+    onReference: @escaping (ReferenceDestination) -> Void, onSaved: @escaping () -> Void
   ) {
     self.model = model
     self.context = context
     self.onSaved = onSaved
-    _editor = State(
-      initialValue: RecordEditorModel(
-        properties: model.properties,
-        original: original, table: context?.table ?? "", store: context?.draftStore,
-        recovered: recovered
-      ) { patch, baseline in
-        try await model.save(patch, original: baseline, context: context)
+    recordFields = model.properties.map(CatalogField.init)
+    let source = RecordEditorModel(
+      properties: model.properties,
+      original: original, table: context?.table ?? "", store: context?.draftStore,
+      recovered: recovered
+    ) { patch, baseline in
+      try await model.save(patch, original: baseline, context: context)
+    }
+    _editor = State(initialValue: source)
+    _referenceNavigation = State(
+      initialValue: context.map {
+        model.makeReferenceNavigation(
+          editor: source, context: $0, isCurrent: isCurrent,
+          onOpen: onReference)
       })
   }
 
@@ -399,7 +440,8 @@ private struct RecordEditor: View {
             Section {
               FieldInput(
                 field: field, workspace: context?.workspace, focus: $focusedField,
-                editor: editor,
+                editor: editor, onOpenReference: openReference,
+                referenceAvailability: referenceAvailability(field),
                 value: Binding(
                   get: { editor.draft.values[field.id] ?? "" },
                   set: { editor.setValue($0, for: field.id) }))
@@ -435,7 +477,21 @@ private struct RecordEditor: View {
               if !editor.draft.fields.contains(where: { $0.id == key }) || !model.canWrite
                 || model.trash
               {
-                LabeledContent(key) { Text(original[key]?.text ?? "").textSelection(.enabled) }
+                if let field = recordFields.first(where: { $0.id == key }),
+                  ["ref", "multi_ref"].contains(field.type), let workspace = context?.workspace,
+                  field.property["ref_table"]?.text.nonempty != nil
+                {
+                  VStack(alignment: .leading, spacing: 8) {
+                    Text(field.label)
+                    ReferenceField(
+                      field: field, value: .constant(original[key]?.text ?? ""),
+                      workspace: workspace, canEdit: false,
+                      canOpen: !editor.saving,
+                      availability: referenceAvailability(field), onOpenRecord: openReference)
+                  }
+                } else {
+                  LabeledContent(key) { Text(original[key]?.text ?? "").textSelection(.enabled) }
+                }
               }
             }
           }
@@ -495,7 +551,7 @@ private struct RecordEditor: View {
           }
         }
       }
-      .disabled(saving)
+      .disabled(saving || referenceNavigation?.loading == true)
       .interactiveDismissDisabled(saving || editor.saving || editor.dirty || editor.recovery != nil)
       .confirmationDialog(
         "Discard unsaved changes?", isPresented: $discard, titleVisibility: .visible
@@ -503,10 +559,52 @@ private struct RecordEditor: View {
         Button("Discard changes", role: .destructive) { discardSavedDraft(close: true) }
         Button("Keep editing", role: .cancel) {}
       }
+      .alert(
+        referenceNavigation?.error == nil
+          ? "Discard unsaved changes and open the related record?" : "Cannot open record",
+        isPresented: $confirmReference
+      ) {
+        if referenceNavigation?.error != nil {
+          Button("OK") { referenceNavigation?.cancel() }
+        } else {
+          Button("Discard changes and open", role: .destructive) {
+            Task { _ = await referenceNavigation?.discardAndOpen() }
+          }
+          Button("Keep editing", role: .cancel) { referenceNavigation?.cancel() }
+        }
+      } message: {
+        if let error = referenceNavigation?.error { Text(error) }
+      }
+      .onChange(of: referenceNavigation?.confirmation) {
+        confirmReference = referenceNavigation?.confirmation != nil
+      }
+      .onChange(of: referenceNavigation?.error) {
+        if referenceNavigation?.error != nil { confirmReference = true }
+      }
+      .onDisappear { referenceNavigation?.cancel() }
+      .onChange(of: model.workspaceGeneration) { referenceNavigation?.cancel() }
+      .onChange(of: model.table) { referenceNavigation?.cancel() }
     }
     #if os(macOS)
       .frame(minWidth: 520, minHeight: 560)
     #endif
+  }
+
+  private func referenceAvailability(_ field: CatalogField) -> String? {
+    guard let table = field.property["ref_table"]?.text else { return nil }
+    if !model.tables.contains(where: { $0["id"]?.text == table }) {
+      return "The related table is not available on this device."
+    }
+    return model.syncResult?.skipped.contains(table) == true
+      ? "Some records in this table were skipped during sync. Stored records can still be opened."
+      : nil
+  }
+
+  private func openReference(table: String, id: String) {
+    focusedField = nil
+    Task {
+      _ = await referenceNavigation?.open(table: table, id: id)
+    }
   }
 
   private func discardSavedDraft(close: Bool) {
@@ -539,6 +637,8 @@ private struct FieldInput: View {
   let workspace: NativeWorkspace?
   let focus: FocusState<String?>.Binding
   let editor: RecordEditorModel
+  let onOpenReference: (String, String) -> Void
+  let referenceAvailability: String?
   @Binding var value: String
 
   var body: some View {
@@ -546,7 +646,9 @@ private struct FieldInput: View {
       if ["ref", "multi_ref"].contains(field.type) {
         if let workspace, field.property["ref_table"]?.text.nonempty != nil {
           ReferenceField(
-            field: field, value: $value, workspace: workspace, onOpen: { focus.wrappedValue = nil })
+            field: field, value: $value, workspace: workspace, onOpen: { focus.wrappedValue = nil },
+            canOpen: !editor.saving, availability: referenceAvailability,
+            onOpenRecord: onOpenReference)
         } else {
           Text("Reference choices are unavailable. The original value has been preserved.")
             .foregroundStyle(.secondary)

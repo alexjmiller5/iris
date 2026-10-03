@@ -349,6 +349,28 @@ final class WorkspaceModel {
     return WorkspaceEditingContext(workspace: workspace, table: table, draftStore: draftStore)
   }
 
+  func makeReferenceNavigation(
+    editor: RecordEditorModel, context: WorkspaceEditingContext,
+    isCurrent: @escaping () -> Bool = { true },
+    onOpen: @escaping (ReferenceDestination) -> Void = { _ in }
+  ) -> ReferenceNavigationModel {
+    let generation = workspaceGeneration
+    let selection = viewGeneration
+    return ReferenceNavigationModel(
+      editor: editor,
+      read: { [weak self] view in
+        guard self?.tables.contains(where: { $0["id"]?.text == view.table }) == true else {
+          throw WorkspaceError(
+            message: "The related table is not available on this device.", violations: [])
+        }
+        return try await context.workspace.rows(view: view)
+      },
+      isCurrent: { [weak self] in
+        self?.client === context.workspace && self?.workspaceGeneration == generation
+          && self?.viewGeneration == selection && self?.table == context.table && isCurrent()
+      }, onOpen: onOpen)
+  }
+
   static func localURL() throws -> URL {
     let directory = try FileManager.default.url(
       for: .applicationSupportDirectory, in: .userDomainMask,

@@ -13,6 +13,8 @@ import {
 	syncStatus,
 	type Row,
 	type SqlDriver,
+	type SqlReadStatement,
+	type SqlReadContext,
 	type Value
 } from 'life-ui-core/client';
 import { prepareLocalViews } from '../../../../scripts/local-views';
@@ -28,6 +30,10 @@ let channel: BroadcastChannel | undefined;
 let queue = Promise.resolve();
 let reading = false;
 let statementReadOnly: (statement: number) => number;
+let readingInventory = false;
+let dependencyReads: { name: string | null; database: string | null }[] | undefined;
+// SQLite identifiers fold ASCII only; Unicode case pairs can name different tables.
+const sqliteName = (name: string) => name.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 
 const db: SqlDriver = {
 	async all(sql: string, params: Value[] = []) {
@@ -59,6 +65,90 @@ const db: SqlDriver = {
 				reading = false;
 			}
 		}
+	},
+	async readDependencies(statements: readonly SqlReadStatement[], context: SqlReadContext) {
+		if (connection === undefined) throw new Error('Open a workspace first.');
+		if (
+			!Array.isArray(statements) ||
+			statements.some((entry) => typeof entry?.sql !== 'string') ||
+			!Array.isArray(context?.ownedTempTables) ||
+			context.ownedTempTables.some((name) => typeof name !== 'string')
+		)
+			throw new Error('Invalid SQL dependency inspection.');
+		// Inventory is fixed host SQL. These additional PRAGMAs are not available
+		// through catalog reads; no validation query is stepped during discovery.
+		let databases: Row[];
+		let inventory: Row[];
+		readingInventory = true;
+		try {
+			databases = await db.all('PRAGMA database_list');
+			inventory = await db.all('PRAGMA table_list');
+		} finally {
+			readingInventory = false;
+		}
+		if (databases.some((row) => row.name !== 'main' && row.name !== 'temp')) return null;
+		const owned = new Set(context.ownedTempTables.map(sqliteName));
+		const temporary = inventory.filter(
+			(row) => row.schema === 'temp' && row.name !== 'sqlite_temp_schema'
+		);
+		if (
+			temporary.some((row) => row.type !== 'table' || !owned.has(sqliteName(String(row.name)))) ||
+			[...owned].some((name) => !temporary.some((row) => sqliteName(String(row.name)) === name))
+		)
+			return null;
+		const objects = new Map(
+			inventory
+				.filter((row) => row.schema === 'main')
+				.map((row) => [sqliteName(String(row.name)), row])
+		);
+		if ([...owned].some((name) => objects.has(name))) return null;
+		const reads: { name: string | null; database: string | null }[] = [];
+		dependencyReads = reads;
+		reading = true;
+		try {
+			for (const entry of statements) {
+				const prepared: number[] = [];
+				try {
+					for await (const statement of sqlite.statements(connection, entry.sql, {
+						unscoped: true
+					})) {
+						prepared.push(statement);
+						if (prepared.length > 1) throw new Error('Expected one read-only SQL statement.');
+					}
+					if (prepared.length !== 1 || !statementReadOnly(prepared[0]))
+						throw new Error('Expected one read-only SQL statement.');
+					sqlite.bind_collection(prepared[0], entry.params ?? []);
+				} finally {
+					for (const statement of prepared) await sqlite.finalize(statement);
+				}
+			}
+		} finally {
+			dependencyReads = undefined;
+			reading = false;
+		}
+		const tables = new Set<string>();
+		for (const read of reads) {
+			if (!read.name) return null;
+			const name = sqliteName(read.name);
+			if ((!read.database || read.database === 'temp') && owned.has(name)) continue;
+			if (read.database && read.database !== 'main') return null;
+			const object = objects.get(name);
+			// Columnless reads of the engine's CTEs may have no database qualifier.
+			// A real schema object always wins; TEMP ownership is asserted by core.
+			if (
+				!read.database &&
+				!object &&
+				owned.has('_core_write_before') &&
+				['changed', 'before', 'now'].includes(name)
+			)
+				continue;
+			if (!object && ['json_each', 'json_tree'].includes(name)) continue;
+			if (!object || /^(sqlite_|_)/i.test(name)) return null;
+			if (object.type === 'view') continue; // SQLite also reports the underlying reads.
+			if (object.type !== 'table') return null;
+			tables.add(String(object.name));
+		}
+		return { tables: [...tables].sort() };
 	},
 	async run(sql, params = []) {
 		if (connection === undefined) throw new Error('Open a workspace first.');
@@ -204,14 +294,18 @@ async function dispatch(request: DatabaseRequest) {
 			connection = await sqlite.open_v2(name, undefined, vfs.name);
 			sqlite.set_authorizer(
 				connection,
-				(_, action, name, detail) => {
+				(_, action, name, detail, database) => {
+					if (dependencyReads && action === SQLite.SQLITE_READ)
+						dependencyReads.push({ name, database });
 					if (!reading) return SQLite.SQLITE_OK;
 					// The authorizer runs during preparation too: reject connection control
 					// and mutating PRAGMAs before they can act. FTS5 reads data_version on reopen.
 					if (action === SQLite.SQLITE_PRAGMA)
 						return ['table_info', 'table_xinfo', 'foreign_key_list', 'data_version'].includes(
 							name?.toLowerCase() ?? ''
-						)
+						) ||
+							(readingInventory &&
+								['database_list', 'table_list'].includes(name?.toLowerCase() ?? ''))
 							? SQLite.SQLITE_OK
 							: SQLite.SQLITE_DENY;
 					if (action === SQLite.SQLITE_FUNCTION && detail?.toLowerCase() === 'load_extension')

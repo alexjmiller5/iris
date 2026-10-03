@@ -99,8 +99,14 @@ Core system tables and `catalog_tables.kind: system` are read-only. Hosts use
 the shared `writeability` advisory and display its reason, invalidating stale
 answers on workspace/table changes and refreshing after failed sync too.
 The writer rechecks every mutation transactionally. Table SQL invariants require
-core-certified coverage of every global schema table, including history and
-provenance; ordinary cursors or imported files do not certify completeness.
+core-certified coverage of their validation dependencies and catalogs. Hosts
+provide compiler-derived `readDependencies` on the same connection/transaction,
+without executing the supplied statements. SQLite authorizer reads and GRDB
+regions include view dependencies; never infer this set by parsing SQL text.
+TEMP context ownership comes explicitly from core, not an object's name.
+Unknown metadata, attached databases and unsupported storage fail closed.
+Adapters without this capability retain the full-global-coverage check.
+Ordinary cursors or imported files do not certify completeness.
 Custom triggers, declared SQLite FKs and enforced estate rules fail closed.
 Missing replica references must not be guessed valid.
 Skipped-table data can be incomplete and the UI must identify that state.

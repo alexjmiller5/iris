@@ -36,10 +36,10 @@ are read-only. Catalog entries with `kind: system` also remain read-only.
 
 Table rules are checked locally before an edit commits. Invalid edits keep the
 draft and leave stored records, history and pending edits unchanged. Rule-checked
-tables require a complete sync of every schema table, including history and
-provenance. Excluding a table or interrupting a sync can make them read-only until
-a complete sync succeeds; the app shows the reason. This completeness check does
-not guarantee the hub has stayed unchanged: it checks edits again during sync.
+tables need complete local copies of the tables used by their checks. Unrelated
+large tables can stay excluded. Skipping a required table or interrupting sync
+pauses editing; the app explains which tables to include and sync. This check
+does not guarantee the hub has stayed unchanged: it checks edits again during sync.
 A sync can receive records or acknowledge edits before a later request fails.
 Open browser tabs refresh that progress and retain unsaved drafts.
 
@@ -73,6 +73,11 @@ changing tables or workspaces. Reference fields offer searchable record names;
 single and multiple choices save their underlying IDs through shared core.
 Unavailable selections remain in the draft until explicitly removed. Core
 rejects a save if its references are missing from the local replica.
+Selected references have a separate **Open** action, including on read-only
+records. Opening reads the complete current local row. Missing targets keep the
+source editor open with an explanation; skipped tables can still contain local
+records. Unsaved changes require **Discard changes and open** or **Keep editing**,
+and unrelated recovery drafts remain available.
 Catalog rules, read-only tables, validation, history and stale-revision checks
 come from shared core. An editor also captures its workspace and table, so
 changing connections cannot redirect a save. Unsaved drafts require explicit
@@ -257,6 +262,7 @@ bun scripts/test-search-sync.ts /path/to/life-data
 bun scripts/test-saved-views.ts /path/to/life-data
 bun scripts/test-typed-filters.ts /path/to/life-data
 bun scripts/test-table-invariants.ts /path/to/life-data
+bun scripts/test-read-dependencies.ts /path/to/life-data
 # Also open /workspace?review&observer=1 on the same reserved origin for this test.
 bun scripts/test-partial-sync.ts /path/to/life-data
 # Open http://life-ui-relations.localhost:5223/workspace?review in its own page.
@@ -284,6 +290,12 @@ cover fresh full-row lookup, cross-table IDs, draft cancellation, stale replies,
 read-only references, missing/trashed targets, skipped tables, pending writes,
 destination saved views and narrow layouts. `LIFE_UI_REFERENCE_CASE` selects a
 case by name; `LIFE_UI_TEST_SCREENSHOTS` optionally names an output directory.
+
+Dependency checks exercise the actual browser SQLite adapter against the shared
+life-data fixture, including expanded views, engine contexts, unsupported
+namespaces and preparation without executing validation queries. The invariant
+flow also changes a rule's dependencies during sync and verifies that only its
+required tables need complete replication.
 
 ## Core and build ownership
 
@@ -352,7 +364,7 @@ skipped table is not automatically browsed remotely. Native table search and
 cross-table Find both use the shared local FTS5 index.
 Full grid keyboard editing and Notes migration remain open work.
 
-Native references use named pickers; multi-select and JSON fields use source
+Native references use named pickers and local record links; multi-select and JSON fields use source
 editors. Native browse supports saved views, search, sort, combined filters,
 trash and pages of 100 rows. Column widths are retained for the web grid;
 native does not provide a grid-width or secondary-sort editor. Rejected edits retain
