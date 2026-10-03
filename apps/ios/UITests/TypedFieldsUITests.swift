@@ -118,7 +118,13 @@ final class TypedFieldsUITests: XCTestCase {
     try XCTSkipIf(
       environment["LIFE_UI_TEST_FIELDS_SIMULATOR"] == nil,
       "Requires the typed-fields fixture on an explicitly selected private simulator")
-    XCTAssertEqual(environment["LIFE_UI_TEST_FIELDS_SIMULATOR"], environment["SIMULATOR_UDID"])
+    guard let expected = environment["LIFE_UI_TEST_FIELDS_SIMULATOR"], !expected.isEmpty,
+      expected == environment["SIMULATOR_UDID"]
+    else {
+      throw NSError(
+        domain: "TypedFieldsUITests", code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "The selected fixture simulator does not match."])
+    }
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launch()
