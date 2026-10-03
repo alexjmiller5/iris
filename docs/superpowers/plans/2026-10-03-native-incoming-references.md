@@ -13,6 +13,10 @@ SQLite identity, source liveness, target tombstones, labels and completeness.
   pages use the returned `nextOffset` without deriving it from displayed counts.
 - A repeated row ID replaces the earlier record and label in its existing
   position. Errors stay local to their group and preserve its rows and offset.
+  Row and target-panel identity use exact UTF-8 bytes: Swift String equality
+  would merge canonically equivalent IDs that SQLite stores separately.
+  Core request IDs retain their original Strings. Table/column identifiers
+  remain Strings under the core's ASCII identifier contract.
   Retrying is explicit. A page's source metadata replaces discovery metadata,
   including its `incomplete` value.
 - Refresh supersedes pending requests. Disposal is permanent. Both successes
@@ -42,6 +46,8 @@ UI owner's Xcode/simulator lease and a failing end-user test before adding them.
 4. Send `(group.source.table, row.id)` to the editor's existing `openReference`.
    That route re-reads the full row and retains the source draft on cancellation,
    disappearance or lookup failure. Never open a cached result directly.
+   Render rows with `ForEach(group.rows, id: \.byteExactID)`. The default
+   `WorkspaceRow.id` String would collapse distinct canonically equivalent IDs.
 
 Native UI cases to establish RED, then GREEN:
 
@@ -57,6 +63,8 @@ Native UI cases to establish RED, then GREEN:
   the retained editor.
 - Failures preserve loaded rows and retry offsets; changed/closed contexts ignore
   late replies. Partial coverage stays explicit after reopening offline.
+- Two source records with canonically equivalent but byte-distinct IDs remain
+  separately visible and independently navigable, including across pages.
 
 ## Verification
 

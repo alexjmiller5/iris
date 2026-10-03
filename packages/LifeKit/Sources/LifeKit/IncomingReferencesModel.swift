@@ -8,6 +8,18 @@ struct IncomingReferencesIdentity: Hashable {
   let rowID: String
   let catalog: WorkspaceCatalog?
   let skippedTables: Set<String>
+  private let exactRowID: Data
+
+  init(workspaceGeneration: Int, table: String, rowID: String,
+    catalog: WorkspaceCatalog?, skippedTables: Set<String>
+  ) {
+    self.workspaceGeneration = workspaceGeneration
+    self.table = table
+    self.rowID = rowID
+    self.catalog = catalog
+    self.skippedTables = skippedTables
+    exactRowID = Data(rowID.utf8)
+  }
 }
 
 struct IncomingReferenceGroup: Identifiable {
@@ -90,12 +102,12 @@ final class IncomingReferencesModel {
       guard current(version) else { return }
       var rows = group.rows
       var positions = Dictionary(
-        uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, $0.offset) })
+        uniqueKeysWithValues: rows.enumerated().map { ($0.element.byteExactID, $0.offset) })
       for row in page.rows {
-        if let position = positions[row.id] {
+        if let position = positions[row.byteExactID] {
           rows[position] = row
         } else {
-          positions[row.id] = rows.count
+          positions[row.byteExactID] = rows.count
           rows.append(row)
         }
       }

@@ -6,6 +6,36 @@ import Testing
 
 @MainActor
 struct IncomingReferencesTests {
+  @Test func realCoreKeepsCanonicallyEquivalentSQLiteIDsDistinct() async throws {
+    let runtime = try LifeCoreRuntime()
+    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await workspace.createSample()
+    let topic = try #require(try await workspace.rows(table: "topics").first)
+    let ids = ["\u{00E9}", "e\u{0301}"]
+    runtime.context.setObject(ids, forKeyedSubscript: "incomingIDs" as NSString)
+    runtime.context.setObject(topic.id, forKeyedSubscript: "incomingTarget" as NSString)
+    runtime.context.evaluateScript(
+      #"incomingIDs.forEach((id, i) => LifeSql.run("INSERT INTO notes(id,title,topic) VALUES (?,?,?)", [id, "Distinct " + i, incomingTarget]))"#)
+    #expect(runtime.context.exception == nil)
+    let page = try await workspace.referencedBy(CoreReferencedByArgs(
+      table: "topics", rowId: topic.id, sourceTable: "notes", column: "topic"))
+    #expect(page.rows.count == 2)
+    #expect(Set(page.rows.map { Data($0.id.utf8) }) == Set(ids.map { Data($0.utf8) }))
+    #expect(Set(page.rows.map(\.byteExactID)).count == 2)
+    let model = IncomingReferencesModel(
+      table: "topics", rowID: topic.id,
+      readSources: { try await workspace.referenceSources($0) },
+      readPage: { try await workspace.referencedBy($0) })
+    await model.refresh()
+    let id = try #require(model.groups.first { $0.source.column == "topic" }?.id)
+    await model.load(id)
+    let rows = try #require(model.groups.first { $0.id == id }?.rows)
+    #expect(rows.count == 2)
+    #expect(Set(rows.map { Data($0.id.utf8) }) == Set(ids.map { Data($0.utf8) }))
+    #expect(Set(rows.map(\.label)) == ["Distinct 0", "Distinct 1"])
+    try await workspace.close()
+  }
+
   @Test(arguments: ["notes", "topics"])
   func realCoreCompletenessSurvivesOfflineReopenForSkippedSourceOrTarget(_ skipped: String) async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

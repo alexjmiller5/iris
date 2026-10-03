@@ -27,6 +27,8 @@ const mutations = [
   ['ignored-workspace', host, 'workspaceGeneration: workspaceGeneration, table: context.table, rowID: rowID,', 'workspaceGeneration: 0, table: context.table, rowID: rowID,'],
   ['table-round-trip', host, 'self?.viewGeneration == selection\n          && self?.incomingReferencesIdentity', 'self?.incomingReferencesIdentity'],
   ['ignored-editor', host, '== identity && isCurrent()', '== identity'],
+  ['normalized-row-key', bridge, 'Data(id.utf8)', 'Data(id.precomposedStringWithCanonicalMapping.utf8)'],
+  ['normalized-target-key', model, 'exactRowID = Data(rowID.utf8)', 'exactRowID = Data(rowID.precomposedStringWithCanonicalMapping.utf8)'],
 ] as const;
 const originals = new Map(await Promise.all(
   [...new Set(mutations.map(([, path]) => path))].map(async path => [path, await Bun.file(resolve(root, path)).text()] as const)

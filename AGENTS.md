@@ -140,6 +140,9 @@ and the skipped-table set, excluding row revisions and unrelated status counters
 Keep that identity scoped to the incoming child; never recreate the record editor
 or its draft when relationship metadata changes. Native requests also capture
 view generation so a table round trip cannot revive an old panel.
+Incoming row deduplication and SwiftUI row identity use `byteExactID` (UTF-8
+bytes), since Swift String equality merges some distinct SQLite record IDs.
+Keep the original String ID for requests and navigation.
 Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never

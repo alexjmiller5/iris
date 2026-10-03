@@ -34,6 +34,8 @@ public struct WorkspaceCatalog: Hashable, Sendable {
 }
 extension CoreWorkspaceRow: Identifiable {
   public var id: String { record["id"]?.text ?? "" }
+  /// Opaque database IDs must not use Swift String's canonical-equivalence comparison.
+  public var byteExactID: Data { Data(id.utf8) }
 }
 public struct WorkspaceError: Error, LocalizedError, Sendable {
   public let message: String

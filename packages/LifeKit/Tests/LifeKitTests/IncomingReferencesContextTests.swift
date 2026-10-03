@@ -6,6 +6,42 @@ import Testing
 
 @MainActor
 struct IncomingReferencesContextTests {
+  @Test func panelContextUsesExactRecordIDBytes() async throws {
+    let runtime = try LifeCoreRuntime()
+    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await client.createSample()
+    let host = WorkspaceModel()
+    host.client = client
+    let composed = "\u{00E9}", decomposed = "e\u{0301}"
+    runtime.context.setObject([composed, decomposed], forKeyedSubscript: "incomingIDs" as NSString)
+    runtime.context.evaluateScript(
+      #"""
+      incomingIDs.forEach((id, i) => {
+        LifeSql.run("INSERT INTO topics(id,title) VALUES (?,?)", [id, "Target " + i]);
+        LifeSql.run("INSERT INTO notes(id,title,topic) VALUES (?,?,?)", ["source-" + i, "Source " + i, id]);
+      });
+      """#)
+    #expect(runtime.context.exception == nil)
+    host.table = "topics"
+    let context = try #require(host.editingContext)
+    let row: WorkspaceRecord = ["id": .string(composed)]
+    let first = try #require(host.incomingReferencesIdentity(context: context, row: row))
+    let second = try #require(host.incomingReferencesIdentity(
+      context: context, row: ["id": .string(decomposed)]))
+    #expect(Set([first, second]).count == 2)
+    for (index, id) in [composed, decomposed].enumerated() {
+      let panel = try #require(host.makeIncomingReferences(
+        context: context, row: ["id": .string(id)]))
+      await panel.refresh()
+      let group = try #require(panel.groups.first { $0.source.column == "topic" }?.id)
+      await panel.load(group)
+      let rows = try #require(panel.groups.first { $0.id == group }?.rows)
+      #expect(rows.map(\.label) == ["Source \(index)"])
+      #expect(rows.first?.record["topic"].map { Data($0.text.utf8) } == Data(id.utf8))
+    }
+    await host.close()
+  }
+
   @Test(arguments: ["tableRoundTrip", "editorClosed", "workspaceRoundTrip"])
   func replacedHostContextCannotReactivateAnOldPanel(_ transition: String) async throws {
     let client = try NativeWorkspace(path: ":memory:")

@@ -75,6 +75,27 @@ struct IncomingReferencesModelTests {
     #expect(model.groups.first?.nextOffset == nil)
   }
 
+  @Test(arguments: [false, true])
+  func opaqueIDsStayDistinctWithinAndAcrossPages(_ split: Bool) async throws {
+    let composed = "\u{00E9}", decomposed = "e\u{0301}"
+    let model = make { args in
+      let rows = args.offset == 37
+        ? [row(decomposed, "Second"), row(composed, "Updated first")]
+        : split ? [row(composed, "First")]
+          : [row(composed, "First"), row(decomposed, "Second")]
+      return CoreReferencedByPage(
+        source: source, rows: rows, nextOffset: args.offset == 37 ? nil : 37)
+    }
+    await model.refresh()
+    let id = try #require(model.groups.first?.id)
+    await model.load(id)
+    #expect(model.groups.first?.rows.count == (split ? 1 : 2))
+    await model.load(id, more: true)
+    let rows = try #require(model.groups.first?.rows)
+    #expect(rows.map { Data($0.id.utf8) } == [Data(composed.utf8), Data(decomposed.utf8)])
+    #expect(rows.map(\.label) == ["Updated first", "Second"])
+  }
+
   @Test func failedPagesKeepRowsAndOffsetUntilAnExplicitRetry() async throws {
     var fail = true
     var calls = 0
