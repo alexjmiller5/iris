@@ -65,6 +65,7 @@ public struct WorkspaceView: View {
               Button("Hub connection") { settings = true }.disabled(openingDestination)
               Button("Close workspace") { Task { await model.close() } }
             }.padding().frame(maxWidth: .infinity, alignment: .leading)
+              .background(.bar)
           }
         } detail: {
           #if os(macOS)
@@ -207,8 +208,10 @@ public struct WorkspaceView: View {
     let query = model.queryKey
     navigationRequest += 1
     let request = navigationRequest
-    let recent = preservingQuery
-      ? NativeDestination(table: destination.table, viewID: model.appliedView?.id, rowID: destination.rowID)
+    let recent =
+      preservingQuery
+      ? NativeDestination(
+        table: destination.table, viewID: model.appliedView?.id, rowID: destination.rowID)
       : destination
     openingDestination = true
     navigationError = nil
@@ -226,9 +229,11 @@ public struct WorkspaceView: View {
         guard current() else { return }
         let context: WorkspaceEditingContext
         if preservingQuery {
-          context = try model.refreshedRecordContext(resolved, workspace: workspace, generation: generation)
+          context = try model.refreshedRecordContext(
+            resolved, workspace: workspace, generation: generation)
         } else {
-          context = try model.activateDestination(resolved, workspace: workspace, generation: generation)
+          context = try model.activateDestination(
+            resolved, workspace: workspace, generation: generation)
         }
         if !preservingQuery { tableSearchPresented = false }
         showingGraph = false
@@ -277,9 +282,10 @@ public struct WorkspaceView: View {
         workspace: pending.source.workspace, generation: pending.generation)
       showingGraph = false
       editor = EditorTarget(row: pending.destination.row.record, context: context)
-      recordNavigationSucceeded(NativeDestination(
-        table: pending.destination.table, viewID: model.appliedView?.id,
-        rowID: pending.destination.row.id))
+      recordNavigationSucceeded(
+        NativeDestination(
+          table: pending.destination.table, viewID: model.appliedView?.id,
+          rowID: pending.destination.row.id))
     } catch { model.error = error.localizedDescription }
   }
 
@@ -334,8 +340,9 @@ public struct WorkspaceView: View {
               let current = try await model.recoveryRecord(saved, context: context)
               editor = EditorTarget(row: current, context: context, recovered: saved)
               if let id = current?["id"]?.text {
-                recordNavigationSucceeded(NativeDestination(
-                  table: context.table, viewID: model.appliedView?.id, rowID: id))
+                recordNavigationSucceeded(
+                  NativeDestination(
+                    table: context.table, viewID: model.appliedView?.id, rowID: id))
               }
             } catch { model.error = error.localizedDescription }
           }

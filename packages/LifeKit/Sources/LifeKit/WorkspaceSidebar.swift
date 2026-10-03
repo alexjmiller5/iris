@@ -34,7 +34,6 @@ struct WorkspaceSidebar: View {
           }
         }
       }
-      .accessibilityIdentifier("system-tables")
       .onChange(of: selectedTable, initial: true) {
         if tables.system.contains(where: { $0.id == selectedTable }) { systemExpanded = true }
       }
@@ -81,7 +80,8 @@ private struct RecentDestinations: View {
           .font(.caption).foregroundStyle(.secondary)
       }
       ForEach(recents.entries) { entry in
-        RecentDestinationRow(entry: entry, disabled: disabled,
+        RecentDestinationRow(
+          entry: entry, disabled: disabled,
           onOpen: { onOpen(entry.destination) },
           onRemove: { Task { await recents.remove(entry.destination) } })
       }

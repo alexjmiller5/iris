@@ -152,7 +152,8 @@ table separately. Every actual write rechecks its conditions transactionally.
 
 **Quick Find** offers tables and saved views before typing; on macOS, press
 **Cmd+K**. Type to filter destinations and search locally stored records through
-the shared FTS5 index. Use Up/Down and Enter to choose a result. Unavailable views
+the shared FTS5 index. Use Up/Down to choose a result, then tap it or use the
+keyboard’s Go action on iOS. Unavailable views
 retain their reason, and metadata failures can be retried separately from record
 search. Record matches show names, table names and matching snippets, with 50
 records per request. Opening a destination reads its current view or full row,
