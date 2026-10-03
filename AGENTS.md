@@ -231,7 +231,17 @@ correction stays in the inbox until sync accepts it.
 The native inbox model uses the same generated read operation and keeps its status
 total optional until that read succeeds. It pages by core offsets, preserves exact
 UTF-8 table/row identities, and requires a workspace-current closure plus disposal
-on close. Native view and repair wiring remain separate from this model.
+on close. The workspace Issues sheet owns refresh, paging and disposal, including
+refresh after sync and reopening offline. Prepare the review against fresh catalog,
+full row and writeability before dismissing Issues. Recheck workspace, query and
+request identity after dismissal, then install the already-persisted editor and
+record recents. A cancelled handoff keeps its journal and never changes navigation.
+Prepare rejected values with `RecordEditorModel.installRejectedDraft` on a fresh
+editor before changing navigation. It preserves the current row/revision, copies
+only loaded editable fields and persists a distinct, paused journal. Keep existing
+recovery variants; never resume an old journal to obtain a fresh rejection review.
+Journal failures abort presentation. Explicit Save and Restore use the normal
+writer; only accepted sync receipts remove durable inbox entries.
 
 Pending UI edits await the core's own valid receipt; this is not the CLI queue.
 Never report a write as saved or a round as synced before its promise succeeds.
