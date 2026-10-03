@@ -547,8 +547,8 @@ and iOS retain the record list. Native inline editing and Notes migration remain
 open work.
 The web sidebar includes device-local recent destinations and a collapsible
 System tables section. See [sidebar navigation](docs/sidebar-recents.md) for
-storage and availability behavior. Native Find activation with a hardware Return
-key and Mac Cmd+K have not been verified on a physical keyboard.
+storage and availability behavior. Native Find opens with Cmd+K on the Mac, and
+Return activates the selected result with a hardware keyboard on either platform.
 
 Native references use named pickers and local record links. Select and multi-select
 fields show catalog choices; malformed selections and JSON fields retain source
