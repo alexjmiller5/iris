@@ -191,6 +191,10 @@ snapshots or closed workspaces. Review uses a fresh full local row and its revis
 with rejected values held as a draft and autosave paused until explicit Save.
 Tombstones remain read-only until Restore, preserving that review draft. A saved
 correction stays in the inbox until sync accepts it.
+The native inbox model uses the same generated read operation and keeps its status
+total optional until that read succeeds. It pages by core offsets, preserves exact
+UTF-8 table/row identities, and requires a workspace-current closure plus disposal
+on close. Native view and repair wiring remain separate from this model.
 
 Pending UI edits await the core's own valid receipt; this is not the CLI queue.
 Never report a write as saved or a round as synced before its promise succeeds.

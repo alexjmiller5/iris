@@ -156,7 +156,9 @@ public final class NativeWorkspace {
   public func options(table: String, column: String) async throws -> [String] {
     try await decode(CoreRequests.Options(CoreOptionsArgs(table: table, column: column)))
   }
-  public func referenceSources(_ args: CoreReferenceSourcesArgs) async throws -> [CoreReferenceSource] {
+  public func referenceSources(_ args: CoreReferenceSourcesArgs) async throws
+    -> [CoreReferenceSource]
+  {
     try await decode(CoreRequests.ReferenceSources(args))
   }
   public func referencedBy(_ args: CoreReferencedByArgs) async throws -> CoreReferencedByPage {
@@ -180,6 +182,11 @@ public final class NativeWorkspace {
     try await decode(
       CoreRequests.Write(
         CoreWriteArgs(table: table, patch: patch, expectedUpdatedAt: expectedUpdatedAt)))
+  }
+  public func rejections(_ args: CoreRejectionsArgs = CoreRejectionsArgs()) async throws
+    -> CoreRejectionsPage
+  {
+    try await decode(CoreRequests.Rejections(args))
   }
   public func status() async throws -> WorkspaceSyncStatus {
     try await decode(CoreRequests.Status(CoreEmptyArgs()))
