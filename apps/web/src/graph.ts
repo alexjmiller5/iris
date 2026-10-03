@@ -1,7 +1,7 @@
 import { flushSync, mount } from 'svelte';
 import GraphIsland from './lib/GraphIsland.svelte';
 import type { GraphMessage } from './lib/graph-island';
-import './routes/layout.css';
+import './islands.css';
 
 declare global {
 	interface Window {

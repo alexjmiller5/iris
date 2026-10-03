@@ -16,6 +16,7 @@ jobs:
       - run: bun run check:contract
       - name: Verify generated native resources
         run: |
+          bun scripts/test-island-builds.ts
           bun run bundle:graph
           bun run bundle:editor
           bun run bundle:native

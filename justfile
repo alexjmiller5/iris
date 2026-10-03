@@ -21,7 +21,7 @@ build:
 
 fmt:
     bun run --cwd apps/web fmt
-    xcrun swift-format format --in-place --recursive packages/LifeKit/Sources packages/LifeKit/Tests apps/ios/App apps/macos/App
+    rg --files -0 packages/LifeKit/Sources packages/LifeKit/Tests apps/ios/App apps/macos/App -g '*.swift' -g '!**/Generated/**' | xargs -0 xcrun swift-format format --in-place
 
 # --- project-specific ---
 gen:

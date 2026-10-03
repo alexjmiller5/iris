@@ -1,7 +1,7 @@
 import { flushSync, mount } from 'svelte';
 import EditorIsland from './lib/EditorIsland.svelte';
 import type { EditorDocument, EditorMessage } from './lib/editor-island';
-import './routes/layout.css';
+import './islands.css';
 
 declare global {
 	interface Window {

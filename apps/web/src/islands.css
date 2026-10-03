@@ -1,0 +1,7 @@
+@import 'tailwindcss' source(none);
+@import './theme.css';
+
+@source './lib/GraphIsland.svelte';
+@source './lib/SchemaGraph.svelte';
+@source './lib/EditorIsland.svelte';
+@source './lib/components/MarkdownEditor.svelte';

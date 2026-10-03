@@ -113,6 +113,9 @@ Test behavior before implementation, then verify real SQLite, JSC and browser
 flows. Run the full applicable suites after the final source change. Use an
 isolated simulator if another project is driving the shared default device.
 
-Web design tokens live in `apps/web/src/routes/layout.css`; use Tabler UI icons,
+Web design tokens live in `apps/web/src/theme.css`; use Tabler UI icons,
 accessible controls, keyboard focus and narrow-screen layouts. Native views use
 SwiftUI semantic styles. Native graph changes must regenerate the bundled island.
+`islands.css` explicitly scopes Tailwind sources to the embedded components;
+unrelated web files must not change native artifacts. Verify this with
+`bun scripts/test-island-builds.ts` before publishing regenerated resources.
