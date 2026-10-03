@@ -62,7 +62,7 @@ struct RecordDraft: Codable {
     if let id = original?["id"] { patch["id"] = id }
     for field in fields {
       let value = values[field.id] ?? ""
-      guard value != initial[field.id] else { continue }
+      guard Data(value.utf8) != initial[field.id].map({ Data($0.utf8) }) else { continue }
       if value.isEmpty {
         patch[field.id] = .null
       } else if field.type == "bool", ["true", "false"].contains(value) {
@@ -81,7 +81,9 @@ struct RecordDraft: Codable {
   mutating func reconcileUndo(_ receipt: WorkspaceRecord) {
     for field in fields {
       let value = field.formValue(receipt[field.id])
-      if values[field.id] == initial[field.id] { values[field.id] = value }
+      if values[field.id].map({ Data($0.utf8) }) == initial[field.id].map({ Data($0.utf8) }) {
+        values[field.id] = value
+      }
       initial[field.id] = value
     }
     original = receipt
@@ -93,7 +95,9 @@ struct RecordDraft: Codable {
     for field in fields where sent[field.id] != nil {
       let submitted = sent[field.id] == .null ? "" : sent[field.id]?.text ?? ""
       let acknowledged = field.formValue(receipt[field.id])
-      if values[field.id] == submitted { values[field.id] = acknowledged }
+      if values[field.id].map({ Data($0.utf8) }) == Data(submitted.utf8) {
+        values[field.id] = acknowledged
+      }
       initial[field.id] = acknowledged
     }
     original = receipt

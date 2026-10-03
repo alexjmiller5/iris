@@ -70,7 +70,9 @@ struct EditorDraftStore {
   }
 
   func load(table: String, recordID: String?) throws -> StoredEditorDraft? {
-    let matches = try all().filter { $0.table == table && $0.recordID == recordID }
+    let matches = try all().filter {
+      $0.table == table && $0.recordID.map { Data($0.utf8) } == recordID.map { Data($0.utf8) }
+    }
     guard matches.count < 2 else {
       throw WorkspaceError(message: "Choose which unsaved draft to resume.", violations: [])
     }

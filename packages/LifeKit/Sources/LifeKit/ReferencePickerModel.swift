@@ -10,7 +10,7 @@ final class ReferencePickerModel {
   private(set) var canLoadMore = false
   private(set) var error: String?
   var search = ""
-  private var labels: [String: String] = [:]
+  private var labels: [Data: String] = [:]
   private var revision = 0
   private let load: (CoreView) async throws -> [WorkspaceRow]
 
@@ -23,10 +23,10 @@ final class ReferencePickerModel {
     self.load = load
   }
 
-  func label(for id: String) -> String { labels[id] ?? "Unavailable" }
+  func label(for id: String) -> String { labels[Data(id.utf8)] ?? "Unavailable" }
 
   func choose(_ row: WorkspaceRow) {
-    labels[row.id] = row.label
+    labels[row.byteExactID] = row.label
     selection.choose(row.id)
   }
 
@@ -40,7 +40,9 @@ final class ReferencePickerModel {
             table: table, filters: [CoreFilter(column: "id", op: .eq, value: .string(id))], limit: 1
           ))
         guard !Task.isCancelled else { return }
-        if let row = result.first(where: { $0.id == id }) { labels[id] = row.label }
+        if let row = result.first(where: { $0.byteExactID == Data(id.utf8) }) {
+          labels[row.byteExactID] = row.label
+        }
       } catch {
         guard !Task.isCancelled else { return }
         self.error = error.localizedDescription
@@ -59,7 +61,7 @@ final class ReferencePickerModel {
         CoreView(table: table, limit: 100, offset: more ? rows.count : 0, search: query))
       guard request == revision, query == search, !Task.isCancelled else { return }
       rows = more ? rows + result : result
-      for row in result { labels[row.id] = row.label }
+      for row in result { labels[row.byteExactID] = row.label }
       canLoadMore = result.count == 100
     } catch {
       guard request == revision, query == search, !Task.isCancelled else { return }

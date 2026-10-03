@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 extension CoreSearchHit {
-  var identity: [String] { [table, id] }
+  var identity: [Data] { [Data(table.utf8), Data(id.utf8)] }
 }
 
 @Observable @MainActor
@@ -13,7 +13,7 @@ final class QuickFindModel: Identifiable {
   }
   private(set) var results: [CoreSearchHit] = []
   private(set) var loading = false
-  private(set) var opening: [String]?
+  private(set) var opening: [Data]?
   private(set) var error: String?
   private(set) var canLoadMore = false
   private var offset = 0
@@ -95,7 +95,7 @@ final class QuickFindModel: Identifiable {
         return nil
       }
       opening = nil
-      guard let row = rows.first(where: { $0.id == hit.id }) else {
+      guard let row = rows.first(where: { $0.byteExactID == Data(hit.id.utf8) }) else {
         error = "This record is no longer available locally. Search again to refresh the results."
         return nil
       }

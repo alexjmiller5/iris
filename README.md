@@ -185,7 +185,8 @@ database location, record and editor. App-owned databases use paths relative to
 their app state so container relocation during an update preserves recovery;
 external databases use canonical absolute paths. Separate windows keep separate
 recovery drafts, including new records. **Resume draft** restores unsaved fields
-after relaunch; **Discard draft** removes them explicitly. A stale recovered
+after relaunch; **Discard draft** removes them explicitly. Recovery stays attached
+to the exact stored record, even when two record IDs look identical. A stale recovered
 revision cannot overwrite a newer row. An interrupted write with no confirmed
 receipt retains its latest draft and requires review before saving again.
 Use **Copy Markdown** or a field's **Copy** button, then **Keep draft and close**

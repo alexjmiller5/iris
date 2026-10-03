@@ -3,6 +3,56 @@ import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testRecoveryAndSaveKeepByteDistinctRecordIDsSeparate() throws {
+    guard ProcessInfo.processInfo.environment["LIFE_UI_TEST_OPAQUE_ID_SIMULATOR"] != nil else {
+      throw XCTSkip(
+        "Seed the two-record fixture on an explicitly selected disposable simulator first.")
+    }
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    openLocalWorkspace(app)
+    openRecord(app, title: "Opaque first record")
+    let title = app.textFields["field-title"]
+    tapWhenReady(title)
+    title.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+    title.typeText(" kept draft")
+    let firstDraft = try XCTUnwrap(title.value as? String)
+    XCTAssertTrue(firstDraft.contains("kept draft"))
+    // A terminated editor must leave its private recovery journal intact.
+    app.terminate()
+    app.launch()
+    openLocalWorkspace(app)
+    openRecord(app, title: "Opaque second record")
+    XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
+    let beforeSave = XCTAttachment(screenshot: app.screenshot())
+    beforeSave.name = "native-byte-distinct-record-recovery"
+    beforeSave.lifetime = .keepAlways
+    add(beforeSave)
+    XCTAssertFalse(
+      app.buttons["Resume draft"].exists, "The other SQLite record's draft must not be offered")
+    XCTAssertEqual(title.value as? String, "Opaque second record")
+    tapWhenReady(title)
+    title.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+    title.typeText(" saved second")
+    let secondTitle = try XCTUnwrap(title.value as? String)
+    XCTAssertEqual(secondTitle, "Opaque second record saved second")
+    tapWhenReady(app.navigationBars["Record"].buttons["save-record"])
+    openRecord(app, title: secondTitle)
+    XCTAssertEqual(title.value as? String, secondTitle)
+    XCTAssertFalse(app.buttons["Resume draft"].exists)
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    openRecord(app, title: "Opaque first record")
+    XCTAssertEqual(
+      title.value as? String, "Opaque first record",
+      "Saving the second record must not write the first")
+    tapWhenReady(app.buttons["Resume draft"])
+    XCTAssertEqual(
+      title.value as? String, firstDraft, "The first record's own recovery must survive")
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    tapWhenReady(app.buttons["Discard changes"])
+  }
+
   func testDeviceApprovalConnectsThroughRealHubAndSourceFocusKeepsToolbarVisible() async throws {
     guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
       throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")

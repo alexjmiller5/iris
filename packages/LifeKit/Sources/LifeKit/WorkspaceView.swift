@@ -274,7 +274,7 @@ public struct WorkspaceView: View {
             model.search.isEmpty && model.filters.isEmpty
               ? "Create a record to get started." : "Try a different search or filter."))
       }
-      ForEach(model.rows) { row in
+      ForEach(model.rows, id: \.byteExactID) { row in
         Button {
           editor = EditorTarget(row: row.record, context: model.editingContext)
         } label: {

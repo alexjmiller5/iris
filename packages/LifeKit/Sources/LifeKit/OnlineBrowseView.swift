@@ -35,7 +35,7 @@ struct OnlineBrowseView: View {
               "No online records", systemImage: "cloud",
               description: Text("Refresh to check for new records on the hub."))
           }
-          ForEach(model.rows) { row in
+          ForEach(model.rows, id: \.byteExactID) { row in
             Button {
               Task { await model.open(row) }
             } label: {
@@ -45,7 +45,7 @@ struct OnlineBrowseView: View {
                   if row.deleted { Text("Deleted").font(.caption).foregroundStyle(.secondary) }
                 }
                 Spacer()
-                if model.opening == row.id {
+                if model.opening.map({ Data($0.utf8) }) == row.byteExactID {
                   ProgressView()
                 } else {
                   Image(systemName: "chevron.right").foregroundStyle(.tertiary)
