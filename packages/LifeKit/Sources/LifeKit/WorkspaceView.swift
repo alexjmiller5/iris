@@ -17,6 +17,9 @@ public struct WorkspaceView: View {
   @State private var editor: EditorTarget?
   @State private var online: OnlineBrowseModel?
   @State private var quickFind: QuickFindCoordinator?
+  @State private var rejectionInbox: RejectionInboxModel?
+  @State private var rejectionError: String?
+  @State private var pendingRejection: (review: PreparedRejectionReview, request: Int)?
   @State private var pendingSearchEditor:
     (target: EditorTarget, generation: Int, destination: NativeDestination)?
   @State private var pendingReferenceEditor:
@@ -100,13 +103,17 @@ public struct WorkspaceView: View {
     .onChange(of: model.syncing) {
       if !model.syncing {
         let recents = model.recents
-        Task { await recents?.refresh() }
+        let inbox = rejectionInbox
+        Task {
+          await recents?.refresh()
+          await inbox?.refresh()
+        }
       }
     }
     .sheet(item: $editor, onDismiss: finishEditorDismissal) { target in
       RecordEditor(
         model: model, original: target.row, context: target.context, recovered: target.recovered,
-        isCurrent: { editor?.id == target.id },
+        preparedEditor: target.preparedEditor, isCurrent: { editor?.id == target.id },
         onReference: { destination in
           guard editor?.id == target.id, let source = target.context,
             source.workspace === model.client, source.table == model.table
@@ -159,6 +166,29 @@ public struct WorkspaceView: View {
         if resolved.row == nil { recordNavigationSucceeded(resolved.destination) }
       }
     }
+    .sheet(item: $rejectionInbox, onDismiss: finishRejectionDismissal) { inbox in
+      NavigationStack {
+        List {
+          if let rejectionError {
+            Text(rejectionError).foregroundStyle(.red).textSelection(.enabled)
+          }
+          RejectionInboxView(model: inbox, isBusy: openingDestination) { entry in
+            reviewRejected(entry, inbox: inbox)
+          }
+        }
+        .navigationTitle("Issues")
+        .toolbar {
+          ToolbarItem(placement: .cancellationAction) {
+            Button("Done") { rejectionInbox = nil }
+          }
+        }
+      }
+      #if os(macOS)
+        .frame(minWidth: 520, minHeight: 480)
+      #endif
+      .task { await inbox.refresh() }
+      .onDisappear { inbox.dispose() }
+    }
     .onChange(of: model.workspaceGeneration) {
       navigationRequest += 1
       openingDestination = false
@@ -170,6 +200,10 @@ public struct WorkspaceView: View {
       quickFind = nil
       pendingSearchEditor = nil
       pendingReferenceEditor = nil
+      rejectionInbox?.dispose()
+      rejectionInbox = nil
+      pendingRejection = nil
+      rejectionError = nil
     }
     .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
       switch result {
@@ -182,7 +216,7 @@ public struct WorkspaceView: View {
   private var canFind: Bool {
     model.client != nil && !openingDestination && editor == nil && online == nil && quickFind == nil
       && pendingSearchEditor == nil
-      && pendingReferenceEditor == nil
+      && pendingReferenceEditor == nil && rejectionInbox == nil && pendingRejection == nil
       && !settings && !options && !savedViews && !importing
   }
 
@@ -216,6 +250,7 @@ public struct WorkspaceView: View {
       model.client === workspace && model.workspaceGeneration == generation
         && navigationRequest == request && model.queryKey == query
         && editor == nil && quickFind == nil && online == nil
+        && rejectionInbox == nil && pendingRejection == nil
         && !settings && !options && !savedViews && !importing
     }
     Task {
@@ -244,6 +279,76 @@ public struct WorkspaceView: View {
         model.error = error.localizedDescription
         await model.recents?.refresh()
       }
+    }
+  }
+
+  private func showRejections() {
+    guard canFind else { return }
+    rejectionError = nil
+    rejectionInbox = model.makeRejectionInbox()
+  }
+
+  private func reviewRejected(_ entry: CoreRejectedEdit, inbox: RejectionInboxModel) {
+    guard rejectionInbox === inbox, !openingDestination, editor == nil,
+      pendingRejection == nil, let workspace = model.client
+    else { return }
+    let generation = model.workspaceGeneration
+    let query = model.queryKey.map { Data($0.utf8) }
+    navigationRequest += 1
+    let request = navigationRequest
+    openingDestination = true
+    rejectionError = nil
+    let current = {
+      rejectionInbox === inbox && navigationRequest == request
+        && model.client === workspace && model.workspaceGeneration == generation
+        && model.queryKey.map({ Data($0.utf8) }) == query
+        && editor == nil && quickFind == nil && online == nil
+        && pendingSearchEditor == nil && pendingReferenceEditor == nil
+        && !settings && !options && !savedViews && !importing
+    }
+    Task {
+      defer { if navigationRequest == request { openingDestination = false } }
+      do {
+        let review = try await model.prepareRejectionReview(
+          entry, workspace: workspace, generation: generation, isCurrent: current)
+        guard current() else { return }
+        pendingRejection = (review, request)
+        rejectionInbox = nil
+      } catch is CancellationError {
+        // The saved draft survives a cancelled handoff; the newer context owns the UI.
+      } catch {
+        guard current() else { return }
+        rejectionError = error.localizedDescription
+      }
+    }
+  }
+
+  private func finishRejectionDismissal() {
+    guard let pending = pendingRejection else { return }
+    pendingRejection = nil
+    let current = {
+      navigationRequest == pending.request && rejectionInbox == nil
+        && editor == nil && quickFind == nil && online == nil
+        && pendingSearchEditor == nil && pendingReferenceEditor == nil
+        && !settings && !options && !savedViews && !importing
+    }
+    do {
+      try model.activateRejectionReview(pending.review, isCurrent: current)
+      editor = EditorTarget(
+        row: pending.review.resolved.row?.record, context: pending.review.context,
+        preparedEditor: pending.review.editor)
+      tableSearchPresented = false
+      showingGraph = false
+      preferredColumn = .detail
+      model.error = nil
+      navigationError = nil
+      recordNavigationSucceeded(pending.review.resolved.destination)
+    } catch is CancellationError {
+      model.refreshDrafts()
+    } catch {
+      guard current() else { return }
+      model.refreshDrafts()
+      model.error = error.localizedDescription
     }
   }
 
@@ -314,6 +419,9 @@ public struct WorkspaceView: View {
 
   private var records: some View {
     List {
+      Button(action: showRejections) {
+        Label("Issues", systemImage: "exclamationmark.bubble")
+      }.disabled(!canFind).accessibilityIdentifier("workspace-issues")
       if let action = model.undoAction {
         Button {
           let context = model.editingContext
@@ -491,6 +599,7 @@ private struct EditorTarget: Identifiable {
   let row: WorkspaceRecord?
   let context: WorkspaceEditingContext?
   var recovered: StoredEditorDraft? = nil
+  var preparedEditor: RecordEditorModel? = nil
 }
 
 private struct RecordEditor: View {
@@ -510,7 +619,8 @@ private struct RecordEditor: View {
 
   init(
     model: WorkspaceModel, original: WorkspaceRecord?, context: WorkspaceEditingContext?,
-    recovered: StoredEditorDraft?, isCurrent: @escaping @MainActor () -> Bool,
+    recovered: StoredEditorDraft?, preparedEditor: RecordEditorModel? = nil,
+    isCurrent: @escaping @MainActor () -> Bool,
     onReference: @escaping (ReferenceDestination) -> Void, onSaved: @escaping () -> Void
   ) {
     self.model = model
@@ -518,7 +628,7 @@ private struct RecordEditor: View {
     self.onSaved = onSaved
     self.isCurrent = isCurrent
     recordFields = model.properties.map(CatalogField.init)
-    let source = RecordEditorModel(
+    let source = preparedEditor ?? RecordEditorModel(
       properties: model.properties,
       original: original, table: context?.table ?? "", store: context?.draftStore,
       recovered: recovered

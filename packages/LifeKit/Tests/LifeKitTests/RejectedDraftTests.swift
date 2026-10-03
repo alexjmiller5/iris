@@ -228,25 +228,24 @@ struct RejectedDraftTests {
   }
 
   @Test func failedCorrectionKeepsPausedReviewAndRestoreKeepsRawValues() async throws {
-    var fail = true
     var patches: [WorkspaceRecord] = []
     let tombstone = original.merging(["deleted_at": .string("deleted")]) { _, next in next }
     let editor = RecordEditorModel(
       properties: properties, original: tombstone, table: "items", store: nil
     ) { patch, baseline in
       patches.append(patch)
-      if fail { throw WorkspaceError(message: "Synthetic rejection", violations: []) }
+      if patch["deleted_at"] == nil {
+        throw WorkspaceError(message: "Synthetic rejection", violations: [])
+      }
       return baseline!.merging(patch) { _, next in next }
     }
     try editor.installRejectedDraft(submitted: ["id": .string("row"), "body": .string("Review")])
     await #expect(throws: WorkspaceError.self) { try await editor.saveAll() }
     #expect(patches.isEmpty)
-    fail = false
     try await editor.saveAll(["id": .string("row"), "deleted_at": .null])
     #expect(!editor.isTrashed && editor.autosavePaused)
     #expect(editor.draft.values["body"] == "Review")
     #expect(patches == [["id": .string("row"), "deleted_at": .null]])
-    fail = true
     await #expect(throws: WorkspaceError.self) { try await editor.saveAll() }
     #expect(editor.draft.values["body"] == "Review")
     #expect(editor.autosavePaused)

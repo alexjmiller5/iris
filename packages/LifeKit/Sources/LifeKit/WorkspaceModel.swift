@@ -241,6 +241,10 @@ final class WorkspaceModel {
   }
   var tables: [WorkspaceRecord] { catalog?.tables ?? [] }
   var properties: [WorkspaceRecord] {
+    Self.properties(in: catalog, table: table)
+  }
+  private static func properties(in catalog: WorkspaceCatalog?, table: String?) -> [WorkspaceRecord]
+  {
     (catalog?.properties ?? []).filter { $0["tbl"]?.text == table }.sorted {
       let left = Double($0["sort"]?.text ?? "") ?? 0
       let right = Double($1["sort"]?.text ?? "") ?? 0
@@ -450,6 +454,70 @@ final class WorkspaceModel {
     }
   }
 
+  func makeRejectionInbox() -> RejectionInboxModel? {
+    guard let client else { return nil }
+    let generation = workspaceGeneration
+    return RejectionInboxModel(
+      readStatus: client.status, readPage: client.rejections,
+      isCurrent: { [weak self] in
+        self?.client === client && self?.workspaceGeneration == generation
+      })
+  }
+
+  func prepareRejectionReview(
+    _ entry: CoreRejectedEdit, workspace: NativeWorkspace, generation: Int,
+    isCurrent: () -> Bool = { true }
+  ) async throws -> PreparedRejectionReview {
+    let query = queryKey.map { Data($0.utf8) }
+    func current() -> Bool {
+      isCurrent() && client === workspace && workspaceGeneration == generation
+        && queryKey.map { Data($0.utf8) } == query && !Task.isCancelled
+    }
+    func check() throws {
+      guard current() else { throw CancellationError() }
+      try requireNavigationReady(workspace: workspace, generation: generation)
+    }
+    do {
+      try check()
+      let resolved = try await NativeDestinationResolver(workspace: workspace).resolve(
+        NativeDestination(table: entry.table, rowID: entry.rowID), isCurrent: current)
+      try check()
+      let permission = try await workspace.writeability(table: entry.table)
+      try check()
+      guard permission.writable else {
+        throw WorkspaceError(
+          message: permission.reason?.message ?? "This table cannot be edited on this device.",
+          violations: [])
+      }
+      let context = WorkspaceEditingContext(
+        workspace: workspace, table: entry.table, draftStore: draftStore)
+      let editor = RecordEditorModel(
+        properties: Self.properties(in: resolved.catalog, table: entry.table),
+        original: resolved.row?.record, table: entry.table, store: draftStore
+      ) { patch, baseline in
+        try await self.save(patch, original: baseline, context: context)
+      }
+      try editor.installRejectedDraft(submitted: entry.submitted)
+      return PreparedRejectionReview(
+        resolved: resolved, context: context, editor: editor,
+        generation: generation, sourceQuery: query)
+    } catch {
+      try check()
+      throw error
+    }
+  }
+
+  func activateRejectionReview(
+    _ prepared: PreparedRejectionReview, isCurrent: () -> Bool = { true }
+  ) throws {
+    guard isCurrent(), !Task.isCancelled,
+      queryKey.map({ Data($0.utf8) }) == prepared.sourceQuery
+    else { throw CancellationError() }
+    _ = try activateDestination(
+      prepared.resolved, workspace: prepared.context.workspace,
+      generation: prepared.generation)
+  }
+
   func activateDestination(
     _ resolved: NativeResolvedDestination, workspace: NativeWorkspace, generation: Int
   ) throws -> WorkspaceEditingContext {
@@ -613,8 +681,12 @@ final class WorkspaceModel {
       }
       try loadGroups(workspace: demo ? nil : path)
       try prepareDrafts(path: demo ? nil : path)
-      let recentStore = demo ? nil : NativeRecentsStore(
-        root: try resolveLocalURL().deletingLastPathComponent(), workspace: URL(fileURLWithPath: path))
+      let recentStore =
+        demo
+        ? nil
+        : NativeRecentsStore(
+          root: try resolveLocalURL().deletingLastPathComponent(),
+          workspace: URL(fileURLWithPath: path))
       let workspace = try NativeWorkspace(path: path)
       do {
         if seed { try await workspace.createSample() }
@@ -716,7 +788,8 @@ final class WorkspaceModel {
     // Forgetting a credential keeps this database open. Its local history
     // remains usable; replacing/closing the client cancels the old model.
     let current = { [weak self] in self?.client === client }
-    recents = NativeRecentsModel(store: store,
+    recents = NativeRecentsModel(
+      store: store,
       resolve: { try await resolver.resolve($0, isCurrent: current) }, isCurrent: current)
   }
 

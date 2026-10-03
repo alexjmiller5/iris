@@ -248,7 +248,12 @@ An established Keychain-backed replica reopens offline without requiring a fresh
 session response. Cached records appear before sync finishes. **Sync now** sends
 and receives updates; failures keep local records and edits available. Durable
 pending/rejected counts and the last successful sync remain visible while
-scrolling, with rejection details in the record list. **Forget saved connection**
+scrolling. Open **Issues** to page through durable rejected edits, including after
+reopening offline. **Review edit** opens the current local record with the rejected
+editable values held in a paused draft. Save a correction, then sync; only an
+accepted sync removes the inbox entry. Trashed records require Restore first,
+which keeps the review draft. A failed or cancelled review keeps existing drafts
+and navigation intact. **Forget saved connection**
 removes the local Keychain entry and keeps the replica; it does not revoke the
 device at the hub. Use the hub's device controls to revoke access separately.
 
@@ -514,8 +519,8 @@ storage and availability behavior. Native sidebar parity remains open work.
 Native references use named pickers and local record links; multi-select and JSON fields use source
 editors. Native browse supports saved views, search, sort, combined filters,
 trash and pages of 100 rows. Column widths are retained for the web grid;
-native does not provide a grid-width or secondary-sort editor. Rejected edits retain
-their data and show errors; a dedicated repair workflow remains open. Sync
+native does not provide a grid-width or secondary-sort editor. The Issues sheet
+retains rejected values and supports local correction with an explicit Save. Sync
 runs on connection and explicit request,
 not in the background. Native device approval installs a dedicated credential
 only after the hub session is validated; manual token entry is also available.

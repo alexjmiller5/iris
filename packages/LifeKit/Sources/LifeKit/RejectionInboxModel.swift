@@ -13,7 +13,7 @@ extension CoreRejectedEdit {
 /// Presentation state only: the shared core validates and reads the durable inbox.
 /// Owners refresh after database changes and dispose when their workspace closes.
 @Observable @MainActor
-final class RejectionInboxModel {
+final class RejectionInboxModel: Identifiable {
   private(set) var total: Int?
   private(set) var entries: [CoreRejectedEdit] = []
   private(set) var nextOffset: Int? = 0
