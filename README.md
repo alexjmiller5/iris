@@ -488,16 +488,20 @@ External files with table invariants remain read-only without verified sync cove
 Missing references must be included in the replica before editing them.
 Online browsing is explicit and read-only. Native table search and
 cross-table Find both use the shared local FTS5 index.
-The web grid supports inline keyboard editing. Native grid editing and Notes
-migration remain open work.
+The web grid supports inline keyboard editing. On macOS 14.4 and later, a native
+table shows catalog columns and saved column layouts; open a record by its title,
+double-click, or the context menu to edit its full contents. Earlier macOS versions
+and iOS retain the record list. Native inline editing and Notes migration remain
+open work.
 The web sidebar includes device-local recent destinations and a collapsible
 System tables section. See [sidebar navigation](docs/sidebar-recents.md) for
 storage and availability behavior. Native sidebar parity remains open work.
 
 Native references use named pickers and local record links; multi-select and JSON fields use source
 editors. Native browse supports saved views, search, sort, combined filters,
-trash and pages of 100 rows. Column widths are retained for the web grid;
-native does not provide a grid-width or secondary-sort editor. Rejected edits retain
+trash and pages of 100 rows. The Mac table honors saved column order and widths;
+resizing its columns is temporary. Native does not provide a saved grid-width or
+secondary-sort editor. Rejected edits retain
 their data and show errors; a dedicated repair workflow remains open. Sync
 runs on connection and explicit request,
 not in the background. Native device approval installs a dedicated credential

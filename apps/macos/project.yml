@@ -43,11 +43,23 @@ targets:
     dependencies:
       - target: LifeUI
       - package: LifeKit
+  LifeUIUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: [UITests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.life-ui.uitests
+        PRODUCT_NAME: LifeUIUITests
+    dependencies:
+      - target: LifeUI
 schemes:
   LifeUI:
     build:
       targets:
         LifeUI: all
         LifeUITests: [test]
+        LifeUIUITests: [test]
     test:
-      targets: [LifeUITests]
+      targets: [LifeUITests, LifeUIUITests]

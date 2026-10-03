@@ -221,52 +221,56 @@ public struct WorkspaceView: View {
     }
   }
 
-  private var records: some View {
+  @ViewBuilder private var recordNotices: some View {
+    if let action = model.undoAction {
+      Button {
+        let context = model.editingContext
+        Task {
+          do { try await model.undo(action, context: context) } catch {
+            model.error = error.localizedDescription
+          }
+        }
+      } label: {
+        Label("Undo last saved change", systemImage: "arrow.uturn.backward")
+      }.disabled(model.undoing || !canFind).accessibilityIdentifier("undo-saved-change")
+    }
+    ForEach(model.recoverableDrafts.filter { $0.table == model.table }) { saved in
+      Button {
+        guard let context = model.editingContext else { return }
+        Task {
+          do {
+            let current = try await model.recoveryRecord(saved, context: context)
+            editor = EditorTarget(row: current, context: context, recovered: saved)
+          } catch { model.error = error.localizedDescription }
+        }
+      } label: {
+        VStack(alignment: .leading) {
+          Label("Resume unsaved draft", systemImage: "square.and.pencil")
+          if let field = saved.draft.fields.first,
+            let value = saved.draft.values[field.id]?.nonempty
+          {
+            Text(value).lineLimit(1)
+          }
+          Text(saved.modifiedAt.formatted(date: .abbreviated, time: .standard)).font(.caption)
+        }
+      }.accessibilityIdentifier("resume-unsaved-draft")
+    }
+    if model.isReplica,
+      model.syncResult?.rejected.isEmpty == false || !model.skippedTables.isEmpty
+    {
+      SyncDetails(model: model)
+    }
+    if let error = model.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
+    if let purpose = model.tables.first(where: { $0["id"]?.text == model.table })?["purpose"]?
+      .text.nonempty
+    {
+      Text(purpose).font(.callout).foregroundStyle(.secondary)
+    }
+  }
+
+  private var recordList: some View {
     List {
-      if let action = model.undoAction {
-        Button {
-          let context = model.editingContext
-          Task {
-            do { try await model.undo(action, context: context) } catch {
-              model.error = error.localizedDescription
-            }
-          }
-        } label: {
-          Label("Undo last saved change", systemImage: "arrow.uturn.backward")
-        }.disabled(model.undoing || !canFind).accessibilityIdentifier("undo-saved-change")
-      }
-      ForEach(model.recoverableDrafts.filter { $0.table == model.table }) { saved in
-        Button {
-          guard let context = model.editingContext else { return }
-          Task {
-            do {
-              let current = try await model.recoveryRecord(saved, context: context)
-              editor = EditorTarget(row: current, context: context, recovered: saved)
-            } catch { model.error = error.localizedDescription }
-          }
-        } label: {
-          VStack(alignment: .leading) {
-            Label("Resume unsaved draft", systemImage: "square.and.pencil")
-            if let field = saved.draft.fields.first,
-              let value = saved.draft.values[field.id]?.nonempty
-            {
-              Text(value).lineLimit(1)
-            }
-            Text(saved.modifiedAt.formatted(date: .abbreviated, time: .standard)).font(.caption)
-          }
-        }.accessibilityIdentifier("resume-unsaved-draft")
-      }
-      if model.isReplica,
-        model.syncResult?.rejected.isEmpty == false || !model.skippedTables.isEmpty
-      {
-        SyncDetails(model: model)
-      }
-      if let error = model.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
-      if let purpose = model.tables.first(where: { $0["id"]?.text == model.table })?["purpose"]?
-        .text.nonempty
-      {
-        Text(purpose).font(.callout).foregroundStyle(.secondary)
-      }
+      recordNotices
       if model.rows.isEmpty && !model.loading {
         ContentUnavailableView(
           model.trash ? "Trash is empty" : "No records", systemImage: "tray",
@@ -298,95 +302,146 @@ public struct WorkspaceView: View {
       if model.canLoadMore { Button("Load more") { Task { await model.reload(more: true) } } }
       if model.loading { ProgressView().frame(maxWidth: .infinity) }
     }
-    .safeAreaInset(edge: .top, spacing: 0) {
-      VStack(alignment: .leading, spacing: 8) {
-        if model.isReplica { SyncSummary(model: model) }
-        if let message = model.partialTableNotice, let context = model.downloadContext,
-          let table = model.table
-        {
-          PartialReplicaNotice(model: model, context: context, table: table, message: message)
-        }
-        if model.isReplica, model.table != nil {
-          Button {
-            guard canFind else { return }
-            tableSearchPresented = false
-            online = model.makeOnlineBrowser()
-          } label: {
-            Label("Browse online", systemImage: "cloud")
-          }.disabled(!canFind).accessibilityIdentifier("browse-online")
-        }
-        if let reason = model.editingUnavailable {
-          Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-            .accessibilityIdentifier("editing-availability")
-        }
-        HStack {
-          Button {
-            savedViews = true
-          } label: {
-            Label("Views", systemImage: "rectangle.stack")
-          }.disabled(editor != nil || model.client == nil)
-            .accessibilityIdentifier("saved-views")
-          Button {
-            options = true
-          } label: {
-            HStack {
-              Label("Sort and filter", systemImage: "line.3.horizontal.decrease")
-              if !model.sortColumn.isEmpty {
-                Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
-              }
-              if !model.filters.isEmpty { Text("\(model.filters.count) active") }
+  }
+
+  @ViewBuilder private var recordContent: some View {
+    #if os(macOS)
+      if #available(macOS 14.4, *) {
+        VStack(alignment: .leading, spacing: 0) {
+          ViewThatFits(in: .vertical) {
+            macRecordNotices
+            ScrollView { macRecordNotices }
+          }.frame(maxHeight: 180)
+          MacRecordTable(
+            rows: model.rows,
+            columns: NativeGridColumn.columns(
+              properties: model.properties, selected: model.visibleRecordColumns,
+              widths: model.appliedView?.definition?.widths ?? [:])
+          ) { row in
+            editor = EditorTarget(row: row.record, context: model.editingContext)
+          }
+          .id(model.queryKey + [String(model.workspaceGeneration)])
+          .overlay {
+            if model.rows.isEmpty && !model.loading {
+              ContentUnavailableView(
+                model.trash ? "Trash is empty" : "No records", systemImage: "tray",
+                description: Text("Create a record or try a different search or filter."))
             }
-          }.accessibilityIdentifier("view-options")
-          Spacer()
-          Button(action: showQuickFind) { Label("Find", systemImage: "magnifyingglass") }
-            .disabled(!canFind).accessibilityIdentifier("quick-find")
+          }
+          HStack {
+            Text("\(model.rows.count) records loaded").font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            if model.loading { ProgressView().controlSize(.small) }
+            if model.canLoadMore {
+              Button("Load more") { Task { await model.reload(more: true) } }
+                .disabled(model.loading)
+            }
+          }.padding(12)
         }
-        if let applied = model.appliedView {
-          Text(applied.name + (model.viewModified ? " · Modified" : ""))
-            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+      } else {
+        recordList
+      }
+    #else
+      recordList
+    #endif
+  }
+
+  private var macRecordNotices: some View {
+    VStack(alignment: .leading, spacing: 10) { recordNotices }
+      .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var records: some View {
+    recordContent
+      .safeAreaInset(edge: .top, spacing: 0) {
+        VStack(alignment: .leading, spacing: 8) {
+          if model.isReplica { SyncSummary(model: model) }
+          if let message = model.partialTableNotice, let context = model.downloadContext,
+            let table = model.table
+          {
+            PartialReplicaNotice(model: model, context: context, table: table, message: message)
+          }
+          if model.isReplica, model.table != nil {
+            Button {
+              guard canFind else { return }
+              tableSearchPresented = false
+              online = model.makeOnlineBrowser()
+            } label: {
+              Label("Browse online", systemImage: "cloud")
+            }.disabled(!canFind).accessibilityIdentifier("browse-online")
+          }
+          if let reason = model.editingUnavailable {
+            Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+              .accessibilityIdentifier("editing-availability")
+          }
+          HStack {
+            Button {
+              savedViews = true
+            } label: {
+              Label("Views", systemImage: "rectangle.stack")
+            }.disabled(editor != nil || model.client == nil)
+              .accessibilityIdentifier("saved-views")
+            Button {
+              options = true
+            } label: {
+              HStack {
+                Label("Sort and filter", systemImage: "line.3.horizontal.decrease")
+                if !model.sortColumn.isEmpty {
+                  Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
+                }
+                if !model.filters.isEmpty { Text("\(model.filters.count) active") }
+              }
+            }.accessibilityIdentifier("view-options")
+            Spacer()
+            Button(action: showQuickFind) { Label("Find", systemImage: "magnifyingglass") }
+              .disabled(!canFind).accessibilityIdentifier("quick-find")
+          }
+          if let applied = model.appliedView {
+            Text(applied.name + (model.viewModified ? " · Modified" : ""))
+              .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal).padding(.vertical, 8)
+        .background(.regularMaterial)
+      }
+      .navigationTitle(model.table ?? "Workspace")
+      .searchable(
+        text: $model.search, isPresented: $tableSearchPresented, prompt: "Search this table"
+      )
+      .refreshable { await model.reload() }
+      .toolbar {
+        ToolbarItemGroup(placement: .primaryAction) {
+          if model.isReplica {
+            Button {
+              Task { await model.synchronize() }
+            } label: {
+              Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .disabled(model.syncing).accessibilityIdentifier("sync-now")
+          }
+          Button {
+            settings = true
+          } label: {
+            Label("Hub connection", systemImage: "gearshape")
+          }
+          Button {
+            model.trash.toggle()
+          } label: {
+            Label(
+              model.trash ? "Show active records" : "Show trash",
+              systemImage: model.trash ? "tray" : "trash")
+          }.accessibilityIdentifier("toggle-trash")
+          if model.canWrite && !model.trash {
+            Button {
+              editor = EditorTarget(row: nil, context: model.editingContext)
+            } label: {
+              Label("New record", systemImage: "plus")
+            }
+            .accessibilityIdentifier("new-record")
+          }
         }
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.horizontal).padding(.vertical, 8)
-      .background(.regularMaterial)
-    }
-    .navigationTitle(model.table ?? "Workspace")
-    .searchable(
-      text: $model.search, isPresented: $tableSearchPresented, prompt: "Search this table"
-    )
-    .refreshable { await model.reload() }
-    .toolbar {
-      ToolbarItemGroup(placement: .primaryAction) {
-        if model.isReplica {
-          Button {
-            Task { await model.synchronize() }
-          } label: {
-            Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
-          }
-          .disabled(model.syncing).accessibilityIdentifier("sync-now")
-        }
-        Button {
-          settings = true
-        } label: {
-          Label("Hub connection", systemImage: "gearshape")
-        }
-        Button {
-          model.trash.toggle()
-        } label: {
-          Label(
-            model.trash ? "Show active records" : "Show trash",
-            systemImage: model.trash ? "tray" : "trash")
-        }.accessibilityIdentifier("toggle-trash")
-        if model.canWrite && !model.trash {
-          Button {
-            editor = EditorTarget(row: nil, context: model.editingContext)
-          } label: {
-            Label("New record", systemImage: "plus")
-          }
-          .accessibilityIdentifier("new-record")
-        }
-      }
-    }
   }
 }
 

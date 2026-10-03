@@ -180,6 +180,12 @@ view generation so a table round trip cannot revive an old panel.
 Incoming row deduplication and SwiftUI row identity use `byteExactID` (UTF-8
 bytes), since Swift String equality merges some distinct SQLite record IDs.
 Keep the original String ID for requests and navigation.
+The macOS table uses byte-exact wrapper identities and passes full rows to the
+existing editor. Saved columns affect presentation only; an explicit empty list
+still leaves the record-opening column. Keep notices and recovery actions bounded
+and scrollable so they cannot consume the grid. Native column resizing is temporary;
+persisted layout comes from the saved-view definition. macOS before 14.4 uses the
+same record list as iOS.
 Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never
