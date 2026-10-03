@@ -66,6 +66,7 @@ final class DeepLinkUITests: XCTestCase {
     XCTAssertEqual(Set(items.map(\.name)), ["local", "table"])
     XCTAssertEqual(items.first { $0.name == "table" }?.value, "notes")
     app.terminate()
+    // XCUIApplication.open launches the app by URL; running-app delivery uses the system.
     app.open(url)
     XCTAssertTrue(app.buttons["open-local"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.buttons["open-pending-link"].exists)
@@ -101,7 +102,7 @@ final class DeepLinkUITests: XCTestCase {
     tap(title)
     title.typeText(" unsaved")
     let draft = try XCTUnwrap(title.value as? String)
-    app.open(url)
+    XCUIDevice.shared.system.open(url)
     XCTAssertTrue(app.staticTexts["link-waiting-editor"].waitForExistence(timeout: 10))
     XCTAssertEqual(title.value as? String, draft)
     tap(app.navigationBars["Record"].buttons["Cancel"])
@@ -124,7 +125,7 @@ final class DeepLinkUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
 
     // Receipt while idle still waits for an explicit Open.
-    app.open(url)
+    XCUIDevice.shared.system.open(url)
     XCTAssertTrue(app.buttons["open-pending-link"].waitForExistence(timeout: 10))
     XCTAssertFalse(app.navigationBars["Record"].waitForExistence(timeout: 3))
     tap(app.buttons["dismiss-pending-link"])
@@ -134,7 +135,7 @@ final class DeepLinkUITests: XCTestCase {
     wrong.queryItems = wrong.queryItems?.map {
       $0.name == "local" ? URLQueryItem(name: "local", value: UUID().uuidString) : $0
     }
-    app.open(try XCTUnwrap(wrong.url))
+    XCUIDevice.shared.system.open(try XCTUnwrap(wrong.url))
     tap(app.buttons["open-pending-link"])
     XCTAssertTrue(app.staticTexts["pending-link-error"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.buttons["open-pending-link"].exists)
