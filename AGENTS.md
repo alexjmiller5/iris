@@ -74,6 +74,12 @@ with labels resolved from current local data. Record only completed navigation;
 preserve unavailable entries with a reason and an explicit Remove action.
 Preference read failures must not overwrite the unread stored history. System
 table grouping uses core catalog `readOnly`, never host naming conventions.
+Native destination resolution reads fresh catalog, saved-view metadata and full
+active or trashed rows through the same core. Keep exact UTF-8 identities after
+SQL lookup, including databases with case-insensitive ID collation. Native recents
+persist only destination tuples; their model records a visit only after the host
+commits navigation. A failed preference read keeps new visits in memory and must
+never replace unread history. The temporary sample uses memory-only recents.
 
 Web destination URLs carry only table, stable saved-view and record identifiers.
 Resolve them against the explicitly opened workspace's fresh catalog, saved view
