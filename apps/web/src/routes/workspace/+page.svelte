@@ -43,6 +43,7 @@
 		type UndoAction
 	} from 'life-ui-core/client';
 	import { WorkspaceDatabase } from '$lib/database';
+	import IncomingReferences from '$lib/IncomingReferences.svelte';
 	import SchemaGraph from '$lib/SchemaGraph.svelte';
 	import HubServices from '$lib/HubServices.svelte';
 	import HubEnrollment from '$lib/HubEnrollment.svelte';
@@ -1391,8 +1392,11 @@
 		await reflectLocation();
 		return true;
 	}
-	async function openReference(p: Property, id: string, button: HTMLButtonElement) {
-		if (!p.ref_table || busy || relationOpening === editorVersion) return;
+	async function openRelatedRecord(
+		target: { table: string; id: string },
+		button: HTMLButtonElement
+	) {
+		if (!target.table || busy || relationOpening === editorVersion) return;
 		const workspace = database,
 			version = editorVersion;
 		const current = () =>
@@ -1400,7 +1404,7 @@
 		relationOpening = version;
 		error = '';
 		try {
-			await openRecord({ table: p.ref_table, id }, current);
+			await openRecord(target, current);
 		} catch (e) {
 			if (current()) error = message(e);
 		} finally {
@@ -1931,7 +1935,8 @@
 													class="secondary relation-open"
 													aria-label={`Open ${refTitle(p, related ?? { id })}`}
 													disabled={busy || relationOpening === editorVersion || !available}
-													onclick={(event) => openReference(p, id, event.currentTarget)}
+													onclick={(event) =>
+														openRelatedRecord({ table: p.ref_table!, id }, event.currentTarget)}
 												>
 													<span>{refTitle(p, related ?? { id })}</span><IconArrowUpRight
 														size={16}
@@ -1987,6 +1992,13 @@
 								>{/if}
 						</div>
 					</form>
+					{#if selected && database}{#key `${editorVersion}:${selected.id}:${JSON.stringify([catalog, skipped])}`}<IncomingReferences
+								core={database}
+								{table}
+								rowId={String(selected.id)}
+								disabled={busy || navigationLoading || relationOpening === editorVersion}
+								onopen={openRelatedRecord}
+							/>{/key}{/if}
 					{#if rules.length}<div class="rules">
 							<h3>Rules in force</h3>
 							{#each rules as rule}<p>{String(rule.text ?? rule.id)}</p>{/each}

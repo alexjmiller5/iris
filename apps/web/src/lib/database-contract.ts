@@ -32,6 +32,8 @@ export interface DatabaseOperations {
 	close: { args: Record<string, never>; result: null };
 	snapshot: { args: Record<string, never>; result: WorkspaceSnapshot };
 	rows: { args: { view: CoreArgs<'rows'> }; result: CoreResult<'rows'>[number]['record'][] };
+	referenceSources: { args: CoreArgs<'referenceSources'>; result: CoreResult<'referenceSources'> };
+	referencedBy: { args: CoreArgs<'referencedBy'>; result: CoreResult<'referencedBy'> };
 	search: { args: CoreArgs<'search'>; result: CoreResult<'search'> };
 	remoteRows: {
 		args: CoreArgs<'remoteRows'> & { token: string };

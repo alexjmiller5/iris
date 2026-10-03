@@ -48,6 +48,9 @@ storage transfer is required.
 - Open a selected related record with its arrow button. Opening reads its current
   full row and prompts before discarding a draft. Multi-reference Remove buttons
   are separate; missing or trashed targets leave the current editor intact.
+- **Referenced by** on a saved record groups incoming links by table and field.
+  Open a group to load local records, page through more, or follow a named record.
+  Skipped tables show a completeness warning; refresh updates the visible groups.
 - Required fields, immutable/derived properties, reference validation and
   stale-edit checks use the shared core. Unsaved drafts prompt before leaving.
 - View table relationships and group tables locally. Groups are separate for
@@ -484,7 +487,8 @@ External files with table invariants remain read-only without verified sync cove
 Missing references must be included in the replica before editing them.
 Online browsing is explicit and read-only. Native table search and
 cross-table Find both use the shared local FTS5 index.
-Full grid keyboard editing and Notes migration remain open work.
+The web grid supports inline keyboard editing. Native grid editing and Notes
+migration remain open work.
 
 Native references use named pickers and local record links; multi-select and JSON fields use source
 editors. Native browse supports saved views, search, sort, combined filters,

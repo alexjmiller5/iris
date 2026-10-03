@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "c049d874e89a6077aee0f0a4b364c4c6d5b6300f762a0e6db07c63f85436f179";
+export declare const CORE_CONTRACT_HASH = "0b723d74952079734ac03ed2441fa6277352a452089f67f2a85a8172443ff84a";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -325,6 +325,29 @@ export type SessionRevocationState = "revoked" | "unauthorized";
 export type SessionRevocationResult = {
     state: SessionRevocationState;
 };
+export type ReferenceSourcesArgs = {
+    table: string;
+};
+export type ReferenceSource = {
+    table: string;
+    column: string;
+    label: string;
+    type: "ref" | "multi_ref";
+    incomplete: boolean;
+};
+export type ReferencedByArgs = {
+    table: string;
+    rowId: string;
+    sourceTable: string;
+    column: string;
+    limit?: Count;
+    offset?: Count;
+};
+export type ReferencedByPage = {
+    source: ReferenceSource;
+    rows: WorkspaceRow[];
+    nextOffset: Count | null;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -417,6 +440,14 @@ export interface CoreOperations {
     sessionRevocationResult: {
         args: SessionReply;
         result: SessionRevocationResult;
+    };
+    referenceSources: {
+        args: ReferenceSourcesArgs;
+        result: ReferenceSource[];
+    };
+    referencedBy: {
+        args: ReferencedByArgs;
+        result: ReferencedByPage;
     };
 }
 export type CoreMethod = keyof CoreOperations;
