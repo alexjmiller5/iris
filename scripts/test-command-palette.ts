@@ -109,6 +109,11 @@ try {
     if (message.type() === "error") console.error("BROWSER:", message.text());
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
+  if (await page.getByRole("dialog", {name:"Find records",exact:true}).isVisible()) await page.keyboard.press("Escape");
+  if (await page.getByRole("button", {name:"Switch workspace",exact:true}).count()) {
+    await page.getByRole("button", {name:"Switch workspace",exact:true}).click();
+    await expect.poll(()=>page!.workers().length).toBe(0);
+  }
   await page.goto(new URL("/", url).href);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
@@ -159,6 +164,7 @@ try {
   ).toBeEnabled();
   await page.getByText("Connect to a hub", { exact: true }).click();
   await page.getByLabel("Hub address").fill(server.url.href.replace(/\/$/, ""));
+  await page.getByText("Use a device token", { exact: true }).click();
   await page.getByLabel("Device token").fill("fixture");
   await page.getByRole("button", { name: "Sync now", exact: true }).click();
   await expect(
@@ -522,6 +528,12 @@ try {
 } finally {
   if (page) {
     await page.evaluate(() => (window as any).release?.()).catch(() => {});
+    if (await page.getByRole("dialog", {name:"Find records",exact:true}).isVisible()) await page.keyboard.press("Escape");
+    if (await page.getByRole("button", {name:"Switch workspace",exact:true}).count()) {
+      accept = true;
+      await page.getByRole("button", {name:"Switch workspace",exact:true}).click();
+      await expect.poll(()=>page!.workers().length).toBe(0);
+    }
     await page.goto(new URL("/", url).href).catch(() => {});
     await page.goto(url).catch(() => {});
   }

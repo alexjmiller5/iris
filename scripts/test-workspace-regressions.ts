@@ -130,7 +130,7 @@ try {
 		await heldSave();
 		for (const name of ['Second record', 'Close record', 'Switch workspace', 'Table graph'])
 			await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
-		await expect(page.getByRole('navigation', { name: 'Tables' }).getByRole('button')).toBeDisabled();
+		await expect(page.getByRole('navigation', { name: 'Tables', exact: true }).getByRole('button')).toBeDisabled();
 		await page.locator('a.wordmark').evaluate((el: HTMLAnchorElement) => el.click());
 		await expect(page).toHaveURL(url);
 		await page.evaluate(() => (window as any).releaseWrites());

@@ -10,7 +10,6 @@ import {
 	createHttpHub,
 	initCore,
 	qident,
-	readCatalog,
 	syncStatus,
 	type Row,
 	type SqlDriver,
@@ -226,7 +225,7 @@ async function seedDemo() {
 async function snapshot(): Promise<WorkspaceSnapshot> {
 	const status = await syncStatus(db);
 	return {
-		catalog: await readCatalog(db),
+		catalog: await local.catalog({}),
 		status,
 		undo: (await local.undoStatus({})).action,
 		lastSync: status.lastSuccessfulSync,

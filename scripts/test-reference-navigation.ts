@@ -50,15 +50,19 @@ db.db.exec(`
 const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
 const failures: string[] = [];
 let ownedPage: import('@playwright/test').Page | undefined;
+let acceptDiscard = true;
 try {
 	const page = ownedPage = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
 	if (!page) throw new Error('Open the dedicated relation fixture page first.');
 	page.setDefaultTimeout(8000);
 	page.on('requestfailed', request => console.error('Fixture request failed:', request.url(), request.failure()?.errorText));
-	let acceptDiscard = true;
 	let dialogs = 0;
 	page.on('dialog', dialog => { dialogs++; return acceptDiscard ? dialog.accept() : dialog.dismiss(); });
 	await page.setViewportSize({ width: 1280, height: 960 });
+	if (await page.getByRole('button', {name:'Switch workspace',exact:true}).count()) {
+		await page.getByRole('button', {name:'Switch workspace',exact:true}).click();
+		await expect.poll(()=>page.workers().length).toBe(0);
+	}
 	await page.goto(new URL('/', url).href);
 	const cdp = await page.context().newCDPSession(page);
 	await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'all' });
@@ -315,6 +319,11 @@ try {
 } finally {
 	const page = ownedPage;
 	await page?.evaluate(() => { (window as any).releaseRelations?.(); (window as any).releaseWrites?.(); }).catch(() => {});
+	acceptDiscard = true;
+	if (page && await page.getByRole('button', {name:'Switch workspace',exact:true}).count()) {
+		await page.getByRole('button', {name:'Switch workspace',exact:true}).click();
+		await expect.poll(()=>page.workers().length).toBe(0);
+	}
 	await page?.goto(url).catch(() => {});
 	await browser.close();
 	server.stop(true);
