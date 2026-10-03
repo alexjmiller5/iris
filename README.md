@@ -160,6 +160,8 @@ Received links wait in a banner until **Open link** is chosen in the matching
 workspace, and never open a workspace, switch connections or replace an open
 editor ([link contract](docs/native-deep-links.md)). **Duplicate record** copies
 the current saved row into a new unsaved draft; nothing is written until Save.
+New records show each field's catalog default; **Leave empty** saves an empty
+value instead of that default.
 Select fields show catalog choices and their descriptions. Multi-select fields
 show removable choices and an **Add choice** menu. Choices supplied by a catalog
 query load from the open workspace and can be retried after an error. Unknown
