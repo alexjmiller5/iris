@@ -90,14 +90,25 @@ struct QuickFindTests {
         let start = Int(args.offset ?? 0)
         return (start..<(start + 50)).map { hit(String($0)) }
       }, read: { _ in [] })
-    let view = QuickFindView(model: model, incomplete: false, onOpen: { _, _ in })
-    model.query = "fixture"
-    await model.reload()
-    await model.reload(more: true)
+    let palette = QuickFindCoordinator(
+      search: model,
+      metadata: NativePaletteModel(
+        catalog: {
+          try WorkspaceCatalog(CoreCatalog(tables: [], properties: [], rules: []))
+        }, listViews: { _ in CoreSavedViewList(views: [], unavailable: nil) }),
+      resolve: { _, _ in
+        throw WorkspaceError(message: "Record is no longer available", violations: [])
+      })
+    let view = QuickFindView(model: palette, incomplete: false, onOpen: { _ in })
+    palette.query = "fixture"
+    await palette.reloadSearch()
+    await palette.reloadSearch(more: true)
     #expect(model.results.count == 100)
     let removed = try #require(model.results.first)
-    #expect(await model.open(removed) == nil)
-    #expect(model.error?.contains("no longer available") == true)
+    await palette.activate(NativeDestination(table: removed.table, rowID: removed.id)) { _ in
+      Issue.record("Missing record committed")
+    }
+    #expect(palette.error?.contains("no longer available") == true)
     changed = true
 
     // Invoke the action used by the actual Search again button, not reload directly.
@@ -105,7 +116,7 @@ struct QuickFindTests {
 
     #expect(requests.map(\.offset) == [0, 50, 0])
     #expect(model.results.map(\.id) == ["fresh"])
-    #expect(model.error == nil)
+    #expect(palette.error == nil && model.error == nil)
     #expect(!model.loading && !model.canLoadMore)
   }
 

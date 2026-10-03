@@ -1,95 +1,53 @@
 import SwiftUI
 
 struct QuickFindView: View {
-  @Bindable var model: QuickFindModel
+  @Bindable var model: QuickFindCoordinator
   let incomplete: Bool
-  let onOpen: (CoreSearchHit, WorkspaceRow) -> Void
+  let onOpen: (NativeResolvedDestination) throws -> Void
   @Environment(\.dismiss) private var dismiss
-  @FocusState private var focused: Bool
 
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
-        VStack(alignment: .leading, spacing: 8) {
-          TextField("Search all tables", text: $model.query)
-            .textFieldStyle(.roundedBorder)
-            .focused($focused)
-            .submitLabel(.search)
-            .accessibilityIdentifier("quick-find-query")
-            .onSubmit { focused = false }
-          Text("Search only records stored on this device.")
-            .font(.caption).foregroundStyle(.secondary)
-          if incomplete {
-            Text("Some hub tables were skipped during sync and may be incomplete here.")
-              .font(.caption).foregroundStyle(.secondary)
-          }
-        }.padding()
-        if let error = model.error {
-          HStack(alignment: .top) {
-            Text(error).foregroundStyle(.red).textSelection(.enabled)
-            Spacer()
-            Button("Search again") { Task { await searchAgain() } }
-              .disabled(model.loading || model.opening != nil)
-          }.font(.callout).padding(.horizontal).padding(.bottom)
+        QuickFindQuery(model: model, incomplete: incomplete, onOpen: onOpen)
+        if let error = model.metadata.error {
+          QuickFindMessage(
+            message: error, retryTitle: "Retry destinations",
+            disabled: model.metadata.loading || model.opening != nil,
+            retry: { Task { await model.refreshMetadata() } }
+          )
+          .accessibilityIdentifier("quick-find-metadata-error")
         }
-        List {
-          if model.results.isEmpty && !model.loading && model.error == nil {
-            ContentUnavailableView(
-              model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? "Find a record" : "No matches",
-              systemImage: "magnifyingglass",
-              description: Text("Search by a title or words in a record."))
-          }
-          ForEach(model.results, id: \.identity) { hit in
-            Button {
-              Task {
-                if let row = await model.open(hit) { onOpen(hit, row) }
-              }
-            } label: {
-              HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                  Text(hit.label).font(.headline).foregroundStyle(.primary).lineLimit(2)
-                  Text(hit.table).font(.caption).foregroundStyle(.secondary)
-                  if !hit.excerpt.isEmpty {
-                    Text(hit.excerpt).font(.callout).foregroundStyle(.secondary).lineLimit(3)
-                  }
-                }
-                Spacer()
-                if model.opening == hit.identity { ProgressView() }
-              }
-              .frame(maxWidth: .infinity, alignment: .leading).contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .disabled(model.opening != nil)
-            .accessibilityIdentifier("quick-find-result-\(hit.table)-\(hit.id)")
-          }
+        if let error = model.error ?? model.search.error {
+          QuickFindMessage(
+            message: error, retryTitle: "Search again",
+            disabled: model.search.loading || model.opening != nil,
+            retry: { Task { await searchAgain() } }
+          )
+          .accessibilityIdentifier("quick-find-error")
         }
-        .scrollDismissesKeyboard(.interactively)
-        HStack {
-          Text(model.results.count == 1 ? "1 result" : "\(model.results.count) results")
-            .font(.caption).foregroundStyle(.secondary)
-          Spacer()
-          if model.loading { ProgressView().accessibilityLabel("Searching") }
-          if model.canLoadMore {
-            Button("Load more") { Task { await model.reload(more: true) } }
-              .disabled(model.loading || model.opening != nil)
-              .accessibilityIdentifier("quick-find-more")
-          }
-        }.padding().background(.bar)
+        QuickFindResults(model: model, onOpen: onOpen)
+        QuickFindFooter(
+          count: model.entries.count,
+          searching: model.search.loading, discovering: model.metadata.loading,
+          opening: model.opening != nil, canLoadMore: model.search.canLoadMore,
+          loadMore: { Task { await model.reloadSearch(more: true) } })
       }
-      .navigationTitle("Find records")
+      .navigationTitle("Quick Find")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("Cancel") {
             model.cancel()
             dismiss()
-          }.keyboardShortcut(.cancelAction)
+          }
+          .keyboardShortcut(.cancelAction)
+          .accessibilityIdentifier("quick-find-cancel")
         }
       }
-      .task { focused = true }
+      .task { await model.loadMetadata() }
       .task(id: model.query) {
         do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
-        await model.reload()
+        await model.reloadSearch()
       }
       .onDisappear { model.cancel() }
     }
@@ -99,6 +57,159 @@ struct QuickFindView: View {
   }
 
   func searchAgain() async {
-    await model.reload()
+    await model.reloadSearch()
+  }
+}
+
+private struct QuickFindQuery: View {
+  @Bindable var model: QuickFindCoordinator
+  let incomplete: Bool
+  let onOpen: (NativeResolvedDestination) throws -> Void
+  @FocusState private var focused: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      TextField("Find tables, views, and records", text: $model.query)
+        .textFieldStyle(.roundedBorder)
+        .focused($focused)
+        .submitLabel(.go)
+        .accessibilityIdentifier("quick-find-query")
+        .onSubmit {
+          Task {
+            guard model.opening == nil else { return }
+            await model.activateSelection(commit: onOpen)
+          }
+        }
+        .onKeyPress(keys: [.upArrow, .downArrow]) { press in
+          guard press.modifiers.isEmpty else { return .ignored }
+          model.moveSelection(press.key == .upArrow ? -1 : 1)
+          return .handled
+        }
+      Text("Search only records stored on this device.")
+        .font(.caption).foregroundStyle(.secondary)
+      if incomplete {
+        Text("Some hub tables were skipped during sync and may be incomplete here.")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+    }
+    .padding()
+    .task { focused = true }
+  }
+}
+
+private struct QuickFindResults: View {
+  @Bindable var model: QuickFindCoordinator
+  let onOpen: (NativeResolvedDestination) throws -> Void
+
+  var body: some View {
+    ScrollViewReader { scroll in
+      List {
+        if model.entries.isEmpty && !model.search.loading && !model.metadata.loading
+          && model.error == nil && model.search.error == nil && model.metadata.error == nil
+        {
+          ContentUnavailableView(
+            "No matches", systemImage: "magnifyingglass",
+            description: Text("Find a table, saved view, or words in a record."))
+        }
+        ForEach(model.entries) { entry in
+          Button {
+            Task { await model.activate(entry.id, commit: onOpen) }
+          } label: {
+            QuickFindEntryRow(entry: entry, opening: model.opening == entry.id)
+          }
+          .buttonStyle(.plain)
+          .disabled(entry.unavailable != nil || model.opening != nil)
+          .listRowBackground(
+            model.selection == entry.id ? Color.accentColor.opacity(0.15) : Color.clear
+          )
+          .accessibilityAddTraits(model.selection == entry.id ? .isSelected : [])
+          .accessibilityIdentifier(accessibilityID(entry.id))
+          .id(entry.id)
+        }
+      }
+      .scrollDismissesKeyboard(.interactively)
+      .onChange(of: model.enabledIDs, initial: true) { model.reconcileSelection() }
+      .onChange(of: model.selection) {
+        if let selected = model.selection { scroll.scrollTo(selected) }
+      }
+    }
+  }
+
+  private func accessibilityID(_ destination: NativeDestination) -> String {
+    if let row = destination.rowID { return "quick-find-result-\(destination.table)-\(row)" }
+    if let view = destination.viewID { return "quick-find-view-\(destination.table)-\(view)" }
+    return "quick-find-table-\(destination.table)"
+  }
+}
+
+private struct QuickFindEntryRow: View {
+  let entry: QuickFindCoordinator.Entry
+  let opening: Bool
+
+  var body: some View {
+    HStack(alignment: .top) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text(entry.label).font(.headline).foregroundStyle(.primary).lineLimit(2)
+        HStack(spacing: 4) {
+          if entry.id.rowID != nil {
+            Text("Record")
+          } else if entry.id.viewID != nil {
+            Text("Saved view")
+          } else {
+            Text("Table")
+          }
+          if entry.id.rowID != nil || entry.id.viewID != nil { Text(entry.id.table) }
+        }.font(.caption).foregroundStyle(.secondary)
+        if !entry.excerpt.isEmpty {
+          Text(entry.excerpt).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+        }
+        if let reason = entry.unavailable {
+          Text(reason).font(.callout).foregroundStyle(.secondary)
+        }
+      }
+      Spacer()
+      if opening { ProgressView() }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading).contentShape(.rect)
+  }
+}
+
+private struct QuickFindMessage: View {
+  let message: String
+  let retryTitle: LocalizedStringKey
+  let disabled: Bool
+  let retry: () -> Void
+
+  var body: some View {
+    HStack(alignment: .top) {
+      Text(message).foregroundStyle(.red).textSelection(.enabled)
+      Spacer()
+      Button(retryTitle, action: retry).disabled(disabled)
+    }.font(.callout).padding(.horizontal).padding(.bottom)
+  }
+}
+
+private struct QuickFindFooter: View {
+  let count: Int
+  let searching: Bool
+  let discovering: Bool
+  let opening: Bool
+  let canLoadMore: Bool
+  let loadMore: () -> Void
+
+  var body: some View {
+    HStack {
+      Text(count == 1 ? "1 result" : "\(count) results")
+        .font(.caption).foregroundStyle(.secondary)
+      Spacer()
+      if searching || discovering {
+        ProgressView().accessibilityLabel(searching ? "Searching" : "Loading destinations")
+      }
+      if canLoadMore {
+        Button("Load more", action: loadMore)
+          .disabled(searching || opening)
+          .accessibilityIdentifier("quick-find-more")
+      }
+    }.padding().background(.bar)
   }
 }
