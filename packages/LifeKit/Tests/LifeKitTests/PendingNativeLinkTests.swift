@@ -6,7 +6,8 @@ import Testing
 @MainActor
 struct PendingNativeLinkTests {
   private func link(_ row: String) throws -> NativeDeepLink {
-    try NativeDeepLink(destination: NativeDestination(table: "notes", rowID: row),
+    try NativeDeepLink(
+      destination: NativeDestination(table: "notes", rowID: row),
       workspace: .local(UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!))
   }
 

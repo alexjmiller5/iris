@@ -12,12 +12,18 @@
 
 ## Prepared test checkpoint
 
-The new tests are definitions only and have not run. The intended host APIs
-(`WorkspaceModel.linkBinding`, `canCopyLink`, `linkError`, `linkURL(for:context:)`,
-`linkedDestination(_:)` and `PendingNativeLink`) are not implemented yet. This
-checkpoint therefore does not compile the new test suite and is not ready to merge.
-No new production behavior is included. Observe behavioral RED with minimal
-compilable stubs before implementing the lifecycle phase.
+The model/lifecycle APIs (`WorkspaceModel.linkBinding`, `canCopyLink`, `linkError`,
+`linkURL(for:context:)`, `linkedDestination(_:)` and `PendingNativeLink`) are
+implemented. The focused tests compiled against stubs and reported 12 behavioral
+issues across 13 tests, then all 13 passed after implementation. All 13 semantic
+mutants were caught and restored. The restored full SwiftPM suite passed 323
+tests across 56 suites, with five existing opt-in HTTP tests skipped.
+Owned new/updated helper and test files passed strict Swift formatting lint;
+the WorkspaceModel edits were formatted only in their changed ranges.
+
+The two app privacy manifests cover file-timestamp reads already exercised by
+the lifecycle. Both parse as property lists. App resource packaging is a CI/Apple
+build gate, not something the SwiftPM test result proves.
 
 The first phase is model/lifecycle only. Keep the prepared iOS tests for the
 subsequent host phase; neither their presence nor a SwiftPM pass proves actual
@@ -26,8 +32,8 @@ selected simulator UUID equal to `SIMULATOR_UDID` before any app launch.
 
 ## Steps
 
-- [ ] Add real temporary-file/SQLite lifecycle tests and controlled pending-request tests; observe behavioral RED with minimal stubs.
-- [ ] Retain binding across Forget; clear on client replacement; load local identity without writing; create only for explicit Copy; recheck stamp before matching.
+- [x] Add real temporary-file/SQLite lifecycle tests and controlled pending-request tests; observe behavioral RED with minimal stubs.
+- [x] Retain binding across Forget; clear on client replacement; load local identity without writing; create only for explicit Copy; recheck stamp before matching.
 - [ ] Add one pending-link state, explicit Open/Dismiss, generation/request/UTF-8 query guards, and shared fresh resolver activation. Keep Issues/reference handoffs intact.
 - [ ] Add host and saved-record Copy controls, a small editor waiting notice, scheme registration and app privacy manifests.
 - [ ] Add actual iOS URL tests covering normal cold launch, dirty cancellation and copy/open. Run through the Apple owner; do not substitute unit proof for UI evidence.

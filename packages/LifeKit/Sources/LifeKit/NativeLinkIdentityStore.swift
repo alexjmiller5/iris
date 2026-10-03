@@ -4,6 +4,7 @@ import Foundation
 struct NativeLinkIdentityStore {
   let file: URL
   private let workspace: URL
+  private var openedStamp: FileStamp?
 
   private struct FileStamp: Codable, Equatable {
     let volume: UUID
@@ -31,6 +32,13 @@ struct NativeLinkIdentityStore {
     return .local(saved.id)
   }
 
+  /// Capture the installed client's physical file before accepting or creating links.
+  func retainingOpenedFile() throws -> Self {
+    var retained = self
+    retained.openedStamp = try currentStamp()
+    return retained
+  }
+
   func create() throws -> NativeWorkspaceBinding {
     let stamp = try currentStamp()
     if let saved = try read(), saved.stamp == stamp { return .local(saved.id) }
@@ -39,12 +47,14 @@ struct NativeLinkIdentityStore {
       let directory = file.deletingLastPathComponent()
       try FileManager.default.createDirectory(
         at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-      try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+      try FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: directory.path)
       try JSONEncoder().encode(saved).write(to: file, options: .atomic)
       try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
       return .local(saved.id)
     } catch {
-      throw WorkspaceError(message: "A local link could not be saved. Try again before copying it.", violations: [])
+      throw WorkspaceError(
+        message: "A local link could not be saved. Try again before copying it.", violations: [])
     }
   }
 
@@ -72,15 +82,24 @@ struct NativeLinkIdentityStore {
         let inode = attributes[.systemFileNumber] as? NSNumber, inode.uint64Value > 0,
         let created = attributes[.creationDate] as? Date
       else { throw Self.fileError }
-      return FileStamp(volume: volume, inode: inode.uint64Value, created: created)
-    } catch { throw Self.fileError }
+      let stamp = FileStamp(volume: volume, inode: inode.uint64Value, created: created)
+      guard openedStamp == nil || openedStamp == stamp else {
+        throw WorkspaceError(
+          message: "The database file changed. Close and reopen it before using links.",
+          violations: [])
+      }
+      return stamp
+    } catch let error as WorkspaceError { throw error } catch { throw Self.fileError }
   }
 
   private static var readError: WorkspaceError {
-    WorkspaceError(message: "Local link preferences could not be read. The saved file has been kept.", violations: [])
+    WorkspaceError(
+      message: "Local link preferences could not be read. The saved file has been kept.",
+      violations: [])
   }
 
   private static var fileError: WorkspaceError {
-    WorkspaceError(message: "This database file cannot be identified for a local link.", violations: [])
+    WorkspaceError(
+      message: "This database file cannot be identified for a local link.", violations: [])
   }
 }

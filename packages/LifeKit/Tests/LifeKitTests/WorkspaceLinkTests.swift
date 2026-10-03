@@ -60,10 +60,12 @@ struct WorkspaceLinkTests {
     await model.open()
     model.search = "Retain this query"
     let query = model.queryKey
-    let link = try NativeDeepLink(destination: NativeDestination(table: "topics"), workspace: .local(UUID()))
+    let link = try NativeDeepLink(
+      destination: NativeDestination(table: "topics"), workspace: .local(UUID()))
     #expect(throws: WorkspaceError.self) { try model.linkedDestination(link) }
     #expect(model.linkBinding == nil && model.queryKey == query)
-    #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("link-identities").path))
+    #expect(
+      !FileManager.default.fileExists(atPath: root.appendingPathComponent("link-identities").path))
     await model.close()
   }
 
@@ -90,7 +92,8 @@ struct WorkspaceLinkTests {
     defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("local.sqlite")
     let store = NativeLinkIdentityStore(root: root, workspace: file)
-    try FileManager.default.createDirectory(at: store.file.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: store.file.deletingLastPathComponent(), withIntermediateDirectories: true)
     let bytes = Data("{\"version\":99,\"private\":\"unread\"}".utf8)
     try bytes.write(to: store.file)
     let model = WorkspaceModel(localURL: { file })
@@ -109,13 +112,15 @@ struct WorkspaceLinkTests {
     let file = root.appendingPathComponent("local.sqlite")
     let model = WorkspaceModel(localURL: { file })
     await model.open()
-    let link = try NativeDeepLink(url: model.linkURL(for: NativeDestination(table: "notes"), context: model.editingContext))
+    let link = try NativeDeepLink(
+      url: model.linkURL(for: NativeDestination(table: "notes"), context: model.editingContext))
     await model.close()
     try FileManager.default.moveItem(at: file, to: root.appendingPathComponent("old.sqlite"))
     await model.open()
     #expect(model.linkBinding == nil)
     #expect(throws: WorkspaceError.self) { try model.linkedDestination(link) }
-    let newLink = try NativeDeepLink(url: model.linkURL(for: NativeDestination(table: "notes"), context: model.editingContext))
+    let newLink = try NativeDeepLink(
+      url: model.linkURL(for: NativeDestination(table: "notes"), context: model.editingContext))
     #expect(newLink.binding != link.binding)
     await model.close()
   }
@@ -131,7 +136,8 @@ struct WorkspaceLinkTests {
     let model = WorkspaceModel(localURL: { file })
     await model.open()
     let destination = NativeDestination(table: "notes")
-    let link = try NativeDeepLink(url: model.linkURL(for: destination, context: model.editingContext))
+    let link = try NativeDeepLink(
+      url: model.linkURL(for: destination, context: model.editingContext))
     let store = NativeLinkIdentityStore(root: root, workspace: file)
     let before = try Data(contentsOf: store.file)
     try FileManager.default.moveItem(at: file, to: root.appendingPathComponent("retired.sqlite"))
@@ -149,25 +155,31 @@ struct WorkspaceLinkTests {
     defer { try? FileManager.default.removeItem(at: root) }
     let endpoint = "https://links.invalid"
     let path = WorkspaceModel.replicaURL(root: root, endpoint: endpoint)
-    try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
     let workspace = try NativeWorkspace(path: path.path)
     try await workspace.createSample()
     try await workspace.close()
-    let credentials = MemoryHubCredentials(HubCredentials(endpoint: endpoint, token: "fixture-device"))
-    let model = WorkspaceModel(localURL: { root.appendingPathComponent("local.sqlite") }, makeTransport: {
-      let config = URLSessionConfiguration.ephemeral
-      config.protocolClasses = [LinkOfflineFixture.self]
-      return try HubTransport(endpoint: $0.endpoint, token: $0.token, configuration: config)
-    }, credentialStore: credentials)
+    let credentials = MemoryHubCredentials(
+      HubCredentials(endpoint: endpoint, token: "fixture-device"))
+    let model = WorkspaceModel(
+      localURL: { root.appendingPathComponent("local.sqlite") },
+      makeTransport: {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [LinkOfflineFixture.self]
+        return try HubTransport(endpoint: $0.endpoint, token: $0.token, configuration: config)
+      }, credentialStore: credentials)
     await model.resumeConnection()
     let client = try #require(model.client)
-    let link = try NativeDeepLink(url: model.linkURL(for: NativeDestination(table: "notes"), context: model.editingContext))
+    let link = try NativeDeepLink(
+      url: model.linkURL(for: NativeDestination(table: "notes"), context: model.editingContext))
     #expect(link.binding == .replica(canonicalEndpoint: endpoint))
     try model.forgetConnection()
     #expect(!model.isReplica && model.connection == nil && model.client === client)
     #expect(try model.linkedDestination(link) == NativeDestination(table: "notes"))
     #expect(try model.linkURL(for: link.destination, context: model.editingContext) == link.url)
-    #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("link-identities").path))
+    #expect(
+      !FileManager.default.fileExists(atPath: root.appendingPathComponent("link-identities").path))
     await model.open()
     #expect(model.linkBinding == nil)
     #expect(throws: WorkspaceError.self) { try model.linkedDestination(link) }
@@ -182,13 +194,18 @@ struct WorkspaceLinkTests {
     let client = try #require(model.client)
     let row = try #require(model.rows.first)
     let destination = NativeDestination(table: "notes", rowID: row.id)
-    let link = try NativeDeepLink(url: model.linkURL(for: destination, context: model.editingContext))
-    _ = try await client.write(table: "notes", patch: ["id": .string(row.id), "body": .string("Fresh complete body")])
+    let link = try NativeDeepLink(
+      url: model.linkURL(for: destination, context: model.editingContext))
+    _ = try await client.write(
+      table: "notes", patch: ["id": .string(row.id), "body": .string("Fresh complete body")])
     model.search = "unchanged until install"
-    let resolved = try await NativeDestinationResolver(workspace: client).resolve(model.linkedDestination(link), isCurrent: { true })
+    let resolved = try await NativeDestinationResolver(workspace: client).resolve(
+      model.linkedDestination(link), isCurrent: { true })
     #expect(resolved.row?.record["body"] == .string("Fresh complete body"))
-    #expect(model.search == "unchanged until install" && model.recents?.destinations.isEmpty == true)
-    _ = try model.activateDestination(resolved, workspace: client, generation: model.workspaceGeneration)
+    #expect(
+      model.search == "unchanged until install" && model.recents?.destinations.isEmpty == true)
+    _ = try model.activateDestination(
+      resolved, workspace: client, generation: model.workspaceGeneration)
     #expect(model.search.isEmpty)
     await model.close()
   }
@@ -219,6 +236,8 @@ struct WorkspaceLinkTests {
 private final class LinkOfflineFixture: URLProtocol, @unchecked Sendable {
   override class func canInit(with request: URLRequest) -> Bool { true }
   override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-  override func startLoading() { client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)) }
+  override func startLoading() {
+    client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+  }
   override func stopLoading() {}
 }

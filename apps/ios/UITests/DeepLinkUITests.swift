@@ -19,9 +19,10 @@ final class DeepLinkUITests: XCTestCase {
 
   private func tap(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
     XCTAssertTrue(element.waitForExistence(timeout: 10), file: file, line: line)
-    let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-      MainActor.assumeIsolated { element.isHittable && element.isEnabled }
-    }, object: nil)
+    let ready = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated { element.isHittable && element.isEnabled }
+      }, object: nil)
     XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed, file: file, line: line)
     element.tap()
   }
@@ -29,9 +30,12 @@ final class DeepLinkUITests: XCTestCase {
   private func copiedURL(_ button: XCUIElement) throws -> URL {
     UIPasteboard.general.string = "clipboard sentinel"
     tap(button)
-    let copied = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-      MainActor.assumeIsolated { UIPasteboard.general.string?.hasPrefix("life://open/v1?") == true }
-    }, object: nil)
+    let copied = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated {
+          UIPasteboard.general.string?.hasPrefix("life://open/v1?") == true
+        }
+      }, object: nil)
     XCTAssertEqual(XCTWaiter.wait(for: [copied], timeout: 10), .completed)
     return try XCTUnwrap(URL(string: try XCTUnwrap(UIPasteboard.general.string)))
   }
@@ -49,7 +53,9 @@ final class DeepLinkUITests: XCTestCase {
     XCTAssertTrue(app.buttons["open-pending-link"].exists)
     XCTAssertFalse(app.buttons["open-pending-link"].isEnabled)
     tap(app.buttons["open-local"])
-    XCTAssertTrue(app.buttons["open-pending-link"].exists, "Opening a workspace must not autoactivate the pending URL")
+    XCTAssertTrue(
+      app.buttons["open-pending-link"].exists,
+      "Opening a workspace must not autoactivate the pending URL")
     tap(app.buttons["open-pending-link"])
     XCTAssertTrue(app.buttons["open-pending-link"].waitForNonExistence(timeout: 10))
     XCTAssertTrue(app.navigationBars["notes"].exists)
@@ -87,7 +93,9 @@ final class DeepLinkUITests: XCTestCase {
     tap(app.navigationBars["Record"].buttons["Cancel"])
 
     var wrong = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
-    wrong.queryItems = wrong.queryItems?.map { $0.name == "local" ? URLQueryItem(name: "local", value: UUID().uuidString) : $0 }
+    wrong.queryItems = wrong.queryItems?.map {
+      $0.name == "local" ? URLQueryItem(name: "local", value: UUID().uuidString) : $0
+    }
     app.open(try XCTUnwrap(wrong.url))
     tap(app.buttons["open-pending-link"])
     XCTAssertTrue(app.staticTexts["pending-link-error"].waitForExistence(timeout: 10))
