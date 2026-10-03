@@ -21,6 +21,9 @@ if (source !== "--native") {
   const sourcePath = resolve(source);
   const sourceRoot = resolve(dirname(sourcePath), '../..');
   const schemaPath = join(sourceRoot, 'core/contract/core.json');
+  const viewSchemaPath = join(sourceRoot, 'core/schema/saved-views.json');
+  await mkdir(join(root, 'packages/core/schema'), { recursive: true });
+  await copyFile(viewSchemaPath, join(root, 'packages/core/schema/saved-views.json'));
   const generatorPath = join(sourceRoot, 'scripts/generate-core-contract.ts');
   const { generateContract } = await import(generatorPath);
   const generated = generateContract(JSON.parse(await readFile(schemaPath, 'utf8')));
@@ -72,6 +75,7 @@ if (source !== "--native") {
       "--moduleResolution",
       "bundler",
       "--allowImportingTsExtensions",
+      "--resolveJsonModule",
       "--skipLibCheck",
       "--outDir",
       temp,
@@ -94,6 +98,7 @@ if (source !== "--native") {
       .update(name + "\0")
       .update(await readFile(join(dirname(sourcePath), name)));
   }
+  coreHash.update('schema/saved-views.json\0').update(await readFile(viewSchemaPath));
   const coreBanner = `// Generated from life-core. SHA-256: ${coreHash.digest("hex")}\n`;
   const clientPath = join(dirname(sourcePath), "index.ts");
   const client = await Bun.build({
@@ -126,6 +131,7 @@ if (source !== "--native") {
       "--moduleResolution",
       "bundler",
       "--allowImportingTsExtensions",
+      "--resolveJsonModule",
       "--skipLibCheck",
       "--outDir",
       temp,
@@ -135,9 +141,10 @@ if (source !== "--native") {
   );
   if ((await clientDeclarations.exited) !== 0)
     throw new Error("Client declarations failed");
-  for (const name of await readdir(temp))
+  const clientTypes = join(temp, "src");
+  for (const name of await readdir(clientTypes))
     if (name.endsWith(".d.ts") && name !== "validate.d.ts")
-      await copyFile(join(temp, name), join(root, "packages/core", name));
+      await copyFile(join(clientTypes, name), join(root, "packages/core", name));
 
   // Relative script imports of client.js need the same declaration entrypoint
   // as the package export, not a similarly named internal source module.

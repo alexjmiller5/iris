@@ -15,6 +15,9 @@ export interface DatabaseOperations {
 	snapshot: { args: Record<string, never>; result: WorkspaceSnapshot };
 	rows: { args: { view: CoreArgs<'rows'> }; result: CoreResult<'rows'>[number]['record'][] };
 	search: { args: CoreArgs<'search'>; result: CoreResult<'search'> };
+	listViews: { args: CoreArgs<'listViews'>; result: CoreResult<'listViews'> };
+	saveView: { args: CoreArgs<'saveView'>; result: CoreResult<'saveView'> };
+	deleteView: { args: CoreArgs<'deleteView'>; result: CoreResult<'deleteView'> };
 	options: { args: CoreArgs<'options'>; result: CoreResult<'options'> };
 	write: { args: CoreArgs<'write'>; result: CoreResult<'write'> };
 	sync: { args: CoreArgs<'sync'> & { token: string }; result: CoreResult<'sync'> };

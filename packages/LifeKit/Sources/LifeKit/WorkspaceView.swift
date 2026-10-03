@@ -9,6 +9,8 @@ public struct WorkspaceView: View {
   @State private var options = false
   @State private var showingGraph = false
   @State private var editor: EditorTarget?
+  @State private var quickFind: QuickFindModel?
+  @State private var pendingSearchEditor: (target: EditorTarget, generation: Int)?
   private let demo: Bool
 
   public init(demo: Bool = false) { self.demo = demo }
@@ -20,6 +22,12 @@ public struct WorkspaceView: View {
       } else {
         NavigationSplitView {
           List(selection: $model.table) {
+            Button(action: showQuickFind) {
+              Label("Find records", systemImage: "magnifyingglass")
+            }
+            .keyboardShortcut("k", modifiers: .command)
+            .disabled(!canFind)
+            .accessibilityIdentifier("quick-find-sidebar")
             #if os(macOS)
               Button {
                 showingGraph = true
@@ -83,12 +91,54 @@ public struct WorkspaceView: View {
     }
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
     .sheet(isPresented: $options) { WorkspaceOptionsView(model: model) }
+    .sheet(item: $quickFind, onDismiss: openSearchEditor) { find in
+      QuickFindView(model: find, incomplete: model.syncResult?.skipped.isEmpty == false) {
+        hit, row in
+        guard find.isCurrent, quickFind === find, editor == nil, let client = model.client else {
+          return
+        }
+        do {
+          let context = try model.activateSearchTable(
+            hit.table, workspace: client, generation: model.workspaceGeneration)
+          pendingSearchEditor = (
+            EditorTarget(row: row.record, context: context), model.workspaceGeneration
+          )
+          showingGraph = false
+          quickFind = nil
+        } catch { model.error = error.localizedDescription }
+      }
+    }
+    .onChange(of: model.workspaceGeneration) {
+      quickFind?.cancel()
+      quickFind = nil
+      pendingSearchEditor = nil
+    }
     .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
       switch result {
       case .success(let url): Task { await model.open(url: url) }
       case .failure(let error): model.error = error.localizedDescription
       }
     }
+  }
+
+  private var canFind: Bool {
+    model.client != nil && editor == nil && quickFind == nil && pendingSearchEditor == nil
+      && !settings && !options && !importing
+  }
+
+  private func showQuickFind() {
+    guard canFind else { return }
+    quickFind = model.makeQuickFind()
+  }
+
+  private func openSearchEditor() {
+    guard let pending = pendingSearchEditor else { return }
+    pendingSearchEditor = nil
+    guard editor == nil, pending.generation == model.workspaceGeneration,
+      pending.target.context?.workspace === model.client,
+      pending.target.context?.table == model.table
+    else { return }
+    editor = pending.target
   }
 
   private var welcome: some View {
@@ -180,25 +230,29 @@ public struct WorkspaceView: View {
     .safeAreaInset(edge: .top, spacing: 0) {
       VStack(alignment: .leading, spacing: 8) {
         if model.isReplica { SyncSummary(model: model) }
-        Button {
-          options = true
-        } label: {
-          HStack {
-            Label("Sort and filter", systemImage: "line.3.horizontal.decrease")
-            Spacer()
-            if !model.sortColumn.isEmpty {
-              Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
+        HStack {
+          Button {
+            options = true
+          } label: {
+            HStack {
+              Label("Sort and filter", systemImage: "line.3.horizontal.decrease")
+              if !model.sortColumn.isEmpty {
+                Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
+              }
+              if !model.filters.isEmpty { Text("\(model.filters.count) active") }
             }
-            if !model.filters.isEmpty { Text("\(model.filters.count) active") }
-          }
-        }.accessibilityIdentifier("view-options")
+          }.accessibilityIdentifier("view-options")
+          Spacer()
+          Button(action: showQuickFind) { Label("Find", systemImage: "magnifyingglass") }
+            .disabled(!canFind).accessibilityIdentifier("quick-find")
+        }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.horizontal).padding(.vertical, 8)
       .background(.regularMaterial)
     }
     .navigationTitle(model.table ?? "Workspace")
-    .searchable(text: $model.search, prompt: "Search records")
+    .searchable(text: $model.search, prompt: "Search this table")
     .refreshable { await model.reload() }
     .toolbar {
       ToolbarItemGroup(placement: .primaryAction) {

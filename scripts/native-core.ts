@@ -1,6 +1,7 @@
 import { CORE_CONTRACT_HASH, createCoreHandlers, validateRow } from '../packages/core/client.js';
 import type { CoreArgs, CoreMethod, CoreResult, Row, SqlDriver, Value, ServiceHub } from '../packages/core/index.d.ts';
 import { createSample } from './native-sample';
+import { prepareLocalViews } from './local-views';
 
 declare const LifeSql: {
   all(sql: string, params: Value[]): Row[];
@@ -56,6 +57,7 @@ function invoke<M extends CoreMethod>(method: M, args: CoreArgs<M>): CoreResult<
 
 async function dispatch(method: string, args: unknown) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Invalid workspace arguments.');
+  if (method === 'prepareLocalViews') return prepareLocalViews(db);
   if (method === 'sample') { await createSample(db); return null; }
   if (!Object.hasOwn(handlers, method)) throw new Error('Unknown workspace operation.');
   // The sole untyped JSON boundary. Core functions retain runtime validation.

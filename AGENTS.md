@@ -49,6 +49,15 @@ parallel search implementation. Cross-table results carry table/id identities;
 opening one must re-read it, respect unsaved drafts and ignore a cancelled dialog.
 Search covers locally replicated rows and identifies skipped-table incompleteness.
 
+Saved views use the core contract and the canonical `core/schema/saved-views.json`
+manifest vendored by `bundle-core.ts`. Only explicit app-owned local/sample
+initialization may create missing storage; replicas receive logged DDL through
+sync, and external files or name collisions are never adopted or repaired.
+The core bundle source hash includes the manifest. Keep the applied view's
+revision until the user reopens it, even when a refreshed list has a newer one.
+Definitions control layout; edit queries must return full rows, not the
+saved definition's SQL column projection. Preserve imported multi-column sorts.
+
 The usage/notifications API is owned by life-data; never add competing hub
 endpoints here. life-core owns service validation, feed pagination and presentation
 policy. Isolate cached state by signed-in deployment, deduplicate native/feed

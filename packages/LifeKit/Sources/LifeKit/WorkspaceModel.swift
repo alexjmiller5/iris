@@ -11,8 +11,14 @@ struct WorkspaceEditingContext {
 @Observable @MainActor
 final class WorkspaceModel {
   var client: NativeWorkspace? {
-    didSet { if oldValue !== client { resetView() } }
+    didSet {
+      if oldValue !== client {
+        workspaceGeneration += 1
+        resetView()
+      }
+    }
   }
+  private(set) var workspaceGeneration = 0
   var catalog: WorkspaceCatalog?
   var table: String? {
     didSet { if oldValue != table { resetView() } }
@@ -40,6 +46,11 @@ final class WorkspaceModel {
   private var transport: HubTransport?
   private var revision = 0
   private var scopedURL: URL?
+  private let resolveLocalURL: @MainActor () throws -> URL
+
+  init(localURL: @escaping @MainActor () throws -> URL = WorkspaceModel.localURL) {
+    resolveLocalURL = localURL
+  }
 
   var queryKey: [String] {
     [table ?? "", search, String(trash), sortColumn, String(sortAscending)]
@@ -96,6 +107,30 @@ final class WorkspaceModel {
       && !properties.isEmpty
   }
 
+  func makeQuickFind() -> QuickFindModel? {
+    guard let client else { return nil }
+    let generation = workspaceGeneration
+    return QuickFindModel(
+      search: client.search, read: client.rows,
+      isCurrent: { [weak self] in
+        self?.client === client && self?.workspaceGeneration == generation
+      })
+  }
+
+  func activateSearchTable(_ table: String, workspace: NativeWorkspace, generation: Int) throws
+    -> WorkspaceEditingContext
+  {
+    guard client === workspace, workspaceGeneration == generation,
+      tables.contains(where: { $0["id"]?.text == table })
+    else {
+      throw WorkspaceError(
+        message: "The workspace changed. Search again to open the record.", violations: [])
+    }
+    self.table = table
+    trash = false
+    return WorkspaceEditingContext(workspace: workspace, table: table, draftStore: draftStore)
+  }
+
   static func localURL() throws -> URL {
     let directory = try FileManager.default.url(
       for: .applicationSupportDirectory, in: .userDomainMask,
@@ -106,6 +141,7 @@ final class WorkspaceModel {
   }
 
   func open(demo: Bool = false, url: URL? = nil) async {
+    workspaceGeneration += 1
     loading = true
     error = nil
     transport = nil
@@ -123,7 +159,7 @@ final class WorkspaceModel {
         path = ":memory:"
         seed = true
       } else {
-        let file = try url ?? Self.localURL()
+        let file = try url ?? resolveLocalURL()
         if url != nil, file.startAccessingSecurityScopedResource() { scopedURL = file }
         path = file.path
         seed = url == nil && !FileManager.default.fileExists(atPath: path)
@@ -133,6 +169,7 @@ final class WorkspaceModel {
       let workspace = try NativeWorkspace(path: path)
       do {
         if seed { try await workspace.createSample() }
+        if !demo, url == nil { try await workspace.prepareLocalViews() }
         catalog = try await workspace.catalog()
       } catch {
         try? await workspace.close()
@@ -212,7 +249,7 @@ final class WorkspaceModel {
     draftStore = nil
     recoverableDrafts = []
     guard let path else { return }
-    let root = try Self.localURL().deletingLastPathComponent().appendingPathComponent("drafts")
+    let root = try resolveLocalURL().deletingLastPathComponent().appendingPathComponent("drafts")
     draftStore = EditorDraftStore(root: root, workspace: URL(fileURLWithPath: path))
     refreshDrafts()
   }
@@ -250,7 +287,7 @@ final class WorkspaceModel {
     groupsURL = nil
     guard let workspace else { return }
     let name = SHA256.hash(data: Data(workspace.utf8)).map { String(format: "%02x", $0) }.joined()
-    let url = try Self.localURL().deletingLastPathComponent().appendingPathComponent(
+    let url = try resolveLocalURL().deletingLastPathComponent().appendingPathComponent(
       "groups-" + name + ".json")
     groupsURL = url
     if FileManager.default.fileExists(atPath: url.path) {
@@ -274,6 +311,7 @@ final class WorkspaceModel {
   }
 
   func connect(_ credentials: HubCredentials, remember: Bool = true) async throws {
+    workspaceGeneration += 1
     let hub = try HubTransport(endpoint: credentials.endpoint, token: credentials.token)
     let canonical = HubCredentials(endpoint: hub.endpoint, token: credentials.token)
     if remember { try HubCredentialStore().save(canonical) }
@@ -282,7 +320,7 @@ final class WorkspaceModel {
     client = nil
     scopedURL?.stopAccessingSecurityScopedResource()
     scopedURL = nil
-    let directory = try Self.localURL().deletingLastPathComponent().appendingPathComponent(
+    let directory = try resolveLocalURL().deletingLastPathComponent().appendingPathComponent(
       "replicas", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let name = SHA256.hash(data: Data(hub.endpoint.utf8)).map { String(format: "%02x", $0) }
@@ -335,6 +373,7 @@ final class WorkspaceModel {
   }
 
   func close() async {
+    workspaceGeneration += 1
     revision += 1
     services.configure(workspace: nil, transport: nil)
     do { try await client?.close() } catch {

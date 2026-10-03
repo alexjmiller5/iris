@@ -204,6 +204,14 @@ public final class NativeWorkspace {
       CoreRequests.Sync(CoreSyncArgs(endpoint: transport.endpoint)), transport: transport)
   }
   public func createSample() async throws { _ = try await call("sample") }
+  /// Bootstrap only a database owned by this app. Replicas receive schema through sync.
+  @discardableResult
+  public func prepareLocalViews() async throws -> Bool {
+    guard case .bool(let created) = try await call("prepareLocalViews") else {
+      throw WorkspaceError(message: "Invalid local setup response.", violations: [])
+    }
+    return created
+  }
   public func close() async throws { _ = try await call("close") }
 
   private func decode<R: CoreRequest>(_ request: R, transport: HubTransport? = nil) async throws

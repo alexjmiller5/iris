@@ -15,6 +15,7 @@ import {
 	type SqlDriver,
 	type Value
 } from 'life-ui-core/client';
+import { prepareLocalViews } from '../../../../scripts/local-views';
 import type { DatabaseRequest, WorkspaceSnapshot } from './database-contract';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -231,6 +232,7 @@ async function dispatch(request: DatabaseRequest) {
 				if (args.demo && isNew) await seedDemo();
 				if (args.demo) await migrateDemo();
 			});
+			if (args.demo) await prepareLocalViews(db);
 		} catch {
 			if (connection !== undefined) await sqlite.close(connection);
 			connection = undefined;
@@ -257,6 +259,12 @@ async function dispatch(request: DatabaseRequest) {
 			return (await local.rows(args.view)).map((row) => row.record);
 		case 'search':
 			return local.search(args);
+		case 'listViews':
+			return local.listViews(args);
+		case 'saveView':
+			return local.saveView(args);
+		case 'deleteView':
+			return local.deleteView(args);
 		case 'options':
 			return local.options(args);
 		case 'write':
@@ -319,7 +327,7 @@ scope.onmessage = ({ data }) => {
 				dispatch(data as DatabaseRequest)
 			);
 			respond({ id: data.id, result });
-			if (data.method === 'write' || data.method === 'sync') {
+			if (['write', 'sync', 'saveView', 'deleteView'].includes(data.method)) {
 				channel?.postMessage({ changed: true });
 				respond({ changed: true });
 			}

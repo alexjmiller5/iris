@@ -31,6 +31,18 @@ The app edits any catalogued table; it does not infer a catalog for arbitrary
 SQLite files or connect directly to other database engines. System tables
 are read-only. Catalog entries with `kind: system` also remain read-only.
 
+**Saved views** keep a table's filters, search, sort, column order and widths in
+ordinary synced `views` rows. Choose a view, **Save as** a new name, or use
+**Update selected** to save changes and rename it. **Delete view** keeps the
+records and returns to All records. Updates use the revision you opened, so a
+remote change asks you to reopen and review instead of overwriting it. Invalid
+or newer definitions stay visible with their reason and are preserved.
+
+The sample workspace creates the standard storage locally. Connected workspaces
+receive it through schema sync from their operator; the client never adopts an
+unrelated table named `views`. Column visibility changes the grid only, so
+editing still reads all of a record's fields.
+
 **Find records** (Cmd+K or Ctrl+K) searches across locally available tables,
 including Markdown bodies. Results show the record title, table and an excerpt;
 use the arrow keys and Enter to open one. Search matches word prefixes, ignores
@@ -53,6 +65,13 @@ Catalog rules, read-only tables, validation, history and stale-revision checks
 come from shared core. An editor also captures its workspace and table, so
 changing connections cannot redirect a save. Unsaved drafts require explicit
 discard.
+
+**Find** searches across locally stored tables using the shared FTS5 index;
+on macOS, press **Cmd+K**. Results show record names, table names and matching
+snippets, with 50 results per request. Opening a match reads the full current
+row and respects read-only tables. Find is unavailable while a record editor
+is open, so it cannot replace an unsaved draft. **Search this table** remains
+available for the current table. Skipped sync tables can make results incomplete.
 
 Markdown fields open a dedicated screen containing the same **Write** and
 **Source** editor as web, bundled locally in WebKit. Existing records autosave
@@ -93,6 +112,9 @@ Choose **Open local workspace** for persistent local notes with sample topics, o
 **Try sample workspace** for an in-memory preview. macOS also opens existing
 catalogued SQLite files for local use. It never automatically opens the CLI's
 database or syncs a file selected through that picker.
+App-owned local workspaces initialize missing shared saved-view storage;
+external files, replicas and existing name collisions are not altered by that
+initialization. Native saved-view controls are still pending.
 
 **Connect to hub** accepts an HTTPS endpoint and an existing scoped client
 token. Both are saved in this device's Keychain, without prompts during normal
@@ -207,6 +229,7 @@ bun scripts/test-sql-integrity.ts /path/to/life-data
 # Open http://life-ui-markdown.localhost:5198/workspace?review in its own page.
 bun scripts/test-search.ts
 bun scripts/test-search-sync.ts /path/to/life-data
+bun scripts/test-saved-views.ts /path/to/life-data
 bun scripts/test-typed-filters.ts /path/to/life-data
 ```
 
@@ -284,10 +307,10 @@ bun scripts/test-body-autosave.ts
 This is an MVP implementation in progress. Enforced SQL invariants and custom
 triggers fail closed until the complete local rule/journal engine is connected.
 Missing references must be included in the replica before editing them. A
-skipped table is not automatically browsed remotely. Native cross-table quick
-find remains open; native table search already uses the shared FTS5 index.
-Saved views, full grid keyboard editing,
-and Notes migration remain open work.
+skipped table is not automatically browsed remotely. Native table search and
+cross-table Find both use the shared local FTS5 index.
+Native saved-view controls, full grid keyboard editing, and Notes migration
+remain open work.
 
 Native references use named pickers; multi-select and JSON fields use source
 editors. Native browse supports search, sort, combined filters, trash and pages

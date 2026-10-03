@@ -3,6 +3,88 @@ import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testQuickFindPagesAcrossTablesAndOpensAnEditableFreshRecord() throws {
+    try XCTSkipIf(
+      ProcessInfo.processInfo.environment["LIFE_UI_TEST_QUICK_FIND_SIMULATOR"] == nil,
+      "Run the quick-find fixture on a disposable simulator first.")
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    openLocalWorkspace(app)
+    tapWhenReady(app.buttons["quick-find"])
+    XCTAssertTrue(app.staticTexts["Search only records stored on this device."].exists)
+    let query = app.textFields["quick-find-query"]
+    tapWhenReady(query)
+    query.typeText("amberfalcon")
+    XCTAssertTrue(app.staticTexts["50 results"].waitForExistence(timeout: 10))
+    tapWhenReady(app.buttons["quick-find-more"])
+    XCTAssertTrue(app.staticTexts["53 results"].waitForExistence(timeout: 10))
+    tapWhenReady(query)
+    query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "amberfalcon".count))
+    query.typeText("amberfalcon topic")
+    let topic = app.buttons.matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+        "quick-find-result-topics-", "Amberfalcon topic")
+    ).firstMatch
+    tapWhenReady(topic)
+    XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
+    let title = app.textFields["field-title"]
+    XCTAssertEqual(title.value as? String, "Amberfalcon topic")
+    XCTAssertFalse(app.buttons["quick-find"].exists && app.buttons["quick-find"].isHittable)
+    tapWhenReady(title)
+    title.typeText(" revised ")
+    let editedTitle = try XCTUnwrap(title.value as? String)
+    XCTAssertTrue(editedTitle.contains("revised"))
+    XCTAssertNotEqual(editedTitle, "Amberfalcon topic")
+    tapWhenReady(app.navigationBars["Record"].buttons["save-record"])
+    tapWhenReady(app.buttons["quick-find"])
+    tapWhenReady(query)
+    query.typeText(editedTitle)
+    tapWhenReady(topic)
+    XCTAssertEqual(title.value as? String, editedTitle)
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    tapWhenReady(app.buttons["quick-find"])
+    tapWhenReady(query)
+    query.typeText("revised")
+    tapWhenReady(
+      app.buttons.matching(
+        NSPredicate(format: "identifier BEGINSWITH %@", "quick-find-result-history-")
+      ).firstMatch)
+    XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.navigationBars["Record"].buttons["save-record"].exists)
+    XCTAssertFalse(title.exists)
+    XCTAssertFalse(app.buttons["trash-record"].exists)
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    tapWhenReady(app.buttons["quick-find"])
+    tapWhenReady(query)
+    query.typeText("amberfalcon note 00")
+    tapWhenReady(
+      app.buttons.matching(
+        NSPredicate(
+          format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+          "quick-find-result-notes-", "Amberfalcon note 00")
+      ).firstMatch)
+    XCTAssertEqual(title.value as? String, "Amberfalcon note 00")
+    let body = app.buttons["field-body"]
+    for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(body)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
+    XCTAssertEqual(app.webViews.textViews["Body"].value as? String, "Synthetic body for note 00.")
+    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    tapWhenReady(app.buttons["quick-find"])
+    tapWhenReady(query)
+    query.typeText("amberfalcon")
+    XCTAssertTrue(app.staticTexts["50 results"].waitForExistence(timeout: 10))
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-quick-find"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    tapWhenReady(app.navigationBars["Find records"].buttons["Cancel"])
+    XCTAssertTrue(app.navigationBars["Find records"].waitForNonExistence(timeout: 5))
+  }
+
   func testPendingRecoveryCanCopyExitAndOpenLatestWhileKeepingDraft() throws {
     try XCTSkipIf(
       ProcessInfo.processInfo.environment["LIFE_UI_TEST_RECOVERY_SIMULATOR"] == nil,

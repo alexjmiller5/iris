@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import * as core from '../packages/core/client.js';
+import type { Database } from 'bun:sqlite';
 
 const root = resolve(import.meta.dir, '..');
 test('vendored contract generates the exact Swift and TypeScript consumed by both hosts', async () => {
@@ -13,7 +14,7 @@ test('vendored contract generates the exact Swift and TypeScript consumed by bot
   expect(await readFile(resolve(root, 'packages/LifeKit/Sources/LifeKit/Generated/CoreContract.generated.swift'), 'utf8')).toBe(output.swift);
 });
 
-test('native JSON dispatch uses the same generated methods and row results', async () => {
+async function withNative(body: (request: (method: string, args?: object) => Promise<unknown>, db: Database) => Promise<void>) {
   const { Database } = await import('bun:sqlite');
   const { runInNewContext } = await import('node:vm');
   const db = new Database(':memory:');
@@ -28,7 +29,7 @@ test('native JSON dispatch uses the same generated methods and row results', asy
       __lifeYield: (callback: () => void) => queueMicrotask(callback),
       __lifeFinish: (_id: number, json: string) => finish(JSON.parse(json)),
     };
-    const script = await readFile(resolve(root, 'packages/LifeKit/Sources/LifeKit/Resources/life-core.js'), 'utf8');
+    const script = await readFile(process.env.LIFE_UI_TEST_CORE_PATH ?? resolve(root, 'packages/LifeKit/Sources/LifeKit/Resources/life-core.js'), 'utf8');
     runInNewContext(script, context);
     const native = (context as typeof context & { LifeNative: { contractHash: string; request(id: number, method: string, json: string): void } }).LifeNative;
     expect(native.contractHash).toBe(core.CORE_CONTRACT_HASH);
@@ -36,12 +37,77 @@ test('native JSON dispatch uses the same generated methods and row results', asy
       finish = reply => reply.error ? reject(new Error(reply.error)) : resolve(reply.value);
       native.request(1, method, JSON.stringify(args));
     });
-    await request('sample');
-    const rows = await request('rows', { table: 'notes', filters: [{ column: 'title', op: 'contains', value: 'place' }], sort: [{ column: 'title', direction: 'desc' }], limit: 1 }) as core.WorkspaceRow[];
-    expect(rows.map(row => row.label)).toEqual(['A place to start']);
-    expect(await request('rows', { table: 'notes', filters: [{ column: 'id', op: 'eq', value: rows[0].record.id }] })).toEqual(rows);
-    expect(await request('options', { table: 'notes', column: 'status' })).toEqual(['Draft', 'Ready']);
-    await expect(request('toString')).rejects.toThrow('Unknown workspace operation');
-    await expect(request('rows', { table: 'notes', offset: -1 })).rejects.toThrow('nonnegative');
+    await body(request, db);
   } finally { db.close(); }
-});
+}
+
+test('native JSON dispatch uses the same generated methods and row results', () => withNative(async request => {
+  await request('sample');
+  const rows = await request('rows', { table: 'notes', filters: [{ column: 'title', op: 'contains', value: 'place' }], sort: [{ column: 'title', direction: 'desc' }], limit: 1 }) as core.WorkspaceRow[];
+  expect(rows.map(row => row.label)).toEqual(['A place to start']);
+  expect(await request('rows', { table: 'notes', filters: [{ column: 'id', op: 'eq', value: rows[0].record.id }] })).toEqual(rows);
+  expect(await request('options', { table: 'notes', column: 'status' })).toEqual(['Draft', 'Ready']);
+  await expect(request('toString')).rejects.toThrow('Unknown workspace operation');
+  await expect(request('rows', { table: 'notes', offset: -1 })).rejects.toThrow('nonnegative');
+}));
+
+test('an app-owned sample can save and reopen a named view through the shared contract', () => withNative(async request => {
+  await request('sample');
+  expect(await request('listViews', {table:'notes'})).toEqual({views:[],unavailable:null});
+  const definition: core.SavedViewDefinition = {version:1,columns:['title'],filters:[{column:'status',op:'eq',value:'Draft'}],sort:[{column:'title',direction:'desc'}]};
+  const saved = await request('saveView', {table:'notes',name:'Draft notes',definition}) as core.SavedViewRecord;
+  expect(saved.unavailable).toBeNull();
+  const listed = await request('listViews',{table:'notes'}) as core.SavedViewList;
+  expect(listed.views.map(view=>({id:view.id,name:view.name,definition:view.definition}))).toEqual([{id:saved.id,name:'Draft notes',definition}]);
+  const rows=await request('rows',{...saved.view,columns:undefined}) as core.WorkspaceRow[];
+  expect(rows.map(row=>row.label)).toEqual(['A place to start']);
+}));
+
+
+test('local setup backfills an older app-owned workspace once without changing notes', () => withNative(async (request, db) => {
+  await request('sample');
+  // Model the previous local app schema, before saved views existed.
+  db.exec('DROP TRIGGER IF EXISTS views_updated_at; DROP TABLE IF EXISTS views');
+  db.query("DELETE FROM catalog_tables WHERE id='views'").run();
+  db.query("DELETE FROM catalog_properties WHERE tbl='views'").run();
+  const notes=db.query('SELECT * FROM notes').all();
+  expect(await request('prepareLocalViews')).toBe(true);
+  expect(await request('listViews',{table:'notes'})).toEqual({views:[],unavailable:null});
+  const log=db.query('SELECT * FROM _schema_log').all();
+  expect(await request('prepareLocalViews')).toBe(false);
+  expect(db.query('SELECT * FROM _schema_log').all()).toEqual(log);
+  expect(db.query('SELECT * FROM notes').all()).toEqual(notes);
+}));
+
+for(const collision of ['table','catalog'] as const) test(`local setup preserves a conflicting ${collision} instead of adopting it`, () => withNative(async (request, db) => {
+  await request('sample');
+  db.exec('DROP TRIGGER IF EXISTS views_updated_at; DROP TABLE IF EXISTS views');
+  db.query("DELETE FROM catalog_tables WHERE id='views'").run();
+  db.query("DELETE FROM catalog_properties WHERE tbl='views'").run();
+  if(collision==='table') db.exec("CREATE TABLE views (id TEXT, payload TEXT); INSERT INTO views VALUES ('foreign','keep me')");
+  else db.exec("INSERT INTO catalog_tables(id,kind,display) VALUES ('views','table','payload')");
+  const schema=db.query('SELECT type,name,sql FROM sqlite_master').all();
+  const catalog=db.query('SELECT * FROM catalog_tables').all();
+  const props=db.query('SELECT * FROM catalog_properties').all();
+  const log=db.query('SELECT * FROM _schema_log').all();
+  expect(await request('prepareLocalViews')).toBe(false);
+  expect(db.query('SELECT type,name,sql FROM sqlite_master').all()).toEqual(schema);
+  expect(db.query('SELECT * FROM catalog_tables').all()).toEqual(catalog);
+  expect(db.query('SELECT * FROM catalog_properties').all()).toEqual(props);
+  expect(db.query('SELECT * FROM _schema_log').all()).toEqual(log);
+}));
+
+
+test('local saved-view setup rolls schema and catalog back together after a metadata failure', () => withNative(async (request, db) => {
+  await request('sample');
+  db.exec('DROP TRIGGER views_updated_at; DROP TABLE views');
+  db.query("DELETE FROM catalog_tables WHERE id='views'").run();
+  db.query("DELETE FROM catalog_properties WHERE tbl='views'").run();
+  db.exec("CREATE TRIGGER reject_view BEFORE INSERT ON catalog_tables WHEN NEW.id='views' BEGIN SELECT RAISE(ABORT, 'fixture metadata failure'); END");
+  const schema=db.query('SELECT type,name,sql FROM sqlite_master').all();
+  const log=db.query('SELECT * FROM _schema_log').all();
+  await expect(request('prepareLocalViews')).rejects.toThrow();
+  expect(db.query('SELECT type,name,sql FROM sqlite_master').all()).toEqual(schema);
+  expect(db.query('SELECT * FROM _schema_log').all()).toEqual(log);
+  expect(db.query("SELECT * FROM catalog_properties WHERE tbl='views'").all()).toEqual([]);
+}));

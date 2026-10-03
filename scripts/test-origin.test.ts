@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 // Exercise each real runner before it can load a fixture or attach to Chrome.
 // Removing the origin guard must fail these tests without clearing any storage.
-const scripts = ['test-services.ts', 'test-sql-integrity.ts', 'test-workspace-regressions.ts', 'test-markdown-editor.ts', 'test-editor-island.ts', 'test-body-autosave.ts', 'test-search.ts', 'test-search-sync.ts', 'test-typed-filters.ts'];
+const scripts = ['test-services.ts', 'test-sql-integrity.ts', 'test-workspace-regressions.ts', 'test-markdown-editor.ts', 'test-editor-island.ts', 'test-body-autosave.ts', 'test-search.ts', 'test-search-sync.ts', 'test-typed-filters.ts', 'test-saved-views.ts'];
 const unsafe = [
 	'https://example.com/workspace?review',
 	'http://localhost:5198/workspace?review',
