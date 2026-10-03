@@ -248,18 +248,37 @@ final class WorkspaceUITests: XCTestCase {
   }
 
   func testDuplicateCopiesTheSavedRecordAndDiscardsDirtySourceOnlyAfterConfirmation() throws {
+    // Draft journals exist only in a real workspace; the temporary sample keeps none.
+    let environment = ProcessInfo.processInfo.environment
+    guard let selected = environment["LIFE_UI_TEST_DUPLICATE_SIMULATOR"], !selected.isEmpty,
+      selected == environment["SIMULATOR_UDID"]
+    else { throw XCTSkip("Select this exact disposable SIMULATOR_UDID for the duplicate test.") }
     continueAfterFailure = false
     let app = XCUIApplication()
-    app.launchArguments = ["--demo"]
     app.launch()
+    openLocalWorkspace(app)
+    if !app.navigationBars["notes"].waitForExistence(timeout: 3) {
+      tapWhenReady(app.navigationBars.buttons["BackButton"].firstMatch)
+      tapWhenReady(app.buttons["sidebar-table-notes"])
+    }
+    let journals = app.buttons.matching(identifier: "resume-unsaved-draft")
+    XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 10))
+    let journalsBefore = journals.count
     let name = "Duplicate source " + UUID().uuidString.prefix(8)
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    // Older unsaved new-record drafts on this workspace are offered first; start fresh.
+    let fresh = app.buttons["Start new record"]
+    if fresh.waitForExistence(timeout: 3) { tapWhenReady(fresh) }
     let title = app.textFields["field-title"]
     tapWhenReady(title)
     title.typeText(name)
     tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
     XCTAssertTrue(app.navigationBars["New record"].waitForNonExistence(timeout: 10))
-    openRecord(app, title: name)
+    // Submitting dismisses the keyboard so the bottom search bar cannot cover the row.
+    let search = app.searchFields.firstMatch
+    tapWhenReady(search)
+    search.typeText(name + "\n")
+    tapWhenReady(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch)
     tapWhenReady(title)
     title.typeText(" dirty")
     let dirty = try XCTUnwrap(title.value as? String)
@@ -290,8 +309,8 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertEqual(
       app.buttons.matching(NSPredicate(format: "label CONTAINS %@", " dirty")).count, 0,
       "Discarding the source draft must not save it")
-    XCTAssertFalse(
-      app.buttons["resume-unsaved-draft"].exists,
+    XCTAssertEqual(
+      journals.count, journalsBefore,
       "Keeping the source and saving the copy leave no orphaned journal")
   }
 

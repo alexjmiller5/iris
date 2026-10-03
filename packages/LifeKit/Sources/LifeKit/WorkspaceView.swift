@@ -31,6 +31,18 @@ public struct WorkspaceView: View {
   public init(demo: Bool = false) { self.demo = demo }
 
   public var body: some View {
+    // Stacked, not a safe-area inset: navigation bars ignore insets added outside them.
+    VStack(spacing: 0) {
+      pendingLinkBanner
+      content
+    }
+    // Receiving a URL only retains it; navigation waits for an explicit Open.
+    .onOpenURL { pendingLink.receive($0) }
+    // An open window keeps its workspace context instead of spawning an empty one.
+    .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+  }
+
+  private var content: some View {
     Group {
       if model.client == nil {
         welcome
@@ -93,11 +105,6 @@ public struct WorkspaceView: View {
         .onChange(of: model.table) { showingGraph = false }
       }
     }
-    .safeAreaInset(edge: .top, spacing: 0) { pendingLinkBanner }
-    // Receiving a URL only retains it; navigation waits for an explicit Open.
-    .onOpenURL { pendingLink.receive($0) }
-    // An open window keeps its workspace context instead of spawning an empty one.
-    .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
     .task { if demo { await model.open(demo: true) } else { await model.resumeConnection() } }
     .task(id: "\(model.services.generation)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
