@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "89c4c5b6667fd05bb3af159a70c0b9112b7af73260d70b294e7b9cdbe14ad21f";
+export declare const CORE_CONTRACT_HASH = "0b723d74952079734ac03ed2441fa6277352a452089f67f2a85a8172443ff84a";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -274,6 +274,80 @@ export type UndoStatus = {
 export type UndoArgs = {
     receiptId: string;
 };
+export type EnrollmentApprovalArgs = {
+    fingerprint: string;
+    name: string;
+};
+export type EnrollmentPolicy = {
+    pollIntervalSeconds: Count;
+    timeoutSeconds: Count;
+    maxResponseBytes: Count;
+};
+export type EnrollmentApproval = {
+    path: string;
+    approvalCode: string;
+    deviceName: string;
+    policy: EnrollmentPolicy;
+};
+export type ReplicaIneligibilityCode = "full_scope_required" | "invalid_capabilities" | "schema_unavailable" | "replica_sync_disabled";
+export type ReplicaIneligibility = {
+    code: ReplicaIneligibilityCode;
+    message: string;
+};
+export type ReplicaEligibility = {
+    allowed: boolean;
+    reason: ReplicaIneligibility | null;
+};
+export type SessionInfo = {
+    name: string;
+    scopes: string[];
+    replica: ReplicaEligibility;
+};
+export type SessionDataArgs = {
+    data: JSONValue;
+};
+export type SessionReply = {
+    status: Count;
+    data: JSONValue;
+    retryAfterSeconds?: Count;
+};
+export type EnrollmentPollArgs = {
+    reply: SessionReply;
+    expectedFingerprint: string;
+};
+export type EnrollmentPollState = "pending" | "approved";
+export type EnrollmentPollResult = {
+    state: EnrollmentPollState;
+    session: SessionInfo | null;
+    retryAfterSeconds: Count | null;
+};
+export type SessionRevocationState = "revoked" | "unauthorized";
+export type SessionRevocationResult = {
+    state: SessionRevocationState;
+};
+export type ReferenceSourcesArgs = {
+    table: string;
+};
+export type ReferenceSource = {
+    table: string;
+    column: string;
+    label: string;
+    type: "ref" | "multi_ref";
+    incomplete: boolean;
+};
+export type ReferencedByArgs = {
+    table: string;
+    rowId: string;
+    sourceTable: string;
+    column: string;
+    limit?: Count;
+    offset?: Count;
+};
+export type ReferencedByPage = {
+    source: ReferenceSource;
+    rows: WorkspaceRow[];
+    nextOffset: Count | null;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -350,6 +424,30 @@ export interface CoreOperations {
     undo: {
         args: UndoArgs;
         result: Row;
+    };
+    enrollmentApproval: {
+        args: EnrollmentApprovalArgs;
+        result: EnrollmentApproval;
+    };
+    validateDeviceSession: {
+        args: SessionDataArgs;
+        result: SessionInfo;
+    };
+    enrollmentPollResult: {
+        args: EnrollmentPollArgs;
+        result: EnrollmentPollResult;
+    };
+    sessionRevocationResult: {
+        args: SessionReply;
+        result: SessionRevocationResult;
+    };
+    referenceSources: {
+        args: ReferenceSourcesArgs;
+        result: ReferenceSource[];
+    };
+    referencedBy: {
+        args: ReferencedByArgs;
+        result: ReferencedByPage;
     };
 }
 export type CoreMethod = keyof CoreOperations;

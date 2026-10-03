@@ -128,6 +128,12 @@ Adapters without this capability retain the full-global-coverage check.
 Ordinary cursors or imported files do not certify completeness.
 Custom triggers, declared SQLite FKs and enforced estate rules fail closed.
 Missing replica references must not be guessed valid.
+The browser incoming panel uses generated `referenceSources`/`referencedBy`,
+with metadata-only discovery and lazy 20-row groups. Keep group errors visible,
+preserve the offset on retry and deduplicate page IDs. Record/workspace changes
+dispose old replies; catalog or skipped-table changes invalidate only the panel,
+not the surrounding editor draft. Incoming links use the same fresh-row navigation
+and discard guard as outgoing references. No host SQL or inferred reverse links.
 Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never

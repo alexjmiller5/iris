@@ -23,6 +23,9 @@ The hub must allow the web app's origin through CORS.
 - Open a selected related record with its arrow button. Opening reads its current
   full row and prompts before discarding a draft. Multi-reference Remove buttons
   are separate; missing or trashed targets leave the current editor intact.
+- **Referenced by** on a saved record groups incoming links by table and field.
+  Open a group to load local records, page through more, or follow a named record.
+  Skipped tables show a completeness warning; refresh updates the visible groups.
 - Required fields, immutable/derived properties, reference validation and
   stale-edit checks use the shared core. Unsaved drafts prompt before leaving.
 - View table relationships and group tables locally. Groups are separate for

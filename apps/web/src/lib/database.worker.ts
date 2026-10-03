@@ -350,6 +350,10 @@ async function dispatch(request: DatabaseRequest) {
 			return snapshot();
 		case 'rows':
 			return (await local.rows(args.view)).map((row) => row.record);
+		case 'referenceSources':
+			return local.referenceSources(args);
+		case 'referencedBy':
+			return local.referencedBy(args);
 		case 'search':
 			return local.search(args);
 		case 'remoteRows': {

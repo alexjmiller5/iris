@@ -27,3 +27,16 @@ database.request('remoteRow', {
 	token: 'fixture',
 	table: 'items'
 });
+
+const incomingSources: Promise<import('life-ui-core/client').ReferenceSource[]> = database.request(
+	'referenceSources',
+	{ table: 'items' }
+);
+const incomingPage: Promise<import('life-ui-core/client').ReferencedByPage> = database.request(
+	'referencedBy',
+	{ table: 'items', rowId: 'one', sourceTable: 'entries', column: 'owner', limit: 20, offset: 0 }
+);
+// @ts-expect-error Incoming pages require the source column, never a free-form query.
+database.request('referencedBy', { table: 'items', rowId: 'one', sourceTable: 'entries' });
+void incomingSources;
+void incomingPage;
