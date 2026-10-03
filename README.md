@@ -45,6 +45,9 @@ storage transfer is required.
   visible first, and hidden properties remain available when editing the record.
 - Create/edit typed fields, search related records by their display names,
   write Markdown with rich formatting or source editing, and move records to trash or restore them.
+- Website, email and phone fields offer explicit open actions. Websites open in
+  a separate tab; the draft stays in the editor. Open actions also work when a
+  property's editing control is disabled.
 - Open a selected related record with its arrow button. Opening reads its current
   full row and prompts before discarding a draft. Multi-reference Remove buttons
   are separate; missing or trashed targets leave the current editor intact.
@@ -132,6 +135,15 @@ records. Opening reads the complete current local row. Missing targets keep the
 source editor open with an explanation; skipped tables can still contain local
 records. Unsaved changes require **Discard changes and open** or **Keep editing**,
 and unrelated recovery drafts remain available.
+
+**Incoming references** groups stored records that link to the open record by
+source table and field. Expand a group to load 20 records, then choose **Load
+more records** for the next page. Opening a result uses the same fresh-row and
+unsaved-draft checks as other reference links. Read-only records remain
+navigable. Skipped-table coverage is shown explicitly, including after reopening
+offline; an empty local group does not imply that the hub has no matching rows.
+Scrolling and opening Markdown preserve the surrounding record draft.
+
 Catalog rules, read-only tables, validation, history and stale-revision checks
 come from shared core. An editor also captures its workspace and table, so
 changing connections cannot redirect a save. Unsaved drafts require explicit

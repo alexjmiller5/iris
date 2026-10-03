@@ -566,6 +566,16 @@ private struct RecordEditor: View {
           }
         }
         if let original = editor.draft.original {
+          if let identity = model.incomingReferencesIdentity(context: context, row: original) {
+            IncomingReferencesView(
+              makeModel: {
+                model.makeIncomingReferences(
+                  context: context, row: original, isCurrent: editorIsCurrent)
+              },
+              canOpen: !editor.saving, onOpenRecord: openReference
+            )
+            .id(identity)
+          }
           Section("Record") {
             ForEach(original.keys.sorted(), id: \.self) { key in
               if !editor.draft.fields.contains(where: { $0.id == key }) || !model.canWrite

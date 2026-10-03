@@ -114,6 +114,10 @@ Usage is deployment-scoped; provider-wide billing APIs do not belong in clients.
 ## Data integrity
 
 Components call the shared write path; no component SQL writes.
+Typed web link actions are presentation only: keep the original draft text,
+restrict websites to HTTP(S), encode email recipient text and reject phone
+service codes. Keep open actions available on read-only properties and isolate
+external tabs from the editor. Malformed source must not break rendering.
 The SQL adapter read path accepts exactly one read-only statement. Parse the
 whole input before stepping; reject writes and connection-changing commands
 from catalog options/default expressions. Trusted schema replay stays separate. Pass the opened
@@ -190,6 +194,12 @@ view generation so a table round trip cannot revive an old panel.
 Incoming row deduplication and SwiftUI row identity use `byteExactID` (UTF-8
 bytes), since Swift String equality merges some distinct SQLite record IDs.
 Keep the original String ID for requests and navigation.
+Native saved-record editors mount incoming references as a separate child section.
+Dispose and recreate its model when a lazy Form removes and restores that child;
+never reuse a disposed instance or attach the panel identity to the editor.
+Group rows use the existing guarded reference navigation and disable opening while
+an editor write is pending. Keep accessibility identifiers off an enclosing
+DisclosureGroup: SwiftUI can propagate them over individual child controls.
 Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never
