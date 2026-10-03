@@ -1,6 +1,6 @@
 import { chromium, expect } from '@playwright/test';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 
 const source = process.argv[2];
 if (!source) throw new Error('Usage: bun scripts/test-sql-integrity.ts <life-data-checkout>');
@@ -10,7 +10,7 @@ const { server, db: hub } = await regressionHub(source, origin);
 hub.db.query('UPDATE catalog_properties SET options_sql=? WHERE id=?').run("SELECT 'Fixed'); DELETE FROM widgets; --", 'widgets.tags');
 const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
 try {
-	const page = browser.contexts().flatMap(c => c.pages()).find(p => p.url() === url);
+	const page = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
 	if (!page) throw new Error(`Open this dedicated test page: ${url}`);
 	page.setDefaultTimeout(10000);
 	const browserErrors: string[] = [];

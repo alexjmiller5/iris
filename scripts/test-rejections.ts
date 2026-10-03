@@ -1,3 +1,4 @@
+import { workspacePage } from './test-origin';
 import {chromium,expect} from '@playwright/test';
 const url=process.env.LIFE_UI_TEST_URL??'http://localhost:5196/workspace';
 const hub=process.env.LIFE_UI_TEST_HUB??'http://127.0.0.1:5201';
@@ -9,7 +10,7 @@ async function pattern(value:string|null){
 const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
 try{
   await pattern(null);
-  const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()===url);
+  const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);
   if(!page)throw new Error(`Open dedicated rejection test page: ${url}`);
   page.setDefaultTimeout(10000);
   await page.reload();

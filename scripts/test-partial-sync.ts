@@ -1,6 +1,6 @@
 import { chromium, expect } from '@playwright/test';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 
 const source=process.argv[2];
 if(!source)throw Error('Provide the life-data checkout');
@@ -16,9 +16,11 @@ const {server,db}=await regressionHub(source,origin,0,{wrap:worker=>({async fetc
 db.db.query('INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)')
  .run('positive','widgets','invariant',1,'SELECT id FROM changed WHERE quantity<0','Quantity cannot be negative.');
 const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
+let ownedObserver: import('@playwright/test').Page | undefined;
 try{
  const pages=browser.contexts().flatMap(c=>c.pages());
- const page=pages.find(p=>p.url()===url),observer=pages.find(p=>p.url()===observerUrl);
+ const page=workspacePage(pages,url);
+ const observer=ownedObserver=workspacePage(pages,observerUrl);
  if(!page||!observer)throw Error(`Open both dedicated review pages, including ${observerUrl}`);
  for(const tab of [page,observer]){
   tab.setDefaultTimeout(10000);await tab.setViewportSize({width:1440,height:1000});
@@ -81,9 +83,8 @@ try{
  await expect(page.getByRole('alert')).toContainText('Fixture local refresh failure');
  console.log('PASS: a failed local refresh retains the original sync error');
 }finally{
- const observer=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()===observerUrl);
  // Reload the reserved observer page to close its worker without losing its
  // identity for a subsequent regression run. A new page opens no database.
- await observer?.goto(observerUrl).catch(()=>{});
+ await ownedObserver?.goto(observerUrl).catch(()=>{});
  await browser.close();server.stop(true);db.db.close();
 }

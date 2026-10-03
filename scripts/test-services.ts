@@ -1,6 +1,6 @@
 import { chromium, expect } from '@playwright/test';
 import { servicesHub } from './services-hub';
-import { disposableOrigin } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 
 const [source, usageSource] = process.argv.slice(2);
 if (!source || !usageSource) throw new Error('Usage: bun scripts/test-services.ts <life-data-checkout> <usage-hub-checkout>');
@@ -10,7 +10,7 @@ const fixture = await servicesHub(source, usageSource, origin);
 const other = await servicesHub(source, usageSource, origin);
 const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
 try {
-	const page = browser.contexts().flatMap(c => c.pages()).find(p => p.url() === url);
+	const page = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
 	if (!page) throw new Error(`Open the dedicated test page: ${url}`);
 	page.setDefaultTimeout(10000);
 	await page.goto(new URL('/', url).href);

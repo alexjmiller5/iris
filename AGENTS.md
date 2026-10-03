@@ -53,6 +53,13 @@ stays separate from editing/removal permissions, and skipped tables may still
 contain navigable local rows. Preserve the source editor on unavailable targets
 or canceled discard; stale lookup successes and errors must not change context.
 
+Web destination URLs carry only table, stable saved-view and record identifiers.
+Resolve them against the explicitly opened workspace's fresh catalog, saved view
+and full row. Use SvelteKit navigation hooks for browser history so cancelling
+Back restores the URL as well as the draft. Do not use shallow history entries
+that bypass those hooks. Ignore superseded lookup replies and block writes while
+resolving a linked record. Unsaved view settings and credentials stay out of URLs.
+
 Saved views use the core contract and the canonical `core/schema/saved-views.json`
 manifest vendored by `bundle-core.ts`. Only explicit app-owned local/sample
 initialization may create missing storage; replicas receive logged DDL through

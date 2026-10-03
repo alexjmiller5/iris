@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { resolve } from 'node:path';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 
 const url=process.env.LIFE_UI_TEST_URL??'http://life-ui-markdown.localhost:5198/workspace?review';
 const origin=disposableOrigin(url);
@@ -20,8 +20,9 @@ for(const [table,records] of [['catalog_tables',[schema.table]],['catalog_proper
 db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('agent-view','Only the second record','widgets',JSON.stringify({version:1,columns:['title','body'],filters:[{column:'title',op:'eq',value:'Second record'}],sort:[{column:'title',direction:'desc'},{column:'quantity',direction:'asc'}],widths:{body:430}}));
 db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('future-view','A newer definition','widgets',JSON.stringify({version:2}));
 const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
+let ownedPage: import('@playwright/test').Page | undefined;
 try{
- const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()===url);
+ const page = ownedPage = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
  if(!page)throw Error('Open the reserved review page');
  page.setDefaultTimeout(7000);await page.setViewportSize({width:1440,height:1000});
  let acceptDialog=true;
@@ -145,4 +146,4 @@ try{
  await page.setViewportSize({width:390,height:844});await page.emulateMedia({colorScheme:'dark'});
  await page.screenshot({path:'/tmp/life-ui-saved-views-mobile.png',fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-}finally{const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()===url);await page?.evaluate(()=>(window as any).releaseViewWrites?.()).catch(()=>{});await browser.close();server.stop(true);db.db.close();}
+}finally{const page = ownedPage;await page?.evaluate(()=>(window as any).releaseViewWrites?.()).catch(()=>{});await browser.close();server.stop(true);db.db.close();}

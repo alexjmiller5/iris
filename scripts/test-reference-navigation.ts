@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { resolve } from 'node:path';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 
 const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-relations.localhost:5223/workspace?review';
 const origin = disposableOrigin(url);
@@ -49,8 +49,9 @@ db.db.exec(`
 
 const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
 const failures: string[] = [];
+let ownedPage: import('@playwright/test').Page | undefined;
 try {
-	const page = browser.contexts().flatMap(c => c.pages()).find(p => p.url() === url);
+	const page = ownedPage = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
 	if (!page) throw new Error('Open the dedicated relation fixture page first.');
 	page.setDefaultTimeout(8000);
 	page.on('requestfailed', request => console.error('Fixture request failed:', request.url(), request.failure()?.errorText));
@@ -312,8 +313,9 @@ try {
 	});
 	if (failures.length) throw new Error(`${failures.length} relation regression(s) failed: ${failures.join('; ')}`);
 } finally {
-	const page = browser.contexts().flatMap(c => c.pages()).find(p => p.url() === url);
+	const page = ownedPage;
 	await page?.evaluate(() => { (window as any).releaseRelations?.(); (window as any).releaseWrites?.(); }).catch(() => {});
+	await page?.goto(url).catch(() => {});
 	await browser.close();
 	server.stop(true);
 	db.db.close();

@@ -1,3 +1,4 @@
+import { workspacePage } from './test-origin';
 import { chromium, expect } from '@playwright/test';
 
 // Attach only to this task's already-created browser page (chrome-control).
@@ -5,7 +6,7 @@ const endpoint=process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222';
 const url=process.env.LIFE_UI_TEST_URL ?? 'http://127.0.0.1:5196/workspace';
 const browser=await chromium.connectOverCDP(endpoint);
 try {
-  const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()===url);
+  const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);
   if(!page) throw new Error(`Open the dedicated test page first: ${url}`);
   page.setDefaultTimeout(10_000);
   await page.setViewportSize({width:1200,height:900});

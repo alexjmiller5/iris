@@ -1,6 +1,6 @@
 import { chromium, expect } from '@playwright/test';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 
 // Create a dedicated chrome-control group first. This origin must be disposable:
 // the runner clears only its own OPFS/localStorage before exercising the real app.
@@ -12,7 +12,7 @@ const { server } = await regressionHub(source, origin);
 const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
 const failures: string[] = [];
 try {
-	const page = browser.contexts().flatMap(c => c.pages()).find(p => p.url() === url);
+	const page = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
 	if (!page) throw new Error(`Open the dedicated test page first: ${url}`);
 	page.setDefaultTimeout(5000);
 	await page.setViewportSize({ width: 1280, height: 960 });

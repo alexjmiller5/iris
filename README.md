@@ -55,6 +55,21 @@ receive it through schema sync from their operator; the client never adopts an
 unrelated table named `views`. Column visibility changes the grid only, so
 editing still reads all of a record's fields.
 
+**Copy link** shares the current table, saved view and saved record. Links use
+`/workspace?table=<table-id>&view=<view-id>&row=<record-id>` with optional view
+and row identifiers. Renaming a saved view does not change its link. Open the
+matching workspace on the receiving device, and sync if the target is not yet
+available there. Links never select a hub, open a workspace automatically or
+carry credentials or record contents.
+
+Back and Forward restore the destination from current local data, including
+hidden editor fields and explicitly linked trashed records. Cancelling a draft
+discard retains both the editor and its current address; pending writes block
+navigation until their receipt. Missing destinations show an explanation while
+keeping the current editor. Copy link includes the saved view's identity, so
+reopening uses its latest saved definition. Unsaved filters, search, sort,
+column changes, grid pagination and drafts are not encoded in links.
+
 **Find records** (Cmd+K or Ctrl+K) searches across locally available tables,
 including Markdown bodies. Results show the record title, table and an excerpt;
 use the arrow keys and Enter to open one. Search matches word prefixes, ignores
@@ -232,6 +247,10 @@ Browser smoke tests attach to a dedicated, already-open Chrome CDP page:
 Run them sequentially: concurrent Playwright connections to one browser can
 interfere with each other's confirmation dialogs. Keep source generators and
 type checks idle during these tests to avoid development-server reloads.
+Runners select their exact origin and `/workspace` through `workspacePage`,
+independent of product navigation parameters. Ambiguous tabs are rejected.
+Two-tab runners retain their observer handle and restore its fixture URL before
+disconnecting; product links intentionally discard `review` and `observer` flags.
 
 ```sh
 LIFE_UI_TEST_URL=http://127.0.0.1:5196/workspace bun scripts/test-workspace.ts
@@ -263,6 +282,9 @@ bun scripts/test-partial-sync.ts /path/to/life-data
 bun scripts/test-reference-navigation.ts /path/to/life-data
 # Only while owning that checkout and its dev server: temporarily mutate the route.
 bun scripts/test-reference-mutations.ts /path/to/life-data
+# Open http://life-ui-navigation.localhost:5224/workspace?review in its own page.
+bun scripts/test-workspace-navigation.ts /path/to/life-data
+bun scripts/test-navigation-mutations.ts /path/to/life-data
 ```
 
 The first test covers validation, Markdown persistence, relations, trash,
@@ -284,6 +306,12 @@ cover fresh full-row lookup, cross-table IDs, draft cancellation, stale replies,
 read-only references, missing/trashed targets, skipped tables, pending writes,
 destination saved views and narrow layouts. `LIFE_UI_REFERENCE_CASE` selects a
 case by name; `LIFE_UI_TEST_SCREENSHOTS` optionally names an output directory.
+
+URL navigation checks cover table/view/row restoration, fresh full rows, encoded
+identifiers, browser Back/Forward, draft cancellation, pending receipts, delayed
+replies, missing destinations and clipboard contents. `LIFE_UI_NAVIGATION_CASE`
+selects a case by name. Its held replies delay only delivery from the real
+Worker; SQLite, OPFS and the synthetic hub remain active.
 
 ## Core and build ownership
 
