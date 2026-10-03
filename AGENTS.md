@@ -81,6 +81,13 @@ persist only destination tuples; their model records a visit only after the host
 commits navigation. A failed preference read keeps new visits in memory and must
 never replace unread history. The temporary sample uses memory-only recents.
 
+Native Quick Find combines table/view metadata with the existing record search.
+Discover metadata once per opening except for explicit retries, keeping paging
+and metadata failures independent. Retain selection by exact destination identity
+as results arrive, and keep unavailable choices visible with their reason.
+Resolve every choice freshly before host activation. Closing disposes both reads;
+record navigation is recorded only after the pending editor actually installs.
+
 Web destination URLs carry only table, stable saved-view and record identifiers.
 Resolve them against the explicitly opened workspace's fresh catalog, saved view
 and full row. Use SvelteKit navigation hooks for browser history so cancelling

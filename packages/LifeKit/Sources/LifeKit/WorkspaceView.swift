@@ -9,11 +9,16 @@ public struct WorkspaceView: View {
   @State private var options = false
   @State private var savedViews = false
   @State private var showingGraph = false
+  @State private var preferredColumn: NavigationSplitViewColumn = .detail
+  @State private var navigationRequest = 0
+  @State private var openingDestination = false
+  @State private var navigationError: String?
   @State private var tableSearchPresented = false
   @State private var editor: EditorTarget?
   @State private var online: OnlineBrowseModel?
-  @State private var quickFind: QuickFindModel?
-  @State private var pendingSearchEditor: (target: EditorTarget, generation: Int)?
+  @State private var quickFind: QuickFindCoordinator?
+  @State private var pendingSearchEditor:
+    (target: EditorTarget, generation: Int, destination: NativeDestination)?
   @State private var pendingReferenceEditor:
     (destination: ReferenceDestination, source: WorkspaceEditingContext, generation: Int)?
   private let demo: Bool
@@ -25,8 +30,8 @@ public struct WorkspaceView: View {
       if model.client == nil {
         welcome
       } else {
-        NavigationSplitView {
-          List(selection: $model.table) {
+        NavigationSplitView(preferredCompactColumn: $preferredColumn) {
+          List {
             Button(action: showQuickFind) {
               Label("Find records", systemImage: "magnifyingglass")
             }
@@ -38,14 +43,13 @@ public struct WorkspaceView: View {
                 showingGraph = true
               } label: {
                 Label("Schema graph", systemImage: "point.3.connected.trianglepath.dotted")
-              }
+              }.disabled(!canFind)
             #endif
-            ForEach(model.tables, id: \.["id"]) { table in
-              let id = table["id"]?.text ?? ""
-              NavigationLink(value: id) {
-                Label(id, systemImage: id == "history" ? "clock" : "tablecells")
-              }
-            }
+            WorkspaceSidebar(
+              tables: NativeSidebarTables(model.tables), recents: model.recents,
+              selectedTable: model.table, disabled: !canFind,
+              opening: openingDestination, error: navigationError,
+              onOpen: { openDestination($0) })
           }
           .navigationTitle("Life UI")
           .safeAreaInset(edge: .bottom) {
@@ -58,7 +62,7 @@ public struct WorkspaceView: View {
                 }
                 .disabled(model.syncing).accessibilityIdentifier("sync-now")
               }
-              Button("Hub connection") { settings = true }
+              Button("Hub connection") { settings = true }.disabled(openingDestination)
               Button("Close workspace") { Task { await model.close() } }
             }.padding().frame(maxWidth: .infinity, alignment: .leading)
           }
@@ -68,10 +72,10 @@ public struct WorkspaceView: View {
               SchemaGraphView(
                 catalog: catalog, groups: model.groups,
                 openTable: { table in
-                  model.table = table
-                  showingGraph = false
+                  openDestination(NativeDestination(table: table))
                 }, saveGroups: model.saveGroups
               )
+              .disabled(openingDestination)
               .navigationTitle("Schema graph")
             } else {
               records
@@ -89,6 +93,16 @@ public struct WorkspaceView: View {
       await model.services.poll()
     }
     .task(id: model.queryKey) { await model.reload() }
+    .task(id: "\(model.workspaceGeneration)|\(scenePhase == .active)") {
+      guard scenePhase == .active else { return }
+      await model.recents?.refresh()
+    }
+    .onChange(of: model.syncing) {
+      if !model.syncing {
+        let recents = model.recents
+        Task { await recents?.refresh() }
+      }
+    }
     .sheet(item: $editor, onDismiss: finishEditorDismissal) { target in
       RecordEditor(
         model: model, original: target.row, context: target.context, recovered: target.recovered,
@@ -120,25 +134,36 @@ public struct WorkspaceView: View {
     }
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
     .sheet(isPresented: $options) { WorkspaceOptionsView(model: model) }
-    .sheet(isPresented: $savedViews) { SavedViewsView(model: model) }
+    .sheet(isPresented: $savedViews) {
+      SavedViewsView(model: model, onChoose: recordNavigationSucceeded)
+    }
     .sheet(item: $quickFind, onDismiss: openSearchEditor) { find in
-      QuickFindView(model: find, incomplete: !model.skippedTables.isEmpty) {
-        hit, row in
+      QuickFindView(model: find, incomplete: !model.skippedTables.isEmpty) { resolved in
         guard find.isCurrent, quickFind === find, editor == nil, let client = model.client else {
-          return
+          throw CancellationError()
         }
-        do {
-          let context = try model.activateSearchTable(
-            hit.table, workspace: client, generation: model.workspaceGeneration)
+        let generation = model.workspaceGeneration
+        let context = try model.activateDestination(
+          resolved, workspace: client, generation: generation)
+        if let row = resolved.row {
           pendingSearchEditor = (
-            EditorTarget(row: row.record, context: context), model.workspaceGeneration
+            EditorTarget(row: row.record, context: context), generation, resolved.destination
           )
-          showingGraph = false
-          quickFind = nil
-        } catch { model.error = error.localizedDescription }
+        }
+        tableSearchPresented = false
+        showingGraph = false
+        preferredColumn = .detail
+        model.error = nil
+        navigationError = nil
+        quickFind = nil
+        if resolved.row == nil { recordNavigationSucceeded(resolved.destination) }
       }
     }
     .onChange(of: model.workspaceGeneration) {
+      navigationRequest += 1
+      openingDestination = false
+      navigationError = nil
+      preferredColumn = .detail
       online?.cancel()
       online = nil
       quickFind?.cancel()
@@ -155,14 +180,76 @@ public struct WorkspaceView: View {
   }
 
   private var canFind: Bool {
-    model.client != nil && editor == nil && online == nil && quickFind == nil
+    model.client != nil && !openingDestination && editor == nil && online == nil && quickFind == nil
       && pendingSearchEditor == nil
+      && pendingReferenceEditor == nil
       && !settings && !options && !savedViews && !importing
+  }
+
+  private func recordNavigationSucceeded(_ destination: NativeDestination) {
+    guard let recents = model.recents else { return }
+    let generation = model.workspaceGeneration
+    Task {
+      guard generation == model.workspaceGeneration else { return }
+      await recents.navigationSucceeded(destination)
+    }
+  }
+
+  private func openRecord(_ row: WorkspaceRow) {
+    guard let table = model.table else { return }
+    // Resolve by ID. The loaded page may have an old revision or omit fields.
+    openDestination(NativeDestination(table: table, rowID: row.id), preservingQuery: true)
+  }
+
+  private func openDestination(_ destination: NativeDestination, preservingQuery: Bool = false) {
+    guard canFind, let workspace = model.client else { return }
+    let generation = model.workspaceGeneration
+    let query = model.queryKey
+    navigationRequest += 1
+    let request = navigationRequest
+    let recent = preservingQuery
+      ? NativeDestination(table: destination.table, viewID: model.appliedView?.id, rowID: destination.rowID)
+      : destination
+    openingDestination = true
+    navigationError = nil
+    let current = {
+      model.client === workspace && model.workspaceGeneration == generation
+        && navigationRequest == request && model.queryKey == query
+        && editor == nil && quickFind == nil && online == nil
+        && !settings && !options && !savedViews && !importing
+    }
+    Task {
+      defer { if navigationRequest == request { openingDestination = false } }
+      do {
+        let resolved = try await NativeDestinationResolver(workspace: workspace).resolve(
+          destination, isCurrent: current)
+        guard current() else { return }
+        let context: WorkspaceEditingContext
+        if preservingQuery {
+          context = try model.refreshedRecordContext(resolved, workspace: workspace, generation: generation)
+        } else {
+          context = try model.activateDestination(resolved, workspace: workspace, generation: generation)
+        }
+        if !preservingQuery { tableSearchPresented = false }
+        showingGraph = false
+        preferredColumn = .detail
+        if let row = resolved.row { editor = EditorTarget(row: row.record, context: context) }
+        model.error = nil
+        recordNavigationSucceeded(recent)
+      } catch is CancellationError {
+        // A closed or superseded workspace owns the next UI state.
+      } catch {
+        guard current() else { return }
+        navigationError = error.localizedDescription
+        model.error = error.localizedDescription
+        await model.recents?.refresh()
+      }
+    }
   }
 
   private func showQuickFind() {
     guard canFind else { return }
-    quickFind = model.makeQuickFind()
+    quickFind = model.makeCommandPalette()
   }
 
   private func openSearchEditor() {
@@ -173,6 +260,7 @@ public struct WorkspaceView: View {
       pending.target.context?.table == model.table
     else { return }
     editor = pending.target
+    recordNavigationSucceeded(pending.destination)
   }
 
   private func finishEditorDismissal() {
@@ -189,6 +277,9 @@ public struct WorkspaceView: View {
         workspace: pending.source.workspace, generation: pending.generation)
       showingGraph = false
       editor = EditorTarget(row: pending.destination.row.record, context: context)
+      recordNavigationSucceeded(NativeDestination(
+        table: pending.destination.table, viewID: model.appliedView?.id,
+        rowID: pending.destination.row.id))
     } catch { model.error = error.localizedDescription }
   }
 
@@ -242,6 +333,10 @@ public struct WorkspaceView: View {
             do {
               let current = try await model.recoveryRecord(saved, context: context)
               editor = EditorTarget(row: current, context: context, recovered: saved)
+              if let id = current?["id"]?.text {
+                recordNavigationSucceeded(NativeDestination(
+                  table: context.table, viewID: model.appliedView?.id, rowID: id))
+              }
             } catch { model.error = error.localizedDescription }
           }
         } label: {
@@ -276,7 +371,7 @@ public struct WorkspaceView: View {
       }
       ForEach(model.rows, id: \.byteExactID) { row in
         Button {
-          editor = EditorTarget(row: row.record, context: model.editingContext)
+          openRecord(row)
         } label: {
           VStack(alignment: .leading, spacing: 5) {
             Text(row.label).foregroundStyle(.primary).font(.headline).lineLimit(2)
@@ -387,6 +482,7 @@ public struct WorkspaceView: View {
         }
       }
     }
+    .disabled(openingDestination)
   }
 }
 

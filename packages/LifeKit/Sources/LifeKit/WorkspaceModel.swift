@@ -19,6 +19,8 @@ final class WorkspaceModel {
   var client: NativeWorkspace? {
     didSet {
       if oldValue !== client {
+        recents?.cancel()
+        recents = nil
         workspaceGeneration += 1
         undoAction = nil
         undoing = false
@@ -120,6 +122,7 @@ final class WorkspaceModel {
   var isReplica = false
   var groups: [String: String] = [:]
   private(set) var recoverableDrafts: [StoredEditorDraft] = []
+  private(set) var recents: NativeRecentsModel?
   private var draftStore: EditorDraftStore?
   let services = HubServicesModel()
   private var groupsURL: URL?
@@ -222,6 +225,19 @@ final class WorkspaceModel {
   var editingContext: WorkspaceEditingContext? {
     guard let client, let table else { return nil }
     return WorkspaceEditingContext(workspace: client, table: table, draftStore: draftStore)
+  }
+  func refreshedRecordContext(
+    _ resolved: NativeResolvedDestination, workspace: NativeWorkspace, generation: Int
+  ) throws -> WorkspaceEditingContext {
+    try requireNavigationReady(workspace: workspace, generation: generation)
+    guard resolved.destination.table == table, resolved.row != nil,
+      resolved.catalog.tables.contains(where: { $0["id"] == .string(resolved.destination.table) })
+    else {
+      throw WorkspaceError(message: "The table changed. Open the record again.", violations: [])
+    }
+    catalog = resolved.catalog
+    return WorkspaceEditingContext(
+      workspace: workspace, table: resolved.destination.table, draftStore: draftStore)
   }
   var tables: [WorkspaceRecord] { catalog?.tables ?? [] }
   var properties: [WorkspaceRecord] {
@@ -597,6 +613,8 @@ final class WorkspaceModel {
       }
       try loadGroups(workspace: demo ? nil : path)
       try prepareDrafts(path: demo ? nil : path)
+      let recentStore = demo ? nil : NativeRecentsStore(
+        root: try resolveLocalURL().deletingLastPathComponent(), workspace: URL(fileURLWithPath: path))
       let workspace = try NativeWorkspace(path: path)
       do {
         if seed { try await workspace.createSample() }
@@ -607,6 +625,7 @@ final class WorkspaceModel {
         throw error
       }
       client = workspace
+      configureRecents(store: recentStore)
       location =
         demo
         ? "Sample workspace · temporary"
@@ -689,6 +708,16 @@ final class WorkspaceModel {
     let root = try resolveLocalURL().deletingLastPathComponent().appendingPathComponent("drafts")
     draftStore = EditorDraftStore(root: root, workspace: URL(fileURLWithPath: path))
     refreshDrafts()
+  }
+
+  private func configureRecents(store: NativeRecentsStore?) {
+    guard let client else { return }
+    let resolver = NativeDestinationResolver(workspace: client)
+    // Forgetting a credential keeps this database open. Its local history
+    // remains usable; replacing/closing the client cancels the old model.
+    let current = { [weak self] in self?.client === client }
+    recents = NativeRecentsModel(store: store,
+      resolve: { try await resolver.resolve($0, isCurrent: current) }, isCurrent: current)
   }
 
   func refreshDrafts() {
@@ -842,6 +871,7 @@ final class WorkspaceModel {
     scopedURL?.stopAccessingSecurityScopedResource()
     scopedURL = nil
     client = prepared
+    configureRecents(store: NativeRecentsStore(root: root, workspace: path))
     catalog = nextCatalog
     groups = nextGroups
     groupsURL = nextGroupsURL

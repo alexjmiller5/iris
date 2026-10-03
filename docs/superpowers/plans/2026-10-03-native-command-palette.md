@@ -98,3 +98,24 @@ test capture warnings remain assigned to their owner.
 This checkpoint is model-only. Palette view wiring consumes the independently
 verified host navigation hook after its owner's compile handoff. All native UI
 verification remains with the sole Xcode/simulator owner.
+
+## View integration checkpoint
+
+The palette uses the coordinator for both pointer and keyboard activation.
+Metadata retry, record paging and partial coverage remain explicit. The workspace
+handler installs a fresh table/view immediately or carries the destination into
+the pending record-editor handoff. Its history callback runs after installation.
+The existing record-sheet exclusion remains unchanged.
+
+The verified sidebar host branch is merged. The focused run passed 31 tests in
+five suites; the restored full run passed 278 tests in 50 suites, with five
+existing HTTP fixture tests skipped. A mutation making the actual Search again
+action continue paging instead of restarting was caught by assertions and restored.
+
+Actual native UI verification is pending with the sole Xcode/simulator owner.
+Include hardware Up/Down/Enter while the text field has focus, IME composition,
+selection retained as metadata arrives, unavailable view reasons, narrow layouts
+with several metadata errors, and history recorded once after editor installation.
+The heading is now `Quick Find`; record result/query/paging accessibility IDs are
+unchanged. New IDs are `quick-find-cancel`, `quick-find-table-<table>` and
+`quick-find-view-<table>-<viewID>`.

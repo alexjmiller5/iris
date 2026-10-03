@@ -1,4 +1,4 @@
-# Native sidebar recents model
+# Native sidebar recents
 
 The shared LifeKit model is independent of SwiftUI navigation. The host supplies
 the common `NativeDestinationResolver` and a current-workspace predicate, displays
@@ -10,8 +10,9 @@ the common `NativeDestinationResolver` and a current-workspace predicate, displa
    application state root and the same database URL used for draft storage. For
    the temporary sample, omit the store; closing the sample loses its recents.
 2. Create `NativeRecentsModel(store:resolve:isCurrent:)`. The resolver closure calls
-   `NativeDestinationResolver.resolve(_:isCurrent:)` with the captured workspace
-   generation. Call `refresh()` to resolve current labels and availability.
+   `NativeDestinationResolver.resolve(_:isCurrent:)` with a current-client check.
+   Forgetting a credential keeps the same local database and its history usable.
+   Call `refresh()` to resolve current labels and availability.
 3. On selection, freshly resolve the chosen `entry.destination` again through the
    common resolver. Respect the host's pending-write and dirty-draft guards. Do
    not navigate using the label projection or a cached row.
@@ -42,6 +43,33 @@ workspace session, with a visible warning; reopening creates a fresh persistence
 attempt. This preserves unread files and keeps navigation available without losing
 earlier in-memory visits when a later write happens to succeed.
 
-The model/store tests use temporary files and synthetic JavaScriptCore workspaces.
-Host navigation, sidebar layout, System disclosure and dirty-discard UI checks
-belong to the later SwiftUI integration.
+## Native host
+
+`WorkspaceModel` creates one recents model for each opened local/external/replica
+database and cancels it when its client closes or changes. Preference errors do
+not prevent the workspace from opening. Foreground and completed sync refresh
+recent labels without replacing the editor, loaded rows or query.
+
+`WorkspaceView.recordNavigationSucceeded(_:)` is the single completion hook.
+The table, graph, saved-view choose and related-record paths call it after
+installation. QuickFind integration must call the same hook after its guarded
+destination or pending record editor is installed. Resolving metadata or saving
+a view is not a completed navigation.
+
+List row actions use `openRecord(_:)`; MacGrid integration uses the same helper.
+It reads the current full row by ID and refreshes catalog metadata while preserving
+search, filters, sort and modified saved-view state. Explicit recent/table/graph navigation uses
+`activateDestination` to apply the destination's current saved configuration.
+Both paths reuse the same workspace-generation and pending-write guard. History
+stores the actual applied view ID, never transient query settings.
+
+The sidebar keeps unavailable recents visible with a reason and Remove action.
+Trashed entries open in the existing read-only editor with Restore. The System
+tables disclosure uses only core `readOnly`, while catalog purpose text appears
+under table names. Sidebar navigation is disabled while a modal editor is open,
+so it cannot discard a draft; related-record navigation retains its existing
+explicit discard confirmation.
+
+The model/store and host-lifecycle tests use temporary files and synthetic
+JavaScriptCore workspaces. Actual sidebar layout, compact navigation,
+dirty-discard interactions and native accessibility are separate Apple UI gates.
