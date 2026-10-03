@@ -1,0 +1,220 @@
+name: Release macOS
+
+# Publishing requires an explicitly approved version tag. Branch pushes only check.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release
+  cancel-in-progress: false
+
+env:
+  APP: LifeUI
+  CASK: life-ui
+  TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    outputs:
+      sha256: ${{ steps.package.outputs.sha256 }}
+      version: ${{ steps.inputs.outputs.version }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Validate release inputs
+        id: inputs
+        shell: bash
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo 'Use a stable version tag such as v0.1.0.' >&2; exit 1;
+          }
+          [[ "$TAP_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+            echo 'Set HOMEBREW_TAP_REPOSITORY to the release tap owner/repository.' >&2; exit 1;
+          }
+          echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check shared code and bundled resources
+        run: |
+          bun install --frozen-lockfile
+          bun run test
+          bun run check
+          bun run --cwd apps/web lint
+          bun scripts/test-island-builds.ts
+          bun run bundle:graph
+          bun run bundle:editor
+          bun run bundle:native
+          git diff --exit-code -- packages/LifeKit/Sources/LifeKit/Resources
+          swift test --package-path packages/LifeKit
+
+      - name: Build unsigned universal app
+        run: |
+          brew install xcodegen
+          xcodegen generate --spec apps/macos/project.yml
+          xcodebuild -project apps/macos/LifeUI.xcodeproj -scheme LifeUI \
+            -configuration Release -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/life-ui-release" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+            ONLY_ACTIVE_ARCH=NO 'ARCHS=arm64 x86_64' \
+            MARKETING_VERSION="$RELEASE_VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" build
+          mkdir -p build
+          ditto "$RUNNER_TEMP/life-ui-release/Build/Products/Release/$APP.app" "build/$APP.app"
+          lipo -verify_arch arm64 x86_64 "build/$APP.app/Contents/MacOS/$APP"
+
+      - uses: 1Password/install-cli-action@v4
+      # Bootstrap manifest references intentionally use names. Apple Signing is
+      # the documented shared signing/tap exception; runtime auth is separate.
+      - uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          DEVELOPER_ID_P12_BASE64: op://Apple Signing/Developer ID Application Cert/p12_base64
+          DEVELOPER_ID_P12_PASSWORD: op://Apple Signing/Developer ID Application Cert/password
+          ASC_KEY_P8_BASE64: op://Apple Signing/App Store Connect API Key/p8_base64
+          ASC_KEY_ID: op://Apple Signing/App Store Connect API Key/key_id
+          ASC_ISSUER_ID: op://Apple Signing/App Store Connect API Key/issuer_id
+
+      - name: Sign, notarize and package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          KEYCHAIN="$RUNNER_TEMP/life-ui-release.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          trap 'rm -f "$RUNNER_TEMP/life-ui-cert.p12" "$RUNNER_TEMP/life-ui-notary.p8"' EXIT
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          printf '%s' "$DEVELOPER_ID_P12_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-cert.p12"
+          security import "$RUNNER_TEMP/life-ui-cert.p12" -k "$KEYCHAIN" \
+            -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S 'apple-tool:,apple:' -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+          test -n "$IDENTITY"
+          find "build/$APP.app/Contents" -depth \
+            \( -name '*.framework' -o -name '*.dylib' -o -name '*.xpc' -o -name '*.app' \) \
+            -print0 | while IFS= read -r -d '' ITEM; do
+              codesign --force --options runtime --timestamp --sign "$IDENTITY" "$ITEM"
+            done
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "build/$APP.app"
+          codesign --verify --deep --strict --verbose=2 "build/$APP.app"
+          ditto -c -k --keepParent "build/$APP.app" "build/$APP-notarize.zip"
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-notary.p8"
+          xcrun notarytool submit "build/$APP-notarize.zip" \
+            --key "$RUNNER_TEMP/life-ui-notary.p8" --key-id "$ASC_KEY_ID" \
+            --issuer "$ASC_ISSUER_ID" --wait --timeout 30m
+          xcrun stapler staple "build/$APP.app"
+          xcrun stapler validate "build/$APP.app"
+          spctl --assess --type execute --verbose=2 "build/$APP.app"
+          ditto -c -k --keepParent "build/$APP.app" "build/$APP-$GITHUB_REF_NAME.zip"
+          (cd build && shasum -a 256 "$APP-$GITHUB_REF_NAME.zip" > SHA256SUMS)
+          echo "sha256=$(awk '{print $1}' build/SHA256SUMS)" >> "$GITHUB_OUTPUT"
+
+      - name: Delete temporary signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/life-ui-cert.p12" "$RUNNER_TEMP/life-ui-notary.p8"
+          if [ -f "$RUNNER_TEMP/life-ui-release.keychain-db" ]; then
+            security delete-keychain "$RUNNER_TEMP/life-ui-release.keychain-db"
+          fi
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
+            "build/$APP-$GITHUB_REF_NAME.zip" build/SHA256SUMS
+
+  # Separate job: a tap failure can be retried without republishing immutable assets.
+  cask:
+    needs: release
+    runs-on: macos-latest
+    timeout-minutes: 10
+    env:
+      RELEASE_VERSION: ${{ needs.release.outputs.version }}
+      SHA256: ${{ needs.release.outputs.sha256 }}
+    steps:
+      - uses: 1Password/install-cli-action@v4
+      - uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          TAP_PUSH_TOKEN: op://Apple Signing/Homebrew Tap Push Token/token
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: ${{ env.TAP_REPOSITORY }}
+          token: ${{ env.TAP_PUSH_TOKEN }}
+          path: tap
+      - name: Update Homebrew cask
+        shell: bash
+        run: |
+          action=$(ruby -rrubygems - "tap/Casks/$CASK.rb" <<'RUBY'
+          stable = /\A(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z/
+          checksum = /\A[0-9a-f]{64}\z/
+          version, sha = ENV.fetch("RELEASE_VERSION"), ENV.fetch("SHA256")
+          abort "Invalid release version or SHA256" unless stable.match?(version) && checksum.match?(sha)
+          if File.exist?(ARGV.fetch(0))
+            lines = File.readlines(ARGV.fetch(0))
+            literal = lambda do |field|
+              candidates = lines.grep(/\A[ \t]*#{field}\b/)
+              match = candidates.one? && candidates.first.match(/\A[ \t]*#{field}[ \t]+"([^"\r\n]+)"[ \t]*\r?\n?\z/)
+              abort "Unsupported cask #{field} format" unless match
+              match[1]
+            end
+            previous, previous_sha = literal.call("version"), literal.call("sha256")
+            abort "Invalid existing cask version or SHA256" unless stable.match?(previous) && checksum.match?(previous_sha)
+            order = Gem::Version.new(version) <=> Gem::Version.new(previous)
+            abort "Existing version has a different SHA256; release artifacts are immutable" if order.zero? && sha != previous_sha
+            if order <= 0
+              puts "skip"
+              exit
+            end
+          end
+          puts "update"
+          RUBY
+          )
+          if [[ "$action" == skip ]]; then
+            echo "Cask already contains this release or a newer version; leaving it unchanged."
+            exit 0
+          fi
+          mkdir -p tap/Casks
+          cat > "tap/Casks/$CASK.rb" <<EOF
+          cask "$CASK" do
+            version "$RELEASE_VERSION"
+            sha256 "$SHA256"
+
+            url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/$APP-v#{version}.zip"
+            name "Life UI"
+            desc "Local-first browser for catalogued databases"
+            homepage "https://github.com/$GITHUB_REPOSITORY"
+
+            depends_on macos: ">= :sonoma"
+            app "$APP.app"
+          end
+          EOF
+          ruby -c "tap/Casks/$CASK.rb"
+          git -C tap config user.name 'github-actions[bot]'
+          git -C tap config user.email 'github-actions[bot]@users.noreply.github.com'
+          git -C tap add "Casks/$CASK.rb"
+          git -C tap diff --cached --quiet || git -C tap commit -m "Life UI $RELEASE_VERSION"
+          git -C tap push

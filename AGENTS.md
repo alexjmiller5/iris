@@ -39,7 +39,20 @@ Life UI owns its Worker, Access application, vault and deployment credentials
 when provisioned. `.env.tpl` is the operator/CI bootstrap manifest; its values
 never enter the browser bundle. Workers Scripts Write is account-scoped and
 requires an explicit scope decision before provisioning. No deploy workflow is
-enabled. The public repository is `alexjmiller5/life-ui`.
+enabled for branch pushes. The public repository is `alexjmiller5/life-ui`.
+
+Mac distribution uses `.github/workflows/release-macos.yml`, triggered only by
+explicitly approved stable version tags. It stamps the tag version, builds both
+Apple Silicon and Intel, signs with Developer ID, notarizes, staples, checks
+Gatekeeper and publishes the archive before updating the configured Homebrew tap.
+The tap is a separate job so its failure never requires republishing an asset.
+It only advances stable versions; identical version/hash retries are no-ops,
+while conflicting hashes or unsupported version/checksum formats fail closed.
+The documented Apple Signing vault exception supplies shared signing/notary
+material and the tap credential to the project CI service account. This grants
+CI read access to that shared vault; it is not app runtime or consumer auth.
+`HOMEBREW_TAP_REPOSITORY` is a repository variable, not a client preference.
+Ordinary changes never bump a version or push a release tag.
 
 Shared core owns local FTS5 indexing and search. Web table search and Cmd+K use
 literal word prefixes combined with AND; user input never becomes raw MATCH
