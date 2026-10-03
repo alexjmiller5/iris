@@ -140,19 +140,21 @@ struct IncomingReferencesModelTests {
     var pageFails = true
     let other = CoreReferenceSource(
       table: "notes", column: "related", label: "Related", type: "multi_ref", incomplete: true)
-    let model = make(sources: { _ in
-      if metadataFails.value {
-        throw WorkspaceError(message: "Discovery unavailable", violations: [])
-      }
-      return [source, other]
-    }) { args in
-      if args.column == "topic" && pageFails {
-        throw WorkspaceError(message: "Group unavailable", violations: [])
-      }
-      return CoreReferencedByPage(
-        source: args.column == "topic" ? source : other,
-        rows: [row(args.column, "Stored")], nextOffset: nil)
-    }
+    let model = make(
+      sources: { _ in
+        if metadataFails.value {
+          throw WorkspaceError(message: "Discovery unavailable", violations: [])
+        }
+        return [source, other]
+      },
+      page: { args in
+        if args.column == "topic" && pageFails {
+          throw WorkspaceError(message: "Group unavailable", violations: [])
+        }
+        return CoreReferencedByPage(
+          source: args.column == "topic" ? source : other,
+          rows: [row(args.column, "Stored")], nextOffset: nil)
+      })
     await model.refresh()
     #expect(model.error == "Discovery unavailable" && !model.loading)
     metadataFails.value = false
@@ -203,11 +205,11 @@ struct IncomingReferencesModelTests {
         calls += 1
         if calls == 1 { return try await withCheckedThrowingContinuation { held = $0 } }
         return []
-      }, current: { current.value }
-    ) { _ in
-      Issue.record("Discovery must not read rows")
-      return CoreReferencedByPage(source: source, rows: [], nextOffset: nil)
-    }
+      }, current: { current.value },
+      page: { _ in
+        Issue.record("Discovery must not read rows")
+        return CoreReferencedByPage(source: source, rows: [], nextOffset: nil)
+      })
     let pending = Task { await model.refresh() }
     while held == nil { await Task.yield() }
     switch transition {
@@ -235,13 +237,15 @@ struct IncomingReferencesModelTests {
     var held: CheckedContinuation<CoreReferencedByPage, any Error>?
     let current = Flag(true)
     var calls = 0
-    let model = make(current: { current.value }) { _ in
-      calls += 1
-      if calls > 1 {
-        throw WorkspaceError(message: "Read after the panel became obsolete", violations: [])
-      }
-      return try await withCheckedThrowingContinuation { held = $0 }
-    }
+    let model = make(
+      current: { current.value },
+      page: { _ in
+        calls += 1
+        if calls > 1 {
+          throw WorkspaceError(message: "Read after the panel became obsolete", violations: [])
+        }
+        return try await withCheckedThrowingContinuation { held = $0 }
+      })
     await model.refresh()
     let id = try #require(model.groups.first?.id)
     let pending = Task { await model.load(id) }

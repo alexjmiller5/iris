@@ -28,7 +28,7 @@ struct CatalogField: Identifiable, Codable {
     if let reference = property["ref_table"]?.text.nonempty {
       parts.append("Choose from \(reference).")
     }
-    if ["json", "multi_select"].contains(type) { parts.append("Enter JSON source.") }
+    if type == "json" { parts.append("Enter JSON source.") }
     if type == "date" { parts.append("YYYY-MM-DD") }
     if type == "datetime" { parts.append("UTC timestamp with milliseconds.") }
     return parts.filter { !$0.isEmpty }.joined(separator: " ")
