@@ -307,7 +307,7 @@ final class WorkspaceUITests: XCTestCase {
       object: nil)
     XCTAssertEqual(XCTWaiter.wait(for: [both], timeout: 10), .completed)
     XCTAssertEqual(
-      app.buttons.matching(NSPredicate(format: "label CONTAINS %@", " dirty")).count, 0,
+      app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name + " dirty")).count, 0,
       "Discarding the source draft must not save it")
     XCTAssertEqual(
       journals.count, journalsBefore,
