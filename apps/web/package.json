@@ -16,6 +16,7 @@
 	"dependencies": {
 		"@milkdown/kit": "7.22.2",
 		"life-ui-core": "workspace:*",
+		"virtua": "0.52.10",
 		"wa-sqlite": "github:rhashimoto/wa-sqlite#7a4b4241ba7c61ee19121aacd6c93892234ce1a1"
 	},
 	"devDependencies": {

@@ -3,7 +3,7 @@ import {disposableOrigin,workspacePage} from './test-origin';
 import {enrollmentHub} from './enrollment-hub';
 const url=process.env.LIFE_UI_TEST_URL??'http://life-ui-enrollment.localhost:5230/workspace?review';
 const origin=disposableOrigin(url);
-if(origin!=='http://life-ui-enrollment.localhost:5230')throw Error('Enrollment runner requires its exact reserved origin');
+if(!['http://life-ui-enrollment.localhost:5230','http://life-ui-grid-enrollment.localhost:5234'].includes(origin))throw Error('Enrollment runner requires its exact reserved origin');
 const source=process.argv[2];if(!source)throw Error('Provide life-data fixture source checkout');
 const hub=await enrollmentHub(source,origin),other=await enrollmentHub(source,origin);
 const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
