@@ -24,7 +24,13 @@ Create `packages/LifeKit/Sources/LifeKit/NativeDestination.swift`:
   ownership, then a full exact-ID row using active/trash queries. Missing and
   unavailable destinations throw `WorkspaceError`; stale work throws
   `CancellationError`. Do not mutate a workspace, draft, history or preference.
-- Averroes consumes this seam for native recents, without another resolver.
+- Native recents consumes this seam, without another resolver.
+
+Core owns SQL identifier validation and record querying. Supported table names
+are ASCII identifiers. A generated ID-filter query can match an alias through
+the primary key's affinity/collation, so the resolver also verifies that the
+returned full row has the exact requested ID bytes. Host destination identities
+and saved-view array selection use UTF-8 bytes, without normalizing request Strings.
 
 ## Palette metadata seam
 
@@ -48,13 +54,37 @@ Create `packages/LifeKit/Sources/LifeKit/NativePaletteModel.swift`:
 - [x] Add controlled async stale success/error tests at each read boundary,
   including caller cancellation and independent concurrent resolutions.
 - [x] Implement the smallest resolver satisfying those tests; hand its API to
-  Averroes after focused GREEN.
-- [ ] Add failing `NativePaletteTests.swift`: progressive partial metadata,
+  the recents consumer after focused GREEN.
+- [x] Add failing `NativePaletteTests.swift`: progressive partial metadata,
   independent failures, no per-keystroke reads, exact identity, explicit retries,
   superseded replies, disposal and workspace/cancellation guards. Implement GREEN.
-- [ ] Run behavior mutants, restore sources, then run all LifeKit SwiftPM tests.
-  Review the diff, commit/push and verify CI; request fresh bounded review.
+- [x] Run behavior mutants, restore sources, then run all LifeKit SwiftPM tests.
+  Review the diff before publication. Commit/push and CI are tracked in the handoff.
+
+Verification: 17 new test functions cover the resolver and palette. Resolver and
+palette behavior first failed before implementation; a real JSC NOCASE fixture
+also failed for both live and trashed row aliases before the exact-ID guard.
+All 26 semantic mutants were caught. The restored full SwiftPM run reports 186
+tests in 35 suites with five existing live-fixture tests skipped. Bounded source
+review is clear after the NOCASE correction.
 
 Only isolated SwiftPM execution is leased. Use unique scratch/cache/config/module
 directories outside the checkout. No Xcode, simulator, CDP, resource generation,
 main checkout changes, QuickFindModel changes or identity/recovery refactoring.
+
+## Later UI integration
+
+Create one palette model per opening and call `load()`. Bind text to `query`;
+`filteredEntries` searches metadata locally while the existing QuickFindModel
+retains record FTS and paging. Render entries with their byte-exact `id`, display
+`error` alongside partial results, and offer `refresh()` for an explicit retry.
+Disable entries with `unavailable`; dispose the model on close. Selection and
+keyboard handling belong to the later UI slice.
+
+On activation, resolve the selected `destination` using a caller generation and
+the explicitly open workspace. Resolution does not apply a table/view, open an
+editor, clear a draft or record a recent. The existing guarded navigation path
+must approve draft loss and install the fresh result before recording success.
+Pass an owner-context closure to the palette and resolver, so switching workspace
+or closing the palette invalidates replies without sharing generation counters
+between independent callers.
