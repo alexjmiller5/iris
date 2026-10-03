@@ -522,11 +522,13 @@ The web sidebar includes device-local recent destinations and a collapsible
 System tables section. See [sidebar navigation](docs/sidebar-recents.md) for
 storage and availability behavior. Native sidebar parity remains open work.
 
-Native references use named pickers and local record links; multi-select and JSON fields use source
+Native references use named pickers and local record links. Select and multi-select
+fields show catalog choices; malformed selections and JSON fields retain source
 editors. Native browse supports saved views, search, sort, combined filters,
 trash and pages of 100 rows. Column widths are retained for the web grid;
 native does not provide a grid-width or secondary-sort editor. Rejected edits retain
-their data and show errors; a dedicated repair workflow remains open. Sync
+their data and show errors. The web inbox supports repair; the native repair
+interface remains in progress. Sync
 runs on connection and explicit request,
 not in the background. Native device approval installs a dedicated credential
 only after the hub session is validated; manual token entry is also available.
