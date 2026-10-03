@@ -131,6 +131,9 @@ struct RecordDraft: Codable {
     // An omitted core default is acknowledged only while that field is still
     // untouched. A same-blank clear made during Save is a pending change.
     for field in fields where sent[field.id] == nil && changes[field.id] == nil {
+      let acknowledged = field.formValue(receipt[field.id])
+      values[field.id] = acknowledged
+      initial[field.id] = acknowledged
       if receipt[field.id] == .string("") {
         empty.insert(field.id)
       } else {

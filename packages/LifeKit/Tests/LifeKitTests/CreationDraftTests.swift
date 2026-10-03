@@ -40,6 +40,7 @@ struct CreationDraftTests {
     try await editor.saveAll()
     let saved = try #require(editor.draft.original)
     #expect(saved["status"] == (edit == "untouched" ? .string("Draft") : .null))
+    #expect(editor.draft.values["status"] == (edit == "untouched" ? "Draft" : ""))
     #expect(try await workspace.rows(table: "notes").count == 2)
     #expect(!editor.dirty)
     try await workspace.close()

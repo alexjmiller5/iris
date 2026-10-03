@@ -12,7 +12,8 @@ RecordEditorModel. Host actions and controls remain separate.
   Missing source columns remain untouched and receive core defaults. An optional
   Codable set distinguishes copied SQL empty strings from null; older journals
   decode without it and retain their previous meaning. Receipt and Undo handling
-  preserve a newer clear even when its displayed text is also blank.
+  preserve a newer clear even when its displayed text is also blank. Untouched
+  fields adopt the receipt's displayed value and baseline, including core defaults.
 - `setValue(_:for:explicit:)` defaults to ignoring byte-identical values because
   Markdown snapshot collection can replay unchanged source. Changed values are
   explicit edits; an intentional same-value clear passes `explicit: true`.
@@ -30,7 +31,7 @@ SwiftPM suite are required before handoff.
 
 The model checkpoint adds 19 behavioral tests. Real JSC probes first reproduced
 default-vs-null loss and copied-empty-text loss; the restored focused run passed
-51 tests. All 31 semantic mutants were caught by behavioral assertions. The
+51 tests. All 33 semantic mutants were caught by behavioral assertions. The
 restored full SwiftPM run passed 316 tests in 54 suites, with five existing HTTP
 integration tests skipped. Swift formatting and whitespace checks passed.
 
