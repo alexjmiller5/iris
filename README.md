@@ -364,6 +364,10 @@ LIFE_UI_TEST_HUB_PORT=5201 LIFE_UI_TEST_ORIGIN=http://localhost:5196 \
   bun scripts/test-hub.ts /path/to/life-data
 # Open http://localhost:5196/workspace in another dedicated test page.
 bun scripts/test-rejections.ts
+# Durable inbox: 205 real hub rejections, bounded paging, corrupt-page retries,
+# paused repair/Restore, accepted receipts, offline reopen and stale replies.
+# Reserve http://life-ui-rejections.localhost:5238/workspace?review first.
+bun scripts/test-rejection-inbox.ts <life-data-checkout>
 # Open http://life-ui-write-fixes.localhost:5196/workspace?review in its own page.
 bun scripts/test-workspace-regressions.ts /path/to/life-data
 # Open http://life-ui-sql-integrity.localhost:5198/workspace?review in its own page.

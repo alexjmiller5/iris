@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "0b723d74952079734ac03ed2441fa6277352a452089f67f2a85a8172443ff84a";
+export declare const CORE_CONTRACT_HASH = "443d1c5a87202c664c860233f88fbff5fc96ad012b58448a408125ac9d7b41a7";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -348,6 +348,20 @@ export type ReferencedByPage = {
     rows: WorkspaceRow[];
     nextOffset: Count | null;
 };
+export type RejectedEdit = {
+    table: string;
+    rowID: string;
+    submitted: Row;
+    errors: Row[];
+};
+export type RejectionsArgs = {
+    limit?: Count;
+    offset?: Count;
+};
+export type RejectionsPage = {
+    rejections: RejectedEdit[];
+    nextOffset: Count | null;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -448,6 +462,10 @@ export interface CoreOperations {
     referencedBy: {
         args: ReferencedByArgs;
         result: ReferencedByPage;
+    };
+    rejections: {
+        args: RejectionsArgs;
+        result: RejectionsPage;
     };
 }
 export type CoreMethod = keyof CoreOperations;

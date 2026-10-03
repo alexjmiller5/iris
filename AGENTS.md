@@ -182,6 +182,16 @@ into local rows, FTS, cursors, coverage or pending edits. Preserve server paging
 cursors when deduplicating IDs, re-read a selected ID, show tombstones, and
 invalidate late replies on close or workspace/connection changes. Caps are
 shown without automatic retries or alternate routes.
+Web rejected edits come from the generated core `rejections` operation, never host SQL
+or JSON decoding of bookkeeping tables. The inbox loads 100 at a time and shows
+the independent status total. A malformed page remains visible with Retry, keeps
+loaded entries and its offset, and never deletes stored data or blocks opening
+local records. Reset paging after a refreshed snapshot; ignore replies from older
+snapshots or closed workspaces. Review uses a fresh full local row and its revision,
+with rejected values held as a draft and autosave paused until explicit Save.
+Tombstones remain read-only until Restore, preserving that review draft. A saved
+correction stays in the inbox until sync accepts it.
+
 Pending UI edits await the core's own valid receipt; this is not the CLI queue.
 Never report a write as saved or a round as synced before its promise succeeds.
 Web sync failures also broadcast database changes: individual pulls and receipts
