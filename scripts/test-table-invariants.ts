@@ -19,6 +19,11 @@ const { server, db } = await regressionHub(source, origin, 0, {
 db.db.query('INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)')
   .run('quantity-positive','widgets','invariant',1,'SELECT id FROM changed WHERE quantity < 0','Quantity cannot be negative.');
 db.db.exec("INSERT INTO catalog_tables(id,kind,display) VALUES ('history','system','col')");
+const provenanceDDL='CREATE TABLE provenance(id TEXT PRIMARY KEY,created_at TEXT,updated_at TEXT,deleted_at TEXT,hub_at TEXT,detail TEXT)';
+db.db.exec(provenanceDDL);
+db.db.query('INSERT INTO _schema_log(applied_at,ddl) VALUES (?,?)').run('2026-01-01T00:00:00.000Z',provenanceDDL);
+db.db.exec("INSERT INTO catalog_tables(id,kind,display) VALUES ('provenance','system','detail')");
+
 const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
 let ownedPage: import('@playwright/test').Page | undefined;
 try {
@@ -73,20 +78,33 @@ try {
   expect(db.db.query("SELECT col,old,new FROM history WHERE row_id='fixture-record'").all()).toEqual([{col:'quantity',old:'42',new:'43'}]);
   console.log('PASS: valid table rules allow edits; invalid edits retain the draft and roll back rows, history and pending state');
 
-  // Omit even a read-only dependency: arbitrary rule SQL can reference it.
+  // Unrelated large-table omissions must not prevent a self-contained rule.
   await page.getByRole('button',{name:'Switch workspace',exact:true}).click();
-  await page.evaluate(()=>localStorage.setItem('life-ui:replica',JSON.stringify({maxRows:50000,tables:{history:false}})));
+  await page.evaluate(()=>localStorage.setItem('life-ui:replica',JSON.stringify({maxRows:50000,tables:{history:false,provenance:false}})));
   await open();await sync();
+  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'Fixture record',exact:true}).click();
+  await page.getByLabel('Quantity',{exact:true}).fill('44');
+  await page.getByRole('button',{name:'Save record',exact:true}).click();
+  await expect(page.getByText('Pending edits: 1',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Close record',exact:true}).click();
+  await sync();
+  expect(db.db.query("SELECT quantity FROM widgets WHERE id='fixture-record'").get()).toEqual({quantity:44});
+  console.log('PASS: self-contained rules permit editing and sync while unrelated history and provenance stay skipped');
+
+  db.db.query('UPDATE catalog_rules SET sql=?,updated_at=?,hub_at=NULL WHERE id=?').run(
+    'SELECT id FROM changed WHERE quantity < (SELECT count(*) FROM history)',new Date().toISOString(),'quantity-positive');
+  await sync();
   await expect(page.getByRole('button',{name:'New record',exact:true})).toBeDisabled();
   await expect(page.getByRole('status',{name:'Editing availability'})).toContainText('history');
   await page.getByRole('button',{name:'Fixture record',exact:true}).click();
   await expect(page.getByLabel('Quantity',{exact:true})).toBeDisabled();
   await page.getByRole('button',{name:'Close record',exact:true}).click();
   await page.getByRole('button',{name:'Switch workspace',exact:true}).click();
-  await page.evaluate(()=>localStorage.setItem('life-ui:replica',JSON.stringify({maxRows:50000,tables:{}})));
+  await page.evaluate(()=>localStorage.setItem('life-ui:replica',JSON.stringify({maxRows:50000,tables:{provenance:false}})));
   await open();await sync();
   await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
-  console.log('PASS: skipped history blocks invariant writes and a complete backfill restores editing');
+  console.log('PASS: adding a real history dependency blocks editing until its backfill, without requiring provenance');
 
   failPull=true;await sync();
   await expect(page.getByRole('button',{name:'New record',exact:true})).toBeDisabled();
@@ -120,7 +138,7 @@ try {
   await expect(page.getByRole('button',{name:'New record',exact:true})).toBeDisabled();
   await expect(page.getByRole('status',{name:'Editing availability'})).toContainText('Unsupported trigger');
   await page.getByRole('button',{name:'Fixture record',exact:true}).click();
-  await expect(page.getByLabel('Quantity',{exact:true})).toHaveValue('43');
+  await expect(page.getByLabel('Quantity',{exact:true})).toHaveValue('44');
   await expect(page.getByLabel('Quantity',{exact:true})).toBeDisabled();
   console.log('PASS: unsupported effects explain read-only state while records remain browsable');
 } finally {

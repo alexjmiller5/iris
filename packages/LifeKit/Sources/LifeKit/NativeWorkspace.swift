@@ -176,6 +176,12 @@ public final class NativeWorkspace {
   public func status() async throws -> WorkspaceSyncStatus {
     try await decode(CoreRequests.Status(CoreEmptyArgs()))
   }
+  public func undoStatus() async throws -> CoreUndoStatus {
+    try await decode(CoreRequests.UndoStatus(CoreEmptyArgs()))
+  }
+  public func undo(receiptID: String) async throws -> WorkspaceRecord {
+    try await decode(CoreRequests.Undo(CoreUndoArgs(receiptId: receiptID)))
+  }
 
   func usage(using transport: HubTransport) async throws -> UsageSummary {
     try await decode(
@@ -211,11 +217,33 @@ public final class NativeWorkspace {
         CoreNotificationPresentationArgs(feed: feed, baseline: baseline)))
   }
 
-  func sync(using transport: HubTransport, tables: [String: Bool]? = nil) async throws
+  func remoteRows(
+    using transport: HubTransport, table: String, limit: Int = 50, cursor: String? = nil
+  )
+    async throws -> CoreRemoteRowsPage
+  {
+    try await decode(
+      CoreRequests.RemoteRows(
+        CoreRemoteRowsArgs(
+          endpoint: transport.endpoint, table: table, limit: limit, cursor: cursor)),
+      transport: transport)
+  }
+
+  func remoteRow(using transport: HubTransport, table: String, id: String) async throws
+    -> CoreRemoteRowResult
+  {
+    try await decode(
+      CoreRequests.RemoteRow(CoreRemoteRowArgs(endpoint: transport.endpoint, table: table, id: id)),
+      transport: transport)
+  }
+
+  func sync(using transport: HubTransport, maxRows: Int? = nil, tables: [String: Bool]? = nil)
+    async throws
     -> WorkspaceSyncResult
   {
     try await decode(
-      CoreRequests.Sync(CoreSyncArgs(endpoint: transport.endpoint, tables: tables)),
+      CoreRequests.Sync(
+        CoreSyncArgs(endpoint: transport.endpoint, maxRows: maxRows, tables: tables)),
       transport: transport)
   }
   public func createSample() async throws { _ = try await call("sample") }

@@ -14,6 +14,8 @@ import {
 	syncStatus,
 	type Row,
 	type SqlDriver,
+	type SqlReadStatement,
+	type SqlReadContext,
 	type Value
 } from 'life-ui-core/client';
 import { prepareLocalViews } from '../../../../scripts/local-views';
@@ -29,6 +31,10 @@ let channel: BroadcastChannel | undefined;
 let queue = Promise.resolve();
 let reading = false;
 let statementReadOnly: (statement: number) => number;
+let readingInventory = false;
+let dependencyReads: { name: string | null; database: string | null }[] | undefined;
+// SQLite identifiers fold ASCII only; Unicode case pairs can name different tables.
+const sqliteName = (name: string) => name.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 
 const db: SqlDriver = {
 	async all(sql: string, params: Value[] = []) {
@@ -60,6 +66,90 @@ const db: SqlDriver = {
 				reading = false;
 			}
 		}
+	},
+	async readDependencies(statements: readonly SqlReadStatement[], context: SqlReadContext) {
+		if (connection === undefined) throw new Error('Open a workspace first.');
+		if (
+			!Array.isArray(statements) ||
+			statements.some((entry) => typeof entry?.sql !== 'string') ||
+			!Array.isArray(context?.ownedTempTables) ||
+			context.ownedTempTables.some((name) => typeof name !== 'string')
+		)
+			throw new Error('Invalid SQL dependency inspection.');
+		// Inventory is fixed host SQL. These additional PRAGMAs are not available
+		// through catalog reads; no validation query is stepped during discovery.
+		let databases: Row[];
+		let inventory: Row[];
+		readingInventory = true;
+		try {
+			databases = await db.all('PRAGMA database_list');
+			inventory = await db.all('PRAGMA table_list');
+		} finally {
+			readingInventory = false;
+		}
+		if (databases.some((row) => row.name !== 'main' && row.name !== 'temp')) return null;
+		const owned = new Set(context.ownedTempTables.map(sqliteName));
+		const temporary = inventory.filter(
+			(row) => row.schema === 'temp' && row.name !== 'sqlite_temp_schema'
+		);
+		if (
+			temporary.some((row) => row.type !== 'table' || !owned.has(sqliteName(String(row.name)))) ||
+			[...owned].some((name) => !temporary.some((row) => sqliteName(String(row.name)) === name))
+		)
+			return null;
+		const objects = new Map(
+			inventory
+				.filter((row) => row.schema === 'main')
+				.map((row) => [sqliteName(String(row.name)), row])
+		);
+		if ([...owned].some((name) => objects.has(name))) return null;
+		const reads: { name: string | null; database: string | null }[] = [];
+		dependencyReads = reads;
+		reading = true;
+		try {
+			for (const entry of statements) {
+				const prepared: number[] = [];
+				try {
+					for await (const statement of sqlite.statements(connection, entry.sql, {
+						unscoped: true
+					})) {
+						prepared.push(statement);
+						if (prepared.length > 1) throw new Error('Expected one read-only SQL statement.');
+					}
+					if (prepared.length !== 1 || !statementReadOnly(prepared[0]))
+						throw new Error('Expected one read-only SQL statement.');
+					sqlite.bind_collection(prepared[0], entry.params ?? []);
+				} finally {
+					for (const statement of prepared) await sqlite.finalize(statement);
+				}
+			}
+		} finally {
+			dependencyReads = undefined;
+			reading = false;
+		}
+		const tables = new Set<string>();
+		for (const read of reads) {
+			if (!read.name) return null;
+			const name = sqliteName(read.name);
+			if ((!read.database || read.database === 'temp') && owned.has(name)) continue;
+			if (read.database && read.database !== 'main') return null;
+			const object = objects.get(name);
+			// Columnless reads of the engine's CTEs may have no database qualifier.
+			// A real schema object always wins; TEMP ownership is asserted by core.
+			if (
+				!read.database &&
+				!object &&
+				owned.has('_core_write_before') &&
+				['changed', 'before', 'now'].includes(name)
+			)
+				continue;
+			if (!object && ['json_each', 'json_tree'].includes(name)) continue;
+			if (!object || /^(sqlite_|_)/i.test(name)) return null;
+			if (object.type === 'view') continue; // SQLite also reports the underlying reads.
+			if (object.type !== 'table') return null;
+			tables.add(String(object.name));
+		}
+		return { tables: [...tables].sort() };
 	},
 	async run(sql, params = []) {
 		if (connection === undefined) throw new Error('Open a workspace first.');
@@ -138,12 +228,9 @@ async function snapshot(): Promise<WorkspaceSnapshot> {
 	return {
 		catalog: await readCatalog(db),
 		status,
+		undo: (await local.undoStatus({})).action,
 		lastSync: status.lastSuccessfulSync,
-		skipped: JSON.parse(
-			String(
-				(await db.all("SELECT value FROM _core_state WHERE key='skipped_tables'"))[0]?.value ?? '[]'
-			)
-		) as string[],
+		skipped: status.skippedTables,
 		rejected: (await db.all('SELECT * FROM _core_rejected ORDER BY tbl,row_id')).map((row) => ({
 			...row,
 			row: JSON.parse(String(row.row)),
@@ -205,14 +292,18 @@ async function dispatch(request: DatabaseRequest) {
 			connection = await sqlite.open_v2(name, undefined, vfs.name);
 			sqlite.set_authorizer(
 				connection,
-				(_, action, name, detail) => {
+				(_, action, name, detail, database) => {
+					if (dependencyReads && action === SQLite.SQLITE_READ)
+						dependencyReads.push({ name, database });
 					if (!reading) return SQLite.SQLITE_OK;
 					// The authorizer runs during preparation too: reject connection control
 					// and mutating PRAGMAs before they can act. FTS5 reads data_version on reopen.
 					if (action === SQLite.SQLITE_PRAGMA)
 						return ['table_info', 'table_xinfo', 'foreign_key_list', 'data_version'].includes(
 							name?.toLowerCase() ?? ''
-						)
+						) ||
+							(readingInventory &&
+								['database_list', 'table_list'].includes(name?.toLowerCase() ?? ''))
 							? SQLite.SQLITE_OK
 							: SQLite.SQLITE_DENY;
 					if (action === SQLite.SQLITE_FUNCTION && detail?.toLowerCase() === 'load_extension')
@@ -273,6 +364,24 @@ async function dispatch(request: DatabaseRequest) {
 			return (await local.rows(args.view)).map((row) => row.record);
 		case 'search':
 			return local.search(args);
+		case 'remoteRows': {
+			if (databaseName === 'life-ui-demo')
+				throw new Error('Sample workspaces cannot browse a hub.');
+			const { token, ...input } = args;
+			const hub = createHttpHub(input.endpoint, token, (url, init) =>
+				fetch(url, { ...init, signal: AbortSignal.timeout(30_000) })
+			);
+			return createCoreHandlers(db, () => hub, 'life-ui').remoteRows(input);
+		}
+		case 'remoteRow': {
+			if (databaseName === 'life-ui-demo')
+				throw new Error('Sample workspaces cannot browse a hub.');
+			const { token, ...input } = args;
+			const hub = createHttpHub(input.endpoint, token, (url, init) =>
+				fetch(url, { ...init, signal: AbortSignal.timeout(30_000) })
+			);
+			return createCoreHandlers(db, () => hub, 'life-ui').remoteRow(input);
+		}
 		case 'listViews':
 			return local.listViews(args);
 		case 'saveView':
@@ -283,6 +392,10 @@ async function dispatch(request: DatabaseRequest) {
 			return local.options(args);
 		case 'write':
 			return local.write(args);
+		case 'undo':
+			return local.undo(args);
+		case 'undoStatus':
+			return local.undoStatus(args);
 		case 'writeability':
 			return local.writeability(args);
 		case 'sync': {
@@ -308,11 +421,7 @@ async function dispatch(request: DatabaseRequest) {
 			const hub = createHttpHub(args.endpoint, args.token, (url, init) =>
 				fetch(url, { ...init, signal: AbortSignal.timeout(120_000) })
 			);
-			const result = await createCoreHandlers(db, () => hub, 'life-ui').sync(args);
-			await db.run("INSERT OR REPLACE INTO _core_state(key,value) VALUES ('skipped_tables',?)", [
-				JSON.stringify(result.skipped)
-			]);
-			return result;
+			return createCoreHandlers(db, () => hub, 'life-ui').sync(args);
 		}
 		default:
 			throw new Error('Unknown database operation.');
@@ -343,7 +452,7 @@ scope.onmessage = ({ data }) => {
 				dispatch(data as DatabaseRequest)
 			);
 			respond({ id: data.id, result });
-			if (['write', 'sync', 'saveView', 'deleteView'].includes(data.method)) {
+			if (['write', 'undo', 'sync', 'saveView', 'deleteView'].includes(data.method)) {
 				channel?.postMessage({ changed: true });
 				respond({ changed: true });
 			}

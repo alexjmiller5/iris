@@ -35,6 +35,8 @@ storage transfer is required.
 
 - Browse catalog tables, search and sort records. Added filters combine with AND;
   remove individual filter chips or clear them together.
+- **Find records** (Cmd+K or Ctrl+K) searches records and offers tables and saved
+  views in one keyboard list. Unavailable views explain why they cannot open.
 - **Columns** chooses, reorders and sizes the displayed properties. Record stays
   visible first, and hidden properties remain available when editing the record.
 - Create/edit typed fields, search related records by their display names,
@@ -57,12 +59,21 @@ are read-only. Catalog entries with `kind: system` also remain read-only.
 
 Table rules are checked locally before an edit commits. Invalid edits keep the
 draft and leave stored records, history and pending edits unchanged. Rule-checked
-tables require a complete sync of every schema table, including history and
-provenance. Excluding a table or interrupting a sync can make them read-only until
-a complete sync succeeds; the app shows the reason. This completeness check does
-not guarantee the hub has stayed unchanged: it checks edits again during sync.
+tables need complete local copies of the tables used by their checks. Unrelated
+large tables can stay excluded. Skipping a required table or interrupting sync
+pauses editing; the app explains which tables to include and sync. This check
+does not guarantee the hub has stayed unchanged: it checks edits again during sync.
 A sync can receive records or acknowledge edits before a later request fails.
 Open browser tabs refresh that progress and retain unsaved drafts.
+
+**Browse online** opens an excluded table in a read-only window. Load 50 records
+at a time, refresh from the beginning, or find an exact record ID. Opening a
+result fetches its current complete row, including Markdown; records in the
+trash are identified. These results stay in memory until the window closes.
+Local rows, pending edits, search and editing availability remain unchanged.
+The hub may change between pages, so the loaded count is not a snapshot or total.
+Connect and sync the catalog before browsing online; usage caps and connection
+failures remain visible and require an explicit retry.
 
 **Saved views** keep a table's filters, search, sort, column order and widths in
 ordinary synced `views` rows. Choose a view, **Save as** a new name, or use
@@ -109,6 +120,11 @@ changing tables or workspaces. Reference fields offer searchable record names;
 single and multiple choices save their underlying IDs through shared core.
 Unavailable selections remain in the draft until explicitly removed. Core
 rejects a save if its references are missing from the local replica.
+Selected references have a separate **Open** action, including on read-only
+records. Opening reads the complete current local row. Missing targets keep the
+source editor open with an explanation; skipped tables can still contain local
+records. Unsaved changes require **Discard changes and open** or **Keep editing**,
+and unrelated recovery drafts remain available.
 Catalog rules, read-only tables, validation, history and stale-revision checks
 come from shared core. An editor also captures its workspace and table, so
 changing connections cannot redirect a save. Unsaved drafts require explicit
@@ -142,6 +158,20 @@ and awaits the local write. Other property changes and new records still require
 receipts advance the editor's revision without replacing those changes. A failed
 identical edit waits for a change or explicit retry. The status says **Saved on
 this device** only after the write succeeds; hub synchronization is separate.
+
+**Undo last saved change** reverses the last successful record write in the open
+workspace, including creation, edits, trash and restore. Each Markdown autosave
+is a separate saved change. Undo revalidates the inverse and creates fresh history;
+it does not restore old timestamps. Success consumes the action, with no redo,
+and closing the workspace forgets it. Text-editor undo remains separate.
+An open editor's newer draft stays intact, including when Undo affects another
+record. Its autosave pauses
+until an explicit **Save**, also after a failed Undo. While paused, Markdown
+**Done** keeps the draft without saving it. Undoing a creation can put the record
+in trash; use **Restore record**, then review and save the retained draft separately.
+The live Markdown snapshot must be safely journaled before Undo can run.
+An interrupted Undo with no confirmed result keeps the draft for the same
+copy-and-review recovery flow described below; Undo receipts are never persisted.
 
 Drafts are kept as private, atomic files in Application Support, isolated by the
 database location, record and editor. App-owned databases use paths relative to
@@ -188,6 +218,23 @@ Keychain entry and retains the replica for reconnecting to the same hub.
 Replacement devices enroll through this same connection screen with a fresh
 scoped token; Keychain credentials are not copied between devices.
 
+**Downloads** in connection settings controls the automatic row limit and each
+table's **Automatic**, **Include** or **Skip** choice. Leave the limit blank to use
+the shared default. Catalog tables always download. Choices are private to this
+device and hub, survive reconnecting, and apply on the next sync. Skipping keeps
+existing local rows; an incomplete table offers **Include in next sync**.
+Incomplete-table warnings survive reopening offline and also apply to Find
+and reference links.
+
+**Browse online** opens the current hub table in a separate read-only sheet,
+50 records at a time. Opening a result fetches its current full row; missing and
+deleted records are explicit. Enter a **Record ID** and choose **Find ID** to
+open an exact match without loading earlier pages. Markdown uses the same local
+viewer with editing disabled. Online rows stay in memory and never populate local records, search,
+pending edits or sync coverage. Close the sheet to clear them. Online browsing
+is unavailable while a local record editor is open, preserving its draft.
+Connection and usage-cap errors remain visible for an explicit retry.
+
 **Usage** in connection settings shows this deployment's current period and
 reset, four metrics with separate free allowances and hard caps, and principal
 totals excluding storage. Missing measurements say **Unmeasured**. Usage loads
@@ -205,7 +252,8 @@ verification on an unlocked device; automated tests use an injected presenter
 and never request notification authorization.
 
 Application Support contains `life-ui/local.sqlite`, per-endpoint databases
-under `life-ui/replicas/`, per-workspace graph groups, and alert preferences,
+under `life-ui/replicas/`, per-hub download preferences under
+`life-ui/replicas/downloads/`, per-workspace graph groups, and alert preferences,
 baselines and delivered event IDs under `life-ui/alerts/`. Credentials never
 appear in these files. The facade serializes whole asynchronous core requests;
 sync holds the Python-compatible `<database>.sync.lock`. URLSession rejects
@@ -305,6 +353,8 @@ bun scripts/test-search-sync.ts /path/to/life-data
 bun scripts/test-saved-views.ts /path/to/life-data
 bun scripts/test-typed-filters.ts /path/to/life-data
 bun scripts/test-table-invariants.ts /path/to/life-data
+bun scripts/test-read-dependencies.ts /path/to/life-data
+bun scripts/test-remote-browse.ts /path/to/life-data
 # Also open /workspace?review&observer=1 on the same reserved origin for this test.
 bun scripts/test-partial-sync.ts /path/to/life-data
 # Open http://life-ui-relations.localhost:5223/workspace?review in its own page.
@@ -335,6 +385,16 @@ cover fresh full-row lookup, cross-table IDs, draft cancellation, stale replies,
 read-only references, missing/trashed targets, skipped tables, pending writes,
 destination saved views and narrow layouts. `LIFE_UI_REFERENCE_CASE` selects a
 case by name; `LIFE_UI_TEST_SCREENSHOTS` optionally names an output directory.
+
+Dependency checks exercise the actual browser SQLite adapter against the shared
+life-data fixture, including expanded views, engine contexts, unsupported
+namespaces and preparation without executing validation queries. The invariant
+flow also changes a rule's dependencies during sync and verifies that only its
+required tables need complete replication.
+
+Online browsing checks exercise real Worker/OPFS paging, fresh full-row lookup,
+deleted and missing records, a held response across close/reopen, local draft
+retention, usage caps, first-sync failure visibility and narrow layouts.
 
 URL navigation checks cover table/view/row restoration, fresh full rows, encoded
 identifiers, browser Back/Forward, draft cancellation, pending receipts, delayed
@@ -404,12 +464,12 @@ the shared core. Custom triggers, declared SQLite foreign keys and enforced
 estate-wide rules remain read-only because their effects cannot yet be validated
 and replayed consistently across clients. Catalog reference fields are supported.
 External files with table invariants remain read-only without verified sync coverage.
-Missing references must be included in the replica before editing them. A
-skipped table is not automatically browsed remotely. Native table search and
+Missing references must be included in the replica before editing them.
+Online browsing is explicit and read-only. Native table search and
 cross-table Find both use the shared local FTS5 index.
 Full grid keyboard editing and Notes migration remain open work.
 
-Native references use named pickers; multi-select and JSON fields use source
+Native references use named pickers and local record links; multi-select and JSON fields use source
 editors. Native browse supports saved views, search, sort, combined filters,
 trash and pages of 100 rows. Column widths are retained for the web grid;
 native does not provide a grid-width or secondary-sort editor. Rejected edits retain
@@ -421,9 +481,10 @@ is outside the MVP. Native property edits and new records require explicit Save;
 existing-record Markdown autosaves locally. Recovered stale drafts retain their
 source for review; automatic conflict merging is not implemented.
 
-Browser OPFS availability is required. There is no remote read-only fallback,
-service worker, or promise that a closed web app can cold-load without a
-network connection. An already-open workspace can edit its local data offline.
+Browser OPFS availability is required, including for the local catalog and
+binding used by online browsing. The app has no service worker or promise that
+a closed web app can cold-load without a network connection. An already-open
+workspace can edit its local data offline.
 
 ## Notifications and usage
 
@@ -482,3 +543,16 @@ No production data is migrated by development or tests.
 The browser SQLite build is pinned and reproducible through Nix. See
 [vendor/wa-sqlite](vendor/wa-sqlite/README.md) for regeneration and the real OPFS
 FTS5 regression fixture. Normal app builds consume the committed JS/WASM pair.
+
+Undo last saved change reverses the latest successful row create, edit, trash or
+restore in the current workspace session. It uses the same rules and revision
+checks as an ordinary edit. Newer unsaved drafts stay visible and body autosave
+pauses until you review and save them. Undoing creation moves the record to Trash;
+Restore makes its retained draft editable again. Reopening clears this action.
+The Markdown editor's text Undo is separate.
+
+Run the real OPFS Undo checks against a reserved fixture origin:
+
+```sh
+LIFE_UI_TEST_URL=http://life-ui-markdown.localhost:5198/workspace?review bun scripts/test-session-undo.ts /path/to/life-data
+```

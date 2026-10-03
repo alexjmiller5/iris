@@ -6,6 +6,60 @@ import Testing
 /// Opt-in against scripts/test-hub.ts only. No real account values belong here.
 @MainActor
 struct LiveHubTests {
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] != nil))
+  func nativeHTTPOnlineReadsAreFreshAndNeverStageLocalRecords() async throws {
+    let endpoint = try #require(ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"])
+    let hub = try HubTransport(endpoint: endpoint, token: "fixture")
+    let writer = try NativeWorkspace(path: ":memory:")
+    _ = try await writer.sync(using: hub)
+    let created = try await writer.write(
+      table: "widgets",
+      patch: [
+        "title": .string("Online fixture \(UUID().uuidString)"),
+        "body": .string("# Initial online source"), "quantity": .number(3),
+      ])
+    _ = try await writer.sync(using: hub)
+    let id = try #require(created["id"]?.text)
+    let runtime = try LifeCoreRuntime()
+    let viewer = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let sync = try await viewer.sync(using: hub, maxRows: 0)
+    #expect(sync.skipped.contains("widgets"))
+    let before = runtime.context.evaluateScript("LifeSql.all('SELECT total_changes() AS n')[0].n")?
+      .toInt32()
+    let page = try await viewer.remoteRows(using: hub, table: "widgets", limit: 1)
+    #expect(page.rows.count == 1 && page.nextCursor != nil)
+    let cursor = try #require(page.nextCursor)
+    let next = try await viewer.remoteRows(using: hub, table: "widgets", limit: 1, cursor: cursor)
+    #expect(next.rows.first?.record["id"] != page.rows.first?.record["id"])
+    #expect(
+      try await viewer.remoteRow(using: hub, table: "widgets", id: id).row?.record["body"]
+        == .string("# Initial online source"))
+    let changed = try await writer.write(
+      table: "widgets",
+      patch: ["id": .string(id), "body": .string("# Changed on the hub")],
+      expectedUpdatedAt: created["updated_at"]?.text)
+    _ = try await writer.sync(using: hub)
+    let fresh = try #require(try await viewer.remoteRow(using: hub, table: "widgets", id: id).row)
+    #expect(fresh.record["body"] == .string("# Changed on the hub") && !fresh.deleted)
+    _ = try await writer.write(
+      table: "widgets", patch: ["id": .string(id), "deleted_at": .bool(true)],
+      expectedUpdatedAt: changed["updated_at"]?.text)
+    _ = try await writer.sync(using: hub)
+    #expect(try await viewer.remoteRow(using: hub, table: "widgets", id: id).row?.deleted == true)
+    #expect(
+      try await viewer.remoteRow(using: hub, table: "widgets", id: "missing-\(UUID().uuidString)")
+        .row == nil)
+    #expect(
+      runtime.context.evaluateScript("LifeSql.all('SELECT total_changes() AS n')[0].n")?.toInt32()
+        == before)
+    #expect(
+      runtime.context.evaluateScript("LifeSql.all('SELECT count(*) AS n FROM widgets')[0].n")?
+        .toInt32() == 0)
+    #expect(runtime.context.exception == nil)
+    try await viewer.close()
+    try await writer.close()
+  }
+
   @Test(.enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_SERVICES_HUB"] != nil))
   func nativeHTTPUsageAndCompleteNotificationFeed() async throws {
     let endpoint = try #require(ProcessInfo.processInfo.environment["LIFE_UI_TEST_SERVICES_HUB"])

@@ -18,3 +18,12 @@ database.request('erase');
 void rows;
 void sync;
 void wrong;
+
+// @ts-expect-error Online operations require the host's session credential.
+database.request('remoteRows', { endpoint: 'https://hub.example.test', table: 'items' });
+// @ts-expect-error A lookup requires the stable record ID.
+database.request('remoteRow', {
+	endpoint: 'https://hub.example.test',
+	token: 'fixture',
+	table: 'items'
+});

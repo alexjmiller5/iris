@@ -8,6 +8,7 @@ export interface WorkspaceSnapshot {
 	lastSync: CoreResult<'status'>['lastSuccessfulSync'];
 	skipped: string[];
 	rejected: Row[];
+	undo: CoreResult<'undoStatus'>['action'];
 }
 export interface DatabaseOperations {
 	enrollmentEndpoint: { args: { endpoint: string }; result: string };
@@ -32,11 +33,18 @@ export interface DatabaseOperations {
 	snapshot: { args: Record<string, never>; result: WorkspaceSnapshot };
 	rows: { args: { view: CoreArgs<'rows'> }; result: CoreResult<'rows'>[number]['record'][] };
 	search: { args: CoreArgs<'search'>; result: CoreResult<'search'> };
+	remoteRows: {
+		args: CoreArgs<'remoteRows'> & { token: string };
+		result: CoreResult<'remoteRows'>;
+	};
+	remoteRow: { args: CoreArgs<'remoteRow'> & { token: string }; result: CoreResult<'remoteRow'> };
 	listViews: { args: CoreArgs<'listViews'>; result: CoreResult<'listViews'> };
 	saveView: { args: CoreArgs<'saveView'>; result: CoreResult<'saveView'> };
 	deleteView: { args: CoreArgs<'deleteView'>; result: CoreResult<'deleteView'> };
 	options: { args: CoreArgs<'options'>; result: CoreResult<'options'> };
 	write: { args: CoreArgs<'write'>; result: CoreResult<'write'> };
+	undo: { args: CoreArgs<'undo'>; result: CoreResult<'undo'> };
+	undoStatus: { args: CoreArgs<'undoStatus'>; result: CoreResult<'undoStatus'> };
 	writeability: { args: CoreArgs<'writeability'>; result: CoreResult<'writeability'> };
 	sync: { args: CoreArgs<'sync'> & { token: string }; result: CoreResult<'sync'> };
 }

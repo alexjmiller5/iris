@@ -48,6 +48,9 @@ inside the same serialized request as the query. No client scan fallback or
 parallel search implementation. Cross-table results carry table/id identities;
 opening one must re-read it, respect unsaved drafts and ignore a cancelled dialog.
 Search covers locally replicated rows and identifies skipped-table incompleteness.
+The web command palette also lists tables and saved views. Read saved views once
+per opening through the core, preserve selection by kind/table/id as entries
+arrive, and re-resolve destinations before navigating. Closing cancels late replies.
 Selected relation actions share the guarded full-row opening path. Navigation
 stays separate from editing/removal permissions, and skipped tables may still
 contain navigable local rows. Preserve the source editor on unavailable targets
@@ -90,6 +93,15 @@ columns on existing rows; it updates the acknowledged baseline without replacing
 the live draft. Failed identical patches must not loop. Preserve unknown existing
 multi-select values.
 
+Session Undo uses the core's one volatile receipt. Display the action as
+"Undo last saved change" and submit that displayed receipt ID; never reconstruct
+inverses or expose history as undo. Pause body autosave before the request without
+flushing the draft. Merge unchanged fields from the returned row while preserving
+newer drafts; those drafts require an explicit Save before autosave resumes.
+Failures retain the draft and action. A returned tombstone stays read-only until
+explicit Restore, which also preserves the retained draft. Text-editor Undo stays
+separate. Reopening a workspace clears the session action.
+
 Native recovery journals are private, atomic and isolated per editor. Persist
 the latest draft and any unacknowledged write before awaiting its receipt. Keep
 app-owned workspace identities stable across container relocation; external
@@ -106,11 +118,28 @@ Core system tables and `catalog_tables.kind: system` are read-only. Hosts use
 the shared `writeability` advisory and display its reason, invalidating stale
 answers on workspace/table changes and refreshing after failed sync too.
 The writer rechecks every mutation transactionally. Table SQL invariants require
-core-certified coverage of every global schema table, including history and
-provenance; ordinary cursors or imported files do not certify completeness.
+core-certified coverage of their validation dependencies and catalogs. Hosts
+provide compiler-derived `readDependencies` on the same connection/transaction,
+without executing the supplied statements. SQLite authorizer reads and GRDB
+regions include view dependencies; never infer this set by parsing SQL text.
+TEMP context ownership comes explicitly from core, not an object's name.
+Unknown metadata, attached databases and unsupported storage fail closed.
+Adapters without this capability retain the full-global-coverage check.
+Ordinary cursors or imported files do not certify completeness.
 Custom triggers, declared SQLite FKs and enforced estate rules fail closed.
 Missing replica references must not be guessed valid.
 Skipped-table data can be incomplete and the UI must identify that state.
+Use core status `skippedTables` after reopen, including offline. Core persists
+the last completed pull's exclusions even when pushes are rejected; hosts never
+write that state or infer completeness from download preferences.
+Online browsing calls generated `remoteRows`/`remoteRow` through the same
+serialized adapter. The core checks the durable endpoint binding before HTTP
+and rechecks schema/binding after it. Hosts supply the active connection, never
+draft credentials. Keep online rows transient and read-only; never merge them
+into local rows, FTS, cursors, coverage or pending edits. Preserve server paging
+cursors when deduplicating IDs, re-read a selected ID, show tombstones, and
+invalidate late replies on close or workspace/connection changes. Caps are
+shown without automatic retries or alternate routes.
 Pending UI edits await the core's own valid receipt; this is not the CLI queue.
 Never report a write as saved or a round as synced before its promise succeeds.
 Web sync failures also broadcast database changes: individual pulls and receipts

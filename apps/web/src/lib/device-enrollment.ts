@@ -147,6 +147,7 @@ export class DeviceEnrollment {
 	) {
 		this.fetcher = host.fetch ?? fetch;
 		this.random = host.crypto ?? crypto;
+		this.host.changed({ phase: 'idle', message: '' });
 	}
 	private current(a: Attempt) {
 		return this.active === a && !a.controller.signal.aborted && performance.now() < a.deadline;

@@ -7,6 +7,13 @@ struct CatalogField: Identifiable, Codable {
   var type: String { property["type"]?.text.nonempty ?? "text" }
   var required: Bool { property["required"]?.isTrue == true }
   var description: String { property["description"]?.text ?? "" }
+  func formValue(_ value: JSONValue?) -> String {
+    if type == "bool" {
+      if value?.isTrue == true { return "true" }
+      if value == .number(0) || value == .bool(false) { return "false" }
+    }
+    return value?.text ?? ""
+  }
   var options: [String] {
     guard case .array(let options) = property["options"] else { return [] }
     return options.compactMap {
@@ -46,15 +53,7 @@ struct RecordDraft: Codable {
     }
     initial = Dictionary(
       uniqueKeysWithValues: fields.map { field in
-        let value = original?[field.id]?.text ?? ""
-        return (
-          field.id,
-          field.type == "bool"
-            ? (original?[field.id]?.isTrue == true
-              ? "true"
-              : original?[field.id] == .number(0) || original?[field.id] == .bool(false)
-                ? "false" : value) : value
-        )
+        (field.id, field.formValue(original?[field.id]))
       })
     values = initial
   }
@@ -79,19 +78,21 @@ struct RecordDraft: Codable {
     values.filter { key, value in !fields.contains(where: { $0.id == key }) && !value.isEmpty }
   }
 
+  mutating func reconcileUndo(_ receipt: WorkspaceRecord) {
+    for field in fields {
+      let value = field.formValue(receipt[field.id])
+      if values[field.id] == initial[field.id] { values[field.id] = value }
+      initial[field.id] = value
+    }
+    original = receipt
+  }
+
   mutating func acknowledge(_ receipt: WorkspaceRecord, sent: WorkspaceRecord) {
     // Retain the exact fields loaded when this editor opened. A catalog refresh
     // must not add empty fields to an existing draft or its next patch.
     for field in fields where sent[field.id] != nil {
       let submitted = sent[field.id] == .null ? "" : sent[field.id]?.text ?? ""
-      let value = receipt[field.id]
-      let acknowledged =
-        field.type == "bool"
-        ? (value?.isTrue == true
-          ? "true"
-          : value == .number(0) || value == .bool(false)
-            ? "false" : value == .null ? "" : value?.text ?? "")
-        : value == .null ? "" : value?.text ?? ""
+      let acknowledged = field.formValue(receipt[field.id])
       if values[field.id] == submitted { values[field.id] = acknowledged }
       initial[field.id] = acknowledged
     }

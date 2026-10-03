@@ -25,6 +25,9 @@ if (source !== "--native") {
   const viewSchemaPath = join(sourceRoot, 'core/schema/saved-views.json');
   await mkdir(join(root, 'packages/core/schema'), { recursive: true });
   await copyFile(viewSchemaPath, join(root, 'packages/core/schema/saved-views.json'));
+  const fixtureDir = join(root, 'packages/LifeKit/Tests/LifeKitTests/Fixtures');
+  await mkdir(fixtureDir, { recursive: true });
+  await copyFile(join(sourceRoot, 'tests/fixtures/read-dependencies.json'), join(fixtureDir, 'read-dependencies.json'));
   const generatorPath = join(sourceRoot, 'scripts/generate-core-contract.ts');
   const { generateContract } = await import(generatorPath);
   const generated = generateContract(JSON.parse(await readFile(schemaPath, 'utf8')));

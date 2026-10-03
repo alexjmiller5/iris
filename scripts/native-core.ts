@@ -1,5 +1,5 @@
 import { CORE_CONTRACT_HASH, createCoreHandlers, validateRow } from '../packages/core/client.js';
-import type { CoreArgs, CoreMethod, CoreResult, Row, SqlDriver, Value, ServiceHub } from '../packages/core/index.d.ts';
+import type { CoreArgs, CoreMethod, CoreResult, Row, SqlDriver, Value, ServiceHub, SqlReadStatement, SqlReadContext } from '../packages/core/index.d.ts';
 import { createSample } from './native-sample';
 import { prepareLocalViews } from './local-views';
 
@@ -9,6 +9,7 @@ declare const LifeSql: {
   begin(): void;
   commit(): void;
   rollback(): void;
+  readDependencies?(statements: readonly SqlReadStatement[], context: SqlReadContext): { tables: string[] } | null;
 };
 declare function __lifeYield(callback: () => void): void;
 declare function __lifePost(route: string, body: string, callback: (json: string) => void): void;
@@ -19,6 +20,15 @@ declare function __lifeFinish(id: number, json: string): void;
 // JSC has no browser event loop: the host schedules a real main-actor turn.
 const turn = () => new Promise<void>((resolve) => __lifeYield(resolve));
 const db: SqlDriver = {
+  // The Swift bridge is installed after this bundle evaluates. Discover the
+  // optional capability at use time; older hosts retain core's global fallback.
+  get readDependencies() {
+    if (typeof LifeSql === 'undefined' || typeof LifeSql.readDependencies !== 'function') return undefined;
+    return async (statements: readonly SqlReadStatement[], context: SqlReadContext) => {
+      await turn();
+      return LifeSql.readDependencies!(statements, context);
+    };
+  },
   async all(sql, params = []) { await turn(); return LifeSql.all(sql, params); },
   async run(sql, params = []) { await turn(); return LifeSql.run(sql, params); },
   async transaction(body) {

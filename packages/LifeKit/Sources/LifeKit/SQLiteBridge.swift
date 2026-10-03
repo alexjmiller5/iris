@@ -31,7 +31,7 @@ public final class SQLiteBridge {
     context.evaluateScript(
       """
       globalThis.LifeSql = (() => {
-          function call(kind, statements) {
+          function call(kind, statements, context) {
               if (!Array.isArray(statements)) throw new Error('Expected SQL statements');
               for (const s of statements) {
                   if (!s || typeof s.sql !== 'string' || !Array.isArray(s.params ?? []))
@@ -43,7 +43,7 @@ public final class SQLiteBridge {
                           throw new Error('Invalid SQL parameter');
                   }
               }
-              const reply = JSON.parse(__lifeSql(JSON.stringify({kind, statements})));
+              const reply = JSON.parse(__lifeSql(JSON.stringify({kind, statements, context})));
               if (reply.error) throw new Error(reply.error);
               return reply.value;
           }
@@ -51,6 +51,7 @@ public final class SQLiteBridge {
               all: (sql, params = []) => call('all', [{sql, params}]),
               run: (sql, params = []) => call('run', [{sql, params}]),
               batch: statements => call('batch', statements),
+              readDependencies: (statements, context) => call('dependencies', statements, context),
               begin: () => call('begin', []),
               commit: () => call('commit', []),
               rollback: () => call('rollback', [])
@@ -66,9 +67,9 @@ public final class SQLiteBridge {
     guard let request = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any],
       let kind = request["kind"] as? String,
       let statements = request["statements"] as? [[String: Any]],
-      ["all", "run", "batch", "begin", "commit", "rollback"].contains(kind),
+      ["all", "run", "batch", "dependencies", "begin", "commit", "rollback"].contains(kind),
       ["begin", "commit", "rollback"].contains(kind)
-        ? statements.isEmpty : (kind == "batch" || statements.count == 1)
+        ? statements.isEmpty : (["batch", "dependencies"].contains(kind) || statements.count == 1)
     else { throw LifeCoreRuntime.RuntimeError.invalidInput }
 
     let commands = try statements.map { statement -> (String, StatementArguments) in
@@ -95,6 +96,17 @@ public final class SQLiteBridge {
         }
       }
       return NSNull()
+    }
+    if kind == "dependencies" {
+      guard let context = request["context"] as? [String: Any],
+        let owned = context["ownedTempTables"] as? [String]
+      else {
+        throw LifeCoreRuntime.RuntimeError.invalidInput
+      }
+      for (sql, _) in commands { try validateRead(sql) }
+      return try database.unsafeRead { db in
+        try db.readOnly { try readDependencies(commands, owned: owned, db: db) }
+      }
     }
     if kind == "all" {
       try validateRead(commands[0].0)
@@ -127,6 +139,74 @@ public final class SQLiteBridge {
       return result
     }
     return kind == "run" ? changes[0] : changes
+  }
+
+  /// GRDB keeps its authorizer installed. Public region membership identifies
+  /// candidate reads; union/equality then proves no unknown region was omitted.
+  private func readDependencies(
+    _ commands: [(String, StatementArguments)], owned: [String], db: Database
+  ) throws -> Any {
+    guard db.isInsideTransaction else { return NSNull() }
+    let databases = try Row.fetchAll(db, sql: "PRAGMA database_list")
+    guard databases.allSatisfy({ ["main", "temp"].contains($0["name"] as String) }) else {
+      return NSNull()
+    }
+    func folded(_ name: String) -> String {
+      String(decoding: name.utf8.map { (65...90).contains($0) ? $0 + 32 : $0 }, as: UTF8.self)
+    }
+    let inventory = try Row.fetchAll(db, sql: "PRAGMA table_list")
+    let main = inventory.filter { $0["schema"] as String == "main" }
+    let tempObjects = try Row.fetchAll(db, sql: "SELECT type,name FROM temp.sqlite_schema")
+    let ownedNames = Set(owned.map(folded))
+    guard ownedNames.count == owned.count,
+      tempObjects.count == ownedNames.count,
+      tempObjects.allSatisfy({
+        $0["type"] as String == "table" && ownedNames.contains(folded($0["name"]))
+      }),
+      !main.contains(where: { ownedNames.contains(folded($0["name"])) }),
+      owned.allSatisfy({ name in
+        inventory.contains { row in
+          row["schema"] as String == "temp" && folded(row["name"]) == folded(name)
+            && row["type"] as String == "table"
+        }
+      })
+    else { return NSNull() }
+
+    // GRDB currently folds Unicode, while SQLite folds only ASCII. Never let
+    // two different schema objects collapse into one dependency (for example Ä/ä).
+    let names = main.map { $0["name"] as String } + owned
+    guard Set(names.map { $0.lowercased() }).count == names.count else { return NSNull() }
+
+    var region = DatabaseRegion()
+    for (sql, arguments) in commands {
+      let statement = try db.makeStatement(sql: sql)
+      guard statement.isReadonly else { throw LifeCoreRuntime.RuntimeError.invalidInput }
+      try statement.setArguments(arguments)
+      region = region.union(statement.databaseRegion)
+    }
+    guard !region.isFullDatabase else { return NSNull() }
+    var accounted = DatabaseRegion()
+    var tables: [String] = []
+    for row in main {
+      let name: String = row["name"]
+      guard region.isModified(byEventsOfKind: .delete(tableName: name)) else { continue }
+      let type: String = row["type"]
+      guard !name.hasPrefix("_"), !folded(name).hasPrefix("sqlite_"),
+        ["table", "view"].contains(type)
+      else { return NSNull() }
+      if type == "table" { tables.append(name) }
+      accounted = accounted.union(try Table(name).databaseRegion(db))
+    }
+    let mainNames = Set(main.map { folded($0["name"]) })
+    let contexts = ownedNames.contains("_core_write_before") ? ["changed", "before", "now"] : []
+    for name in owned + contexts + ["json_each", "json_tree"]
+    where !mainNames.contains(folded(name)) {
+      if region.isModified(byEventsOfKind: .delete(tableName: name)) {
+        accounted = accounted.union(try Table(name).databaseRegion(db))
+      }
+    }
+    guard accounted.union(region) == accounted else { return NSNull() }
+    return ["tables": tables.sorted()]
   }
 
   /// GRDB owns SQLite's authorizer. Reject connection control and extra statements

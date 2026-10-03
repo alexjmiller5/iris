@@ -49,6 +49,19 @@ function harness(fetcher: typeof fetch = vi.fn(async () => json({}, 401)) as typ
 afterEach(() => vi.useRealTimers());
 
 describe('browser enrollment host', () => {
+	it('a fresh workspace controller resets inherited pending presentation', () => {
+		let pending = true;
+		new DeviceEnrollment({
+			core: policy,
+			crypto: webcrypto as Crypto,
+			fetch: vi.fn(),
+			install: vi.fn(),
+			changed: (s) => {
+				pending = ['generating', 'pending', 'connecting'].includes(s.phase);
+			}
+		});
+		expect(pending).toBe(false);
+	});
 	it('uses the platform secure random source for exactly 24 bytes', async () => {
 		const random = vi.fn((a: Uint8Array<ArrayBuffer>) => webcrypto.getRandomValues(a));
 		await createCandidate({

@@ -46,6 +46,6 @@ try {
  await page.getByRole('button',{name:'Approve this browser',exact:true}).focus();await page.keyboard.press('Enter');await expect(link).toBeVisible();
  const switched=await link.getAttribute('href');await page.getByRole('button',{name:'Switch workspace',exact:true}).click();expect((await hub.approve(switched!)).status).toBe(200);
  await page.getByRole('button',{name:'Open my workspace',exact:true}).click();await expect(page.getByRole('button',{name:'Fixture record',exact:true})).toBeVisible();
- await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token',{exact:true}).click();await expect(page.getByLabel('Device token')).toHaveValue('');
+ await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token',{exact:true}).click();await expect(page.getByLabel('Device token')).toHaveValue('');await expect(page.getByRole('button',{name:'Approve this browser',exact:true})).toBeEnabled();
  console.log('PASS: keyboard/narrow layout, workspace-close isolation and session-only credentials');
 } finally {await browser.close();hub.server.stop(true);other.server.stop(true);hub.db.db.close();hub.auth.db.close();other.db.db.close();other.auth.db.close();}

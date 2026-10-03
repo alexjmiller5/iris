@@ -6,6 +6,244 @@ import Testing
 
 @Suite(.serialized) @MainActor
 struct HubSyncTests {
+  @Test func exactOnlineLookupUsesRealSQLiteCollationWithoutTrimmingTheID() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let runtime = try LifeCoreRuntime()
+    let path = directory.appendingPathComponent("hub.sqlite").path
+    let seed = try NativeWorkspace(path: path, runtime: runtime)
+    try await seed.createSample()
+    runtime.context.evaluateScript(
+      #"""
+      const ddl = `CREATE TABLE collated (id TEXT PRIMARY KEY COLLATE NOCASE, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT, title TEXT)`;
+      LifeSql.run(ddl);
+      LifeSql.run('INSERT INTO _schema_log(ddl) VALUES (?)', [ddl]);
+      LifeSql.run("INSERT INTO catalog_tables(id,kind,display) VALUES ('collated','table','title')");
+      LifeSql.run("INSERT INTO collated VALUES (' Case ID ','2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z',NULL,NULL,'Collated fixture')");
+      """#)
+    #expect(runtime.context.exception == nil)
+    try await seed.close()
+    try HubFixture.state.load(path: path)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [HubFixture.self]
+    let hub = try HubTransport(
+      endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
+      configuration: configuration)
+    let viewer = try NativeWorkspace(path: ":memory:")
+    _ = try await viewer.sync(using: hub, tables: ["collated": false])
+    let result = try await viewer.remoteRow(using: hub, table: "collated", id: " case id ")
+    #expect(result.row?.id == " Case ID " && result.row?.label == "Collated fixture")
+    #expect(try await viewer.remoteRow(using: hub, table: "collated", id: "case id").row == nil)
+    #expect(try await viewer.rows(table: "collated").isEmpty)
+    try await viewer.close()
+  }
+
+  @Test func reopeningPartialReplicaOfflineKeepsItsIncompleteNotice() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let seed = try NativeWorkspace(path: directory.appendingPathComponent("hub.sqlite").path)
+    try await seed.createSample()
+    try await seed.close()
+    try HubFixture.state.load(path: directory.appendingPathComponent("hub.sqlite").path)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [HubFixture.self]
+    let hub = try HubTransport(
+      endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
+      configuration: configuration)
+    let credentials = HubCredentials(endpoint: hub.endpoint, token: "fixture-scoped-token")
+    func makeModel() -> WorkspaceModel {
+      WorkspaceModel(
+        localURL: { directory.appendingPathComponent("local.sqlite") }, makeTransport: { _ in hub })
+    }
+    let first = makeModel()
+    try await first.connect(credentials, remember: false)
+    first.table = "notes"
+    await first.reload()
+    let cached = try #require(first.rows.first)
+    try first.saveDownloads(
+      ReplicaPreferences(tables: ["notes": false]), context: #require(first.downloadContext))
+    await first.synchronize()
+    #expect(first.partialTableNotice != nil)
+    await first.close()
+    HubFixture.state.setStatus(503)
+    defer { HubFixture.state.setStatus(200) }
+    let reopened = makeModel()
+    try await reopened.connect(credentials, remember: false)
+    reopened.table = "notes"
+    await reopened.reload()
+    #expect(reopened.rows.first?.record == cached.record)
+    #expect(
+      reopened.partialTableNotice != nil,
+      "Cached partial records must still disclose incompleteness when reopening offline")
+    #expect(
+      reopened.skippedTables == ["notes"],
+      "Find and reference warnings must use the same durable status")
+    await reopened.close()
+  }
+
+  @Test func onlineBrowserCapturesReplicaContextAndRejectsTableRoundTripAndClose() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let seed = try NativeWorkspace(path: directory.appendingPathComponent("hub.sqlite").path)
+    try await seed.createSample()
+    try await seed.close()
+    try HubFixture.state.load(path: directory.appendingPathComponent("hub.sqlite").path)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [HubFixture.self]
+    let hub = try HubTransport(
+      endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
+      configuration: configuration)
+    let model = WorkspaceModel(
+      localURL: { directory.appendingPathComponent("local.sqlite") }, makeTransport: { _ in hub })
+    #expect(model.makeOnlineBrowser() == nil)
+    try await model.connect(
+      HubCredentials(endpoint: hub.endpoint, token: "fixture-scoped-token"), remember: false)
+    model.table = "notes"
+    let online = try #require(model.makeOnlineBrowser())
+    await online.reload()
+    #expect(online.error == nil)
+    #expect(!online.rows.isEmpty)
+    await online.open(try #require(online.rows.first))
+    #expect(online.selected?.record["title"] != nil)
+    model.table = "topics"
+    model.table = "notes"
+    online.selected = nil
+    await online.open(try #require(online.rows.first))
+    #expect(
+      online.selected == nil, "Leaving and returning to a table must invalidate the old sheet")
+    let closed = try #require(model.makeOnlineBrowser())
+    await model.close()
+    await closed.reload()
+    #expect(closed.rows.isEmpty && closed.error == nil)
+    #expect(model.makeOnlineBrowser() == nil)
+  }
+
+  @Test func downloadChoicesApplyOnNextSyncRetainRowsAndRemainScopedOnReconnect() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let seed = try NativeWorkspace(path: directory.appendingPathComponent("hub.sqlite").path)
+    try await seed.createSample()
+    try await seed.close()
+    try HubFixture.state.load(path: directory.appendingPathComponent("hub.sqlite").path)
+    func makeModel() -> WorkspaceModel {
+      WorkspaceModel(
+        localURL: { directory.appendingPathComponent("local.sqlite") },
+        makeTransport: { credentials in
+          let configuration = URLSessionConfiguration.ephemeral
+          configuration.protocolClasses = [HubFixture.self]
+          return try HubTransport(
+            endpoint: credentials.endpoint, token: credentials.token, configuration: configuration)
+        })
+    }
+    let credentials = HubCredentials(
+      endpoint: "https://fixture.invalid/", token: "fixture-scoped-token")
+    let model = makeModel()
+    try await model.connect(credentials, remember: false)
+    model.table = "notes"
+    await model.reload()
+    let stored = try #require(model.rows.first?.record)
+    let before = model.syncResult
+    let context = try #require(model.downloadContext)
+    let choices = ReplicaPreferences(maxRows: 0, tables: ["topics": true, "history": false])
+    try model.saveDownloads(choices, context: context)
+    #expect(model.syncResult == before, "Saving settings must not silently start network work")
+    #expect(model.rows.first?.record == stored)
+    await model.synchronize()
+    #expect(model.syncResult?.skipped.contains("notes") == true)
+    #expect(model.syncResult?.skipped.contains("history") == true)
+    #expect(model.syncResult?.skipped.contains("topics") == false)
+    #expect(model.syncResult?.skipped.contains("catalog_tables") == false)
+    #expect(model.rows.first?.record == stored, "A skipped table keeps existing local rows")
+    #expect(model.partialTableNotice != nil)
+    await model.close()
+    #expect(throws: WorkspaceError.self) {
+      try model.saveDownloads(ReplicaPreferences(), context: context)
+    }
+    let recreated = makeModel()
+    try await recreated.connect(credentials, remember: false)
+    #expect(recreated.downloadPreferences == choices)
+    #expect(recreated.syncResult?.skipped.contains("notes") == true)
+    recreated.table = "notes"
+    await recreated.reload()
+    #expect(recreated.rows.first?.record == stored)
+    let previousEndpoint = try #require(recreated.downloadContext)
+    try await recreated.connect(
+      HubCredentials(endpoint: "https://other.invalid", token: "fixture-scoped-token"),
+      remember: false)
+    #expect(recreated.error == nil)
+    #expect(recreated.downloadPreferences == ReplicaPreferences())
+    #expect(recreated.syncResult?.skipped.contains("notes") == false)
+    #expect(throws: WorkspaceError.self) {
+      try recreated.saveDownloads(choices, context: previousEndpoint)
+    }
+    await recreated.close()
+  }
+
+  @Test func compilerDependenciesPermitUnrelatedSkipsButRequireActualHistoryReads() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let runtime = try LifeCoreRuntime()
+    let hubPath = directory.appendingPathComponent("hub.sqlite").path
+    let seed = try NativeWorkspace(path: hubPath, runtime: runtime)
+    try await seed.createSample()
+    runtime.context.evaluateScript(
+      #"""
+      const ddl = `CREATE TABLE provenance (id TEXT PRIMARY KEY, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT, detail TEXT)`;
+      LifeSql.run(ddl);
+      LifeSql.run('INSERT INTO _schema_log(ddl) VALUES (?)', [ddl]);
+      LifeSql.run("INSERT INTO catalog_tables(id,kind,display) VALUES ('provenance','table','detail')");
+      LifeSql.run("INSERT INTO catalog_properties(id,tbl,col,type) VALUES ('provenance.detail','provenance','detail','text')");
+      LifeSql.run("INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
+        ['fixture-local','notes','invariant',1,"SELECT id FROM changed WHERE title='Blocked'",'Synthetic rule.']);
+      """#)
+    #expect(runtime.context.exception == nil)
+    try await seed.close()
+    try HubFixture.state.load(path: hubPath)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [HubFixture.self]
+    let hub = try HubTransport(
+      endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
+      configuration: configuration)
+    let replicaRuntime = try LifeCoreRuntime()
+    let replica = try NativeWorkspace(
+      path: directory.appendingPathComponent("replica.sqlite").path, runtime: replicaRuntime)
+    let partial = try await replica.sync(
+      using: hub, tables: ["history": false, "provenance": false])
+    #expect(Set(partial.skipped).isSuperset(of: ["history", "provenance"]))
+    #expect(try await replica.writeability(table: "notes").writable)
+    let row = try #require(try await replica.rows(table: "notes").first)
+    await #expect(throws: WorkspaceError.self) {
+      try await replica.write(
+        table: "notes", patch: ["id": .string(row.id), "title": .string("Blocked")],
+        expectedUpdatedAt: row.record["updated_at"]?.text)
+    }
+    #expect(try await replica.rows(table: "notes").first?.record == row.record)
+    #expect(try await replica.status().pendingUiEdits == 0)
+    _ = try await replica.write(
+      table: "notes", patch: ["id": .string(row.id), "title": .string("Allowed partial")],
+      expectedUpdatedAt: row.record["updated_at"]?.text)
+    _ = try await replica.sync(using: hub, tables: ["history": false, "provenance": false])
+    #expect(try await replica.status().pendingUiEdits == 0)
+    #expect(
+      HubFixture.state.record(table: "notes", id: row.id)?["title"] == .string("Allowed partial"))
+    HubFixture.state.changeRule(
+      "fixture-local", sql: "SELECT id FROM changed WHERE (SELECT count(*) FROM history)<0")
+    _ = try await replica.sync(using: hub, tables: ["history": false, "provenance": false])
+    let blocked = try await replica.writeability(table: "notes")
+    #expect(!blocked.writable && blocked.reason?.message.contains("history") == true)
+    _ = try await replica.sync(using: hub, tables: ["history": true, "provenance": false])
+    #expect(try await replica.writeability(table: "notes").writable)
+    // Older hosts keep the conservative global gate when the optional capability is absent.
+    replicaRuntime.context.evaluateScript("delete LifeSql.readDependencies")
+    #expect(!((try await replica.writeability(table: "notes")).writable))
+    try await replica.close()
+  }
+
   @Test func editingAdvisoryTracksFullSyncMissingHistoryAndInterruptedRefresh() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -17,7 +255,7 @@ struct HubSyncTests {
     runtime.context.evaluateScript(
       """
       LifeSql.run("INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
-        ['fixture-title','notes','invariant',1,"SELECT id FROM changed WHERE title = 'Blocked'",'Fixture title is blocked.']);
+        ['fixture-title','notes','invariant',1,"SELECT id FROM changed WHERE title = 'Blocked' OR (SELECT count(*) FROM history)<0",'Fixture title is blocked.']);
       LifeSql.run("INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
         ['fixture-view','views','invariant',1,"SELECT id FROM changed WHERE name = 'Blocked'",'Fixture view is blocked.']);
       """)
@@ -66,7 +304,7 @@ struct HubSyncTests {
     #expect(model.editingUnavailable?.contains("history") == true)
     #expect(model.rows.first?.label == "Allowed")
     try await model.refreshSavedViews(context: context)
-    #expect(model.viewsWriteability?.writable == false)
+    #expect(model.viewsWriteability?.writable == true)
     await model.synchronize()
     #expect(model.canWrite)
     HubFixture.state.failPull("notes")
@@ -169,7 +407,7 @@ struct HubSyncTests {
 private final class HubFixture: URLProtocol, @unchecked Sendable {
   static let state = FixtureState()
   override class func canInit(with request: URLRequest) -> Bool {
-    request.url?.host == "fixture.invalid"
+    ["fixture.invalid", "other.invalid"].contains(request.url?.host ?? "")
   }
   override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
   override func startLoading() {
@@ -202,6 +440,18 @@ private final class FixtureState: @unchecked Sendable {
     lock.withLock { tables[table]?.first { $0["id"]?.text == id } }
   }
   func rowCount(table: String) -> Int { lock.withLock { tables[table]?.count ?? 0 } }
+  func changeRule(_ id: String, sql: String) {
+    lock.withLock {
+      guard let index = tables["catalog_rules"]?.firstIndex(where: { $0["id"]?.text == id }) else {
+        return
+      }
+      tables["catalog_rules"]?[index]["sql"] = .string(sql)
+      let formatter = ISO8601DateFormatter()
+      formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      tables["catalog_rules"]?[index]["updated_at"] = .string(
+        formatter.string(from: Date(timeIntervalSinceNow: 1)))
+    }
+  }
   @MainActor func load(path: String) throws {
     try lock.withLock {
       let bridge = try SQLiteBridge(path: path)
@@ -217,10 +467,15 @@ private final class FixtureState: @unchecked Sendable {
         return try JSONDecoder().decode([WorkspaceRecord].self, from: Data(json.utf8))
       }
       schema = try records("SELECT applied_at,ddl FROM _schema_log ORDER BY id")
+      tables = [:]
+      let existing = Set(
+        try records("SELECT name FROM sqlite_schema WHERE type='table'").compactMap {
+          $0["name"]?.text
+        })
       for name in [
         "notes", "topics", "catalog_tables", "catalog_properties", "catalog_rules", "history",
-        "views",
-      ] {
+        "views", "provenance", "collated",
+      ] where existing.contains(name) {
         tables[name] = try records("SELECT * FROM \(name)")
       }
       status = 200
@@ -257,7 +512,19 @@ private final class FixtureState: @unchecked Sendable {
         ])
       case "/v1/rows/pull":
         if table == failedPullTable { return (503, Data("{}".utf8)) }
-        data = .object(["rows": .array((tables[table] ?? []).map(JSONValue.object))])
+        let limit = Int(body["limit"]?.text ?? "1000") ?? 1000
+        let requestedID: String? =
+          if case .object(let predicate) = body["where"] { predicate["id"]?.text } else { nil }
+        let rows = Array(
+          (tables[table] ?? []).filter { row in
+            (requestedID == nil || row["id"]?.text == requestedID
+              || (table == "collated" && row["id"]?.text.lowercased() == requestedID?.lowercased()))
+              && (body["after"] == nil || (row["id"]?.text ?? "") > (body["after"]?.text ?? ""))
+          }.sorted { ($0["id"]?.text ?? "") < ($1["id"]?.text ?? "") }.prefix(limit))
+        data = .object([
+          "rows": .array(rows.map(JSONValue.object)),
+          "next_cursor": rows.count == limit ? (rows.last?["id"] ?? .null) : .null,
+        ])
       case "/v1/rows/push":
         guard case .array(let values) = body["rows"] else { throw URLError(.badServerResponse) }
         for case .object(let row) in values {

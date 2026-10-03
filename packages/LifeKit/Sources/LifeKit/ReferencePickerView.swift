@@ -5,14 +5,24 @@ struct ReferenceField: View {
   @Binding var value: String
   @State private var picker: ReferencePickerModel?
   let onOpen: () -> Void
+  let canEdit: Bool
+  let canOpen: Bool
+  let availability: String?
+  let onOpenRecord: ((String, String) -> Void)?
 
   init(
     field: CatalogField, value: Binding<String>, workspace: NativeWorkspace,
-    onOpen: @escaping () -> Void = {}
+    onOpen: @escaping () -> Void = {}, canEdit: Bool = true,
+    canOpen: Bool = true, availability: String? = nil,
+    onOpenRecord: ((String, String) -> Void)? = nil
   ) {
     self.field = field
     _value = value
     self.onOpen = onOpen
+    self.canEdit = canEdit
+    self.canOpen = canOpen
+    self.availability = availability
+    self.onOpenRecord = onOpenRecord
     _picker = State(
       initialValue: try? ReferencePickerModel(
         table: field.property["ref_table"]?.text ?? "", value: value.wrappedValue,
@@ -21,16 +31,42 @@ struct ReferenceField: View {
 
   var body: some View {
     if let picker {
-      NavigationLink {
-        ReferencePickerView(field: field, model: picker, value: $value)
-          .onAppear(perform: onOpen)
-      } label: {
-        Text(
-          picker.selection.ids.isEmpty
-            ? "Choose \(field.type == "multi_ref" ? "records" : "a record")"
-            : picker.selection.ids.map { picker.label(for: $0) }.joined(separator: ", "))
+      VStack(alignment: .leading, spacing: 10) {
+        if canEdit {
+          NavigationLink {
+            ReferencePickerView(field: field, model: picker, value: $value)
+              .onAppear(perform: onOpen)
+          } label: {
+            Text(
+              picker.selection.ids.isEmpty
+                ? "Choose \(field.type == "multi_ref" ? "records" : "a record")"
+                : picker.selection.ids.map { picker.label(for: $0) }.joined(separator: ", "))
+          }
+          .accessibilityIdentifier("field-\(field.id)")
+        }
+        if let onOpenRecord {
+          ForEach(picker.selection.ids, id: \.self) { id in
+            Button {
+              onOpen()
+              onOpenRecord(picker.table, id)
+            } label: {
+              Label(picker.label(for: id), systemImage: "arrow.up.right")
+            }
+            .buttonStyle(.borderless)
+            .disabled(!canOpen)
+            .accessibilityLabel("Open \(picker.label(for: id))")
+            .accessibilityIdentifier("open-reference-\(field.id)-\(id)")
+          }
+          if let availability { Text(availability).font(.caption).foregroundStyle(.secondary) }
+          if picker.selection.ids.contains(where: { picker.label(for: $0) == "Unavailable" }) {
+            Text("Unavailable references are kept. Open a record to check its local availability.")
+              .font(.caption).foregroundStyle(.secondary)
+          }
+        }
+        if !canEdit && picker.selection.ids.isEmpty {
+          Text("No related records").foregroundStyle(.secondary)
+        }
       }
-      .accessibilityIdentifier("field-\(field.id)")
       .task { await picker.resolveSelected() }
     } else {
       Text("This reference value cannot be read. The original value has been preserved.")

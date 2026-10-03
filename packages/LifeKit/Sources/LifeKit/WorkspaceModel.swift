@@ -8,12 +8,21 @@ struct WorkspaceEditingContext {
   let draftStore: EditorDraftStore?
 }
 
+struct ReplicaDownloadContext {
+  let workspace: NativeWorkspace
+  let endpoint: String
+  let generation: Int
+}
+
 @Observable @MainActor
 final class WorkspaceModel {
   var client: NativeWorkspace? {
     didSet {
       if oldValue !== client {
         workspaceGeneration += 1
+        undoAction = nil
+        undoing = false
+        writingRecord = false
         resetView()
       }
     }
@@ -61,6 +70,51 @@ final class WorkspaceModel {
   var syncing = false
   var syncResult: WorkspaceSyncResult?
   var syncStatus: WorkspaceSyncStatus?
+  private(set) var undoAction: CoreUndoAction?
+  private(set) var undoing = false
+  private var writingRecord = false
+
+  @discardableResult
+  func undo(_ action: CoreUndoAction, context: WorkspaceEditingContext?) async throws
+    -> WorkspaceRecord
+  {
+    guard let context, context.workspace === client, context.table == table,
+      action == undoAction, !undoing, !writingRecord, !savingView
+    else {
+      throw WorkspaceError(
+        message:
+          "This saved change is no longer ready to undo. Reopen it after the current operation finishes.",
+        violations: [])
+    }
+    let generation = workspaceGeneration
+    undoing = true
+    defer { if generation == workspaceGeneration { undoing = false } }
+    do {
+      let receipt = try await context.workspace.undo(receiptID: action.receiptId)
+      guard context.workspace === client, generation == workspaceGeneration,
+        context.table == table
+      else {
+        throw WorkspaceError(
+          message:
+            "The workspace changed while undoing. Reopen the record to review its saved state.",
+          violations: [])
+      }
+      undoAction = nil
+      await reload()
+      guard context.workspace === client, generation == workspaceGeneration, context.table == table
+      else {
+        throw WorkspaceError(
+          message: "The workspace changed while refreshing Undo. Reopen the record.", violations: []
+        )
+      }
+      return receipt
+    } catch {
+      if context.workspace === client, generation == workspaceGeneration {
+        await reload()
+      }
+      throw error
+    }
+  }
   var connection: HubCredentials?
   var isReplica = false
   var groups: [String: String] = [:]
@@ -73,6 +127,41 @@ final class WorkspaceModel {
   private var scopedURL: URL?
   private let resolveLocalURL: @MainActor () throws -> URL
   private let makeTransport: @MainActor (HubCredentials) throws -> HubTransport
+
+  private(set) var downloadPreferences = ReplicaPreferences()
+  private var downloadStore: ReplicaPreferenceStore?
+  var downloadContext: ReplicaDownloadContext? {
+    guard isReplica, let client, let transport else { return nil }
+    return ReplicaDownloadContext(
+      workspace: client, endpoint: transport.endpoint, generation: workspaceGeneration)
+  }
+  var skippedTables: [String] { isReplica ? syncStatus?.skippedTables ?? [] : [] }
+
+  var partialTableNotice: String? {
+    guard isReplica, let table, skippedTables.contains(table) else { return nil }
+    if downloadPreferences.tables[table] == false {
+      return
+        "This table is excluded from future sync. Existing local records are kept and may be incomplete."
+    }
+    return downloadPreferences.tables[table] == true
+      ? "This table is included in the next sync. Its local records may still be incomplete."
+      : "This table was not downloaded in the last sync. Its local records may be incomplete."
+  }
+
+  func saveDownloads(_ preferences: ReplicaPreferences, context: ReplicaDownloadContext) throws {
+    guard isReplica, context.workspace === client, context.endpoint == transport?.endpoint,
+      context.generation == workspaceGeneration, let downloadStore
+    else {
+      throw WorkspaceError(
+        message: "The workspace changed. Reopen Downloads before saving.", violations: [])
+    }
+    guard !syncing else {
+      throw WorkspaceError(
+        message: "Wait for sync to finish before changing download settings.", violations: [])
+    }
+    try downloadStore.save(preferences)
+    downloadPreferences = preferences
+  }
 
   init(
     localURL: @escaping @MainActor () throws -> URL = WorkspaceModel.localURL,
@@ -243,7 +332,7 @@ final class WorkspaceModel {
 
   func applySavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?) throws {
     let context = try requireViewContext(context)
-    guard !savingView else {
+    guard !savingView, !undoing else {
       throw WorkspaceError(message: "Wait for the saved view to finish saving.", violations: [])
     }
     if let saved {
@@ -273,7 +362,7 @@ final class WorkspaceModel {
 
   func saveCurrentView(name: String, update: Bool, context: WorkspaceEditingContext?) async throws {
     let context = try requireViewContext(context)
-    guard !savingView else {
+    guard !savingView, !undoing else {
       throw WorkspaceError(
         message: "A saved view operation is already in progress.", violations: [])
     }
@@ -300,12 +389,13 @@ final class WorkspaceModel {
     savedViews.removeAll { $0.id == saved.id }
     savedViews.append(saved)
     savedViews.sort { $0.name == $1.name ? $0.id < $1.id : $0.name < $1.name }
+    await reload()
   }
 
   func deleteSavedView(_ saved: CoreSavedViewRecord, context: WorkspaceEditingContext?) async throws
   {
     let context = try requireViewContext(context)
-    guard !savingView, saved.tbl == context.table, let updatedAt = saved.updatedAt else {
+    guard !savingView, !undoing, saved.tbl == context.table, let updatedAt = saved.updatedAt else {
       throw WorkspaceError(message: "Reopen this saved view before deleting it.", violations: [])
     }
     let generation = viewGeneration
@@ -323,6 +413,7 @@ final class WorkspaceModel {
     savingView = false
     savedViews.removeAll { $0.id == saved.id }
     if appliedView?.id == saved.id { try applySavedView(nil, context: context) }
+    await reload()
   }
 
   func makeQuickFind() -> QuickFindModel? {
@@ -332,6 +423,23 @@ final class WorkspaceModel {
       search: client.search, read: client.rows,
       isCurrent: { [weak self] in
         self?.client === client && self?.workspaceGeneration == generation
+      })
+  }
+
+  func makeOnlineBrowser() -> OnlineBrowseModel? {
+    guard isReplica, let client, let transport, let table else { return nil }
+    let workspace = workspaceGeneration
+    let view = viewGeneration
+    return OnlineBrowseModel(
+      table: table,
+      load: { cursor in
+        try await client.remoteRows(using: transport, table: table, cursor: cursor)
+      },
+      read: { id in try await client.remoteRow(using: transport, table: table, id: id) },
+      isCurrent: { [weak self] in
+        self?.isReplica == true && self?.client === client
+          && self?.transport?.endpoint == transport.endpoint && self?.table == table
+          && self?.workspaceGeneration == workspace && self?.viewGeneration == view
       })
   }
 
@@ -347,6 +455,28 @@ final class WorkspaceModel {
     self.table = table
     trash = false
     return WorkspaceEditingContext(workspace: workspace, table: table, draftStore: draftStore)
+  }
+
+  func makeReferenceNavigation(
+    editor: RecordEditorModel, context: WorkspaceEditingContext,
+    isCurrent: @escaping () -> Bool = { true },
+    onOpen: @escaping (ReferenceDestination) -> Void = { _ in }
+  ) -> ReferenceNavigationModel {
+    let generation = workspaceGeneration
+    let selection = viewGeneration
+    return ReferenceNavigationModel(
+      editor: editor,
+      read: { [weak self] view in
+        guard self?.tables.contains(where: { $0["id"]?.text == view.table }) == true else {
+          throw WorkspaceError(
+            message: "The related table is not available on this device.", violations: [])
+        }
+        return try await context.workspace.rows(view: view)
+      },
+      isCurrent: { [weak self] in
+        self?.client === context.workspace && self?.workspaceGeneration == generation
+          && self?.viewGeneration == selection && self?.table == context.table && isCurrent()
+      }, onOpen: onOpen)
   }
 
   static func localURL() throws -> URL {
@@ -365,6 +495,8 @@ final class WorkspaceModel {
     transport = nil
     services.configure(workspace: nil, transport: nil)
     isReplica = false
+    downloadStore = nil
+    downloadPreferences = ReplicaPreferences()
     syncResult = nil
     syncStatus = nil
     do {
@@ -431,8 +563,10 @@ final class WorkspaceModel {
         limit: 100, offset: more ? rows.count : 0, trash: trash, search: search)
       let result = try await client.rows(view: view)
       let status = isReplica ? try await client.status() : nil
+      let undo = try await client.undoStatus()
       guard request == revision, self.client === client, query == queryKey else { return }
       syncStatus = status
+      undoAction = undo.action
       rows = more ? rows + result : result
       canLoadMore = result.count == 100
     } catch {
@@ -454,6 +588,13 @@ final class WorkspaceModel {
       throw WorkspaceError(
         message: "The workspace or table changed. Reopen the record before saving.", violations: [])
     }
+    guard !undoing, !writingRecord else {
+      throw WorkspaceError(
+        message: "Wait for the current record operation to finish.", violations: [])
+    }
+    let generation = workspaceGeneration
+    writingRecord = true
+    defer { if generation == workspaceGeneration { writingRecord = false } }
     let receipt = try await context.workspace.write(
       table: context.table, patch: patch, expectedUpdatedAt: original?["updated_at"]?.text)
     await reload()
@@ -529,14 +670,18 @@ final class WorkspaceModel {
     workspaceGeneration += 1
     let hub = try makeTransport(credentials)
     let canonical = HubCredentials(endpoint: hub.endpoint, token: credentials.token)
+    let directory = try resolveLocalURL().deletingLastPathComponent().appendingPathComponent(
+      "replicas", isDirectory: true)
+    let preferencesStore = ReplicaPreferenceStore(
+      root: directory.appendingPathComponent("downloads", isDirectory: true), endpoint: hub.endpoint
+    )
+    let preferences = try preferencesStore.load()
     if remember { try HubCredentialStore().save(canonical) }
     services.configure(workspace: nil, transport: nil)
     try await client?.close()
     client = nil
     scopedURL?.stopAccessingSecurityScopedResource()
     scopedURL = nil
-    let directory = try resolveLocalURL().deletingLastPathComponent().appendingPathComponent(
-      "replicas", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let name = SHA256.hash(data: Data(hub.endpoint.utf8)).map { String(format: "%02x", $0) }
       .joined()
@@ -547,6 +692,10 @@ final class WorkspaceModel {
     transport = hub
     services.configure(workspace: client, transport: hub)
     connection = canonical
+    downloadStore = preferencesStore
+    downloadPreferences = preferences
+    syncResult = nil
+    syncStatus = nil
     isReplica = true
     location = "Hub workspace · local replica"
     table = nil
@@ -562,7 +711,8 @@ final class WorkspaceModel {
     invalidateWriteability()
     error = nil
     do {
-      syncResult = try await client.sync(using: transport)
+      syncResult = try await client.sync(
+        using: transport, maxRows: downloadPreferences.maxRows, tables: downloadPreferences.tables)
       catalog = try await client.catalog()
       if !tables.contains(where: { $0["id"]?.text == table }) {
         table =
@@ -586,6 +736,8 @@ final class WorkspaceModel {
     transport = nil
     services.configure(workspace: nil, transport: nil)
     isReplica = false
+    downloadStore = nil
+    downloadPreferences = ReplicaPreferences()
   }
 
   func close() async {
@@ -599,6 +751,8 @@ final class WorkspaceModel {
     client = nil
     transport = nil
     isReplica = false
+    downloadStore = nil
+    downloadPreferences = ReplicaPreferences()
     syncResult = nil
     syncStatus = nil
     catalog = nil
