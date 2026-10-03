@@ -37,9 +37,12 @@ The supported service dependency is the life-data hub API with independently
 minted client credentials. Never bind its D1/R2 or borrow infrastructure tokens.
 Life UI owns its Worker, Access application, vault and deployment credentials
 when provisioned. `.env.tpl` is the operator/CI bootstrap manifest; its values
-never enter the browser bundle. Workers Scripts Write is account-scoped and
-requires an explicit scope decision before provisioning. No deploy workflow is
-enabled for branch pushes. The public repository is `alexjmiller5/life-ui`.
+never enter the browser bundle. Workers Scripts Write is account-scoped in
+Cloudflare; `scripts/provision.py` mints Life UI's own token during bootstrap.
+Pushes to main deploy the web Worker through `.github/workflows/deploy.yml` once
+bootstrap has set `OP_SERVICE_ACCOUNT_TOKEN` (until then the job skips with a
+notice). Cloudflare Access protects the Worker's hostnames; converge it with
+`scripts/cf-access.py`. The public repository is `alexjmiller5/life-ui`.
 
 Mac distribution uses `.github/workflows/release-macos.yml`, triggered only by
 explicitly approved stable version tags. It stamps the tag version, builds both
