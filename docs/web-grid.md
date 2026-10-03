@@ -82,3 +82,20 @@ LIFE_UI_TEST_URL=http://life-ui-grid-enrollment.localhost:5234/workspace?review 
 LIFE_UI_TEST_URL=http://life-ui-grid-enrollment.localhost:5234/workspace?review \
   bun scripts/test-grid-undo-mutations.ts /path/to/life-data
 ```
+
+The record panel offers the same Duplicate action as the grid. Preparation reads
+fresh catalog, writeability and a full exact-ID source row before asking to discard
+an existing draft. Failed or superseded preparation keeps that editor. Duplication
+copies the latest saved values, not unsaved input, and creates nothing until Save.
+
+Creation defaults shown in the form are previews. Untouched fields are omitted so
+the core applies current catalog or SQLite defaults at Save. Explicit input,
+including Clear on an already empty field, overrides defaults and participates in
+discard protection. Untouched copied values retain their original scalars, including
+empty strings versus NULL. Clear on a copied field deliberately requests NULL.
+
+`bun scripts/test-creation-intent.ts <life-data-checkout>` exercises these paths on
+`http://life-ui-creation.localhost:5242/workspace?review` with disposable OPFS and
+hub state. `scripts/test-creation-mutations.ts` supports unit mutations by default
+and browser mutations with `--browser`; browser runs require the exclusive CDP
+lease and the same owned fixture page.

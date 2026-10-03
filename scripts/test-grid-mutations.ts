@@ -94,8 +94,8 @@ const mutations = [
   {
     name: "creation: copied null silently falls back to a SQL default",
     file: model,
-    before: "raw === '' && !explicit.has(property.col)",
-    after: "raw === ''",
+    before: ": !explicit.has(property.col) && !Object.hasOwn(copied, property.col)",
+    after: ": raw === ''",
   },
   {
     name: "whitespace numeric input becomes zero",
