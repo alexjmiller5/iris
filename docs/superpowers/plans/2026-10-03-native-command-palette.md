@@ -77,3 +77,24 @@ failed with five behavioral issues before implementation; eight semantic mutants
 were caught afterward. The restored full SwiftPM run reports 240 tests in 43
 suites, with five existing live-fixture tests skipped. Palette UI remains the
 next implementation step.
+
+## Coordinator model checkpoint
+
+`WorkspaceModel.makeCommandPalette()` combines existing record search with lazy
+table/view metadata and fresh destination resolution. `QuickFindCoordinator`
+retains byte-exact selection, skips unavailable choices, rejects stale activation
+successes and errors, and disposes both child models when closed. Record paging
+uses the existing raw-offset search behavior. Search retry clears an opening
+error without cancelling an activation merely because background results refresh.
+
+Nine test functions cover nineteen cases, including actual GRDB/JSC row/view
+changes and controlled asynchronous replies. Missing behavior was observed in
+three RED stages before implementation. Twenty-three semantic mutants were
+caught by assertions; a timed-out exploratory mutant was not counted. Sources
+were restored before the full SwiftPM run: 267 tests in 47 suites passed, with
+five existing HTTP fixture tests skipped. The three existing incoming-reference
+test capture warnings remain assigned to their owner.
+
+This checkpoint is model-only. Palette view wiring consumes the independently
+verified host navigation hook after its owner's compile handoff. All native UI
+verification remains with the sole Xcode/simulator owner.

@@ -425,10 +425,12 @@ final class WorkspaceModel {
 
   func requireNavigationReady(workspace: NativeWorkspace, generation: Int) throws {
     guard client === workspace, workspaceGeneration == generation else {
-      throw WorkspaceError(message: "The workspace changed. Open the destination again.", violations: [])
+      throw WorkspaceError(
+        message: "The workspace changed. Open the destination again.", violations: [])
     }
     guard !writingRecord, !undoing, !savingView else {
-      throw WorkspaceError(message: "Wait for the current operation to finish before navigating.", violations: [])
+      throw WorkspaceError(
+        message: "Wait for the current operation to finish before navigating.", violations: [])
     }
   }
 
@@ -444,10 +446,26 @@ final class WorkspaceModel {
     // it synchronously, including resetting settings for the same table.
     catalog = resolved.catalog
     if table == target { resetView() } else { table = target }
-    let context = WorkspaceEditingContext(workspace: workspace, table: target, draftStore: draftStore)
+    let context = WorkspaceEditingContext(
+      workspace: workspace, table: target, draftStore: draftStore)
     try applySavedView(resolved.view, context: context)
     if resolved.row != nil { trash = resolved.isTrashed }
     return context
+  }
+
+  func makeCommandPalette() -> QuickFindCoordinator? {
+    guard let client, let search = makeQuickFind() else { return nil }
+    let generation = workspaceGeneration
+    let current = { [weak self] in
+      self?.client === client && self?.workspaceGeneration == generation
+    }
+    let resolver = NativeDestinationResolver(workspace: client)
+    return QuickFindCoordinator(
+      search: search,
+      metadata: NativePaletteModel(workspace: client, isCurrent: current),
+      resolve: { destination, isCurrent in
+        try await resolver.resolve(destination, isCurrent: isCurrent)
+      }, isCurrent: current)
   }
 
   func makeQuickFind() -> QuickFindModel? {
