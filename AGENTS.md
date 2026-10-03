@@ -157,8 +157,13 @@ unchanged affected cell; leave another row's cell draft untouched. Creation Undo
 retains the draft beside a read-only tombstone, and Restore preserves it.
 
 Native recovery journals are private, atomic and isolated per editor. Persist
-the latest draft and any unacknowledged write before awaiting its receipt. Keep
-app-owned workspace identities stable across container relocation; external
+the latest draft and any unacknowledged write before awaiting its receipt.
+Keep new-record defaults omitted until a field is explicitly edited. An explicit
+clear is null, while copied SQL empty text stays an empty string; unchanged
+Markdown snapshots do not count as edits. Duplicate preparation uses a new
+nil-recordID journal, preserves older variants and never writes a database row
+before Save.
+Keep app-owned workspace identities stable across container relocation; external
 databases use canonical paths. Recovery never rebases an old draft implicitly.
 Copy/review into a fresh editor or explicitly discard the retained draft.
 Record and reference IDs are opaque UTF-8 values. Native equality, collection
