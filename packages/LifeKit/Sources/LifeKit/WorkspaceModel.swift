@@ -854,8 +854,12 @@ final class WorkspaceModel {
     } catch { self.error = error.localizedDescription }
   }
 
+  nonisolated static func replicaKey(endpoint: String) -> String {
+    SHA256.hash(data: Data(endpoint.utf8)).map { String(format: "%02x", $0) }.joined()
+  }
+
   static func replicaURL(root: URL, endpoint: String) -> URL {
-    let name = SHA256.hash(data: Data(endpoint.utf8)).map { String(format: "%02x", $0) }.joined()
+    let name = replicaKey(endpoint: endpoint)
     return root.appendingPathComponent("replicas", isDirectory: true).appendingPathComponent(
       name + ".sqlite")
   }
