@@ -109,8 +109,9 @@ final class DeepLinkUITests: XCTestCase {
     let confirmation = app.sheets["Discard unsaved changes?"]
     XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
     // iOS presents this confirmation as a popover; tapping outside keeps editing.
-    XCTAssertFalse(confirmation.frame.contains(CGPoint(x: title.frame.midX, y: title.frame.midY)))
-    title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    let outside = app.navigationBars["Record"].staticTexts["Record"]
+    XCTAssertFalse(confirmation.frame.intersects(outside.frame))
+    outside.tap()
     XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
     XCTAssertEqual(title.value as? String, draft)
     XCTAssertTrue(app.staticTexts["link-waiting-editor"].exists)
