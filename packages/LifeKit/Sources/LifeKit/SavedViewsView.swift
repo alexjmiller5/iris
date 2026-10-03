@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SavedViewsView: View {
   let model: WorkspaceModel
+  let onChoose: (NativeDestination) -> Void
   private let context: WorkspaceEditingContext?
   private let generation: Int
   @Environment(\.dismiss) private var dismiss
@@ -11,8 +12,9 @@ struct SavedViewsView: View {
   @State private var loading = true
   @State private var deleting: CoreSavedViewRecord?
 
-  init(model: WorkspaceModel) {
+  init(model: WorkspaceModel, onChoose: @escaping (NativeDestination) -> Void = { _ in }) {
     self.model = model
+    self.onChoose = onChoose
     context = model.editingContext
     generation = model.workspaceGeneration
     _name = State(initialValue: model.appliedView?.name ?? "")
@@ -135,6 +137,7 @@ struct SavedViewsView: View {
   private func choose(_ saved: CoreSavedViewRecord?) {
     do {
       try model.applySavedView(saved, context: context)
+      if let context { onChoose(NativeDestination(table: context.table, viewID: saved?.id)) }
       dismiss()
     } catch { self.error = error.localizedDescription }
   }
