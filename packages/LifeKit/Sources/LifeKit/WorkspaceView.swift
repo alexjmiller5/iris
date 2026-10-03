@@ -69,6 +69,7 @@ public struct WorkspaceView: View {
               onOpen: { openDestination($0) })
           }
           .navigationTitle("Life UI")
+          .navigationSplitViewColumnWidth(min: 200, ideal: 240)
           .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 8) {
               Text(model.location).font(.caption).foregroundStyle(.secondary)
@@ -603,10 +604,11 @@ public struct WorkspaceView: View {
     #if os(macOS)
       if #available(macOS 14.4, *) {
         VStack(alignment: .leading, spacing: 0) {
-          ViewThatFits(in: .vertical) {
-            macRecordNotices
-            ScrollView { macRecordNotices }
-          }.frame(maxHeight: 180)
+          // Size to the notices, scrolling only beyond 180 points.
+          ScrollView { macRecordNotices }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: 180)
+            .fixedSize(horizontal: false, vertical: true)
           MacRecordTable(
             rows: model.rows,
             columns: NativeGridColumn.columns(
@@ -623,7 +625,9 @@ public struct WorkspaceView: View {
             }
           }
           HStack {
-            Text("\(model.rows.count) records loaded").font(.caption).foregroundStyle(.secondary)
+            Text(
+              model.rows.count == 1 ? "1 record loaded" : "\(model.rows.count) records loaded"
+            ).font(.caption).foregroundStyle(.secondary)
             Spacer()
             if model.loading { ProgressView().controlSize(.small) }
             if model.canLoadMore {
