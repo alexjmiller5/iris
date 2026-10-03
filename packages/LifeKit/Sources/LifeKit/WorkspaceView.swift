@@ -16,8 +16,9 @@ public struct WorkspaceView: View {
   @State private var tableSearchPresented = false
   @State private var editor: EditorTarget?
   @State private var online: OnlineBrowseModel?
-  @State private var quickFind: QuickFindModel?
-  @State private var pendingSearchEditor: (target: EditorTarget, generation: Int)?
+  @State private var quickFind: QuickFindCoordinator?
+  @State private var pendingSearchEditor:
+    (target: EditorTarget, generation: Int, destination: NativeDestination)?
   @State private var pendingReferenceEditor:
     (destination: ReferenceDestination, source: WorkspaceEditingContext, generation: Int)?
   private let demo: Bool
@@ -137,20 +138,25 @@ public struct WorkspaceView: View {
       SavedViewsView(model: model, onChoose: recordNavigationSucceeded)
     }
     .sheet(item: $quickFind, onDismiss: openSearchEditor) { find in
-      QuickFindView(model: find, incomplete: !model.skippedTables.isEmpty) {
-        hit, row in
+      QuickFindView(model: find, incomplete: !model.skippedTables.isEmpty) { resolved in
         guard find.isCurrent, quickFind === find, editor == nil, let client = model.client else {
-          return
+          throw CancellationError()
         }
-        do {
-          let context = try model.activateSearchTable(
-            hit.table, workspace: client, generation: model.workspaceGeneration)
+        let generation = model.workspaceGeneration
+        let context = try model.activateDestination(
+          resolved, workspace: client, generation: generation)
+        if let row = resolved.row {
           pendingSearchEditor = (
-            EditorTarget(row: row.record, context: context), model.workspaceGeneration
+            EditorTarget(row: row.record, context: context), generation, resolved.destination
           )
-          showingGraph = false
-          quickFind = nil
-        } catch { model.error = error.localizedDescription }
+        }
+        tableSearchPresented = false
+        showingGraph = false
+        preferredColumn = .detail
+        model.error = nil
+        navigationError = nil
+        quickFind = nil
+        if resolved.row == nil { recordNavigationSucceeded(resolved.destination) }
       }
     }
     .onChange(of: model.workspaceGeneration) {
@@ -243,7 +249,7 @@ public struct WorkspaceView: View {
 
   private func showQuickFind() {
     guard canFind else { return }
-    quickFind = model.makeQuickFind()
+    quickFind = model.makeCommandPalette()
   }
 
   private func openSearchEditor() {
@@ -254,6 +260,7 @@ public struct WorkspaceView: View {
       pending.target.context?.table == model.table
     else { return }
     editor = pending.target
+    recordNavigationSucceeded(pending.destination)
   }
 
   private func finishEditorDismissal() {
