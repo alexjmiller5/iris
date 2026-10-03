@@ -45,7 +45,9 @@ struct ReferenceField: View {
           .accessibilityIdentifier("field-\(field.id)")
         }
         if let onOpenRecord {
-          ForEach(picker.selection.ids, id: \.self) { id in
+          ForEach(picker.selection.ids.map { (key: Data($0.utf8), value: $0) }, id: \.key) {
+            entry in
+            let id = entry.value
             Button {
               onOpen()
               onOpenRecord(picker.table, id)
@@ -106,7 +108,7 @@ private struct ReferencePickerView: View {
         }
       }
       Section("Records") {
-        ForEach(model.rows) { row in
+        ForEach(model.rows, id: \.byteExactID) { row in
           Button {
             model.choose(row)
             value = model.selection.value
@@ -115,10 +117,10 @@ private struct ReferencePickerView: View {
             HStack {
               Text(row.label).foregroundStyle(.primary)
               Spacer()
-              if model.selection.ids.contains(row.id) { Image(systemName: "checkmark") }
+              if model.selection.contains(row.id) { Image(systemName: "checkmark") }
             }.contentShape(.rect)
           }
-          .accessibilityAddTraits(model.selection.ids.contains(row.id) ? [.isSelected] : [])
+          .accessibilityAddTraits(model.selection.contains(row.id) ? [.isSelected] : [])
         }
         if model.rows.isEmpty && !model.loading {
           Text("No matching records").foregroundStyle(.secondary)

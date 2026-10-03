@@ -4,6 +4,10 @@ import Observation
 struct RecordReference: Equatable {
   let table: String
   let id: String
+
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.table == rhs.table && lhs.id.utf8.elementsEqual(rhs.id.utf8)
+  }
 }
 
 struct ReferenceDestination {
@@ -57,7 +61,7 @@ final class ReferenceNavigationModel {
       return nil
     }
     let request = revision
-    let values = editor.draft.values
+    let values = editor.draft.values.mapValues { Data($0.utf8) }
     let baseline = editor.draft.original
     loading = true
     defer { if request == revision { loading = false } }
@@ -67,7 +71,7 @@ final class ReferenceNavigationModel {
           table: target.table,
           filters: [CoreFilter(column: "id", op: .eq, value: .string(target.id))], limit: 1))
       guard request == revision, isCurrent(), !Task.isCancelled else { return nil }
-      guard let row = rows.first(where: { $0.id == target.id }) else {
+      guard let row = rows.first(where: { $0.byteExactID == Data(target.id.utf8) }) else {
         throw WorkspaceError(
           message:
             "This record is not available locally. It may be missing, in the trash, or outside this replica.",
@@ -79,7 +83,9 @@ final class ReferenceNavigationModel {
           violations: [])
       }
       if discard {
-        guard values == editor.draft.values, baseline == editor.draft.original else {
+        guard values == editor.draft.values.mapValues({ Data($0.utf8) }),
+          baseline == editor.draft.original
+        else {
           throw WorkspaceError(
             message:
               "Your draft changed while opening the record. Your changes have been kept. Open it again to review.",

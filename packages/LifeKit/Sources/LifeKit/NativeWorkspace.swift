@@ -34,6 +34,8 @@ public struct WorkspaceCatalog: Sendable {
 }
 extension CoreWorkspaceRow: Identifiable {
   public var id: String { record["id"]?.text ?? "" }
+  // SQLite opaque IDs are not Unicode-normalized. Keep wire values as Strings.
+  public var byteExactID: Data { Data(id.utf8) }
 }
 public struct WorkspaceError: Error, LocalizedError, Sendable {
   public let message: String

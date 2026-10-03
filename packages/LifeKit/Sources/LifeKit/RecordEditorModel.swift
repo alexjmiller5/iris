@@ -48,7 +48,9 @@ final class RecordEditorModel {
         throw WorkspaceError(
           message: "The editor changed. Your draft has been kept for review.", violations: [])
       }
-      if action.table == table && action.rowId == draft.original?["id"]?.text {
+      if action.table == table
+        && Data(action.rowId.utf8) == (draft.original?["id"]?.text).map({ Data($0.utf8) })
+      {
         draft.reconcileUndo(receipt)
       }
       undoUnconfirmed = false
@@ -101,7 +103,9 @@ final class RecordEditorModel {
     do {
       recoveryChoices =
         try recovered.map { [$0] }
-        ?? store?.all().filter { $0.table == table && $0.recordID == recordID } ?? []
+        ?? store?.all().filter {
+          $0.table == table && $0.recordID.map { Data($0.utf8) } == recordID.map { Data($0.utf8) }
+        } ?? []
     } catch {
       unreadableDraft = true
       failure = "The saved draft could not be opened. It has been kept."
@@ -132,7 +136,9 @@ final class RecordEditorModel {
   }
 
   func setValue(_ value: String, for column: String) {
-    guard recovery == nil, draft.values[column] != value else { return }
+    guard recovery == nil, draft.values[column].map({ Data($0.utf8) }) != Data(value.utf8) else {
+      return
+    }
     draft.values[column] = value
     if failedPatch?[column] != nil && !reviewRequired && !autosavePaused {
       failedPatch = nil

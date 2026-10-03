@@ -18,15 +18,17 @@ struct ReferenceSelection {
   }
 
   var value: String {
-    if ids == initialIDs { return initialValue }
+    if ids.map({ Data($0.utf8) }) == initialIDs.map({ Data($0.utf8) }) { return initialValue }
     // String arrays always encode. An empty multi-reference is an explicit empty array.
     return multiple
       ? String(decoding: try! JSONEncoder().encode(ids), as: UTF8.self) : ids.first ?? ""
   }
 
   mutating func choose(_ id: String) {
-    if !multiple { ids = [id] } else if ids.contains(id) { remove(id) } else { ids.append(id) }
+    if !multiple { ids = [id] } else if contains(id) { remove(id) } else { ids.append(id) }
   }
 
-  mutating func remove(_ id: String) { ids.removeAll { $0 == id } }
+  func contains(_ id: String) -> Bool { ids.contains { $0.utf8.elementsEqual(id.utf8) } }
+
+  mutating func remove(_ id: String) { ids.removeAll { $0.utf8.elementsEqual(id.utf8) } }
 }

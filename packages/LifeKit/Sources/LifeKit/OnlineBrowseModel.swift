@@ -3,6 +3,7 @@ import Observation
 
 extension CoreRemoteRecord: Identifiable {
   public var id: String { record["id"]?.text ?? "" }
+  public var byteExactID: Data { Data(id.utf8) }
 }
 
 @Observable @MainActor
@@ -18,7 +19,7 @@ final class OnlineBrowseModel: Identifiable {
   var selected: CoreRemoteRecord?
   var recordID = "" {
     didSet {
-      guard oldValue != recordID else { return }
+      guard !oldValue.utf8.elementsEqual(recordID.utf8) else { return }
       openRevision += 1
       opening = nil
       selected = nil
@@ -62,12 +63,12 @@ final class OnlineBrowseModel: Identifiable {
       let page = try await load(more ? nextCursor : nil)
       guard active, isCurrent(), request == pageRevision else { return }
       var positions = Dictionary(
-        uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, $0.offset) })
+        uniqueKeysWithValues: rows.enumerated().map { ($0.element.byteExactID, $0.offset) })
       for row in page.rows {
-        if let position = positions[row.id] {
+        if let position = positions[row.byteExactID] {
           rows[position] = row
         } else {
-          positions[row.id] = rows.count
+          positions[row.byteExactID] = rows.count
           rows.append(row)
         }
       }

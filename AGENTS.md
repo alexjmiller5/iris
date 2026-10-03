@@ -124,6 +124,10 @@ the latest draft and any unacknowledged write before awaiting its receipt. Keep
 app-owned workspace identities stable across container relocation; external
 databases use canonical paths. Recovery never rebases an old draft implicitly.
 Copy/review into a fresh editor or explicitly discard the retained draft.
+Record and reference IDs are opaque UTF-8 values. Native equality, collection
+keys and SwiftUI row identity must preserve their exact bytes; Swift String
+canonical equivalence must not merge records, recoveries or reference selections.
+Keep the original String values at the core boundary.
 
 Whole Worker requests and whole native asynchronous requests are serialized.
 Native SQLite transactions retain ownership across awaited JS callbacks.
