@@ -92,6 +92,10 @@ final class DeepLinkUITests: XCTestCase {
     let name = "Link fixture " + UUID().uuidString
     title.typeText(name)
     tap(app.buttons["save-record"])
+    // Other fixture rows can sort ahead of this one; filter before opening it.
+    let search = app.searchFields.firstMatch
+    tap(search)
+    search.typeText(name)
     let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
     tap(row)
     copy(app.buttons["copy-record-link"])
