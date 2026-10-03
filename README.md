@@ -43,6 +43,15 @@ does not guarantee the hub has stayed unchanged: it checks edits again during sy
 A sync can receive records or acknowledge edits before a later request fails.
 Open browser tabs refresh that progress and retain unsaved drafts.
 
+**Browse online** opens an excluded table in a read-only window. Load 50 records
+at a time, refresh from the beginning, or find an exact record ID. Opening a
+result fetches its current complete row, including Markdown; records in the
+trash are identified. These results stay in memory until the window closes.
+Local rows, pending edits, search and editing availability remain unchanged.
+The hub may change between pages, so the loaded count is not a snapshot or total.
+Connect and sync the catalog before browsing online; usage caps and connection
+failures remain visible and require an explicit retry.
+
 **Saved views** keep a table's filters, search, sort, column order and widths in
 ordinary synced `views` rows. Choose a view, **Save as** a new name, or use
 **Update selected** to save changes and rename it. **Delete view** keeps the
@@ -54,6 +63,21 @@ The sample workspace creates the standard storage locally. Connected workspaces
 receive it through schema sync from their operator; the client never adopts an
 unrelated table named `views`. Column visibility changes the grid only, so
 editing still reads all of a record's fields.
+
+**Copy link** shares the current table, saved view and saved record. Links use
+`/workspace?table=<table-id>&view=<view-id>&row=<record-id>` with optional view
+and row identifiers. Renaming a saved view does not change its link. Open the
+matching workspace on the receiving device, and sync if the target is not yet
+available there. Links never select a hub, open a workspace automatically or
+carry credentials or record contents.
+
+Back and Forward restore the destination from current local data, including
+hidden editor fields and explicitly linked trashed records. Cancelling a draft
+discard retains both the editor and its current address; pending writes block
+navigation until their receipt. Missing destinations show an explanation while
+keeping the current editor. Copy link includes the saved view's identity, so
+reopening uses its latest saved definition. Unsaved filters, search, sort,
+column changes, grid pagination and drafts are not encoded in links.
 
 **Find records** (Cmd+K or Ctrl+K) searches across locally available tables,
 including Markdown bodies. Results show the record title, table and an excerpt;
@@ -157,6 +181,23 @@ Keychain entry and retains the replica for reconnecting to the same hub.
 Replacement devices enroll through this same connection screen with a fresh
 scoped token; Keychain credentials are not copied between devices.
 
+**Downloads** in connection settings controls the automatic row limit and each
+table's **Automatic**, **Include** or **Skip** choice. Leave the limit blank to use
+the shared default. Catalog tables always download. Choices are private to this
+device and hub, survive reconnecting, and apply on the next sync. Skipping keeps
+existing local rows; an incomplete table offers **Include in next sync**.
+Incomplete-table warnings survive reopening offline and also apply to Find
+and reference links.
+
+**Browse online** opens the current hub table in a separate read-only sheet,
+50 records at a time. Opening a result fetches its current full row; missing and
+deleted records are explicit. Enter a **Record ID** and choose **Find ID** to
+open an exact match without loading earlier pages. Markdown uses the same local
+viewer with editing disabled. Online rows stay in memory and never populate local records, search,
+pending edits or sync coverage. Close the sheet to clear them. Online browsing
+is unavailable while a local record editor is open, preserving its draft.
+Connection and usage-cap errors remain visible for an explicit retry.
+
 **Usage** in connection settings shows this deployment's current period and
 reset, four metrics with separate free allowances and hard caps, and principal
 totals excluding storage. Missing measurements say **Unmeasured**. Usage loads
@@ -174,7 +215,8 @@ verification on an unlocked device; automated tests use an injected presenter
 and never request notification authorization.
 
 Application Support contains `life-ui/local.sqlite`, per-endpoint databases
-under `life-ui/replicas/`, per-workspace graph groups, and alert preferences,
+under `life-ui/replicas/`, per-hub download preferences under
+`life-ui/replicas/downloads/`, per-workspace graph groups, and alert preferences,
 baselines and delivered event IDs under `life-ui/alerts/`. Credentials never
 appear in these files. The facade serializes whole asynchronous core requests;
 sync holds the Python-compatible `<database>.sync.lock`. URLSession rejects
@@ -237,6 +279,10 @@ Browser smoke tests attach to a dedicated, already-open Chrome CDP page:
 Run them sequentially: concurrent Playwright connections to one browser can
 interfere with each other's confirmation dialogs. Keep source generators and
 type checks idle during these tests to avoid development-server reloads.
+Runners select their exact origin and `/workspace` through `workspacePage`,
+independent of product navigation parameters. Ambiguous tabs are rejected.
+Two-tab runners retain their observer handle and restore its fixture URL before
+disconnecting; product links intentionally discard `review` and `observer` flags.
 
 ```sh
 LIFE_UI_TEST_URL=http://127.0.0.1:5196/workspace bun scripts/test-workspace.ts
@@ -263,12 +309,16 @@ bun scripts/test-saved-views.ts /path/to/life-data
 bun scripts/test-typed-filters.ts /path/to/life-data
 bun scripts/test-table-invariants.ts /path/to/life-data
 bun scripts/test-read-dependencies.ts /path/to/life-data
+bun scripts/test-remote-browse.ts /path/to/life-data
 # Also open /workspace?review&observer=1 on the same reserved origin for this test.
 bun scripts/test-partial-sync.ts /path/to/life-data
 # Open http://life-ui-relations.localhost:5223/workspace?review in its own page.
 bun scripts/test-reference-navigation.ts /path/to/life-data
 # Only while owning that checkout and its dev server: temporarily mutate the route.
 bun scripts/test-reference-mutations.ts /path/to/life-data
+# Open http://life-ui-navigation.localhost:5224/workspace?review in its own page.
+bun scripts/test-workspace-navigation.ts /path/to/life-data
+bun scripts/test-navigation-mutations.ts /path/to/life-data
 ```
 
 The first test covers validation, Markdown persistence, relations, trash,
@@ -296,6 +346,16 @@ life-data fixture, including expanded views, engine contexts, unsupported
 namespaces and preparation without executing validation queries. The invariant
 flow also changes a rule's dependencies during sync and verifies that only its
 required tables need complete replication.
+
+Online browsing checks exercise real Worker/OPFS paging, fresh full-row lookup,
+deleted and missing records, a held response across close/reopen, local draft
+retention, usage caps, first-sync failure visibility and narrow layouts.
+
+URL navigation checks cover table/view/row restoration, fresh full rows, encoded
+identifiers, browser Back/Forward, draft cancellation, pending receipts, delayed
+replies, missing destinations and clipboard contents. `LIFE_UI_NAVIGATION_CASE`
+selects a case by name. Its held replies delay only delivery from the real
+Worker; SQLite, OPFS and the synthetic hub remain active.
 
 ## Core and build ownership
 
@@ -359,8 +419,8 @@ the shared core. Custom triggers, declared SQLite foreign keys and enforced
 estate-wide rules remain read-only because their effects cannot yet be validated
 and replayed consistently across clients. Catalog reference fields are supported.
 External files with table invariants remain read-only without verified sync coverage.
-Missing references must be included in the replica before editing them. A
-skipped table is not automatically browsed remotely. Native table search and
+Missing references must be included in the replica before editing them.
+Online browsing is explicit and read-only. Native table search and
 cross-table Find both use the shared local FTS5 index.
 Full grid keyboard editing and Notes migration remain open work.
 
@@ -376,9 +436,10 @@ is outside the MVP. Native property edits and new records require explicit Save;
 existing-record Markdown autosaves locally. Recovered stale drafts retain their
 source for review; automatic conflict merging is not implemented.
 
-Browser OPFS availability is required. There is no remote read-only fallback,
-service worker, or promise that a closed web app can cold-load without a
-network connection. An already-open workspace can edit its local data offline.
+Browser OPFS availability is required, including for the local catalog and
+binding used by online browsing. The app has no service worker or promise that
+a closed web app can cold-load without a network connection. An already-open
+workspace can edit its local data offline.
 
 ## Notifications and usage
 

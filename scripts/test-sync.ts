@@ -1,3 +1,4 @@
+import { workspacePage } from './test-origin';
 import { chromium,expect, type CDPSession } from '@playwright/test';
 
 const url=process.env.LIFE_UI_TEST_URL??'http://127.0.0.1:5197/workspace';
@@ -5,7 +6,7 @@ const hub=process.env.LIFE_UI_TEST_HUB??'http://127.0.0.1:5200';
 const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
 let network: CDPSession | undefined;
 try{
-  const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()===url);
+  const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);
   if(!page)throw new Error(`Open this dedicated test page first: ${url}`);
   await page.reload();
   await page.getByRole('button',{name:'Open my workspace',exact:true}).click();

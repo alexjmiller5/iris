@@ -3,6 +3,130 @@ import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testOnlineBrowseOpensReadOnlyFreshRecordAndKeepsLocalEditorSeparate() throws {
+    guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
+      throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")
+    }
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    tapWhenReady(app.navigationBars["notes"].buttons["Hub connection"])
+    tapWhenReady(app.textFields["hub-endpoint"])
+    app.textFields["hub-endpoint"].typeText(endpoint)
+    tapWhenReady(app.secureTextFields["hub-token"])
+    app.secureTextFields["hub-token"].typeText("fixture")
+    tapWhenReady(app.buttons["Save and sync"])
+    XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 15))
+    if app.sheets["Save Password?"].waitForExistence(timeout: 3) { dismissPasswordPrompt() }
+    tapWhenReady(app.buttons["browse-online"])
+    XCTAssertTrue(app.staticTexts["online-read-only-notice"].waitForExistence(timeout: 5))
+    let recordID = app.textFields["online-record-id"]
+    tapWhenReady(recordID)
+    let requestedID = "fixture-record"
+    recordID.typeText(requestedID)
+    // AutoFill can interrupt an in-progress synthetic keystroke stream. Repair
+    // only after observing that specific system prompt, then assert the input.
+    _ = app.sheets["Save Password?"].waitForExistence(timeout: 2)
+    let passwordInterrupted = dismissPasswordPrompt()
+    let tutorialInterrupted = dismissKeyboardTutorial()
+    if passwordInterrupted || tutorialInterrupted {
+      tapWhenReady(recordID)
+      let typed = recordID.value as? String ?? ""
+      XCTAssertTrue(requestedID.hasPrefix(typed))
+      recordID.typeText(String(requestedID.dropFirst(typed.count)))
+    }
+    XCTAssertEqual(recordID.value as? String, requestedID)
+    tapWhenReady(app.buttons["online-find-id"])
+    XCTAssertTrue(app.navigationBars["Fixture record"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.buttons["save-record"].exists)
+    XCTAssertFalse(app.textFields["field-title"].exists)
+    tapWhenReady(app.buttons["online-markdown-body"])
+    XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 10))
+    let source = app.webViews.descendants(matching: .any)["Body source"]
+    tapWhenReady(source)
+    let markdown = app.webViews.textViews.firstMatch
+    XCTAssertTrue(markdown.waitForExistence(timeout: 5))
+    XCTAssertTrue((markdown.value as? String)?.contains("From the hub") == true)
+    XCTAssertFalse(markdown.isEnabled)
+    XCTAssertFalse(app.webViews.buttons["Bold"].isEnabled)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-online-read-only-markdown"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    tapWhenReady(app.navigationBars["Body"].buttons.firstMatch)
+    XCTAssertTrue(app.navigationBars["Fixture record"].waitForExistence(timeout: 5))
+    tapWhenReady(app.navigationBars["Fixture record"].buttons.firstMatch)
+    tapWhenReady(app.navigationBars["Online widgets"].buttons["Done"])
+    XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
+    tapWhenReady(app.navigationBars["widgets"].buttons["new-record"])
+    let startNew = app.buttons["Start new record"]
+    if startNew.waitForExistence(timeout: 2) { tapWhenReady(startNew) }
+    let title = app.textFields["field-title"]
+    tapWhenReady(title)
+    title.typeText("Unsaved local draft")
+    XCTAssertFalse(app.buttons["browse-online"].isHittable)
+    XCTAssertEqual(title.value as? String, "Unsaved local draft")
+    tapWhenReady(app.navigationBars["New record"].buttons["Cancel"])
+    tapWhenReady(app.buttons["Discard changes"])
+    XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
+  }
+
+  func testDownloadSettingsRetainLocalRowsAndIncludeOnTheNextSync() throws {
+    guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
+      throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")
+    }
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    tapWhenReady(app.navigationBars["notes"].buttons["Hub connection"])
+    tapWhenReady(app.textFields["hub-endpoint"])
+    app.textFields["hub-endpoint"].typeText(endpoint)
+    tapWhenReady(app.secureTextFields["hub-token"])
+    app.secureTextFields["hub-token"].typeText("fixture")
+    tapWhenReady(app.buttons["Save and sync"])
+    XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 15))
+    if app.sheets["Save Password?"].waitForExistence(timeout: 3) { dismissPasswordPrompt() }
+    tapWhenReady(app.navigationBars["widgets"].buttons["Hub connection"])
+    tapWhenReady(app.buttons["hub-downloads"])
+    tapWhenReady(app.buttons["download-table-widgets"])
+    tapWhenReady(app.buttons["Automatic"])
+    let limit = app.textFields["download-limit"]
+    tapWhenReady(limit)
+    if limit.value as? String != "0" { limit.typeText("0") }
+    XCTAssertEqual(limit.value as? String, "0")
+    tapWhenReady(app.navigationBars["Downloads"].buttons["save-downloads"])
+    XCTAssertTrue(app.navigationBars["Hub connection"].waitForExistence(timeout: 5))
+    tapWhenReady(app.navigationBars["Hub connection"].buttons["Done"])
+    tapWhenReady(app.navigationBars["widgets"].buttons["sync-now"])
+    let notice = app.staticTexts["partial-table-notice"]
+    XCTAssertTrue(notice.waitForExistence(timeout: 15))
+    let search = app.searchFields.firstMatch
+    tapWhenReady(search)
+    search.typeText("Fixture record")
+    let record = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture record"))
+      .firstMatch
+    XCTAssertTrue(
+      record.waitForExistence(timeout: 5), "Skipping must retain previously downloaded rows")
+    tapWhenReady(app.buttons["close"])
+    XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
+    tapWhenReady(app.buttons["include-table-next-sync"])
+    XCTAssertTrue(notice.waitForExistence(timeout: 5))
+    tapWhenReady(app.navigationBars["widgets"].buttons["sync-now"])
+    XCTAssertTrue(notice.waitForNonExistence(timeout: 15))
+    tapWhenReady(app.navigationBars["widgets"].buttons["Hub connection"])
+    tapWhenReady(app.buttons["hub-downloads"])
+    XCTAssertEqual(limit.value as? String, "0")
+    let widgetChoice = app.buttons["download-table-widgets"]
+    XCTAssertTrue(
+      widgetChoice.label.contains("Include") || widgetChoice.value as? String == "Include")
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-download-settings"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
   func testReadOnlyReferenceOpensWithoutSelectionOrRemovalAndMissingStaysPut() throws {
     try XCTSkipIf(
       ProcessInfo.processInfo.environment["LIFE_UI_TEST_REFERENCE_SIMULATOR"] == nil,
@@ -830,10 +954,12 @@ final class WorkspaceUITests: XCTestCase {
           guard element.exists else { return false }
           let frame = element.frame
           return frame.width > 0 && frame.height > 0 && frame.minX.isFinite && frame.minY.isFinite
-            && element.isHittable
+            && element.isHittable && element.isEnabled
         }
       }, object: element)
-    let result = XCTWaiter.wait(for: [ready], timeout: 10)
+    // The predicate can dismiss the remote AutoFill sheet (up to 15 seconds)
+    // and keyboard tutorial (5 seconds); its outer budget must cover both.
+    let result = XCTWaiter.wait(for: [ready], timeout: 30)
     if result != .completed {
       let screenshot = XCTAttachment(screenshot: XCUIApplication().screenshot())
       screenshot.name = "unreachable-control"

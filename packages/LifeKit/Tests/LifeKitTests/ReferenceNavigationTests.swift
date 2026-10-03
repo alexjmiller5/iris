@@ -72,7 +72,10 @@ struct ReferenceNavigationTests {
     let context = try #require(workspace.editingContext)
     let source = editor()
     let navigation = workspace.makeReferenceNavigation(editor: source, context: context)
-    workspace.syncResult = CoreSyncResult(pulled: 0, pushed: 0, skipped: ["notes"], rejected: [])
+    workspace.isReplica = true
+    workspace.syncStatus = CoreSyncStatus(
+      lastSuccessfulSync: nil, pendingUiEdits: 0, rejected: 0, skippedTables: ["notes"])
+    #expect(workspace.skippedTables.contains("notes"))
     let updated = try await client.write(
       table: "notes",
       patch: [

@@ -1,6 +1,6 @@
 import { chromium, expect } from '@playwright/test';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 
 const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-markdown.localhost:5198/workspace?review';
 const origin = disposableOrigin(url);
@@ -13,7 +13,7 @@ db.db.exec(`INSERT INTO catalog_properties(id,tbl,col,label,sort,type) VALUES ('
  UPDATE widgets SET active=0 WHERE id='second-record';`);
 const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
 try {
- const page = browser.contexts().flatMap(c => c.pages()).find(p => p.url() === url);
+ const page = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
  if (!page) throw Error('Open the reserved review page first.');
  page.setDefaultTimeout(5000);
  await page.setViewportSize({width:1280,height:960});

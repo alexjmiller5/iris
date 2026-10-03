@@ -1,6 +1,6 @@
 import { chromium, expect } from '@playwright/test';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 
 const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-markdown.localhost:5198/workspace?review';
 const source = process.argv[2];
@@ -20,7 +20,7 @@ db.db.exec(`INSERT INTO catalog_tables(id,kind,display,purpose) VALUES ('journal
  ('journal-1','Field guide','# Celestial observations','2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z');`);
 const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
 try {
- const page = browser.contexts().flatMap(c => c.pages()).find(p => p.url() === url);
+ const page = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
  if (!page) throw new Error('Open the reserved search review page');
  page.setDefaultTimeout(8000);
  page.on('dialog', d => d.accept());

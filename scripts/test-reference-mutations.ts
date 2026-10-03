@@ -16,14 +16,14 @@ const mutations: { name: string; test: string; edits: [string | RegExp, string][
 		[/found = await workspace\.request\('rows', \{\s*view: \{\s*table: target\.table,[\s\S]*?\n\t\t\t\}\);/, 'found = Object.values(references).flat().filter(row => row.id === target.id).slice(0, 1);']
 	] },
 	{ name: 'discard confirmation bypassed', test: 'cancelled discard', edits: [
-		['if (!discard()) return false;\n\t\tresetView();', 'resetView();']
+		['if (!discard()) return false;\n\t\tlocationRequest++;\n\t\tnavigationLoading = false;\n\t\tif (preserveView', 'locationRequest++;\n\t\tnavigationLoading = false;\n\t\tif (preserveView']
 	] },
 	{ name: 'stale successful lookup accepted', test: 'held old-record', edits: [
 		['if (!current()) return false;', '/* mutation: accept stale success */']
 	] },
 	{ name: 'stale failed lookup displayed', test: 'held old-record', edits: [
 		['if (current()) throw e;', 'throw e;'],
-		['if (current()) error = message(e);', 'error = message(e);']
+		['if (current()) error = message(e);\n\t\t} finally {\n\t\t\tif (relationOpening', 'error = message(e);\n\t\t} finally {\n\t\t\tif (relationOpening']
 	] },
 	{ name: 'immutable references cannot be opened', test: 'immutable references', edits: [
 		['disabled={busy || relationOpening === editorVersion || !available}', 'disabled={locked(p) || busy || relationOpening === editorVersion || !available}']
@@ -35,7 +35,7 @@ const mutations: { name: string; test: string; edits: [string | RegExp, string][
 		['disabled={busy || relationOpening === editorVersion || !available}', 'disabled={relationOpening === editorVersion || !available}']
 	] },
 	{ name: 'destination saved views never loaded', test: 'destination saved views', edits: [
-		['await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {', 'await Promise.all([loadRows(), loadWriteability()]).catch((e) => {']
+		['recordHeading?.focus();\n\t\tawait Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {', 'recordHeading?.focus();\n\t\tawait Promise.all([loadRows(), loadWriteability()]).catch((e) => {']
 	] }
 ];
 

@@ -53,6 +53,13 @@ stays separate from editing/removal permissions, and skipped tables may still
 contain navigable local rows. Preserve the source editor on unavailable targets
 or canceled discard; stale lookup successes and errors must not change context.
 
+Web destination URLs carry only table, stable saved-view and record identifiers.
+Resolve them against the explicitly opened workspace's fresh catalog, saved view
+and full row. Use SvelteKit navigation hooks for browser history so cancelling
+Back restores the URL as well as the draft. Do not use shallow history entries
+that bypass those hooks. Ignore superseded lookup replies and block writes while
+resolving a linked record. Unsaved view settings and credentials stay out of URLs.
+
 Saved views use the core contract and the canonical `core/schema/saved-views.json`
 manifest vendored by `bundle-core.ts`. Only explicit app-owned local/sample
 initialization may create missing storage; replicas receive logged DDL through
@@ -110,6 +117,17 @@ Ordinary cursors or imported files do not certify completeness.
 Custom triggers, declared SQLite FKs and enforced estate rules fail closed.
 Missing replica references must not be guessed valid.
 Skipped-table data can be incomplete and the UI must identify that state.
+Use core status `skippedTables` after reopen, including offline. Core persists
+the last completed pull's exclusions even when pushes are rejected; hosts never
+write that state or infer completeness from download preferences.
+Online browsing calls generated `remoteRows`/`remoteRow` through the same
+serialized adapter. The core checks the durable endpoint binding before HTTP
+and rechecks schema/binding after it. Hosts supply the active connection, never
+draft credentials. Keep online rows transient and read-only; never merge them
+into local rows, FTS, cursors, coverage or pending edits. Preserve server paging
+cursors when deduplicating IDs, re-read a selected ID, show tombstones, and
+invalidate late replies on close or workspace/connection changes. Caps are
+shown without automatic retries or alternate routes.
 Pending UI edits await the core's own valid receipt; this is not the CLI queue.
 Never report a write as saved or a round as synced before its promise succeeds.
 Web sync failures also broadcast database changes: individual pulls and receipts

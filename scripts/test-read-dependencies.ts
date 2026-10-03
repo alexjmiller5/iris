@@ -1,7 +1,7 @@
 // Real OPFS/SQLite compiler checks: dropping a dependency or stepping an inspected
 // statement must fail these assertions. Production dispatch has no SQL test seam.
 import { chromium, expect } from '@playwright/test';
-import { disposableOrigin } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 import { resolve } from 'node:path';
 
 const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-markdown.localhost:5198/workspace?review';
@@ -10,8 +10,9 @@ const source=process.argv[2];
 if(!source)throw Error('Provide the life-data checkout for the shared adapter fixture');
 const fixture=await Bun.file(resolve(source,'tests/fixtures/read-dependencies.json')).json();
 const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
+let ownedPage: import('@playwright/test').Page | undefined;
 try {
-  const page = browser.contexts().flatMap(c => c.pages()).find(p => p.url() === url);
+  const page = ownedPage = workspacePage(browser.contexts().flatMap(c => c.pages()),url);
   if (!page) throw Error('Open the dedicated dependency fixture page first.');
   await page.setViewportSize({width:1280,height:960});
   await page.goto(new URL('/',url).href);
@@ -122,7 +123,7 @@ try {
   }
 
 }finally{
-  const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()===url);
+  const page=ownedPage;
   await page?.evaluate(()=>(window as any).dependencyProbe?.close()).catch(()=>{});
   await page?.reload().catch(()=>{});
   await browser.close();

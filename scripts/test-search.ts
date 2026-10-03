@@ -1,10 +1,10 @@
 import { chromium, expect } from '@playwright/test';
-import { disposableOrigin } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 const url=process.env.LIFE_UI_TEST_URL??'http://life-ui-markdown.localhost:5198/workspace?review';
 const origin=disposableOrigin(url);
 const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
 try {
- const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()===url);
+ const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);
  if(!page)throw Error('Open the reserved search review page');
  let acceptDiscard=true;
  page.setDefaultTimeout(8000);page.on('dialog',d=>acceptDiscard?d.accept():d.dismiss());

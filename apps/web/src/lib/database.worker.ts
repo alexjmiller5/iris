@@ -228,11 +228,7 @@ async function snapshot(): Promise<WorkspaceSnapshot> {
 		catalog: await readCatalog(db),
 		status,
 		lastSync: status.lastSuccessfulSync,
-		skipped: JSON.parse(
-			String(
-				(await db.all("SELECT value FROM _core_state WHERE key='skipped_tables'"))[0]?.value ?? '[]'
-			)
-		) as string[],
+		skipped: status.skippedTables,
 		rejected: (await db.all('SELECT * FROM _core_rejected ORDER BY tbl,row_id')).map((row) => ({
 			...row,
 			row: JSON.parse(String(row.row)),
@@ -355,6 +351,24 @@ async function dispatch(request: DatabaseRequest) {
 			return (await local.rows(args.view)).map((row) => row.record);
 		case 'search':
 			return local.search(args);
+		case 'remoteRows': {
+			if (databaseName === 'life-ui-demo')
+				throw new Error('Sample workspaces cannot browse a hub.');
+			const { token, ...input } = args;
+			const hub = createHttpHub(input.endpoint, token, (url, init) =>
+				fetch(url, { ...init, signal: AbortSignal.timeout(30_000) })
+			);
+			return createCoreHandlers(db, () => hub, 'life-ui').remoteRows(input);
+		}
+		case 'remoteRow': {
+			if (databaseName === 'life-ui-demo')
+				throw new Error('Sample workspaces cannot browse a hub.');
+			const { token, ...input } = args;
+			const hub = createHttpHub(input.endpoint, token, (url, init) =>
+				fetch(url, { ...init, signal: AbortSignal.timeout(30_000) })
+			);
+			return createCoreHandlers(db, () => hub, 'life-ui').remoteRow(input);
+		}
 		case 'listViews':
 			return local.listViews(args);
 		case 'saveView':
@@ -390,11 +404,7 @@ async function dispatch(request: DatabaseRequest) {
 			const hub = createHttpHub(args.endpoint, args.token, (url, init) =>
 				fetch(url, { ...init, signal: AbortSignal.timeout(120_000) })
 			);
-			const result = await createCoreHandlers(db, () => hub, 'life-ui').sync(args);
-			await db.run("INSERT OR REPLACE INTO _core_state(key,value) VALUES ('skipped_tables',?)", [
-				JSON.stringify(result.skipped)
-			]);
-			return result;
+			return createCoreHandlers(db, () => hub, 'life-ui').sync(args);
 		}
 		default:
 			throw new Error('Unknown database operation.');

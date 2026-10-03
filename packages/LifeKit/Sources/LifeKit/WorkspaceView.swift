@@ -11,6 +11,7 @@ public struct WorkspaceView: View {
   @State private var showingGraph = false
   @State private var tableSearchPresented = false
   @State private var editor: EditorTarget?
+  @State private var online: OnlineBrowseModel?
   @State private var quickFind: QuickFindModel?
   @State private var pendingSearchEditor: (target: EditorTarget, generation: Int)?
   @State private var pendingReferenceEditor:
@@ -100,11 +101,28 @@ public struct WorkspaceView: View {
           editor = nil
         }, onSaved: { editor = nil })
     }
+    .sheet(
+      item: $online,
+      onDismiss: {
+        online?.cancel()
+        online = nil
+      }
+    ) { browser in
+      OnlineBrowseView(model: browser, fields: model.properties.map(CatalogField.init))
+    }
+    .onChange(of: model.table) {
+      online?.cancel()
+      online = nil
+    }
+    .onChange(of: model.isReplica) {
+      online?.cancel()
+      online = nil
+    }
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
     .sheet(isPresented: $options) { WorkspaceOptionsView(model: model) }
     .sheet(isPresented: $savedViews) { SavedViewsView(model: model) }
     .sheet(item: $quickFind, onDismiss: openSearchEditor) { find in
-      QuickFindView(model: find, incomplete: model.syncResult?.skipped.isEmpty == false) {
+      QuickFindView(model: find, incomplete: !model.skippedTables.isEmpty) {
         hit, row in
         guard find.isCurrent, quickFind === find, editor == nil, let client = model.client else {
           return
@@ -121,6 +139,8 @@ public struct WorkspaceView: View {
       }
     }
     .onChange(of: model.workspaceGeneration) {
+      online?.cancel()
+      online = nil
       quickFind?.cancel()
       quickFind = nil
       pendingSearchEditor = nil
@@ -135,7 +155,8 @@ public struct WorkspaceView: View {
   }
 
   private var canFind: Bool {
-    model.client != nil && editor == nil && quickFind == nil && pendingSearchEditor == nil
+    model.client != nil && editor == nil && online == nil && quickFind == nil
+      && pendingSearchEditor == nil
       && !settings && !options && !savedViews && !importing
   }
 
@@ -223,8 +244,8 @@ public struct WorkspaceView: View {
           }
         }.accessibilityIdentifier("resume-unsaved-draft")
       }
-      if model.isReplica, let result = model.syncResult,
-        !result.rejected.isEmpty || !result.skipped.isEmpty
+      if model.isReplica,
+        model.syncResult?.rejected.isEmpty == false || !model.skippedTables.isEmpty
       {
         SyncDetails(model: model)
       }
@@ -268,6 +289,20 @@ public struct WorkspaceView: View {
     .safeAreaInset(edge: .top, spacing: 0) {
       VStack(alignment: .leading, spacing: 8) {
         if model.isReplica { SyncSummary(model: model) }
+        if let message = model.partialTableNotice, let context = model.downloadContext,
+          let table = model.table
+        {
+          PartialReplicaNotice(model: model, context: context, table: table, message: message)
+        }
+        if model.isReplica, model.table != nil {
+          Button {
+            guard canFind else { return }
+            tableSearchPresented = false
+            online = model.makeOnlineBrowser()
+          } label: {
+            Label("Browse online", systemImage: "cloud")
+          }.disabled(!canFind).accessibilityIdentifier("browse-online")
+        }
         if let reason = model.editingUnavailable {
           Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(3)
             .accessibilityIdentifier("editing-availability")
@@ -595,7 +630,7 @@ private struct RecordEditor: View {
     if !model.tables.contains(where: { $0["id"]?.text == table }) {
       return "The related table is not available on this device."
     }
-    return model.syncResult?.skipped.contains(table) == true
+    return model.skippedTables.contains(table)
       ? "Some records in this table were skipped during sync. Stored records can still be opened."
       : nil
   }

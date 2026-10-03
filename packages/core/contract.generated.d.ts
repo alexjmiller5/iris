@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "b32e4976fea4b007cf805b37532565ae7aa3d0a17f10bafa862fa5d4c41fff71";
+export declare const CORE_CONTRACT_HASH = "b1cc3357e8c30ad1007a1c976eda5cd7b1587f97e58279860dc7cb344cd953ab";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -88,6 +88,7 @@ export type SyncStatus = {
     lastSuccessfulSync: string | null;
     pendingUiEdits: Count;
     rejected: Count;
+    skippedTables: string[];
 };
 export type UsagePeriod = {
     start: string;
@@ -237,6 +238,29 @@ export type Writeability = {
     writable: boolean;
     reason: WriteViolation | null;
 };
+export type RemoteRecord = {
+    record: Row;
+    label: string;
+    deleted: boolean;
+};
+export type RemoteRowsArgs = {
+    endpoint: string;
+    table: string;
+    limit?: Count;
+    cursor?: string;
+};
+export type RemoteRowsPage = {
+    rows: RemoteRecord[];
+    nextCursor: string | null;
+};
+export type RemoteRowArgs = {
+    endpoint: string;
+    table: string;
+    id: string;
+};
+export type RemoteRowResult = {
+    row: RemoteRecord | null;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -297,6 +321,14 @@ export interface CoreOperations {
     writeability: {
         args: WriteabilityArgs;
         result: Writeability;
+    };
+    remoteRows: {
+        args: RemoteRowsArgs;
+        result: RemoteRowsPage;
+    };
+    remoteRow: {
+        args: RemoteRowArgs;
+        result: RemoteRowResult;
     };
 }
 export type CoreMethod = keyof CoreOperations;

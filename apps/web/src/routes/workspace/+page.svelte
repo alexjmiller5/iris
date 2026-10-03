@@ -3,7 +3,8 @@
 	import { editRevision } from '$lib/record-revision';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import { onDestroy, onMount, tick } from 'svelte';
-	import { beforeNavigate } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	import { destinationURL, readDestination, resolveDestination } from '$lib/workspace-navigation';
 	import {
 		IconDatabase,
 		IconPlus,
@@ -13,7 +14,8 @@
 		IconArrowUpRight,
 		IconSearch,
 		IconX,
-		IconDeviceFloppy
+		IconDeviceFloppy,
+		IconLink
 	} from '@tabler/icons-svelte';
 	import {
 		createHttpHub,
@@ -34,6 +36,12 @@
 	import SearchDialog from '$lib/SearchDialog.svelte';
 	import ColumnSettings from '$lib/ColumnSettings.svelte';
 	import SavedViews from '$lib/SavedViews.svelte';
+	import RemoteBrowser from '$lib/RemoteBrowser.svelte';
+	let onlineBrowser = $state<{
+		workspace: WorkspaceDatabase;
+		table: string;
+		connection: { endpoint: string; token: string };
+	} | null>(null);
 	let connectedHub = $state<{ endpoint: string; token: string } | null>(null);
 	let findVisible = $state(false);
 	let findVersion = 0;
@@ -42,7 +50,7 @@
 		findVisible = visible;
 	}
 
-	let database: WorkspaceDatabase | null = null;
+	let database = $state<WorkspaceDatabase | null>(null);
 	let ready = $state(false),
 		online = $state(true);
 	onMount(() => {
@@ -53,6 +61,16 @@
 		demo = $state(false),
 		busy = $state(false),
 		error = $state('');
+	$effect(() => {
+		if (
+			onlineBrowser &&
+			(!opened ||
+				database !== onlineBrowser.workspace ||
+				table !== onlineBrowser.table ||
+				connectedHub !== onlineBrowser.connection)
+		)
+			onlineBrowser = null;
+	});
 	let writing = $state(false);
 	let bodySaving = $state(false),
 		bodyFailure = $state('');
@@ -60,6 +78,9 @@
 	let relationOpening = $state<number | null>(null);
 	let recordHeading = $state<HTMLHeadingElement>();
 	let recordOpenVersion = 0;
+	let locationRequest = 0;
+	let reflectingURL: string | null = null;
+	let navigationLoading = $state(false);
 	let catalog = $state<{ tables: Row[]; properties: Property[]; rules: Row[] }>({
 		tables: [],
 		properties: [],
@@ -92,8 +113,82 @@
 	const discard = () =>
 		!writing && !bodySaving && (!dirty || confirm('Discard unsaved changes to this record?'));
 	beforeNavigate((navigation) => {
-		if (!discard()) navigation.cancel();
+		if (navigation.to?.url.href === reflectingURL) return;
+		if ((opened && busy) || !discard()) {
+			navigation.cancel();
+			return;
+		}
+		locationRequest++;
+		recordOpenVersion++;
+		showFind(false);
 	});
+	afterNavigate(({ to }) => {
+		if (opened && to && to.url.href !== reflectingURL) void restoreLocation(to.url);
+	});
+	function currentDestination() {
+		return {
+			table: table || null,
+			view: chosenView?.id ?? null,
+			row: editing && selected ? String(selected.id) : null
+		};
+	}
+	async function reflectLocation(replace = false) {
+		const url = destinationURL(new URL(window.location.href), currentDestination());
+		if (url.href === window.location.href) return;
+		reflectingURL = url.href;
+		try {
+			await goto(url, { replaceState: replace, noScroll: true, keepFocus: true });
+		} finally {
+			if (reflectingURL === url.href) reflectingURL = null;
+		}
+	}
+	async function restoreLocation(url: URL) {
+		const workspace = database,
+			request = ++locationRequest;
+		let version = editorVersion;
+		if (!workspace) return;
+		navigationLoading = true;
+		const current = () =>
+			database === workspace && request === locationRequest && version === editorVersion;
+		try {
+			const resolved = await resolveDestination(workspace, readDestination(url), table);
+			if (!current()) return;
+			resetView();
+			catalog = resolved.catalog;
+			table = resolved.table;
+			graphVisible = false;
+			applyView(resolved.view);
+			if (resolved.row) trash = !!resolved.row.deleted_at;
+			if (resolved.row) edit(resolved.row, false);
+			version = editorVersion;
+			await Promise.all([loadRows(), loadViews(), loadWriteability()]);
+			await tick();
+			if (current() && resolved.row) recordHeading?.focus();
+		} catch (e) {
+			if (current()) error = message(e);
+		} finally {
+			if (request === locationRequest) navigationLoading = false;
+		}
+	}
+	async function copyLink() {
+		try {
+			await navigator.clipboard.writeText(
+				destinationURL(new URL(window.location.href), currentDestination()).href
+			);
+			notice = 'Link copied. Open it in the matching workspace.';
+		} catch {
+			error = 'The link could not be copied. Copy the address from your browser.';
+		}
+	}
+	function closeRecord() {
+		if (!discard()) return false;
+		editing = false;
+		editorVersion++;
+		locationRequest++;
+		navigationLoading = false;
+		void reflectLocation();
+		return true;
+	}
 	let lastSync = $state<string | null>(null),
 		pendingEdits = $state(0),
 		rejected = $state<Row[]>([]),
@@ -211,6 +306,7 @@
 		if (
 			!editing ||
 			!bodyPatch ||
+			navigationLoading ||
 			busy ||
 			readOnly ||
 			blocked ||
@@ -263,6 +359,7 @@
 	const tableName = (t: Row) => String(t.id);
 	const title = (row: Row) => displayName(row, display);
 	const locked = (p: Property) =>
+		navigationLoading ||
 		writing ||
 		!!p.derived_by ||
 		!!p.deprecated ||
@@ -531,6 +628,10 @@
 			database.addEventListener('change', () => {
 				void refresh().catch((e) => (error = message(e)));
 			});
+			const linked = new URL(window.location.href);
+			if (['table', 'view', 'row'].some((key) => linked.searchParams.has(key)))
+				await restoreLocation(linked);
+			else await reflectLocation(true);
 		} catch (e) {
 			error = message(e);
 			opened = false;
@@ -540,12 +641,16 @@
 	}
 	async function changeTable(name: string) {
 		if (!discard()) return;
+		locationRequest++;
+		navigationLoading = false;
 		resetView();
 		graphVisible = false;
 		table = name;
-		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch(
-			(e) => (error = message(e))
-		);
+		const version = editorVersion;
+		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {
+			if (editorVersion === version) error = message(e);
+		});
+		if (editorVersion === version) await reflectLocation();
 	}
 
 	function viewDefinition(): SavedViewDefinition {
@@ -576,8 +681,12 @@
 		const view = id === null ? null : savedViews.find((view) => view.id === id);
 		if (id !== null && (!view?.definition || !view.view || view.unavailable)) return false;
 		if (!discard()) return false;
+		locationRequest++;
+		navigationLoading = false;
 		applyView(view ?? null);
+		const version = editorVersion;
 		await loadRows();
+		if (version === editorVersion) await reflectLocation();
 		return true;
 	}
 	function applyView(view: SavedViewRecord | null) {
@@ -626,6 +735,7 @@
 			chosenView = saved;
 			viewBaseline = JSON.stringify(definition);
 			await loadViews();
+			await reflectLocation();
 			notice = 'View saved on this device';
 		} finally {
 			if (database === workspace) {
@@ -650,6 +760,7 @@
 			if (workspace !== database || table !== target || version !== viewVersion) return;
 			applyView(null);
 			await Promise.all([loadRows(), loadViews()]);
+			await reflectLocation();
 			notice = 'View deleted; records kept';
 		} finally {
 			if (database === workspace) {
@@ -692,7 +803,7 @@
 		filters = index === undefined ? [] : filters.filter((_, i) => i !== index);
 		await find();
 	}
-	function edit(row: Row | null) {
+	function edit(row: Row | null, reflect = true) {
 		if (!discard()) return;
 		editorVersion++;
 		selected = row;
@@ -708,6 +819,7 @@
 			void loadReferences(p);
 		for (const p of properties.filter((p) => p.type === 'select' || p.type === 'multi_select'))
 			void loadOptions(p);
+		if (reflect) void reflectLocation();
 	}
 	function rowDraft(row: Row | null) {
 		const values: Record<string, string> = {};
@@ -720,7 +832,7 @@
 		return values;
 	}
 	async function save() {
-		if (!database || busy || !editing) return;
+		if (!database || busy || navigationLoading || !editing) return;
 		const workspace = database,
 			version = editorVersion,
 			target = table;
@@ -762,6 +874,7 @@
 			bodyFailure = '';
 			notice = 'Saved on this device';
 			await refresh();
+			await reflectLocation(true);
 		} catch (e) {
 			if (database === workspace && editorVersion === version) error = message(e);
 		} finally {
@@ -772,7 +885,7 @@
 		}
 	}
 	async function toggleTrash() {
-		if (!database || !selected || busy) return;
+		if (!database || !selected || busy || navigationLoading) return;
 		if (!discard()) return;
 		const workspace = database,
 			version = editorVersion,
@@ -792,6 +905,7 @@
 			selected = null;
 			notice = trash ? 'Record restored' : 'Moved to trash';
 			await refresh();
+			await reflectLocation(true);
 		} catch (e) {
 			if (database === workspace && editorVersion === version) error = message(e);
 		} finally {
@@ -858,8 +972,14 @@
 		if (!database) throw new Error('Open a workspace first.');
 		return database.request('search', { text, offset, limit: 50 });
 	}
-	async function openRecord(target: { table: string; id: string }, sourceIsCurrent: () => boolean) {
+	async function openRecord(
+		target: { table: string; id: string },
+		sourceIsCurrent: () => boolean,
+		preserveView = false
+	) {
 		if (!database || busy) return false;
+		locationRequest++;
+		navigationLoading = false;
 		const workspace = database,
 			version = editorVersion,
 			request = ++recordOpenVersion;
@@ -876,6 +996,7 @@
 				view: {
 					table: target.table,
 					filters: [{ column: 'id', op: 'eq', value: target.id }],
+					trash: preserveView && trash,
 					limit: 1
 				}
 			});
@@ -889,10 +1010,13 @@
 				'This record is not available locally. It may be missing, in the trash, or outside this replica.'
 			);
 		if (!discard()) return false;
-		resetView();
+		locationRequest++;
+		navigationLoading = false;
+		if (preserveView && table === target.table) editing = false;
+		else resetView();
 		table = target.table;
 		graphVisible = false;
-		edit(found[0]);
+		edit(found[0], false);
 		showFind(false);
 		const openedVersion = editorVersion;
 		await tick();
@@ -901,6 +1025,8 @@
 		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {
 			if (database === workspace && editorVersion === openedVersion) error = message(e);
 		});
+		if (database !== workspace || editorVersion !== openedVersion) return false;
+		await reflectLocation();
 		return true;
 	}
 	function openSearchHit(hit: SearchHit) {
@@ -926,6 +1052,7 @@
 		}
 	}
 	onDestroy(() => {
+		locationRequest++;
 		editorVersion++;
 		database?.close();
 		database = null;
@@ -937,7 +1064,7 @@
 	onkeydown={(event) => {
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && opened) {
 			event.preventDefault();
-			if (!busy && !findVisible) showFind(true);
+			if (!busy && !findVisible && !onlineBrowser) showFind(true);
 		}
 	}}
 	ononline={() => (online = true)}
@@ -968,6 +1095,25 @@
 		{#if error}<p role="alert" class="failure">{error}</p>{/if}
 	</main>
 {:else}
+	{#if onlineBrowser && database === onlineBrowser.workspace && table === onlineBrowser.table && connectedHub === onlineBrowser.connection}
+		{@const context = onlineBrowser}
+		<RemoteBrowser
+			table={context.table}
+			properties={catalog.properties.filter((p) => p.tbl === context.table)}
+			readPage={(cursor) =>
+				context.workspace.request('remoteRows', {
+					...context.connection,
+					table: context.table,
+					limit: 50,
+					...(cursor === undefined ? {} : { cursor })
+				})}
+			readRow={(id) =>
+				context.workspace.request('remoteRow', { ...context.connection, table: context.table, id })}
+			onclose={() => {
+				onlineBrowser = null;
+			}}
+		/>
+	{/if}
 	{#if findVisible}
 		<SearchDialog
 			search={searchWorkspace}
@@ -1005,8 +1151,7 @@
 				<button
 					class="secondary"
 					onclick={() => {
-						if (discard()) {
-							editing = false;
+						if (closeRecord()) {
 							graphVisible = !graphVisible;
 						}
 					}}>{graphVisible ? 'Records' : 'Table graph'}</button
@@ -1065,6 +1210,16 @@
 				>
 			</aside>
 			<main class="records">
+				{#if table && !editing}<div class="link-toolbar">
+						<button
+							class="secondary"
+							onclick={copyLink}
+							disabled={navigationLoading || (editing && !selected)}
+							><IconLink size={16} /> Copy link</button
+						>
+					</div>{/if}
+				{#if navigationLoading}<p role="status" class="hint">Opening link…</p>{/if}
+				{#if error}<p role="alert" class="failure">{error}</p>{/if}
 				{#if graphVisible}<SchemaGraph
 						tables={catalog.tables}
 						properties={catalog.properties}
@@ -1073,6 +1228,14 @@
 					/>{:else}
 					{#if skipped.includes(table)}<div class="notice">
 							<p>This table is excluded from sync. Its local records may be incomplete.</p>
+							<button
+								class="secondary"
+								disabled={busy || writing || bodySaving || !connectedHub || !online}
+								onclick={() => {
+									if (database && connectedHub)
+										onlineBrowser = { workspace: database, table, connection: connectedHub };
+								}}>Browse online</button
+							>
 							<button
 								class="secondary"
 								onclick={() => {
@@ -1138,10 +1301,9 @@
 							<button
 								class="secondary"
 								onclick={() => {
-									if (!discard()) return;
+									if (!closeRecord()) return;
 									trash = !trash;
 									offset = 0;
-									editing = false;
 									loadRows().catch((e) => (error = message(e)));
 								}}><IconTrash size={16} />{trash ? 'All records' : 'Trash'}</button
 							>
@@ -1227,7 +1389,6 @@
 						{#if blocked}<p role="status" aria-label="Editing availability" class="notice">
 								{writePermission?.reason?.message ?? 'Checking editing rules…'}
 							</p>{/if}
-						{#if error}<p role="alert" class="failure">{error}</p>{/if}
 						{#if rejected.length}<details class="rejections">
 								<summary>{rejected.length} rejected edits need attention</summary
 								>{#each rejected as r}<p>
@@ -1253,7 +1414,15 @@
 									{#each rows as row (row.id)}<tr
 											class:selected={selected?.id === row.id && editing}
 											><td
-												><button class="record-link" onclick={() => edit(row)}>{title(row)}</button
+												><button
+													class="record-link"
+													onclick={() => {
+														void openRecord(
+															{ table, id: String(row.id) },
+															() => !findVisible,
+															true
+														).catch((e) => (error = message(e)));
+													}}>{title(row)}</button
 												></td
 											>{#each gridProperties as p}<td>{cell(p, row[p.col])}</td>{/each}</tr
 										>{/each}
@@ -1300,16 +1469,18 @@
 								{selected ? title(selected) : 'Untitled'}
 							</h2>
 						</div>
-						<button
-							class="icon-button secondary"
-							aria-label="Close record"
-							onclick={() => {
-								if (discard()) {
-									editing = false;
-									editorVersion++;
-								}
-							}}><IconX size={18} /></button
-						>
+						<div class="record-navigation">
+							<button
+								class="icon-button secondary"
+								aria-label="Copy link"
+								title="Copy link"
+								disabled={navigationLoading || !selected}
+								onclick={copyLink}><IconLink size={18} /></button
+							>
+							<button class="icon-button secondary" aria-label="Close record" onclick={closeRecord}
+								><IconX size={18} /></button
+							>
+						</div>
 					</header>
 					{#if draftProperties.some((p) => p.type === 'markdown')}
 						<p role="status" aria-label="Body save status" class="hint">
@@ -1488,13 +1659,15 @@
 						{/each}
 						{#if error}<p role="status" class="failure">{error}</p>{/if}
 						<div class="editor-actions">
-							<button type="submit" disabled={busy || readOnly || blocked || trash}
+							<button
+								type="submit"
+								disabled={busy || navigationLoading || readOnly || blocked || trash}
 								><IconDeviceFloppy size={17} />Save record</button
 							>{#if selected}<button
 									type="button"
 									class="secondary"
 									onclick={toggleTrash}
-									disabled={busy || readOnly || blocked}
+									disabled={busy || navigationLoading || readOnly || blocked}
 									>{trash ? 'Restore record' : 'Move to trash'}</button
 								>{/if}
 						</div>
@@ -1694,6 +1867,11 @@
 		max-width: 520px;
 		line-height: 1.6;
 	}
+	.link-toolbar {
+		display: flex;
+		justify-content: flex-end;
+		margin-bottom: 8px;
+	}
 	.relation-links {
 		display: flex;
 		flex-wrap: wrap;
@@ -1887,6 +2065,12 @@
 		box-shadow: -12px 0 40px #0000000c;
 		padding: 28px;
 		z-index: 5;
+	}
+	.record-navigation {
+		display: flex;
+		align-items: start;
+		gap: 6px;
+		flex-shrink: 0;
 	}
 	.record-panel header {
 		display: flex;

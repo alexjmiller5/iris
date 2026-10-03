@@ -11,6 +11,15 @@ struct HubConnectionView: View {
   var body: some View {
     NavigationStack {
       Form {
+        if let context = model.downloadContext {
+          Section {
+            NavigationLink {
+              DownloadsView(model: model, context: context)
+            } label: {
+              Label("Downloads", systemImage: "arrow.down.circle")
+            }.accessibilityIdentifier("hub-downloads")
+          }
+        }
         if model.services.connected {
           Section("This deployment") {
             NavigationLink {
@@ -162,9 +171,9 @@ struct SyncDetails: View {
             .textSelection(.enabled)
           }
         }
-        if !result.skipped.isEmpty {
-          Text("Not downloaded: \(result.skipped.joined(separator: ", "))")
-        }
+      }
+      if !model.skippedTables.isEmpty {
+        Text("Not downloaded: \(model.skippedTables.joined(separator: ", "))")
       }
     }.font(.caption).foregroundStyle(.secondary)
   }
