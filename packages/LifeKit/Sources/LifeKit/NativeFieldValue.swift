@@ -3,6 +3,14 @@ import Foundation
 enum NativeDateKind: String { case date, datetime }
 
 enum NativeDateValue {
+  static func currentValue(at date: Date, kind: NativeDateKind, timeZone: TimeZone = .current)
+    -> String
+  {
+    let formatter = formatter(kind)
+    if kind == .date { formatter.timeZone = timeZone }
+    return formatter.string(from: date)
+  }
+
   static func parse(_ raw: String, kind: NativeDateKind) -> Date? {
     let formatter = formatter(kind)
     guard let date = formatter.date(from: raw), formatter.string(from: date) == raw else {

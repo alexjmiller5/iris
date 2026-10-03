@@ -136,6 +136,18 @@ Catalog rules, read-only tables, validation, history and stale-revision checks
 come from shared core. An editor also captures its workspace and table, so
 changing connections cannot redirect a save. Unsaved drafts require explicit
 discard.
+Select fields show catalog choices and their descriptions. Multi-select fields
+show removable choices and an **Add choice** menu. Choices supplied by a catalog
+query load from the open workspace and can be retried after an error. Unknown
+stored choices stay selected until explicitly removed; core still validates Save.
+**Edit JSON source** keeps malformed multi-select values available for repair.
+Opening a control does not rewrite its stored source.
+
+Dates retain their text source beside a native picker, with **Clear date** for an
+explicit unset value. Datetimes display in UTC; untouched milliseconds remain
+intact. An invalid date stays visible until edited or explicitly replaced.
+Boolean fields distinguish **Not set**, **True** and **False**. Website, email
+and phone fields offer explicit system open actions for supported addresses.
 Editing controls use core's current table advisory and show why editing is
 unavailable. The advisory refreshes after successful or failed sync; incomplete
 invariant coverage leaves records browsable. Saved-view writes check the views

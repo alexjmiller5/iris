@@ -124,6 +124,14 @@ columns on existing rows; it updates the acknowledged baseline without replacing
 the live draft. Failed identical patches must not loop. Preserve unknown existing
 multi-select values.
 
+Native catalog choices load through `NativeWorkspace.options`; controls only
+change draft bindings. Keep selected unknown choices and exact UTF-8 option keys,
+and expose malformed multi-select source for explicit repair. Late option replies
+must not replace a closed editor's state. Date controls preserve untouched source
+and use explicit UTC for datetimes; invalid values never silently become today.
+Link actions require explicit taps and supported schemes. Core remains the only
+validator and writer.
+
 Session Undo uses the core's one volatile receipt. Display the action as
 "Undo last saved change" and submit that displayed receipt ID; never reconstruct
 inverses or expose history as undo. Pause body autosave before the request without

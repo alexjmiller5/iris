@@ -46,16 +46,21 @@ struct TypedFieldsUIFixtureTests {
         fields.forEach(([col,label,type,options,sql],sort) => LifeSql.run(
           'INSERT OR REPLACE INTO catalog_properties(id,tbl,col,label,type,options,options_sql,sort) VALUES (?,?,?,?,?,?,?,?)',
           ['field_examples.'+col,'field_examples',col,label,type,options,sql,sort]));
-        LifeSql.run(`INSERT OR REPLACE INTO field_examples(id,title,tags,dynamic,spelling,day,moment,flag,website,email,phone)
-          VALUES ('typed-fields','Typed field notebook',?,?,?,?,?,0,'https://example.test','note@example.test','+00 (000) 000-0000')`,
-          ['[ "Unknown", "Alpha" ]','Dynamic one','\u00e9','2024-02-29','2024-02-29T23:04:05.123Z']);
+        LifeSql.run("DELETE FROM field_examples");
+        for (const [id,title,tags] of [
+          ['typed-choices','Choice field notebook','[ "Unknown", "Alpha" ]'],
+          ['typed-dates','Date field notebook','["Alpha"]']
+        ]) LifeSql.run(`INSERT INTO field_examples(id,title,tags,dynamic,spelling,day,moment,flag,website,email,phone)
+          VALUES (?,?,?,?,?,?,?,0,'https://example.test','note@example.test','+00 (000) 000-0000')`,
+          [id,title,tags,'Dynamic one','\u00e9','2024-02-29','2024-02-29T23:04:05.123Z']);
         """#)
       try #require(runtime.context.exception == nil)
       #expect(
         try await workspace.options(table: "field_examples", column: "dynamic") == [
           "Dynamic one", "Dynamic two",
         ])
-      let row = try #require(try await workspace.rows(table: "field_examples").first)
+      let row = try #require(
+        try await workspace.rows(table: "field_examples").first { $0.id == "typed-choices" })
       #expect(row.record["tags"]?.text == "[ \"Unknown\", \"Alpha\" ]")
       try await workspace.close()
     }

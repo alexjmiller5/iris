@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class TypedFieldsUITests: XCTestCase {
   func testChoicesRetainUnknownValuesUntilExplicitRepairAndSave() throws {
-    let app = try openFixture()
+    let app = try openFixture("choices")
     defer { app.terminate() }
     let removeUnknown = app.buttons["remove-choice-tags-Unknown"]
     reveal(removeUnknown, in: app)
@@ -29,10 +29,11 @@ final class TypedFieldsUITests: XCTestCase {
     reveal(removeUnknown, in: app, down: true)
     tap(removeUnknown)
     tap(app.navigationBars["Record"].buttons["save-record"])
+    XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
     app.terminate()
     app.launch()
     tap(app.buttons["open-local"])
-    findRecord(app)
+    findRecord(app, record: "choices")
     reveal(app.buttons["remove-choice-tags-Beta"], in: app)
     XCTAssertFalse(removeUnknown.exists)
     XCTAssertTrue(app.buttons["remove-choice-tags-Beta"].exists)
@@ -52,7 +53,7 @@ final class TypedFieldsUITests: XCTestCase {
   }
 
   func testDateControlsPreserveSourceUntilExplicitClear() throws {
-    let app = try openFixture()
+    let app = try openFixture("dates")
     defer { app.terminate() }
     let picker = app.datePickers["date-picker-day"]
     reveal(picker, in: app)
@@ -64,23 +65,55 @@ final class TypedFieldsUITests: XCTestCase {
     let clear = app.buttons["clear-date-day"]
     reveal(clear, in: app, down: true)
     tap(clear)
-    XCTAssertEqual(app.textFields["field-day"].value as? String, "")
+    let choose = app.buttons["choose-date-day"]
+    XCTAssertTrue(choose.waitForExistence(timeout: 5))
+    expectEmpty(app.textFields["field-day"])
     tap(app.navigationBars["Record"].buttons["save-record"])
+    XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
     app.terminate()
     app.launch()
     tap(app.buttons["open-local"])
-    findRecord(app)
-    let choose = app.buttons["choose-date-day"]
+    findRecord(app, record: "dates")
     reveal(choose, in: app)
-    XCTAssertEqual(app.textFields["field-day"].value as? String, "")
+    expectEmpty(app.textFields["field-day"])
     reveal(moment, in: app)
     XCTAssertEqual(moment.value as? String, "2024-02-29T23:04:05.123Z")
     let link = app.buttons["open-link-website"]
     reveal(link, in: app)
     XCTAssertTrue(link.isEnabled)
+    reveal(choose, in: app, down: true)
+    tap(choose)
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.timeZone = .current
+    formatter.dateFormat = "yyyy-MM-dd"
+    let today = formatter.string(from: Date())
+    XCTAssertEqual(app.textFields["field-day"].value as? String, today)
+    XCTAssertTrue(app.datePickers["date-picker-day"].exists)
+    tap(app.navigationBars["Record"].buttons["save-record"])
+    XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
+    app.terminate()
+    app.launch()
+    tap(app.buttons["open-local"])
+    findRecord(app, record: "dates")
+    reveal(app.datePickers["date-picker-day"], in: app)
+    XCTAssertEqual(app.textFields["field-day"].value as? String, today)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-typed-date-today-reopened"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
   }
 
-  private func openFixture() throws -> XCUIApplication {
+  private func expectEmpty(_ field: XCUIElement, file: StaticString = #filePath, line: UInt = #line)
+  {
+    let value = field.value as? String
+    XCTAssertNotNil(value, file: file, line: line)
+    // UIKit exposes the placeholder as the accessibility value of an empty field.
+    XCTAssertTrue(value == "" || value == field.placeholderValue, file: file, line: line)
+  }
+
+  private func openFixture(_ record: String) throws -> XCUIApplication {
     let environment = ProcessInfo.processInfo.environment
     try XCTSkipIf(
       environment["LIFE_UI_TEST_FIELDS_SIMULATOR"] == nil,
@@ -90,16 +123,16 @@ final class TypedFieldsUITests: XCTestCase {
     let app = XCUIApplication()
     app.launch()
     tap(app.buttons["open-local"])
-    findRecord(app)
+    findRecord(app, record: record)
     return app
   }
 
-  private func findRecord(_ app: XCUIApplication) {
+  private func findRecord(_ app: XCUIApplication, record: String) {
     tap(app.buttons["quick-find"])
     let query = app.textFields["quick-find-query"]
     tap(query)
-    query.typeText("Typed field notebook")
-    tap(app.buttons["quick-find-result-field_examples-typed-fields"])
+    query.typeText(record == "choices" ? "Choice field notebook" : "Date field notebook")
+    tap(app.buttons["quick-find-result-field_examples-typed-\(record)"])
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
   }
 

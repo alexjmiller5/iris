@@ -770,7 +770,15 @@ private struct FieldInput: View {
             }
           }
         }.accessibilityIdentifier("field-\(field.id)")
-      } else if ["json", "multi_select"].contains(field.type) {
+      } else if ["select", "multi_select"].contains(field.type) {
+        NativeChoiceField(
+          field: field, isNew: editor.isNew, value: $value, workspace: workspace,
+          focus: focus, isCurrent: isCurrent)
+      } else if let kind = NativeDateKind(rawValue: field.type) {
+        NativeDateField(field: field, kind: kind, focus: focus, value: $value)
+      } else if ["url", "email", "phone"].contains(field.type) {
+        NativeLinkField(field: field, focus: focus, value: $value)
+      } else if field.type == "json" {
         VStack(alignment: .leading, spacing: 8) {
           Text("JSON source").font(.caption)
             .foregroundStyle(.secondary)
@@ -783,16 +791,6 @@ private struct FieldInput: View {
           Text("Not set").tag("")
           Text("True").tag("true")
           Text("False").tag("false")
-        }.accessibilityIdentifier("field-\(field.id)")
-      } else if field.type == "select" && !field.options.isEmpty
-        && field.property["options_sql"]?.text.nonempty == nil
-      {
-        Picker(field.label, selection: $value) {
-          Text(field.property["default_value"]?.text.nonempty.map { "Default: \($0)" } ?? "Not set")
-            .tag("")
-          ForEach(Array(Set(field.options + (value.isEmpty ? [] : [value]))).sorted(), id: \.self) {
-            Text($0).tag($0)
-          }
         }.accessibilityIdentifier("field-\(field.id)")
       } else {
         TextField(field.label, text: $value, axis: .vertical)

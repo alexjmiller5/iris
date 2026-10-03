@@ -4,6 +4,30 @@ import Testing
 @testable import LifeKit
 
 struct NativeFieldValueTests {
+  @Test func useTodayUsesTheLocalDayWhenUTCIsTomorrow() throws {
+    let instant = try #require(NativeDateValue.parse("2024-02-29T01:00:00.000Z", kind: .datetime))
+    #expect(
+      NativeDateValue.currentValue(
+        at: instant, kind: .date, timeZone: TimeZone(secondsFromGMT: -14400)!)
+        == "2024-02-28")
+  }
+
+  @Test func useTodayUsesTheLocalDayWhenUTCIsYesterday() throws {
+    let instant = try #require(NativeDateValue.parse("2024-02-29T20:00:00.000Z", kind: .datetime))
+    #expect(
+      NativeDateValue.currentValue(
+        at: instant, kind: .date, timeZone: TimeZone(secondsFromGMT: 50400)!)
+        == "2024-03-01")
+  }
+
+  @Test func useCurrentTimeKeepsUTCRegardlessOfLocalTimezone() throws {
+    let instant = try #require(NativeDateValue.parse("2024-02-29T20:00:00.123Z", kind: .datetime))
+    #expect(
+      NativeDateValue.currentValue(
+        at: instant, kind: .datetime, timeZone: TimeZone(secondsFromGMT: 50400)!)
+        == "2024-02-29T20:00:00.123Z")
+  }
+
   @Test func dateOnlyUsesGregorianUTCMidnight() throws {
     let parsed = try #require(NativeDateValue.parse("2024-02-29", kind: .date))
     #expect(parsed.timeIntervalSince1970 == 1_709_164_800)

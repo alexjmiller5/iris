@@ -5,6 +5,11 @@ import Testing
 
 @MainActor
 struct IncomingReferencesModelTests {
+  @MainActor private final class Flag {
+    var value: Bool
+    init(_ value: Bool) { self.value = value }
+  }
+
   private let source = CoreReferenceSource(
     table: "notes", column: "topic", label: "Topic", type: "ref", incomplete: false)
   private func row(_ id: String, _ label: String) -> WorkspaceRow {
@@ -26,8 +31,11 @@ struct IncomingReferencesModelTests {
   @Test func discoveryDoesNotReadRowsAndOpeningOneGroupOnlyLoadsOnce() async throws {
     var calls = 0
     let model = make { args in
-      #expect(args == CoreReferencedByArgs(
-        table: "topics", rowId: "target", sourceTable: "notes", column: "topic", limit: 20, offset: 0))
+      #expect(
+        args
+          == CoreReferencedByArgs(
+            table: "topics", rowId: "target", sourceTable: "notes", column: "topic", limit: 20,
+            offset: 0))
       calls += 1
       return CoreReferencedByPage(source: source, rows: [row("one", "First")], nextOffset: nil)
     }
@@ -77,11 +85,14 @@ struct IncomingReferencesModelTests {
 
   @Test(arguments: [false, true])
   func opaqueIDsStayDistinctWithinAndAcrossPages(_ split: Bool) async throws {
-    let composed = "\u{00E9}", decomposed = "e\u{0301}"
+    let composed = "\u{00E9}"
+    let decomposed = "e\u{0301}"
     let model = make { args in
-      let rows = args.offset == 37
+      let rows =
+        args.offset == 37
         ? [row(decomposed, "Second"), row(composed, "Updated first")]
-        : split ? [row(composed, "First")]
+        : split
+          ? [row(composed, "First")]
           : [row(composed, "First"), row(decomposed, "Second")]
       return CoreReferencedByPage(
         source: source, rows: rows, nextOffset: args.offset == 37 ? nil : 37)
@@ -125,24 +136,28 @@ struct IncomingReferencesModelTests {
   }
 
   @Test func discoveryAndFirstPageFailuresRetryWithoutHidingOtherColumns() async throws {
-    var metadataFails = true
+    let metadataFails = Flag(true)
     var pageFails = true
     let other = CoreReferenceSource(
       table: "notes", column: "related", label: "Related", type: "multi_ref", incomplete: true)
-    let model = make(sources: { _ in
-      if metadataFails { throw WorkspaceError(message: "Discovery unavailable", violations: []) }
-      return [source, other]
-    }) { args in
-      if args.column == "topic" && pageFails {
-        throw WorkspaceError(message: "Group unavailable", violations: [])
-      }
-      return CoreReferencedByPage(
-        source: args.column == "topic" ? source : other,
-        rows: [row(args.column, "Stored")], nextOffset: nil)
-    }
+    let model = make(
+      sources: { _ in
+        if metadataFails.value {
+          throw WorkspaceError(message: "Discovery unavailable", violations: [])
+        }
+        return [source, other]
+      },
+      page: { args in
+        if args.column == "topic" && pageFails {
+          throw WorkspaceError(message: "Group unavailable", violations: [])
+        }
+        return CoreReferencedByPage(
+          source: args.column == "topic" ? source : other,
+          rows: [row(args.column, "Stored")], nextOffset: nil)
+      })
     await model.refresh()
     #expect(model.error == "Discovery unavailable" && !model.loading)
-    metadataFails = false
+    metadataFails.value = false
     await model.refresh()
     #expect(model.error == nil && model.groups.count == 2)
     let first = try #require(model.groups.first?.id)
@@ -183,26 +198,31 @@ struct IncomingReferencesModelTests {
   @Test(arguments: ["refresh", "dispose", "context", "cancel"], [false, true])
   func staleMetadataCannotPublishAfterHostTransitions(_ transition: String, fails: Bool) async {
     var held: CheckedContinuation<[CoreReferenceSource], any Error>?
-    var current = true
+    let current = Flag(true)
     var calls = 0
-    let model = make(sources: { _ in
-      calls += 1
-      if calls == 1 { return try await withCheckedThrowingContinuation { held = $0 } }
-      return []
-    }, current: { current }) { _ in
-      Issue.record("Discovery must not read rows")
-      return CoreReferencedByPage(source: source, rows: [], nextOffset: nil)
-    }
+    let model = make(
+      sources: { _ in
+        calls += 1
+        if calls == 1 { return try await withCheckedThrowingContinuation { held = $0 } }
+        return []
+      }, current: { current.value },
+      page: { _ in
+        Issue.record("Discovery must not read rows")
+        return CoreReferencedByPage(source: source, rows: [], nextOffset: nil)
+      })
     let pending = Task { await model.refresh() }
     while held == nil { await Task.yield() }
     switch transition {
     case "refresh": await model.refresh()
     case "dispose": model.dispose()
-    case "context": current = false
+    case "context": current.value = false
     default: pending.cancel()
     }
-    if fails { held?.resume(throwing: WorkspaceError(message: "Obsolete metadata", violations: [])) }
-    else { held?.resume(returning: [source]) }
+    if fails {
+      held?.resume(throwing: WorkspaceError(message: "Obsolete metadata", violations: []))
+    } else {
+      held?.resume(returning: [source])
+    }
     await pending.value
     #expect(model.groups.isEmpty && model.error == nil && !model.loading)
     if transition == "dispose" || transition == "context" {
@@ -215,15 +235,17 @@ struct IncomingReferencesModelTests {
   @Test(arguments: ["refresh", "dispose", "context", "cancel"], [false, true])
   func stalePagesCannotPublishAfterHostTransitions(_ transition: String, fails: Bool) async throws {
     var held: CheckedContinuation<CoreReferencedByPage, any Error>?
-    var current = true
+    let current = Flag(true)
     var calls = 0
-    let model = make(current: { current }) { _ in
-      calls += 1
-      if calls > 1 {
-        throw WorkspaceError(message: "Read after the panel became obsolete", violations: [])
-      }
-      return try await withCheckedThrowingContinuation { held = $0 }
-    }
+    let model = make(
+      current: { current.value },
+      page: { _ in
+        calls += 1
+        if calls > 1 {
+          throw WorkspaceError(message: "Read after the panel became obsolete", violations: [])
+        }
+        return try await withCheckedThrowingContinuation { held = $0 }
+      })
     await model.refresh()
     let id = try #require(model.groups.first?.id)
     let pending = Task { await model.load(id) }
@@ -231,11 +253,15 @@ struct IncomingReferencesModelTests {
     switch transition {
     case "refresh": await model.refresh()
     case "dispose": model.dispose()
-    case "context": current = false
+    case "context": current.value = false
     default: pending.cancel()
     }
-    if fails { held?.resume(throwing: WorkspaceError(message: "Obsolete page", violations: [])) }
-    else { held?.resume(returning: CoreReferencedByPage(source: source, rows: [row("late", "Old")], nextOffset: 20)) }
+    if fails {
+      held?.resume(throwing: WorkspaceError(message: "Obsolete page", violations: []))
+    } else {
+      held?.resume(
+        returning: CoreReferencedByPage(source: source, rows: [row("late", "Old")], nextOffset: 20))
+    }
     await pending.value
     #expect(model.groups.first?.rows.isEmpty == true)
     #expect(model.groups.first?.error == nil)
