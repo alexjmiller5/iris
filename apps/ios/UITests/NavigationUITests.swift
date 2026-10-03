@@ -172,11 +172,20 @@ final class NavigationUITests: XCTestCase {
   }
 
   private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+    // The sidebar footer floats over the list; a row under it reports hittable
+    // while taps land on the footer.
+    let footer = app.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "saved on this device")
+    ).firstMatch
+    func visible() -> Bool {
+      guard element.exists && element.isHittable && element.frame.height > 0 else { return false }
+      return !footer.isHittable || element.frame.maxY <= footer.frame.minY
+    }
     for _ in 0..<10 {
-      if element.exists && element.isHittable && element.frame.height > 0 { return }
+      if visible() { return }
       app.swipeUp(velocity: .slow)
     }
-    XCTAssertTrue(element.exists && element.isHittable, app.debugDescription)
+    XCTAssertTrue(visible(), app.debugDescription)
   }
 
   private func tap(_ element: XCUIElement) {
