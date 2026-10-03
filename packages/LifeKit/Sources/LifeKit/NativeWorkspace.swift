@@ -37,6 +37,9 @@ extension CoreWorkspaceRow: Identifiable {
   // SQLite opaque IDs are not Unicode-normalized. Keep wire values as Strings.
   public var byteExactID: Data { Data(id.utf8) }
 }
+extension CoreSavedViewRecord {
+  public var byteExactID: Data { Data(id.utf8) }
+}
 public struct WorkspaceError: Error, LocalizedError, Sendable {
   public let message: String
   public let violations: [Violation]
@@ -156,7 +159,9 @@ public final class NativeWorkspace {
   public func options(table: String, column: String) async throws -> [String] {
     try await decode(CoreRequests.Options(CoreOptionsArgs(table: table, column: column)))
   }
-  public func referenceSources(_ args: CoreReferenceSourcesArgs) async throws -> [CoreReferenceSource] {
+  public func referenceSources(_ args: CoreReferenceSourcesArgs) async throws
+    -> [CoreReferenceSource]
+  {
     try await decode(CoreRequests.ReferenceSources(args))
   }
   public func referencedBy(_ args: CoreReferencedByArgs) async throws -> CoreReferencedByPage {
