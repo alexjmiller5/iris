@@ -64,3 +64,16 @@ failed or canceled activation leaves the palette and prior workspace unchanged.
 Only isolated SwiftPM execution is leased to this implementer. Coordinate its
 slot with the parent and recents implementer. All Xcode, simulator, native UI
 driving and bundled resources remain with their existing owner.
+
+## Shared activation checkpoint
+
+`WorkspaceModel.activateDestination(_:workspace:generation:)` installs a freshly
+resolved destination. `requireNavigationReady(workspace:generation:)` exposes
+the common workspace/generation and write/Undo/saved-view busy checks for the
+separate direct-record opening path, which preserves the current query.
+
+Four new test functions cover six actual JSC cases. The activation scaffold
+failed with five behavioral issues before implementation; eight semantic mutants
+were caught afterward. The restored full SwiftPM run reports 240 tests in 43
+suites, with five existing live-fixture tests skipped. Palette UI remains the
+next implementation step.
