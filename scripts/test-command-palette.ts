@@ -306,7 +306,7 @@ try {
         await input.fill("nebul");
         await recordOption("Fixture record").click();
         await expect(
-          editor.getByRole("spinbutton", { name: "Quantity", exact: true }),
+          editor.getByLabel("Quantity", { exact: true }),
         ).toHaveValue("42");
         await owned
           .getByRole("button", { name: "Close record", exact: true })

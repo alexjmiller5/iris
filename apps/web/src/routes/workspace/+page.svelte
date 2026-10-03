@@ -1,7 +1,16 @@
 <script lang="ts">
 	import { markdownPatch } from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
-	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import FieldEditor from '$lib/FieldEditor.svelte';
+	import RecordGrid from '$lib/RecordGrid.svelte';
+	import {
+		cellPatch,
+		recordPatch,
+		duplicateValues,
+		rawValue,
+		type CellKey,
+		type CellDraft
+	} from '$lib/record-grid';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { destinationURL, readDestination, resolveDestination } from '$lib/workspace-navigation';
@@ -79,6 +88,7 @@
 		bodyFailure = $state('');
 	let editorVersion = $state(0);
 	let relationOpening = $state<number | null>(null);
+	let gridActionOpening = $state<number | null>(null);
 	let recordHeading = $state<HTMLHeadingElement>();
 	let recordOpenVersion = 0;
 	let locationRequest = 0;
@@ -112,9 +122,23 @@
 				notice = 'Table groups could not be saved on this device.';
 			}
 	});
-	const dirty = $derived(editing && JSON.stringify(draft) !== savedDraft);
-	const discard = () =>
-		!writing && !bodySaving && (!dirty || confirm('Discard unsaved changes to this record?'));
+	let gridDraft = $state<CellDraft | null>(null);
+	let explicitCreation = $state<Set<string>>(new Set());
+	let gridContext = $state(0);
+	const gridDirty = $derived(
+		!!gridDraft && gridDraft.raw !== rawValue(gridDraft.baseline[gridDraft.cell.column])
+	);
+	const dirty = $derived((editing && JSON.stringify(draft) !== savedDraft) || gridDirty);
+	function confirmDiscard() {
+		if (writing || bodySaving || (dirty && !confirm('Discard unsaved changes to this record?')))
+			return false;
+		return true;
+	}
+	function discard() {
+		if (!confirmDiscard()) return false;
+		gridDraft = null;
+		return true;
+	}
 	beforeNavigate((navigation) => {
 		if (navigation.to?.url.href === reflectingURL) return;
 		if ((opened && busy) || !discard()) {
@@ -271,10 +295,195 @@
 			.map((col) => columnChoices.find((p) => p.col === col))
 			.filter((p): p is Property => !!p)
 	);
-	const columnWidth = (column: string) =>
-		Number.isFinite(widths[column]) ? Math.min(800, Math.max(96, widths[column])) : 180;
-	const gridWidth = $derived(280 + gridProperties.reduce((sum, p) => sum + columnWidth(p.col), 0));
+	const recordProperty = $derived(
+		properties.find((p) => p.col === display) ?? { col: 'id', label: 'Record', type: 'text' }
+	);
+	const gridColumns = $derived([recordProperty, ...gridProperties]);
+	const canEditCell = (p: Property) =>
+		!system.has(p.col) &&
+		!p.derived_by &&
+		!p.deprecated &&
+		!p.immutable &&
+		!readOnly &&
+		!blocked &&
+		!trash;
+	async function beginCell(cell: CellKey): Promise<Row | false> {
+		if (!database || busy || navigationLoading) return false;
+		const workspace = database,
+			target = table,
+			version = editorVersion,
+			request = ++recordOpenVersion;
+		const current = () =>
+			database === workspace &&
+			target === table &&
+			version === editorVersion &&
+			request === recordOpenVersion &&
+			!busy &&
+			!navigationLoading;
+		let found: Row[];
+		try {
+			found = await workspace.request('rows', {
+				view: { table: target, filters: [{ column: 'id', op: 'eq', value: cell.rowId }], limit: 1 }
+			});
+		} catch (e) {
+			if (!current()) return false;
+			throw e;
+		}
+		if (!current()) return false;
+		if (!found[0])
+			throw new Error('This record is no longer available locally. Your saved data is unchanged.');
+		const property = properties.find((p) => p.col === cell.column);
+		if (!property || !canEditCell(property) || !discard()) return false;
+		editing = false;
+		editorVersion++;
+		selected = found[0];
+		draft = rowDraft(found[0]);
+		savedDraft = JSON.stringify(draft);
+		references = {};
+		optionValues = {};
+		if (property.type === 'ref' || property.type === 'multi_ref') void loadReferences(property);
+		if (property.type === 'select' || property.type === 'multi_select') void loadOptions(property);
+		void reflectLocation(true);
+		return found[0];
+	}
+	async function commitCell(cell: CellDraft): Promise<Row> {
+		if (!database || busy || navigationLoading)
+			throw new Error('Wait for the current operation before saving this cell.');
+		const property = properties.find((p) => p.col === cell.cell.column);
+		if (!property || !canEditCell(property))
+			throw new Error(
+				writePermission?.reason?.message ?? 'This field is not editable. Your draft is kept.'
+			);
+		const workspace = database,
+			target = table,
+			version = editorVersion;
+		writing = true;
+		busy = true;
+		try {
+			const stored = await workspace.request('write', {
+				table: target,
+				patch: cellPatch(property, cell),
+				expectedUpdatedAt: editRevision(cell.baseline)
+			});
+			if (database === workspace && table === target && editorVersion === version) {
+				selected = stored;
+				notice = 'Cell saved on this device';
+				await refresh().catch((e) => {
+					error = `Cell saved. Could not refresh records: ${message(e)}`;
+				});
+			}
+			return stored;
+		} finally {
+			if (database === workspace) {
+				writing = false;
+				busy = false;
+			}
+		}
+	}
+	async function newGridRecord(): Promise<boolean> {
+		if (busy || navigationLoading || readOnly || blocked || trash) return false;
+		return edit(null);
+	}
+	async function duplicateRecord(id: string): Promise<boolean> {
+		if (!database || busy || navigationLoading || readOnly || blocked || trash) return false;
+		const workspace = database,
+			target = table,
+			version = editorVersion,
+			request = ++recordOpenVersion;
+		try {
+			const found = await workspace.request('rows', {
+				view: { table: target, filters: [{ column: 'id', op: 'eq', value: id }], limit: 1 }
+			});
+			if (
+				database !== workspace ||
+				table !== target ||
+				editorVersion !== version ||
+				recordOpenVersion !== request ||
+				busy
+			)
+				return false;
+			if (!found[0]) throw new Error('This record is no longer available locally.');
+			if (!edit(null)) return false;
+			const copy = duplicateValues(properties, found[0]);
+			draft = { ...draft, ...copy };
+			explicitCreation = new Set(Object.keys(copy));
+			notice = 'Review this unsaved copy, then save to create a new record.';
+			return true;
+		} catch (e) {
+			if (database === workspace && table === target && editorVersion === version)
+				error = message(e);
+			return false;
+		}
+	}
+	async function trashGridRecord(id: string): Promise<boolean> {
+		if (!database || busy || navigationLoading || readOnly || blocked || gridActionOpening)
+			return false;
+		const workspace = database,
+			target = table,
+			version = editorVersion,
+			request = ++recordOpenVersion,
+			restore = trash;
+		const current = () =>
+			database === workspace &&
+			table === target &&
+			editorVersion === version &&
+			recordOpenVersion === request &&
+			trash === restore;
+		gridActionOpening = request;
+		try {
+			const found = await workspace.request('rows', {
+				view: {
+					table: target,
+					trash: restore,
+					filters: [{ column: 'id', op: 'eq', value: id }],
+					limit: 1
+				}
+			});
+			if (!current() || busy || navigationLoading || readOnly || blocked) return false;
+			if (!found[0])
+				throw new Error('This record is no longer available locally. Your draft is kept.');
+			if (!confirmDiscard()) return false;
+			writing = true;
+			busy = true;
+			error = '';
+			try {
+				await workspace.request('write', {
+					table: target,
+					patch: { id, deleted_at: restore ? null : true },
+					expectedUpdatedAt: editRevision(found[0])
+				});
+				if (!current()) return false;
+				gridDraft = null;
+				editorVersion++;
+				editing = false;
+				selected = null;
+				notice = restore ? 'Record restored' : 'Moved to trash';
+				await refresh().catch((e) => {
+					error = `${notice}. Could not refresh records: ${message(e)}`;
+				});
+				await reflectLocation(true);
+				return true;
+			} finally {
+				if (database === workspace) {
+					writing = false;
+					busy = false;
+				}
+			}
+		} catch (e) {
+			if (current()) error = message(e);
+			return false;
+		} finally {
+			if (gridActionOpening === request) gridActionOpening = null;
+		}
+	}
 	function changeColumns(next: string[], sizes: Record<string, number>) {
+		if (
+			gridDraft &&
+			gridDraft.cell.column !== (display ?? 'id') &&
+			!next.includes(gridDraft.cell.column) &&
+			!discard()
+		)
+			return;
 		columns = next;
 		widths = sizes;
 		void loadRows().catch((e) => (error = message(e)));
@@ -377,16 +586,6 @@
 			return [] as string[];
 		}
 	};
-	const choices = (p: Property) => [
-		...new Set([
-			...(optionValues[p.col] ?? (p.options ?? []).map((o) => o.v)),
-			...(p.type === 'multi_select' ? list(draft[p.col]) : [draft[p.col]].filter(Boolean))
-		])
-	];
-	const choiceLabel = (p: Property, value: string) => {
-		const description = p.options?.find((o) => o.v === value)?.d;
-		return description ? `${value} - ${description}` : value;
-	};
 	async function loadOptions(p: Property) {
 		const workspace = database,
 			version = editorVersion,
@@ -423,7 +622,8 @@
 				view: { table: p.ref_table, search: query, limit: 50 }
 			});
 			if (database !== workspace || editorVersion !== version) return;
-			const ids = p.type === 'multi_ref' ? list(draft[p.col]) : [draft[p.col]];
+			const raw = gridDraft?.cell.column === p.col ? gridDraft.raw : draft[p.col];
+			const ids = p.type === 'multi_ref' ? list(raw) : [raw];
 			for (const id of ids.filter(Boolean))
 				if (!found.some((r) => r.id === id))
 					found.push(
@@ -551,6 +751,8 @@
 		await Promise.all([loadRows(), loadViews(), loadWriteability()]);
 	}
 	function resetView() {
+		gridDraft = null;
+		gridContext++;
 		permissionRequest++;
 		writePermission = null;
 		editorVersion++;
@@ -693,6 +895,8 @@
 		return true;
 	}
 	function applyView(view: SavedViewRecord | null) {
+		gridDraft = null;
+		gridContext++;
 		editorVersion++;
 		viewVersion++;
 		editing = false;
@@ -806,8 +1010,9 @@
 		filters = index === undefined ? [] : filters.filter((_, i) => i !== index);
 		await find();
 	}
-	function edit(row: Row | null, reflect = true) {
-		if (!discard()) return;
+	function edit(row: Row | null, reflect = true): boolean {
+		if (!discard()) return false;
+		explicitCreation = new Set();
 		editorVersion++;
 		selected = row;
 		bodyFailure = '';
@@ -823,6 +1028,7 @@
 		for (const p of properties.filter((p) => p.type === 'select' || p.type === 'multi_select'))
 			void loadOptions(p);
 		if (reflect) void reflectLocation();
+		return true;
 	}
 	function rowDraft(row: Row | null) {
 		const values: Record<string, string> = {};
@@ -843,28 +1049,7 @@
 		busy = true;
 		error = '';
 		try {
-			const patch: Row = selected ? { id: selected.id } : {};
-			for (const p of draftProperties) {
-				if (p.derived_by || p.deprecated || (selected && p.immutable)) continue;
-				const value = draft[p.col] ?? '';
-				if (
-					selected &&
-					value ===
-						(selected[p.col] == null
-							? ''
-							: typeof selected[p.col] === 'string'
-								? selected[p.col]
-								: JSON.stringify(selected[p.col]))
-				)
-					continue;
-				if (!selected && value === '') continue;
-				patch[p.col] =
-					value === ''
-						? null
-						: ['number', 'int', 'bool'].includes(p.type ?? '')
-							? Number(value)
-							: value;
-			}
+			const patch = recordPatch(draftProperties, draft, selected, explicitCreation);
 			const stored: Row = await workspace.request('write', {
 				table: target,
 				patch,
@@ -1282,7 +1467,9 @@
 								{String(current?.purpose ?? 'Browse your records and keep their rules in view.')}
 							</p>
 						</div>
-						<button onclick={() => edit(null)} disabled={busy || !table || readOnly || blocked}
+						<button
+							onclick={newGridRecord}
+							disabled={busy || navigationLoading || !table || readOnly || blocked || trash}
 							><IconPlus size={17} />New record</button
 						>
 					</header>
@@ -1420,37 +1607,38 @@
 										>Review rejected edit</button
 									>{/each}
 							</details>{/if}
-						<div class="table-scroll">
-							<table style:width={`${gridWidth}px`}>
-								<colgroup>
-									<col style:width="280px" />
-									{#each gridProperties as p}<col style:width={`${columnWidth(p.col)}px`} />{/each}
-								</colgroup>
-								<thead
-									><tr
-										><th scope="col">Record</th>{#each gridProperties as p}<th scope="col"
-												>{label(p)}</th
-											>{/each}</tr
-									></thead
-								><tbody>
-									{#each rows as row (row.id)}<tr
-											class:selected={selected?.id === row.id && editing}
-											><td
-												><button
-													class="record-link"
-													onclick={() => {
-														void openRecord(
-															{ table, id: String(row.id) },
-															() => !findVisible,
-															true
-														).catch((e) => (error = message(e)));
-													}}>{title(row)}</button
-												></td
-											>{#each gridProperties as p}<td>{cell(p, row[p.col])}</td>{/each}</tr
-										>{/each}
-								</tbody>
-							</table>
-						</div>
+						{#key gridContext}
+							<RecordGrid
+								{rows}
+								properties={gridColumns}
+								{widths}
+								busy={busy || gridActionOpening !== null}
+								canCreate={!navigationLoading && !readOnly && !blocked && !trash}
+								canTrash={!navigationLoading && !readOnly && !blocked}
+								{trash}
+								bind:edit={gridDraft}
+								format={(p, value) => cell(p, value)}
+								canEdit={(p) => !navigationLoading && canEditCell(p)}
+								onbegin={beginCell}
+								oncommit={commitCell}
+								onopen={(id) =>
+									openRecord({ table, id }, () => !findVisible, true).catch((e) => {
+										error = message(e);
+										return false;
+									})}
+								onnew={newGridRecord}
+								onduplicate={duplicateRecord}
+								ontrash={trashGridRecord}
+								options={optionValues}
+								referenceOptions={(p) =>
+									(references[p.col] ?? []).map((row) => ({
+										id: String(row.id),
+										label: refTitle(p, row)
+									}))}
+								onsearch={loadReferences}
+							/>
+						{/key}
+						{#if gridActionOpening !== null}<p role="status">Opening record action…</p>{/if}
 						{#if rows.length === 0}<div class="empty">
 								{trash
 									? 'Nothing in the trash.'
@@ -1534,42 +1722,26 @@
 											>Required</span
 										>{/if}</label
 								>
-								{#if p.type === 'ref' || p.type === 'multi_ref'}
-									<input
-										aria-label={`Search ${label(p)}`}
-										placeholder="Search related records"
-										bind:value={referenceSearch[p.col]}
-										oninput={() => loadReferences(p, referenceSearch[p.col])}
+
+								{#key editorVersion}
+									<FieldEditor
+										id={`field-${p.col}`}
+										property={p}
+										bind:value={draft[p.col]}
+										onchange={() => {
+											if (!selected) explicitCreation = new Set([...explicitCreation, p.col]);
+										}}
 										disabled={locked(p)}
+										showReferenceSelections={false}
+										options={optionValues[p.col]}
+										references={(references[p.col] ?? []).map((row) => ({
+											id: String(row.id),
+											label: refTitle(p, row)
+										}))}
+										onsearch={(query) => loadReferences(p, query)}
 									/>
-									{#if p.type === 'ref'}<select
-											id={`field-${p.col}`}
-											aria-required={!!p.required}
-											bind:value={draft[p.col]}
-											disabled={locked(p)}
-											><option value="">No related record</option
-											>{#if draft[p.col] && !(references[p.col] ?? []).some((r) => r.id === draft[p.col])}<option
-													value={draft[p.col]}>{draft[p.col]} (not available locally)</option
-												>{/if}{#each references[p.col] ?? [] as r}<option value={String(r.id)}
-													>{refTitle(p, r)}</option
-												>{/each}</select
-										>
-									{:else}<select
-											id={`field-${p.col}`}
-											value=""
-											disabled={locked(p)}
-											onchange={(e) => {
-												const id = e.currentTarget.value;
-												if (id)
-													draft[p.col] = JSON.stringify([...new Set([...list(draft[p.col]), id])]);
-												e.currentTarget.value = '';
-											}}
-											><option value="">Add related record</option
-											>{#each references[p.col] ?? [] as r}<option value={String(r.id)}
-													>{refTitle(p, r)}</option
-												>{/each}</select
-										>
-									{/if}
+								{/key}
+								{#if p.type === 'ref' || p.type === 'multi_ref'}
 									<div
 										class="relation-links"
 										role="group"
@@ -1612,64 +1784,7 @@
 												>{/if}
 										{/each}
 									</div>
-								{:else if p.type === 'multi_select'}<select
-										id={`field-${p.col}`}
-										multiple
-										value={list(draft[p.col])}
-										disabled={locked(p)}
-										onchange={(e) =>
-											(draft[p.col] = JSON.stringify(
-												[...e.currentTarget.selectedOptions].map((o) => o.value)
-											))}
-										>{#each choices(p) as value}<option {value}>{choiceLabel(p, value)}</option
-											>{/each}</select
-									>
-								{:else if p.type === 'markdown'}
-									{#key editorVersion}
-										<MarkdownEditor
-											id={`field-${p.col}`}
-											label={label(p)}
-											bind:value={draft[p.col]}
-											disabled={locked(p)}
-										/>
-									{/key}
-								{:else if p.type === 'json'}
-									<textarea
-										id={`field-${p.col}`}
-										aria-required={!!p.required}
-										rows={4}
-										bind:value={draft[p.col]}
-										disabled={locked(p)}></textarea>
-								{:else if p.type === 'select'}<select
-										id={`field-${p.col}`}
-										aria-required={!!p.required}
-										bind:value={draft[p.col]}
-										disabled={locked(p)}
-										><option value="">Choose an option</option>{#each choices(p) as value}<option
-												{value}>{choiceLabel(p, value)}</option
-											>{/each}</select
-									>
-								{:else if p.type === 'bool'}<select
-										id={`field-${p.col}`}
-										aria-required={!!p.required}
-										bind:value={draft[p.col]}
-										disabled={locked(p)}
-										><option value="">Empty</option><option value="1">Yes</option><option value="0"
-											>No</option
-										></select
-									>
-								{:else}<input
-										id={`field-${p.col}`}
-										aria-required={!!p.required}
-										type={p.type === 'date'
-											? 'date'
-											: p.type === 'number' || p.type === 'int'
-												? 'number'
-												: 'text'}
-										step={p.type === 'int' ? '1' : 'any'}
-										bind:value={draft[p.col]}
-										disabled={locked(p)}
-									/>{/if}
+								{/if}
 								<p class="field-note">
 									{p.description || p.type}{p.derived_by
 										? ' / Filled automatically'
@@ -1710,8 +1825,7 @@
 	}
 	button,
 	select,
-	input,
-	textarea {
+	input {
 		font: inherit;
 	}
 	button {
@@ -1976,7 +2090,6 @@
 		background: none;
 	}
 	input,
-	textarea,
 	select {
 		border: 1px solid var(--color-rule);
 		border-radius: 6px;
@@ -1986,59 +2099,8 @@
 		font-size: 13px;
 		min-height: 38px;
 	}
-	textarea {
-		resize: vertical;
-		line-height: 1.7;
-	}
 	select {
 		max-width: 100%;
-	}
-	.table-scroll {
-		overflow: auto;
-		border: 1px solid var(--color-rule);
-		border-radius: 8px;
-		background: var(--color-paper);
-	}
-	table {
-		border-collapse: collapse;
-		min-width: 100%;
-		table-layout: fixed;
-		font-size: 13px;
-	}
-	th {
-		text-align: left;
-		font-weight: 500;
-		color: var(--color-muted);
-		background: var(--color-bone);
-		font-size: 12px;
-	}
-	td,
-	th {
-		padding: 12px 15px;
-		border-bottom: 1px solid var(--color-rule);
-		white-space: nowrap;
-	}
-	tbody tr:last-child td {
-		border-bottom: 0;
-	}
-	td {
-		max-width: 300px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	tr.selected {
-		background: var(--color-accent-soft);
-	}
-	.record-link {
-		padding: 0;
-		min-height: 28px;
-		background: none;
-		color: var(--color-ink);
-		font-weight: 550;
-		justify-content: start;
-	}
-	.record-link:hover {
-		color: var(--color-accent);
 	}
 	.empty {
 		padding: 60px 24px;
@@ -2110,11 +2172,6 @@
 		font-size: 13px;
 		font-weight: 600;
 		margin-bottom: 7px;
-	}
-	.field input,
-	.field select,
-	.field textarea {
-		width: 100%;
 	}
 	.required {
 		font-size: 11px;
