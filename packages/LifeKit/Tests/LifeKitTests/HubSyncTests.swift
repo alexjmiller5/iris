@@ -55,7 +55,8 @@ struct HubSyncTests {
     let credentials = HubCredentials(endpoint: hub.endpoint, token: "fixture-scoped-token")
     func makeModel() -> WorkspaceModel {
       WorkspaceModel(
-        localURL: { directory.appendingPathComponent("local.sqlite") }, makeTransport: { _ in hub })
+        localURL: { directory.appendingPathComponent("local.sqlite") }, makeTransport: { _ in hub },
+        credentialStore: MemoryHubCredentials(credentials))
     }
     let first = makeModel()
     try await first.connect(credentials, remember: false)
@@ -70,7 +71,7 @@ struct HubSyncTests {
     HubFixture.state.setStatus(503)
     defer { HubFixture.state.setStatus(200) }
     let reopened = makeModel()
-    try await reopened.connect(credentials, remember: false)
+    await reopened.resumeConnection()
     reopened.table = "notes"
     await reopened.reload()
     #expect(reopened.rows.first?.record == cached.record)
@@ -485,9 +486,12 @@ private final class FixtureState: @unchecked Sendable {
   func reply(_ request: URLRequest) throws -> (Int, Data) {
     try lock.withLock {
       if status != 200 { return (status, Data(#"{"error":"private-body"}"#.utf8)) }
-      guard request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-scoped-token",
-        request.httpMethod == "POST"
+      guard request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-scoped-token"
       else { return (401, Data("{}".utf8)) }
+      if request.url?.path == "/v1/session", request.httpMethod == "GET" {
+        return (200, Data(#"{"name":"Example device","scopes":["full"]}"#.utf8))
+      }
+      guard request.httpMethod == "POST" else { return (405, Data("{}".utf8)) }
       var bytes = request.httpBody ?? Data()
       if let stream = request.httpBodyStream {
         stream.open()

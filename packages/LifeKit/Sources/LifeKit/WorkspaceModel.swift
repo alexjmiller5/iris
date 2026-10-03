@@ -23,6 +23,7 @@ final class WorkspaceModel {
         undoAction = nil
         undoing = false
         writingRecord = false
+        syncing = false
         resetView()
       }
     }
@@ -127,6 +128,7 @@ final class WorkspaceModel {
   private var scopedURL: URL?
   private let resolveLocalURL: @MainActor () throws -> URL
   private let makeTransport: @MainActor (HubCredentials) throws -> HubTransport
+  private let credentialStore: any HubCredentialStorage
 
   private(set) var downloadPreferences = ReplicaPreferences()
   private var downloadStore: ReplicaPreferenceStore?
@@ -167,10 +169,12 @@ final class WorkspaceModel {
     localURL: @escaping @MainActor () throws -> URL = WorkspaceModel.localURL,
     makeTransport: @escaping @MainActor (HubCredentials) throws -> HubTransport = {
       try HubTransport(endpoint: $0.endpoint, token: $0.token)
-    }
+    },
+    credentialStore: any HubCredentialStorage = HubCredentialStore()
   ) {
     resolveLocalURL = localURL
     self.makeTransport = makeTransport
+    self.credentialStore = credentialStore
   }
 
   var queryKey: [String] {
@@ -662,35 +666,112 @@ final class WorkspaceModel {
 
   func resumeConnection() async {
     do {
-      if let saved = try HubCredentialStore().load() { try await connect(saved, remember: false) }
+      guard let saved = try credentialStore.load() else { return }
+      // An established replica must open even when the hub is unreachable.
+      let hub = try makeTransport(saved)
+      try await installConnection(saved, hub: hub, remember: false, isCurrent: { true })
+      await reload()
+      await synchronize()
     } catch { self.error = error.localizedDescription }
   }
 
-  func connect(_ credentials: HubCredentials, remember: Bool = true) async throws {
-    workspaceGeneration += 1
+  static func replicaURL(root: URL, endpoint: String) -> URL {
+    let name = SHA256.hash(data: Data(endpoint.utf8)).map { String(format: "%02x", $0) }.joined()
+    return root.appendingPathComponent("replicas", isDirectory: true).appendingPathComponent(
+      name + ".sqlite")
+  }
+
+  func connect(
+    _ credentials: HubCredentials, remember: Bool = true,
+    expectedFingerprint: String? = nil, synchronizeAfter: Bool = true,
+    isCurrent: @escaping @MainActor () -> Bool = { true }
+  ) async throws {
+    let generation = workspaceGeneration
+    let current: @MainActor () -> Bool = {
+      self.workspaceGeneration == generation && isCurrent() && !Task.isCancelled
+    }
+    guard current() else { throw CancellationError() }
     let hub = try makeTransport(credentials)
+    let core = try EnrollmentCore()
+    let fingerprint = SHA256.hash(data: Data(credentials.token.utf8)).map {
+      String(format: "%02x", $0)
+    }.joined()
+    let policy = try await core.policy(fingerprint: fingerprint)
+    let reply = try await hub.sessionReply(maxResponseBytes: policy.maxResponseBytes)
+    let session: CoreSessionInfo
+    if let expectedFingerprint {
+      let result = try await core.request(
+        CoreRequests.EnrollmentPollResult(
+          CoreEnrollmentPollArgs(reply: reply, expectedFingerprint: expectedFingerprint)))
+      guard result.state == .approved, let approved = result.session else {
+        throw WorkspaceError(message: "This device is not approved yet.", violations: [])
+      }
+      session = approved
+    } else {
+      guard reply.status == 200 else {
+        throw WorkspaceError(
+          message: "Device validation returned HTTP \(reply.status).", violations: [])
+      }
+      session = try await core.request(
+        CoreRequests.ValidateDeviceSession(CoreSessionDataArgs(data: reply.data)))
+    }
+    guard session.replica.allowed else {
+      throw WorkspaceError(
+        message: session.replica.reason?.message ?? "This credential cannot sync a replica.",
+        violations: [])
+    }
+    guard current() else { throw CancellationError() }
+    try await installConnection(credentials, hub: hub, remember: remember, isCurrent: current)
+    if synchronizeAfter { await synchronize() }
+  }
+
+  private func installConnection(
+    _ credentials: HubCredentials, hub: HubTransport, remember: Bool,
+    isCurrent: @MainActor () -> Bool
+  ) async throws {
+    let generation = workspaceGeneration
     let canonical = HubCredentials(endpoint: hub.endpoint, token: credentials.token)
-    let directory = try resolveLocalURL().deletingLastPathComponent().appendingPathComponent(
-      "replicas", isDirectory: true)
+    let root = try resolveLocalURL().deletingLastPathComponent()
+    let path = Self.replicaURL(root: root, endpoint: hub.endpoint)
     let preferencesStore = ReplicaPreferenceStore(
-      root: directory.appendingPathComponent("downloads", isDirectory: true), endpoint: hub.endpoint
-    )
+      root: path.deletingLastPathComponent().appendingPathComponent("downloads"),
+      endpoint: hub.endpoint)
     let preferences = try preferencesStore.load()
-    if remember { try HubCredentialStore().save(canonical) }
+    try FileManager.default.createDirectory(
+      at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let prepared = try NativeWorkspace(path: path.path)
+    let nextCatalog: WorkspaceCatalog
+    let nextGroups: [String: String]
+    let groupsKey = SHA256.hash(data: Data(path.path.utf8)).map { String(format: "%02x", $0) }
+      .joined()
+    let nextGroupsURL = root.appendingPathComponent("groups-" + groupsKey + ".json")
+    do {
+      nextCatalog = try await prepared.catalog()
+      nextGroups =
+        FileManager.default.fileExists(atPath: nextGroupsURL.path)
+        ? try JSONDecoder().decode([String: String].self, from: Data(contentsOf: nextGroupsURL))
+        : [:]
+      guard generation == workspaceGeneration, isCurrent(), !Task.isCancelled else {
+        throw CancellationError()
+      }
+      // All fallible preparation precedes the synchronous Keychain+workspace commit.
+      if remember { try credentialStore.save(canonical) }
+    } catch {
+      try? await prepared.close()
+      throw error
+    }
+    let old = client
     services.configure(workspace: nil, transport: nil)
-    try await client?.close()
-    client = nil
     scopedURL?.stopAccessingSecurityScopedResource()
     scopedURL = nil
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let name = SHA256.hash(data: Data(hub.endpoint.utf8)).map { String(format: "%02x", $0) }
-      .joined()
-    let path = directory.appendingPathComponent(name + ".sqlite").path
-    try loadGroups(workspace: path)
-    try prepareDrafts(path: path)
-    client = try NativeWorkspace(path: path)
+    client = prepared
+    catalog = nextCatalog
+    groups = nextGroups
+    groupsURL = nextGroupsURL
+    draftStore = EditorDraftStore(root: root.appendingPathComponent("drafts"), workspace: path)
+    refreshDrafts()
     transport = hub
-    services.configure(workspace: client, transport: hub)
+    services.configure(workspace: prepared, transport: hub)
     connection = canonical
     downloadStore = preferencesStore
     downloadPreferences = preferences
@@ -698,22 +779,30 @@ final class WorkspaceModel {
     syncStatus = nil
     isReplica = true
     location = "Hub workspace · local replica"
-    table = nil
+    table =
+      tables.first(where: { $0["readOnly"] == .bool(false) })?["id"]?.text
+      ?? tables.first?["id"]?.text
     rows = []
     search = ""
     trash = false
-    await synchronize()
+    if let old { Task { try? await old.close() } }
   }
 
   func synchronize() async {
     guard let client, let transport, !syncing else { return }
+    let generation = workspaceGeneration
     syncing = true
+    defer { if client === self.client, generation == workspaceGeneration { syncing = false } }
     invalidateWriteability()
     error = nil
     do {
-      syncResult = try await client.sync(
+      let result = try await client.sync(
         using: transport, maxRows: downloadPreferences.maxRows, tables: downloadPreferences.tables)
-      catalog = try await client.catalog()
+      guard client === self.client, generation == workspaceGeneration else { return }
+      let updatedCatalog = try await client.catalog()
+      guard client === self.client, generation == workspaceGeneration else { return }
+      syncResult = result
+      catalog = updatedCatalog
       if !tables.contains(where: { $0["id"]?.text == table }) {
         table =
           tables.first(where: { $0["readOnly"] == .bool(false) })?["id"]?.text
@@ -722,16 +811,21 @@ final class WorkspaceModel {
       await reload()
     } catch {
       // Keep the replica and queued edits available offline after a failed request.
-      catalog = try? await client.catalog()
+      guard client === self.client, generation == workspaceGeneration else { return }
+      let cachedCatalog = try? await client.catalog()
+      guard client === self.client, generation == workspaceGeneration else { return }
+      catalog = cachedCatalog
       if table == nil { table = tables.first?["id"]?.text }
       await reload()
+      guard client === self.client, generation == workspaceGeneration else { return }
       self.error = error.localizedDescription
     }
-    syncing = false
   }
 
   func forgetConnection() throws {
-    try HubCredentialStore().remove()
+    try credentialStore.remove()
+    workspaceGeneration += 1
+    syncing = false
     connection = nil
     transport = nil
     services.configure(workspace: nil, transport: nil)

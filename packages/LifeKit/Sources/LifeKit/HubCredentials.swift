@@ -7,8 +7,14 @@ struct HubCredentials: Codable, Equatable, Sendable {
   let token: String
 }
 
+protocol HubCredentialStorage {
+  func load() throws -> HubCredentials?
+  func save(_ credentials: HubCredentials) throws
+  func remove() throws
+}
+
 /// Consumer credentials stay in this device's Keychain, never UserDefaults or files.
-struct HubCredentialStore {
+struct HubCredentialStore: HubCredentialStorage {
   let service: String
   init(service: String = "life-ui.hub") { self.service = service }
 

@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "89c4c5b6667fd05bb3af159a70c0b9112b7af73260d70b294e7b9cdbe14ad21f";
+export declare const CORE_CONTRACT_HASH = "c049d874e89a6077aee0f0a4b364c4c6d5b6300f762a0e6db07c63f85436f179";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -274,6 +274,57 @@ export type UndoStatus = {
 export type UndoArgs = {
     receiptId: string;
 };
+export type EnrollmentApprovalArgs = {
+    fingerprint: string;
+    name: string;
+};
+export type EnrollmentPolicy = {
+    pollIntervalSeconds: Count;
+    timeoutSeconds: Count;
+    maxResponseBytes: Count;
+};
+export type EnrollmentApproval = {
+    path: string;
+    approvalCode: string;
+    deviceName: string;
+    policy: EnrollmentPolicy;
+};
+export type ReplicaIneligibilityCode = "full_scope_required" | "invalid_capabilities" | "schema_unavailable" | "replica_sync_disabled";
+export type ReplicaIneligibility = {
+    code: ReplicaIneligibilityCode;
+    message: string;
+};
+export type ReplicaEligibility = {
+    allowed: boolean;
+    reason: ReplicaIneligibility | null;
+};
+export type SessionInfo = {
+    name: string;
+    scopes: string[];
+    replica: ReplicaEligibility;
+};
+export type SessionDataArgs = {
+    data: JSONValue;
+};
+export type SessionReply = {
+    status: Count;
+    data: JSONValue;
+    retryAfterSeconds?: Count;
+};
+export type EnrollmentPollArgs = {
+    reply: SessionReply;
+    expectedFingerprint: string;
+};
+export type EnrollmentPollState = "pending" | "approved";
+export type EnrollmentPollResult = {
+    state: EnrollmentPollState;
+    session: SessionInfo | null;
+    retryAfterSeconds: Count | null;
+};
+export type SessionRevocationState = "revoked" | "unauthorized";
+export type SessionRevocationResult = {
+    state: SessionRevocationState;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -350,6 +401,22 @@ export interface CoreOperations {
     undo: {
         args: UndoArgs;
         result: Row;
+    };
+    enrollmentApproval: {
+        args: EnrollmentApprovalArgs;
+        result: EnrollmentApproval;
+    };
+    validateDeviceSession: {
+        args: SessionDataArgs;
+        result: SessionInfo;
+    };
+    enrollmentPollResult: {
+        args: EnrollmentPollArgs;
+        result: EnrollmentPollResult;
+    };
+    sessionRevocationResult: {
+        args: SessionReply;
+        result: SessionRevocationResult;
     };
 }
 export type CoreMethod = keyof CoreOperations;

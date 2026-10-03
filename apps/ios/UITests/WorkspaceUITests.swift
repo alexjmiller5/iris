@@ -3,6 +3,87 @@ import XCTest
 
 @MainActor
 final class WorkspaceUITests: XCTestCase {
+  func testDeviceApprovalConnectsThroughRealHubAndSourceFocusKeepsToolbarVisible() async throws {
+    guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
+      throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")
+    }
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    tapWhenReady(app.navigationBars["notes"].buttons["Hub connection"])
+    tapWhenReady(app.textFields["hub-endpoint"])
+    app.textFields["hub-endpoint"].typeText(endpoint)
+    let begin = app.buttons["begin-enrollment"]
+    XCTAssertTrue(begin.waitForExistence(timeout: 5), "Missing native device approval action")
+    tapWhenReady(begin)
+    let link = app.buttons["enrollment-link"]
+    XCTAssertTrue(link.waitForExistence(timeout: 10))
+    let approvalURL = try XCTUnwrap(URL(string: try XCTUnwrap(link.value as? String)))
+    XCTAssertEqual(approvalURL.host, URL(string: endpoint)?.host)
+    XCTAssertEqual(approvalURL.path, "/login")
+    XCTAssertFalse(approvalURL.absoluteString.contains("lt_"))
+    let waiting = XCTAttachment(screenshot: app.screenshot())
+    waiting.name = "native-device-approval"
+    waiting.lifetime = .keepAlways
+    add(waiting)
+    tapWhenReady(link)
+    XCTAssertTrue(
+      XCUIApplication(bundleIdentifier: "com.apple.mobilesafari").wait(
+        for: .runningForeground, timeout: 10))
+    app.activate()
+    let (page, pageResponse) = try await URLSession.shared.data(from: approvalURL)
+    XCTAssertEqual((pageResponse as? HTTPURLResponse)?.statusCode, 200)
+    XCTAssertTrue(String(decoding: page, as: UTF8.self).contains("Approve device"))
+    var request = URLRequest(url: try XCTUnwrap(URL(string: endpoint + "/login")))
+    request.httpMethod = "POST"
+    request.setValue(endpoint, forHTTPHeaderField: "Origin")
+    request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+    request.httpBody = Data(
+      try XCTUnwrap(
+        URLComponents(url: approvalURL, resolvingAgainstBaseURL: false)?.percentEncodedQuery
+      ).utf8)
+    let (_, response) = try await URLSession.shared.data(for: request)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+    XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 20))
+    openRecord(app, title: "Fixture record")
+    let body = app.buttons["field-body"]
+    for _ in 0..<8 where !body.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(body)
+    let sourceButton = app.webViews.descendants(matching: .any)["Body source"]
+    tapWhenReady(sourceButton)
+    let source = app.webViews.textViews["Body"]
+    tapWhenReady(source)
+    source.typeText(" Enrollment source check")
+    XCTAssertTrue(sourceButton.isHittable)
+    XCTAssertGreaterThan(sourceButton.frame.height, 0)
+    XCTAssertLessThanOrEqual(sourceButton.frame.maxX, app.frame.maxX)
+    XCTAssertGreaterThanOrEqual(sourceButton.frame.minX, app.frame.minX)
+    let focused = XCTAttachment(screenshot: app.screenshot())
+    focused.name = "native-enrollment-source-focus-no-zoom"
+    focused.lifetime = .keepAlways
+    add(focused)
+    tapWhenReady(app.buttons["finish-markdown"])
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
+    tapWhenReady(app.buttons["close"])
+    tapWhenReady(app.navigationBars["widgets"].buttons["Hub connection"])
+    let forget = app.buttons["Forget saved connection"]
+    for _ in 0..<8 where !forget.isHittable { app.swipeUp() }
+    tapWhenReady(forget)
+    XCTAssertTrue(app.navigationBars["Hub connection"].waitForNonExistence(timeout: 5))
+    let fingerprint = try XCTUnwrap(
+      URLComponents(url: approvalURL, resolvingAgainstBaseURL: false)?.queryItems?.first {
+        $0.name == "key"
+      }?.value)
+    var cleanup = URLRequest(url: try XCTUnwrap(URL(string: endpoint + "/login/devices")))
+    cleanup.httpMethod = "POST"
+    cleanup.setValue(endpoint, forHTTPHeaderField: "Origin")
+    cleanup.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+    cleanup.httpBody = Data("name=device%3A\(fingerprint)".utf8)
+    let (_, cleanupResponse) = try await URLSession.shared.data(for: cleanup)
+    XCTAssertEqual((cleanupResponse as? HTTPURLResponse)?.statusCode, 200)
+  }
+
   func testUndoCreationRetainsDraftAndMarkdownUndoUsesSavedReceipt() throws {
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -85,9 +166,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.navigationBars["notes"].buttons["Hub connection"])
     tapWhenReady(app.textFields["hub-endpoint"])
     app.textFields["hub-endpoint"].typeText(endpoint)
-    tapWhenReady(app.secureTextFields["hub-token"])
-    app.secureTextFields["hub-token"].typeText("fixture")
-    tapWhenReady(app.buttons["Save and sync"])
+    connectUsingFixtureToken(app)
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 15))
     if app.sheets["Save Password?"].waitForExistence(timeout: 3) { dismissPasswordPrompt() }
     tapWhenReady(app.buttons["browse-online"])
@@ -154,9 +233,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.navigationBars["notes"].buttons["Hub connection"])
     tapWhenReady(app.textFields["hub-endpoint"])
     app.textFields["hub-endpoint"].typeText(endpoint)
-    tapWhenReady(app.secureTextFields["hub-token"])
-    app.secureTextFields["hub-token"].typeText("fixture")
-    tapWhenReady(app.buttons["Save and sync"])
+    connectUsingFixtureToken(app)
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 15))
     if app.sheets["Save Password?"].waitForExistence(timeout: 3) { dismissPasswordPrompt() }
     tapWhenReady(app.navigationBars["widgets"].buttons["Hub connection"])
@@ -791,9 +868,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.navigationBars["notes"].buttons["Hub connection"])
     tapWhenReady(app.textFields["hub-endpoint"])
     app.textFields["hub-endpoint"].typeText(endpoint)
-    tapWhenReady(app.secureTextFields["hub-token"])
-    app.secureTextFields["hub-token"].typeText("fixture")
-    tapWhenReady(app.buttons["Save and sync"])
+    connectUsingFixtureToken(app)
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 15))
     tapWhenReady(app.navigationBars["widgets"].buttons["Hub connection"])
     tapWhenReady(app.buttons["hub-usage"])
@@ -874,22 +949,24 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(sampleSettings)
     tapWhenReady(app.textFields["hub-endpoint"])
     app.textFields["hub-endpoint"].typeText(endpoint)
-    tapWhenReady(app.secureTextFields["hub-token"])
-    app.secureTextFields["hub-token"].typeText("fixture")
-    tapWhenReady(app.buttons["Save and sync"])
+    connectUsingFixtureToken(app)
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 15))
-    // Password AutoFill can offer to save the synthetic token after the sheet closes.
     let passwordPrompt = app.sheets["Save Password?"]
-    if passwordPrompt.waitForExistence(timeout: 5) {
-      dismissPasswordPrompt()
+    if passwordPrompt.waitForExistence(timeout: 10) {
+      let notNow = passwordPrompt.buttons["Not Now"]
+      let promptReady = XCTNSPredicateExpectation(
+        predicate: NSPredicate { _, _ in notNow.isHittable }, object: notNow)
+      XCTAssertEqual(XCTWaiter.wait(for: [promptReady], timeout: 10), .completed)
+      let promptShot = XCTAttachment(screenshot: app.screenshot())
+      promptShot.name = "password-prompt-before-scrolling"
+      promptShot.lifetime = .keepAlways
+      add(promptShot)
+      notNow.tap()
+      XCTAssertTrue(passwordPrompt.waitForNonExistence(timeout: 10), app.debugDescription)
     }
     let status = app.staticTexts["No local edits waiting to sync."].firstMatch
     XCTAssertTrue(status.waitForExistence(timeout: 5))
-    for _ in 0..<3 {
-      _ = dismissPasswordPrompt()
-      app.swipeUp()
-    }
-    _ = dismissPasswordPrompt()
+    for _ in 0..<3 { app.swipeUp() }
     let scrolledShot = XCTAttachment(screenshot: app.screenshot())
     scrolledShot.name = "native-scrolled-sync-status"
     scrolledShot.lifetime = .keepAlways
@@ -899,8 +976,22 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertGreaterThan(status.frame.width, 0)
     XCTAssertGreaterThanOrEqual(status.frame.minY, app.navigationBars["widgets"].frame.maxY)
     XCTAssertLessThanOrEqual(status.frame.maxY, app.frame.maxY)
-    let create = app.navigationBars["widgets"].buttons["new-record"]
-    tapWhenReady(create)
+    let bar = app.navigationBars["widgets"]
+    let create = bar.buttons["new-record"]
+    XCTAssertTrue(create.waitForExistence(timeout: 5))
+    XCTAssertEqual(app.state, .runningForeground)
+    XCTAssertTrue(create.isEnabled)
+    XCTAssertGreaterThan(create.frame.width, 0)
+    XCTAssertGreaterThan(create.frame.height, 0)
+    XCTAssertTrue(bar.frame.contains(create.frame))
+    let toolbarReady = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        create.isHittable
+      }, object: create)
+    XCTAssertEqual(
+      XCTWaiter.wait(for: [toolbarReady], timeout: 15), .completed, app.debugDescription)
+    create.tap()
+    XCTAssertTrue(app.navigationBars["New record"].waitForExistence(timeout: 5))
     let title = "Native screen " + UUID().uuidString.prefix(8)
     let field = app.descendants(matching: .any)["field-title"]
     tapWhenReady(field)
@@ -928,6 +1019,7 @@ final class WorkspaceUITests: XCTestCase {
     let replicaSettings = app.navigationBars["widgets"].buttons["Hub connection"]
     tapWhenReady(replicaSettings)
     let forget = app.buttons["Forget saved connection"]
+    for _ in 0..<4 where !forget.isHittable { app.swipeUp() }
     tapWhenReady(forget)
     XCTAssertTrue(app.navigationBars["Hub connection"].waitForNonExistence(timeout: 5))
     XCTAssertTrue(app.navigationBars["widgets"].buttons["sync-now"].waitForNonExistence(timeout: 5))
@@ -1015,6 +1107,20 @@ final class WorkspaceUITests: XCTestCase {
     add(listShot)
   }
 
+  private func connectUsingFixtureToken(_ app: XCUIApplication) {
+    tapWhenReady(app.buttons["Use existing token"])
+    let form = app.collectionViews.containing(.button, identifier: "Use existing token").firstMatch
+    let token = app.secureTextFields["hub-token"]
+    // Expanding the manual section does not move focus away from the URL field.
+    // Scroll the active form so the keyboard cannot cover the token or Save action.
+    for _ in 0..<6 where !token.isHittable { scrollFormUp(form) }
+    tapWhenReady(token)
+    token.typeText("fixture")
+    let save = app.buttons["Save and sync"]
+    for _ in 0..<6 where !save.isHittable { scrollFormUp(form) }
+    tapWhenReady(save)
+  }
+
   private func tapWhenReady(
     _ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line
   ) {
@@ -1095,12 +1201,16 @@ final class WorkspaceUITests: XCTestCase {
   private func dismissPasswordPrompt() -> Bool {
     let prompt = XCUIApplication().sheets["Save Password?"]
     guard prompt.exists, prompt.buttons["Not Now"].isHittable else { return false }
-    // This button belongs to the remote Password AutoFill process. A coordinate
-    // anchored to the app sends the event to the wrong process on iOS.
     prompt.buttons["Not Now"].tap()
-    // The remote system sheet can still be visibly fading after five seconds
-    // under simulator load. Wait for its actual dismissal before touching the app.
-    XCTAssertTrue(prompt.waitForNonExistence(timeout: 15))
+    // Wait for the actual system sheet dismissal before touching the app.
+    let dismissed = prompt.waitForNonExistence(timeout: 15)
+    if !dismissed {
+      let screenshot = XCTAttachment(screenshot: XCUIApplication().screenshot())
+      screenshot.name = "password-prompt-after-dismissal-tap"
+      screenshot.lifetime = .keepAlways
+      add(screenshot)
+    }
+    XCTAssertTrue(dismissed, XCUIApplication().debugDescription)
     return true
   }
 }

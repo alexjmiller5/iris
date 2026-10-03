@@ -16,6 +16,7 @@ try {
 		state.webkit = { messageHandlers: { editor: { postMessage(message: unknown) { state.events.push(message); } } } };
 	});
 	await page.route(url, route => route.fulfill({ body: html, contentType: 'text/html' }));
+	await page.setViewportSize({width:390,height:844});
 	await page.goto(url);
 	await expect.poll(() => page.evaluate(() => (window as any).events)).toEqual([{type: 'ready'}]);
 	const value = '# Native draft\n\n<mention-page url="https://example.com/kept"/>\n';
@@ -23,6 +24,7 @@ try {
 	await expect(page.getByRole('heading', {name:'Native draft'})).toBeVisible();
 	await page.getByRole('button', {name:'Body source', exact:true}).click();
 	await expect(page.getByRole('textbox', {name:'Body',exact:true})).toHaveValue(value);
+	expect(await page.getByRole('textbox', {name:'Body',exact:true}).evaluate(node => parseFloat(getComputedStyle(node).fontSize)), 'Source focus must not trigger iOS input zoom').toBeGreaterThanOrEqual(16);
 	await expect.poll(() => page.evaluate(() => (window as any).events)).toEqual([{type:'ready'}]);
 	await page.getByRole('textbox', {name:'Body',exact:true}).fill('Edited locally');
 	await expect.poll(() => page.evaluate(() => (window as any).events.at(-1))).toEqual({type:'change',id:'draft-1',value:'Edited locally'});

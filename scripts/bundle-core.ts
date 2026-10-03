@@ -28,6 +28,7 @@ if (source !== "--native") {
   const fixtureDir = join(root, 'packages/LifeKit/Tests/LifeKitTests/Fixtures');
   await mkdir(fixtureDir, { recursive: true });
   await copyFile(join(sourceRoot, 'tests/fixtures/read-dependencies.json'), join(fixtureDir, 'read-dependencies.json'));
+  await copyFile(join(sourceRoot, 'tests/fixtures/enrollment-policy.json'), join(fixtureDir, 'enrollment-policy.json'));
   const generatorPath = join(sourceRoot, 'scripts/generate-core-contract.ts');
   const { generateContract } = await import(generatorPath);
   const generated = generateContract(JSON.parse(await readFile(schemaPath, 'utf8')));

@@ -186,16 +186,29 @@ App-owned local workspaces initialize missing shared saved-view storage;
 external files, replicas and existing name collisions are not altered by that
 initialization. Unavailable saved views show their reason and remain untouched.
 
-**Connect to hub** accepts an HTTPS endpoint and an existing scoped client
-token. Both are saved in this device's Keychain, without prompts during normal
-use. Loopback HTTP is supported for development. **Save and sync** opens an
-app-owned replica; **Sync now** sends and receives updates. Network failures
-leave local edits available, and durable pending/rejected counts and the last
-successful sync remain visible while scrolling. Rejection details stay in the
-scrollable record list. Forgetting the saved connection removes its
-Keychain entry and retains the replica for reconnecting to the same hub.
-Replacement devices enroll through this same connection screen with a fresh
-scoped token; Keychain credentials are not copied between devices.
+**Connect to hub** accepts an HTTPS endpoint. Enter a device name, choose
+**Request approval**, then **Open approval link** to approve it in your hub.
+Match the displayed approval code. The link contains a fingerprint, never the
+device credential. Approval polling uses the hub's shared policy and expires
+locally; **Cancel approval** stops installation and attempts to revoke only that
+candidate. An unapproved link can still be approved later, so unconfirmed cleanup
+explains how to revoke it in the hub. Closing the app while waiting cannot promise
+revocation. Replacement devices follow this same flow with a fresh credential.
+
+**Use existing token** is an alternative for a dedicated full-scope device token.
+New credentials must pass the hub session and replica checks before replacing
+Keychain or the current workspace. Operator/admin and restricted tokens are
+rejected. Failed validation or Keychain storage leaves the old connection intact.
+The credential stays in this device's Keychain and is never copied to another
+device. Loopback HTTP is supported for development.
+
+An established Keychain-backed replica reopens offline without requiring a fresh
+session response. Cached records appear before sync finishes. **Sync now** sends
+and receives updates; failures keep local records and edits available. Durable
+pending/rejected counts and the last successful sync remain visible while
+scrolling, with rejection details in the record list. **Forget saved connection**
+removes the local Keychain entry and keeps the replica; it does not revoke the
+device at the hub. Use the hub's device controls to revoke access separately.
 
 **Downloads** in connection settings controls the automatic row limit and each
 table's **Automatic**, **Include** or **Skip** choice. Leave the limit blank to use
@@ -446,8 +459,9 @@ trash and pages of 100 rows. Column widths are retained for the web grid;
 native does not provide a grid-width or secondary-sort editor. Rejected edits retain
 their data and show errors; a dedicated repair workflow remains open. Sync
 runs on connection and explicit request,
-not in the background. Device-approval enrollment, automatic token issuance
-remain open work. The graph is available on web and macOS; iOS graph presentation
+not in the background. Native device approval installs a dedicated credential
+only after the hub session is validated; manual token entry is also available.
+The graph is available on web and macOS; iOS graph presentation
 is outside the MVP. Native property edits and new records require explicit Save;
 existing-record Markdown autosaves locally. Recovered stale drafts retain their
 source for review; automatic conflict merging is not implemented.

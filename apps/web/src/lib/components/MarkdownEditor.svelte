@@ -324,6 +324,11 @@
 		font-size: 0.82rem;
 		line-height: 1.7;
 	}
+	@media (max-width: 640px) {
+		textarea {
+			font-size: max(1rem, 16px);
+		}
+	}
 	.rich-document :global(.ProseMirror) {
 		min-height: 16rem;
 		padding: 1rem;

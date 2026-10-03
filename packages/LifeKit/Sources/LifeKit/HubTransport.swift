@@ -56,6 +56,71 @@ struct HubTransport: Sendable {
     try await request(route: route, body: body)
   }
 
+  /// Enrollment keeps HTTP status separate from policy. Only the fixed session
+  /// endpoint receives the candidate credential; large sync replies use their own path.
+  func sessionReply(revoking: Bool = false, maxResponseBytes: Int) async throws -> CoreSessionReply
+  {
+    try Task.checkCancellation()
+    guard maxResponseBytes > 0, let url = URL(string: endpoint + "/v1/session") else {
+      throw WorkspaceError(message: "Invalid session request.", violations: [])
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = revoking ? "POST" : "GET"
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    do {
+      let (bytes, response) = try await session.bytes(for: request)
+      defer { bytes.task.cancel() }
+      guard let response = response as? HTTPURLResponse else {
+        throw WorkspaceError(message: "Invalid session response.", violations: [])
+      }
+      let retry = Self.retryAfter(response.value(forHTTPHeaderField: "Retry-After"), now: Date())
+      guard response.statusCode == 200 else {
+        return CoreSessionReply(status: response.statusCode, data: .null, retryAfterSeconds: retry)
+      }
+      let mime = response.mimeType?.lowercased() ?? ""
+      guard
+        mime == "application/json" || (mime.hasPrefix("application/") && mime.hasSuffix("+json")),
+        response.expectedContentLength <= maxResponseBytes
+      else {
+        throw WorkspaceError(message: "Invalid or oversized session response.", violations: [])
+      }
+      var data = Data()
+      for try await byte in bytes {
+        try Task.checkCancellation()
+        guard data.count < maxResponseBytes else {
+          throw WorkspaceError(message: "Session response is too large.", violations: [])
+        }
+        data.append(byte)
+      }
+      guard let json = try? JSONDecoder().decode(JSONValue.self, from: data) else {
+        throw WorkspaceError(message: "Session response is not valid JSON.", violations: [])
+      }
+      return CoreSessionReply(status: response.statusCode, data: json, retryAfterSeconds: retry)
+    } catch {
+      if Task.isCancelled || error is CancellationError { throw CancellationError() }
+      if let failure = error as? WorkspaceError { throw failure }
+      throw WorkspaceError(
+        message: "Session request failed. Check the connection and try again.", violations: [])
+    }
+  }
+
+  private static func retryAfter(_ value: String?, now: Date) -> Int? {
+    guard let value else { return nil }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmed.isEmpty, trimmed.utf8.allSatisfy({ (48...57).contains($0) }),
+      let seconds = Int(trimmed), seconds <= 9_007_199_254_740_991
+    {
+      return seconds
+    }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "EEE',' dd MMM yyyy HH':'mm':'ss z"
+    guard let date = formatter.date(from: trimmed) else { return nil }
+    return max(0, Int(ceil(date.timeIntervalSince(now))))
+  }
+
   private func request(route: String, body: WorkspaceRecord?) async throws -> HubReply {
     let pattern =
       body == nil

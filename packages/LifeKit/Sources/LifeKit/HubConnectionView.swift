@@ -7,6 +7,14 @@ struct HubConnectionView: View {
   @State private var token = ""
   @State private var connecting = false
   @State private var failure: String?
+  @State private var deviceName = "Life UI"
+  @State private var manual = false
+  @State private var enrollment: EnrollmentModel?
+  @State private var active = true
+
+  private var busy: Bool {
+    connecting || enrollment?.phase == .waiting || enrollment?.phase == .installing
+  }
 
   var body: some View {
     NavigationStack {
@@ -44,28 +52,38 @@ struct HubConnectionView: View {
               .textInputAutocapitalization(.never).keyboardType(.URL)
             #endif
             .accessibilityIdentifier("hub-endpoint")
-          SecureField("Scoped token", text: $token).autocorrectionDisabled()
-            #if os(iOS)
-              .textInputAutocapitalization(.never)
-            #endif
-            .accessibilityIdentifier("hub-token")
+            .disabled(busy)
         } header: {
           Text("Connection")
         } footer: {
           Text(
-            "Use the URL and scoped client token issued by your hub. Credentials are saved in this device’s Keychain. Sync uses a separate local replica."
+            "Approve this device in your hub. Its credential stays in this device’s Keychain, and sync uses a separate local replica."
           )
         }
+        HubApprovalSection(
+          enrollment: enrollment, deviceName: $deviceName,
+          disabled: connecting || endpoint.isEmpty, begin: beginApproval)
         Section {
-          Button(connecting ? "Connecting…" : "Save and sync") { connect() }
-            .disabled(connecting || endpoint.isEmpty || token.isEmpty)
+          DisclosureGroup("Use existing token", isExpanded: $manual) {
+            SecureField("Scoped token", text: $token).autocorrectionDisabled()
+              #if os(iOS)
+                .textInputAutocapitalization(.never)
+              #endif
+              .accessibilityIdentifier("hub-token")
+            Button(connecting ? "Connecting…" : "Save and sync") { connect() }
+              .disabled(busy || endpoint.isEmpty || token.isEmpty)
+            Text(
+              "Use a dedicated full-scope device token. Operator credentials cannot connect a replica."
+            )
+            .font(.caption).foregroundStyle(.secondary)
+          }.disabled(busy)
           if model.connection != nil {
             Button("Forget saved connection", role: .destructive) {
               do {
                 try model.forgetConnection()
                 dismiss()
               } catch { failure = error.localizedDescription }
-            }.disabled(connecting)
+            }.disabled(busy)
             Text(
               "The local replica stays on this device. Reconnect to the same hub to resume sync."
             )
@@ -78,13 +96,20 @@ struct HubConnectionView: View {
       .navigationTitle("Hub connection")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
-          Button("Done") { dismiss() }.disabled(connecting)
+          Button("Done") { dismiss() }.disabled(busy)
         }
       }
-      .interactiveDismissDisabled(connecting)
+      .interactiveDismissDisabled(busy)
       .task {
+        active = true
         endpoint = model.connection?.endpoint ?? ""
-        token = model.connection?.token ?? ""
+      }
+      .onChange(of: model.workspaceGeneration) {
+        if enrollment?.phase == .waiting { Task { await enrollment?.cancel() } }
+      }
+      .onDisappear {
+        active = false
+        if enrollment?.phase == .waiting { Task { await enrollment?.cancel() } }
       }
     }
     #if os(macOS)
@@ -94,14 +119,72 @@ struct HubConnectionView: View {
   private func connect() {
     connecting = true
     failure = nil
+    let generation = model.workspaceGeneration
     Task {
       do {
         try await model.connect(
           HubCredentials(
-            endpoint: endpoint.trimmingCharacters(in: .whitespacesAndNewlines), token: token))
+            endpoint: endpoint.trimmingCharacters(in: .whitespacesAndNewlines), token: token),
+          isCurrent: { active && model.workspaceGeneration == generation })
         dismiss()
       } catch { failure = error.localizedDescription }
       connecting = false
+    }
+  }
+
+  private func beginApproval() {
+    failure = nil
+    let generation = model.workspaceGeneration
+    let next = EnrollmentModel(
+      isCurrent: { active && model.workspaceGeneration == generation },
+      install: { credentials, fingerprint, current in
+        try await model.connect(
+          credentials, expectedFingerprint: fingerprint,
+          synchronizeAfter: false, isCurrent: current)
+      })
+    enrollment = next
+    Task {
+      await next.start(
+        endpoint: endpoint.trimmingCharacters(in: .whitespacesAndNewlines), name: deviceName)
+      if next.phase == .connected, active {
+        Task { await model.synchronize() }
+        dismiss()
+      }
+    }
+  }
+}
+
+private struct HubApprovalSection: View {
+  let enrollment: EnrollmentModel?
+  @Binding var deviceName: String
+  let disabled: Bool
+  let begin: () -> Void
+  @Environment(\.openURL) private var openURL
+
+  var body: some View {
+    Section("Approve a device") {
+      if let enrollment, enrollment.phase == .waiting || enrollment.phase == .installing {
+        if let code = enrollment.approvalCode {
+          LabeledContent("Approval code", value: code).accessibilityIdentifier("enrollment-code")
+        }
+        if let url = enrollment.approvalURL {
+          Button("Open approval link") { openURL(url) }
+            .accessibilityIdentifier("enrollment-link").accessibilityValue(url.absoluteString)
+        }
+        if let status = enrollment.status { Text(status).font(.callout) }
+        Button("Cancel approval", role: .cancel) { Task { await enrollment.cancel() } }
+          .disabled(enrollment.phase == .installing).accessibilityIdentifier("cancel-enrollment")
+      } else {
+        TextField("Device name", text: $deviceName).accessibilityIdentifier("hub-device-name")
+        Button("Request approval", action: begin).accessibilityIdentifier("begin-enrollment")
+          .disabled(disabled || deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+      if let error = enrollment?.failure {
+        Text(error).foregroundStyle(.red).textSelection(.enabled)
+      }
+      if let cleanup = enrollment?.cleanupMessage {
+        Text(cleanup).font(.callout).textSelection(.enabled)
+      }
     }
   }
 }

@@ -152,6 +152,16 @@ stay service-side. Native SQL callbacks are trusted JSC-only, never exposed to
 web content. WebKit input uses parsed arguments and validated messages; the graph
 resource forbids navigation/network and contains its own script/style CSP hashes.
 
+Native enrollment generates a candidate credential locally and opens the hub's
+approval URL containing only its fingerprint. Shared core validates approval,
+session identity, full device scope and replica capability before Keychain or
+workspace replacement. Operator credentials never become consumer sessions.
+Cancellation revokes only the generated candidate when possible; it must not
+remove an existing connection or claim an unused approval URL was revoked.
+Established Keychain replicas reopen offline before a sync attempt. Keep the
+canonical enrollment fixture synchronized through `bundle-core.ts` and execute
+it in JavaScriptCore as well as the core's own tests.
+
 ## Development and verification
 
 `bun install --frozen-lockfile`, then `just dev`. `just test`, `just check`,
