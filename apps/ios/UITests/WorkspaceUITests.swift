@@ -266,6 +266,9 @@ final class WorkspaceUITests: XCTestCase {
     let journalsBefore = journals.count
     let name = "Duplicate source " + UUID().uuidString.prefix(8)
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    // Older unsaved new-record drafts on this workspace are offered first; start fresh.
+    let fresh = app.buttons["Start new record"]
+    if fresh.waitForExistence(timeout: 3) { tapWhenReady(fresh) }
     let title = app.textFields["field-title"]
     tapWhenReady(title)
     title.typeText(name)

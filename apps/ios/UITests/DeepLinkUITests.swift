@@ -87,6 +87,9 @@ final class DeepLinkUITests: XCTestCase {
     tap(app.buttons["open-local"])
     openNotes(app)
     tap(app.buttons["new-record"])
+    // Older unsaved new-record drafts on this workspace are offered first; start fresh.
+    let fresh = app.buttons["Start new record"]
+    if fresh.waitForExistence(timeout: 3) { tap(fresh) }
     let title = app.textFields["field-title"]
     tap(title)
     let name = "Link fixture " + UUID().uuidString
