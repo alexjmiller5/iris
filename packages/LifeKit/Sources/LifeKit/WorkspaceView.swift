@@ -854,7 +854,22 @@ private struct RecordEditor: View {
             } header: {
               Text(field.label)
             } footer: {
-              Text(field.help)
+              VStack(alignment: .leading, spacing: 4) {
+                if !field.help.isEmpty { Text(field.help) }
+                if editor.isNew, let preview = field.defaultPreview {
+                  if editor.draft.usesDefault(field.id) {
+                    // Choice pickers already name the default as their empty choice.
+                    if !["select", "multi_select"].contains(field.type) {
+                      Text("Default: \(preview)")
+                    }
+                    Button("Leave empty") { editor.setValue("", for: field.id, explicit: true) }
+                      .accessibilityIdentifier("leave-empty-\(field.id)")
+                  } else if (editor.draft.values[field.id] ?? "").isEmpty {
+                    Text("Saved empty instead of the default.")
+                      .accessibilityIdentifier("empty-instead-of-default-\(field.id)")
+                  }
+                }
+              }
             }
             .disabled(editor.recovery != nil)
           }

@@ -295,6 +295,32 @@ final class WorkspaceUITests: XCTestCase {
       "Keeping the source and saving the copy leave no orphaned journal")
   }
 
+  func testLeaveEmptySavesNullInsteadOfTheCatalogDefault() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    let name = "Leave empty " + UUID().uuidString.prefix(8)
+    tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    let title = app.textFields["field-title"]
+    tapWhenReady(title)
+    title.typeText(name)
+    let leaveEmpty = app.buttons["leave-empty-status"]
+    for _ in 0..<10 where !leaveEmpty.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(leaveEmpty)
+    XCTAssertTrue(app.staticTexts["empty-instead-of-default-status"].waitForExistence(timeout: 5))
+    XCTAssertFalse(leaveEmpty.exists)
+    tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
+    XCTAssertTrue(app.navigationBars["New record"].waitForNonExistence(timeout: 10))
+    openRecord(app, title: name)
+    let status = app.buttons["field-status"]
+    for _ in 0..<10 where !status.isHittable { scrollRecordFormUp(app) }
+    let shown = status.label + " " + ((status.value as? String) ?? "")
+    XCTAssertTrue(shown.contains("Not set"), shown)
+    XCTAssertFalse(shown.contains("Draft"), "The catalog default must not be applied: \(shown)")
+    XCTAssertFalse(app.buttons["leave-empty-status"].exists, "Saved records have no defaults")
+  }
+
   func testOnlineBrowseOpensReadOnlyFreshRecordAndKeepsLocalEditorSeparate() throws {
     guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
       throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")

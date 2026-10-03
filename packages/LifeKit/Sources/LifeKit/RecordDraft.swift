@@ -7,6 +7,11 @@ struct CatalogField: Identifiable, Codable {
   var type: String { property["type"]?.text.nonempty ?? "text" }
   var required: Bool { property["required"]?.isTrue == true }
   var description: String { property["description"]?.text ?? "" }
+  /// What core applies to an untouched new-record field; SQL defaults resolve at Save.
+  var defaultPreview: String? {
+    guard let value = property["default_value"]?.text.nonempty else { return nil }
+    return value.hasPrefix("sql:") ? "set when saved" : value
+  }
   func formValue(_ value: JSONValue?) -> String {
     if type == "bool" {
       if value?.isTrue == true { return "true" }
@@ -62,6 +67,9 @@ struct RecordDraft: Codable {
       })
     values = initial
   }
+
+  /// An untouched new-record field is omitted, so core applies its default.
+  func usesDefault(_ column: String) -> Bool { original == nil && initial[column] != nil }
 
   @discardableResult
   mutating func setValue(
