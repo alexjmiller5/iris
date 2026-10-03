@@ -114,6 +114,10 @@ Usage is deployment-scoped; provider-wide billing APIs do not belong in clients.
 ## Data integrity
 
 Components call the shared write path; no component SQL writes.
+Typed web link actions are presentation only: keep the original draft text,
+restrict websites to HTTP(S), encode email recipient text and reject phone
+service codes. Keep open actions available on read-only properties and isolate
+external tabs from the editor. Malformed source must not break rendering.
 The SQL adapter read path accepts exactly one read-only statement. Parse the
 whole input before stepping; reject writes and connection-changing commands
 from catalog options/default expressions. Trusted schema replay stays separate. Pass the opened

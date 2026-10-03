@@ -45,6 +45,9 @@ storage transfer is required.
   visible first, and hidden properties remain available when editing the record.
 - Create/edit typed fields, search related records by their display names,
   write Markdown with rich formatting or source editing, and move records to trash or restore them.
+- Website, email and phone fields offer explicit open actions. Websites open in
+  a separate tab; the draft stays in the editor. Open actions also work when a
+  property's editing control is disabled.
 - Open a selected related record with its arrow button. Opening reads its current
   full row and prompts before discarding a draft. Multi-reference Remove buttons
   are separate; missing or trashed targets leave the current editor intact.

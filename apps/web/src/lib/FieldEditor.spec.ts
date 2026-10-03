@@ -15,6 +15,73 @@ function field(props: Record<string, unknown>) {
 	}).body;
 	return window;
 }
+test.each([
+	[
+		'url',
+		'https://example.test/path?x=1#part',
+		'https://example.test/path?x=1#part',
+		'Open website'
+	],
+	['email', 'note+tag@example.test', 'mailto:note%2Btag@example.test', 'Compose email'],
+	['phone', '+00 (000) 000-0000', 'tel:+000000000000', 'Call']
+])(
+	'a %s field offers an explicit open action without changing its text',
+	(type, value, href, action) => {
+		const window = field({ property: { col: 'value', type }, value });
+		const link = window.document.querySelector('a');
+		expect(link?.getAttribute('href')).toBe(href);
+		expect(link?.textContent).toContain(action);
+		expect(window.document.querySelector('input')?.value).toBe(value);
+		if (type === 'url') {
+			expect(link?.target).toBe('_blank');
+			expect(link?.rel.split(' ')).toEqual(expect.arrayContaining(['noopener', 'noreferrer']));
+		}
+		window.close();
+	}
+);
+
+test('read-only fields retain their explicit open action', () => {
+	const window = field({
+		property: { col: 'value', type: 'url' },
+		value: 'https://example.test',
+		disabled: true
+	});
+	expect(window.document.querySelector('input')?.disabled).toBe(true);
+	expect(window.document.querySelector('a')?.getAttribute('href')).toBe('https://example.test/');
+	window.close();
+});
+
+test('email text cannot append headers or a fragment to its open action', () => {
+	const window = field({
+		property: { col: 'value', type: 'email' },
+		value: 'note@example.test?bcc=other@example.test#fragment'
+	});
+	expect(window.document.querySelector('a')?.getAttribute('href')).toBe(
+		'mailto:note@example.test%3Fbcc%3Dother@example.test%23fragment'
+	);
+	window.close();
+});
+
+test.each([
+	['url', 'javascript:alert(1)'],
+	['url', 'file:///tmp/example'],
+	['url', 'file://example.test/private'],
+	['url', 'ftp://example.test/file'],
+	['url', 'data:text/html,test'],
+	['url', 'https:///'],
+	['url', 'https://example.test\n/secret'],
+	['email', 'note@example.test\r\nbcc:other@example.test'],
+	['email', '\ud800@example.test'],
+	['phone', '*123#'],
+	['phone', '+00;ext=123'],
+	['text', 'https://example.test'],
+	['url', '']
+])('unsupported %s destination %s has no open action', (type, value) => {
+	const window = field({ property: { col: 'value', type }, value });
+	expect(window.document.querySelector('a')).toBeNull();
+	window.close();
+});
+
 test('multi-select keeps unknown selections alongside described options', () => {
 	const window = field({
 		property: { col: 'tags', type: 'multi_select', options: [{ v: 'new', d: 'A new tag' }] },
