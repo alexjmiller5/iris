@@ -76,7 +76,7 @@
 			target="_blank"
 			rel="noopener noreferrer">Open approval page <IconArrowUpRight size={16} /></a
 		>
-		<p class="hint">Confirm the code at your hub. Only the fingerprint is in this link.</p>
+		<p class="hint">Confirm the code at your hub.</p>
 	{/if}
 	{#if pending}<button class="secondary" type="button" onclick={() => void model?.cancel()}
 			><IconX size={16} />Cancel approval</button

@@ -27,6 +27,10 @@ attempts to revoke only the newly generated candidate. An unauthorized cleanup
 response does not prove cancellation: approval links do not expire at the hub,
 so revoke an abandoned device through the hub if it is approved later.
 
+While waiting, the browser retries transient network failures at the shared
+policy interval within the original deadline. Malformed replies fail the attempt.
+The core classifies replies; the browser explicitly owns these bounded retries.
+
 Closing or switching workspaces forgets the in-memory credential and preserves
 local rows for offline use. Forgetting is not revocation. Revoke an established
 device through the hub's device management page. A replacement browser/device
