@@ -34,14 +34,33 @@
 	import SchemaGraph from '$lib/SchemaGraph.svelte';
 	import HubServices from '$lib/HubServices.svelte';
 	import SearchDialog from '$lib/SearchDialog.svelte';
+	import {
+		loadDestinations,
+		type NavigationState,
+		type PaletteDestination
+	} from '$lib/command-palette';
 	import ColumnSettings from '$lib/ColumnSettings.svelte';
 	import SavedViews from '$lib/SavedViews.svelte';
 	let connectedHub = $state<{ endpoint: string; token: string } | null>(null);
 	let findVisible = $state(false);
 	let findVersion = 0;
+	let findNavigation = $state<NavigationState>({ destinations: [], loading: false, error: '' });
 	function showFind(visible: boolean) {
 		findVersion++;
 		findVisible = visible;
+		findNavigation = { destinations: [], loading: false, error: '' };
+		if (visible && database) {
+			const workspace = database,
+				version = findVersion;
+			void loadDestinations(
+				catalog.tables.map(tableName),
+				(target) => workspace.request('listViews', { table: target }),
+				(state) => {
+					findNavigation = state;
+				},
+				() => database === workspace && findVisible && findVersion === version
+			);
+		}
 	}
 
 	let database: WorkspaceDatabase | null = null;
@@ -1017,6 +1036,48 @@
 		const version = findVersion;
 		return openRecord(hit, () => findVisible && findVersion === version);
 	}
+	async function openSearchDestination(destination: PaletteDestination): Promise<boolean> {
+		if (!database || busy || writing || bodySaving) return false;
+		const workspace = database,
+			version = findVersion,
+			sourceEditor = editorVersion;
+		const current = () =>
+			database === workspace &&
+			findVisible &&
+			findVersion === version &&
+			editorVersion === sourceEditor;
+		let resolved;
+		try {
+			resolved = await resolveDestination(
+				workspace,
+				{
+					table: destination.table,
+					view: destination.kind === 'view' ? destination.id : null,
+					row: null
+				},
+				table
+			);
+		} catch (e) {
+			if (current()) throw e;
+			return false;
+		}
+		if (!current() || busy || writing || bodySaving || !discard()) return false;
+		locationRequest++;
+		navigationLoading = false;
+		resetView();
+		catalog = resolved.catalog;
+		table = resolved.table;
+		graphVisible = false;
+		applyView(resolved.view);
+		showFind(false);
+		const openedVersion = editorVersion;
+		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {
+			if (database === workspace && editorVersion === openedVersion) error = message(e);
+		});
+		if (database !== workspace || editorVersion !== openedVersion) return false;
+		await reflectLocation();
+		return true;
+	}
 	async function openReference(p: Property, id: string, button: HTMLButtonElement) {
 		if (!p.ref_table || busy || relationOpening === editorVersion) return;
 		const workspace = database,
@@ -1085,6 +1146,10 @@
 			onchoose={openSearchHit}
 			onclose={() => showFind(false)}
 			incomplete={skipped.length > 0}
+			destinations={findNavigation.destinations}
+			navigationLoading={findNavigation.loading}
+			navigationError={findNavigation.error}
+			onnavigate={openSearchDestination}
 		/>
 	{/if}
 	<fieldset class="workspace-controls" disabled={writing} aria-label="Workspace controls">

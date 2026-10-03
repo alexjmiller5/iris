@@ -4,6 +4,12 @@ import { disposableOrigin, workspacePage } from './test-origin';
 
 const fixtureAddress = 'http://life-ui-navigation.localhost:5224/workspace?review';
 const tab = (url: string) => ({ url: () => url });
+test('palette fixture reset is bounded to its reserved host and review path', () => {
+	expect(disposableOrigin('http://life-ui-palette.localhost:5226/workspace?review')).toBe('http://life-ui-palette.localhost:5226');
+	for (const address of ['http://life-ui-palette.localhost.example.test:5226/workspace?review', 'http://life-ui-palette.localhost:5226/workspace', 'http://life-ui-palette.localhost:5226/other?review']) {
+		expect(() => disposableOrigin(address)).toThrow('Refusing reset');
+	}
+});
 test('fixture selection survives product query changes without matching other origins or paths', () => {
 	const intended = tab('http://life-ui-navigation.localhost:5224/workspace?table=odd+table&view=view%2F&row=row%26');
 	const unrelated = [
@@ -34,7 +40,7 @@ test('navigation fixture permits only its exact reserved host and review path', 
 
 // Exercise each real runner before it can load a fixture or attach to Chrome.
 // Removing the origin guard must fail these tests without clearing any storage.
-const scripts = ['test-services.ts', 'test-sql-integrity.ts', 'test-workspace-regressions.ts', 'test-markdown-editor.ts', 'test-editor-island.ts', 'test-body-autosave.ts', 'test-search.ts', 'test-search-sync.ts', 'test-typed-filters.ts', 'test-saved-views.ts', 'test-table-invariants.ts', 'test-partial-sync.ts', 'test-reference-navigation.ts', 'test-reference-mutations.ts', 'test-workspace-navigation.ts', 'test-navigation-mutations.ts'];
+const scripts = ['test-services.ts', 'test-sql-integrity.ts', 'test-workspace-regressions.ts', 'test-markdown-editor.ts', 'test-editor-island.ts', 'test-body-autosave.ts', 'test-search.ts', 'test-search-sync.ts', 'test-typed-filters.ts', 'test-saved-views.ts', 'test-table-invariants.ts', 'test-partial-sync.ts', 'test-reference-navigation.ts', 'test-reference-mutations.ts', 'test-workspace-navigation.ts', 'test-navigation-mutations.ts', 'test-command-palette.ts', 'test-command-palette-mutations.ts'];
 const unsafe = [
 	'https://example.com/workspace?review',
 	'http://localhost:5198/workspace?review',

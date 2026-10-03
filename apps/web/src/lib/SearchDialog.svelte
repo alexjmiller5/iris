@@ -3,12 +3,23 @@
 	import { IconAlertTriangle, IconLoader2, IconSearch, IconX } from '@tabler/icons-svelte';
 	import type { SearchHit } from 'life-ui-core/client';
 	import { createSearchModel, type Search } from './search-dialog';
+	import {
+		entryKey,
+		paletteEntries,
+		selectEntry,
+		type PaletteDestination,
+		type PaletteEntry
+	} from './command-palette';
 
 	let {
 		search,
 		onchoose,
 		onclose,
-		incomplete
+		incomplete,
+		destinations = [],
+		navigationLoading = false,
+		navigationError = '',
+		onnavigate = () => false
 	}: {
 		/** Return up to 50 hits at the supplied offset. */
 		search: Search;
@@ -16,6 +27,10 @@
 		onchoose: (hit: SearchHit) => boolean | void | Promise<boolean | void>;
 		onclose: () => void;
 		incomplete: boolean;
+		destinations?: PaletteDestination[];
+		navigationLoading?: boolean;
+		navigationError?: string;
+		onnavigate?: (destination: PaletteDestination) => boolean | void | Promise<boolean | void>;
 	} = $props();
 
 	const id = $props.id();
@@ -25,22 +40,33 @@
 	let opening = $state(false);
 	let openError = $state('');
 	let closed = false;
+	let activeKey = $state<string | null>(null);
+	const entries = $derived(paletteEntries($model.text, destinations, $model.hits));
+	const groups = [
+		{ kind: 'table', label: 'Tables' },
+		{ kind: 'view', label: 'Saved views' },
+		{ kind: 'record', label: 'Records' }
+	] as const;
+	$effect(() => {
+		activeKey = selectEntry(entries, activeKey);
+	});
 	const optionId = (index: number) => `${id}-result-${index}`;
-	const activeId = $derived($model.activeIndex < 0 ? undefined : optionId($model.activeIndex));
+	const activeIndex = $derived(entries.findIndex((entry) => entryKey(entry) === activeKey));
+	const activeId = $derived(activeIndex < 0 ? undefined : optionId(activeIndex));
 	const status = $derived(
 		opening
-			? 'Opening record…'
+			? 'Opening…'
 			: $model.loading
 				? $model.hits.length
 					? 'Loading more results…'
 					: 'Searching…'
 				: $model.error
 					? 'Could not search records.'
-					: $model.hits.length
-						? `${$model.hits.length} ${$model.hits.length === 1 ? 'result' : 'results'}`
+					: entries.length
+						? `${entries.length} ${entries.length === 1 ? 'result' : 'results'}`
 						: $model.searched
-							? 'No records found. Try different words.'
-							: 'Type to find a record.'
+							? 'No matches. Try different words.'
+							: 'Find a table, saved view or record.'
 	);
 
 	function close() {
@@ -54,16 +80,16 @@
 		await tick();
 		if (!closed && !opening) input.focus();
 	}
-	async function choose(hit: SearchHit) {
-		if (closed || opening) return;
+	async function choose(entry: PaletteEntry) {
+		if (closed || opening || ('unavailable' in entry && entry.unavailable)) return;
 		opening = true;
 		openError = '';
 		try {
-			const accepted = await onchoose(hit);
+			const accepted = await (entry.kind === 'record' ? onchoose(entry) : onnavigate(entry));
 			if (!closed && accepted !== false) close();
 		} catch (error) {
 			if (!closed)
-				openError = error instanceof Error ? error.message : 'Could not open this record.';
+				openError = error instanceof Error ? error.message : 'Could not open this result.';
 		} finally {
 			if (!closed) {
 				opening = false;
@@ -75,12 +101,12 @@
 		if (event.isComposing || opening) return;
 		if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
 			event.preventDefault();
-			model.move(event.key === 'ArrowDown' ? 1 : -1);
+			activeKey = selectEntry(entries, activeKey, event.key === 'ArrowDown' ? 1 : -1);
 			await tick();
 			if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
-		} else if (event.key === 'Enter' && $model.activeIndex >= 0) {
+		} else if (event.key === 'Enter' && activeIndex >= 0) {
 			event.preventDefault();
-			void choose($model.hits[$model.activeIndex]);
+			void choose(entries[activeIndex]);
 		}
 	}
 	onMount(() => {
@@ -117,17 +143,18 @@
 			role="combobox"
 			aria-label="Search records"
 			aria-autocomplete="list"
-			aria-expanded={$model.hits.length > 0}
+			aria-expanded={entries.length > 0}
 			aria-controls={`${id}-results`}
 			aria-activedescendant={activeId}
 			aria-describedby={`${id}-help`}
-			placeholder="Search records…"
+			placeholder="Tables, saved views and records…"
 			autocomplete="off"
 			spellcheck="false"
 			value={$model.text}
 			disabled={opening}
 			oninput={(event) => {
 				openError = '';
+				activeKey = null;
 				model.setQuery(event.currentTarget.value);
 			}}
 			onkeydown={keydown}
@@ -145,6 +172,10 @@
 			>{/if}
 		{status}
 	</p>
+	{#if navigationLoading}<p class="status" role="status">Loading saved views…</p>{/if}
+	{#if navigationError}<p class="failure" role="alert">
+			Some saved views could not be loaded: {navigationError}
+		</p>{/if}
 	{#if $model.error}
 		<div class="failure" role="alert">
 			<p>{$model.error}</p>
@@ -158,34 +189,50 @@
 			>
 		</div>
 	{/if}
-	{#if openError}<p class="failure" role="alert">Could not open this record: {openError}</p>{/if}
+	{#if openError}<p class="failure" role="alert">Could not open this result: {openError}</p>{/if}
 	<div
 		id={`${id}-results`}
 		class="results"
 		role="listbox"
 		aria-label="Search results"
-		aria-busy={$model.loading}
+		aria-busy={$model.loading || navigationLoading}
 	>
-		{#each $model.hits as hit, index (JSON.stringify([hit.table, hit.id]))}
-			<button
-				type="button"
-				role="option"
-				id={optionId(index)}
-				aria-selected={$model.activeIndex === index}
-				class="result"
-				tabindex="-1"
-				disabled={opening}
-				onclick={() => {
-					model.select(index);
-					void choose(hit);
-				}}
-				onkeydown={keydown}
-			>
-				<span class="result-heading"
-					><strong>{hit.label || hit.id}</strong><span class="table">{hit.table}</span></span
-				>
-				{#if hit.excerpt}<span class="excerpt">{hit.excerpt}</span>{/if}
-			</button>
+		{#each groups as group (group.kind)}
+			{#if entries.some((entry) => entry.kind === group.kind)}
+				<div role="group" aria-label={group.label}>
+					<h3>{group.label}</h3>
+					{#each entries as entry, index (entryKey(entry))}
+						{#if entry.kind === group.kind}
+							<button
+								type="button"
+								role="option"
+								id={optionId(index)}
+								aria-selected={entryKey(entry) === activeKey}
+								class="result"
+								tabindex="-1"
+								disabled={opening || !!('unavailable' in entry && entry.unavailable)}
+								onclick={() => {
+									activeKey = entryKey(entry);
+									void choose(entry);
+								}}
+								onkeydown={keydown}
+							>
+								<span class="result-heading"
+									><strong
+										>{entry.label || (entry.kind === 'table' ? entry.table : entry.id)}</strong
+									>{#if entry.kind !== 'table'}<span class="table">{entry.table}</span>{/if}</span
+								>
+								{#if entry.kind === 'record' && entry.excerpt}<span class="excerpt"
+										>{entry.excerpt}</span
+									>{/if}
+								{#if 'unavailable' in entry && entry.unavailable}<span class="excerpt"
+										>{entry.unavailable}</span
+									>{/if}
+							</button>
+						{/if}
+					{/each}
+				</div>
+			{/if}
 		{/each}
 	</div>
 	{#if $model.hasMore}
@@ -228,6 +275,12 @@
 		margin: 0;
 		font-size: 1.5rem;
 		font-weight: 650;
+	}
+	h3 {
+		margin: 0.8rem 0.8rem 0.25rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-muted);
 	}
 	button {
 		color: var(--color-ink);
