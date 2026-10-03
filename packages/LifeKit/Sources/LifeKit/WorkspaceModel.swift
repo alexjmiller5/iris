@@ -461,6 +461,35 @@ final class WorkspaceModel {
     return WorkspaceEditingContext(workspace: workspace, table: table, draftStore: draftStore)
   }
 
+  func incomingReferencesIdentity(context: WorkspaceEditingContext?, row: WorkspaceRecord?)
+    -> IncomingReferencesIdentity?
+  {
+    guard let context, context.workspace === client, context.table == table,
+      let rowID = row?["id"]?.text.nonempty
+    else { return nil }
+    return IncomingReferencesIdentity(
+      workspaceGeneration: workspaceGeneration, table: context.table, rowID: rowID,
+      catalog: catalog, skippedTables: Set(skippedTables))
+  }
+
+  func makeIncomingReferences(
+    context: WorkspaceEditingContext?, row: WorkspaceRecord?,
+    isCurrent: @escaping () -> Bool = { true }
+  ) -> IncomingReferencesModel? {
+    guard let context, let identity = incomingReferencesIdentity(context: context, row: row) else {
+      return nil
+    }
+    let selection = viewGeneration
+    return IncomingReferencesModel(
+      table: identity.table, rowID: identity.rowID,
+      readSources: { try await context.workspace.referenceSources($0) },
+      readPage: { try await context.workspace.referencedBy($0) },
+      isCurrent: { [weak self] in
+        self?.viewGeneration == selection
+          && self?.incomingReferencesIdentity(context: context, row: row) == identity && isCurrent()
+      })
+  }
+
   func makeReferenceNavigation(
     editor: RecordEditorModel, context: WorkspaceEditingContext,
     isCurrent: @escaping () -> Bool = { true },
