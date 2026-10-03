@@ -150,12 +150,16 @@ unavailable. The advisory refreshes after successful or failed sync; incomplete
 invariant coverage leaves records browsable. Saved-view writes check the views
 table separately. Every actual write rechecks its conditions transactionally.
 
-**Find** searches across locally stored tables using the shared FTS5 index;
-on macOS, press **Cmd+K**. Results show record names, table names and matching
-snippets, with 50 results per request. Opening a match reads the full current
-row and respects read-only tables. Find is unavailable while a record editor
-is open, so it cannot replace an unsaved draft. **Search this table** remains
-available for the current table. Skipped sync tables can make results incomplete.
+**Quick Find** offers tables and saved views before typing; on macOS, press
+**Cmd+K**. Type to filter destinations and search locally stored records through
+the shared FTS5 index. Use Up/Down and Enter to choose a result. Unavailable views
+retain their reason, and metadata failures can be retried separately from record
+search. Record matches show names, table names and matching snippets, with 50
+records per request. Opening a destination reads its current view or full row,
+including trashed rows, and respects read-only tables. Find is unavailable while
+a record editor is open, so it cannot replace an unsaved draft. **Search this
+table** remains available for the current table. Skipped sync tables can make
+results incomplete.
 
 **Views** opens saved views for the current table. Apply a view, save the current
 settings as a new view, update its name or settings, or delete it without deleting
