@@ -19,6 +19,9 @@ final class WorkspaceModel {
   var client: NativeWorkspace? {
     didSet {
       if oldValue !== client {
+        linkBinding = nil
+        linkIdentityStore = nil
+        linkError = nil
         recents?.cancel()
         recents = nil
         workspaceGeneration += 1
@@ -31,6 +34,53 @@ final class WorkspaceModel {
     }
   }
   private(set) var workspaceGeneration = 0
+  private(set) var linkBinding: NativeWorkspaceBinding?
+  private(set) var linkError: String?
+  private var linkIdentityStore: NativeLinkIdentityStore?
+  var canCopyLink: Bool {
+    client != nil && !loading && !writingRecord && !undoing && !savingView
+      && (linkBinding != nil || linkIdentityStore != nil)
+  }
+
+  func linkURL(for destination: NativeDestination, context: WorkspaceEditingContext?) throws -> URL
+  {
+    guard let context, context.workspace === client,
+      table.map({ Data($0.utf8) }) == Data(context.table.utf8),
+      Data(destination.table.utf8) == Data(context.table.utf8)
+    else {
+      throw WorkspaceError(message: "The workspace changed. Copy the link again.", violations: [])
+    }
+    try requireNavigationReady(workspace: context.workspace, generation: workspaceGeneration)
+    guard !loading else {
+      throw WorkspaceError(message: "Wait for the workspace to open.", violations: [])
+    }
+    do {
+      if let linkIdentityStore { linkBinding = try linkIdentityStore.create() }
+      let url = try NativeDeepLink(destination: destination, workspace: linkBinding).url
+      linkError = nil
+      return url
+    } catch {
+      linkError = error.localizedDescription
+      throw error
+    }
+  }
+
+  func linkedDestination(_ link: NativeDeepLink) throws -> NativeDestination {
+    guard let client, !loading else {
+      throw WorkspaceError(message: "Open the workspace that this link belongs to.", violations: [])
+    }
+    try requireNavigationReady(workspace: client, generation: workspaceGeneration)
+    do {
+      // Re-read preferences and the opened file stamp. Incoming URLs never create identity.
+      if let linkIdentityStore { linkBinding = try linkIdentityStore.load() }
+      let destination = try link.destination(matching: linkBinding)
+      linkError = nil
+      return destination
+    } catch {
+      linkError = error.localizedDescription
+      throw error
+    }
+  }
   var catalog: WorkspaceCatalog?
   var table: String? {
     didSet { if oldValue != table { resetView() } }
@@ -697,6 +747,15 @@ final class WorkspaceModel {
         throw error
       }
       client = workspace
+      if !demo {
+        do {
+          linkIdentityStore = try NativeLinkIdentityStore(
+            root: resolveLocalURL().deletingLastPathComponent(),
+            workspace: URL(fileURLWithPath: path)
+          ).retainingOpenedFile()
+          linkBinding = try linkIdentityStore?.load()
+        } catch { linkError = error.localizedDescription }
+      }
       configureRecents(store: recentStore)
       location =
         demo
@@ -948,6 +1007,7 @@ final class WorkspaceModel {
     scopedURL?.stopAccessingSecurityScopedResource()
     scopedURL = nil
     client = prepared
+    linkBinding = .replica(canonicalEndpoint: hub.endpoint)
     configureRecents(store: NativeRecentsStore(root: root, workspace: path))
     catalog = nextCatalog
     groups = nextGroups

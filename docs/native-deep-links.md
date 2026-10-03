@@ -52,6 +52,23 @@ the host adopts this store. Apple distinguishes the nonpersistent
 from a [document identifier](https://developer.apple.com/documentation/foundation/urlresourcekey/documentidentifierkey)
 that can survive file replacement; neither alone satisfies this contract.
 
-This model slice does not register the scheme, handle incoming system URLs,
-operate the clipboard or install a navigation destination. Those host changes
-require separate native interaction tests.
+The workspace lifecycle retains its installed binding independently of credentials.
+Forgetting a connection keeps the replica binding; replacing or closing the client
+clears it. Local opening reads identity without creating preferences and retains
+the opened physical file stamp. A replacement at the same path blocks both Copy
+and matching until the workspace is reopened. An unread preference file disables
+link operations with an error while ordinary workspace use remains available.
+
+`PendingNativeLink` retains one intent. A blocked action or lookup failure does
+not consume it; completion and errors apply only to the matching request UUID.
+It has no automatic navigation or persistence.
+
+The apps include file-timestamp privacy declarations because the lifecycle reads
+the file stamp on opening. `C617.1` covers app-container files; macOS additionally
+declares `3B52.1` for databases explicitly chosen in its file picker, following
+[Apple's approved reasons](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype).
+
+The lifecycle slice does not register the scheme, receive incoming system URLs,
+operate the clipboard or install a linked navigation destination. The prepared
+`DeepLinkUITests` require that later host integration and actual iOS verification;
+their presence is not evidence that those interactions work.
