@@ -80,7 +80,12 @@ final class DeepLinkUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["link-waiting-editor"].waitForExistence(timeout: 10))
     XCTAssertEqual(title.value as? String, draft)
     tap(app.navigationBars["Record"].buttons["Cancel"])
-    tap(app.buttons["Keep editing"])
+    let confirmation = app.sheets["Discard unsaved changes?"]
+    XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+    // iOS presents this confirmation as a popover; tapping outside keeps editing.
+    XCTAssertFalse(confirmation.frame.contains(CGPoint(x: title.frame.midX, y: title.frame.midY)))
+    title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
     XCTAssertEqual(title.value as? String, draft)
     XCTAssertTrue(app.staticTexts["link-waiting-editor"].exists)
     tap(app.navigationBars["Record"].buttons["Cancel"])
@@ -91,6 +96,14 @@ final class DeepLinkUITests: XCTestCase {
     XCTAssertEqual(title.value as? String, name)
     XCTAssertFalse(app.staticTexts["link-waiting-editor"].exists)
     tap(app.navigationBars["Record"].buttons["Cancel"])
+    XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
+
+    // Receipt while idle still waits for an explicit Open.
+    app.open(url)
+    XCTAssertTrue(app.buttons["open-pending-link"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.navigationBars["Record"].waitForExistence(timeout: 3))
+    tap(app.buttons["dismiss-pending-link"])
+    XCTAssertTrue(app.buttons["open-pending-link"].waitForNonExistence(timeout: 5))
 
     var wrong = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
     wrong.queryItems = wrong.queryItems?.map {

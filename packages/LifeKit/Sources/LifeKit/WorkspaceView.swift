@@ -24,6 +24,8 @@ public struct WorkspaceView: View {
     (target: EditorTarget, generation: Int, destination: NativeDestination)?
   @State private var pendingReferenceEditor:
     (destination: ReferenceDestination, source: WorkspaceEditingContext, generation: Int)?
+  @State private var pendingLink = PendingNativeLink()
+  @State private var pendingDuplicateEditor: (target: EditorTarget, generation: Int)?
   private let demo: Bool
 
   public init(demo: Bool = false) { self.demo = demo }
@@ -91,6 +93,9 @@ public struct WorkspaceView: View {
         .onChange(of: model.table) { showingGraph = false }
       }
     }
+    .safeAreaInset(edge: .top, spacing: 0) { pendingLinkBanner }
+    // Receiving a URL only retains it; navigation waits for an explicit Open.
+    .onOpenURL { pendingLink.receive($0) }
     .task { if demo { await model.open(demo: true) } else { await model.resumeConnection() } }
     .task(id: "\(model.services.generation)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
@@ -114,12 +119,23 @@ public struct WorkspaceView: View {
     .sheet(item: $editor, onDismiss: finishEditorDismissal) { target in
       RecordEditor(
         model: model, original: target.row, context: target.context, recovered: target.recovered,
-        preparedEditor: target.preparedEditor, isCurrent: { editor?.id == target.id },
+        preparedEditor: target.preparedEditor, linkWaiting: pendingLink.request != nil,
+        isCurrent: { editor?.id == target.id },
         onReference: { destination in
           guard editor?.id == target.id, let source = target.context,
             source.workspace === model.client, source.table == model.table
           else { return }
           pendingReferenceEditor = (destination, source, model.workspaceGeneration)
+          editor = nil
+        },
+        onDuplicate: { copy in
+          guard editor?.id == target.id, let source = target.context,
+            source.workspace === model.client, source.table == model.table
+          else { return }
+          pendingDuplicateEditor = (
+            EditorTarget(row: nil, context: source, preparedEditor: copy),
+            model.workspaceGeneration
+          )
           editor = nil
         }, onSaved: { editor = nil })
     }
@@ -201,6 +217,7 @@ public struct WorkspaceView: View {
       quickFind = nil
       pendingSearchEditor = nil
       pendingReferenceEditor = nil
+      pendingDuplicateEditor = nil
       rejectionInbox?.dispose()
       rejectionInbox = nil
       pendingRejection = nil
@@ -216,7 +233,7 @@ public struct WorkspaceView: View {
 
   private var canFind: Bool {
     model.client != nil && !openingDestination && editor == nil && online == nil && quickFind == nil
-      && pendingSearchEditor == nil
+      && pendingSearchEditor == nil && pendingDuplicateEditor == nil
       && pendingReferenceEditor == nil && rejectionInbox == nil && pendingRejection == nil
       && !settings && !options && !savedViews && !importing
   }
@@ -236,7 +253,10 @@ public struct WorkspaceView: View {
     openDestination(NativeDestination(table: table, rowID: row.id), preservingQuery: true)
   }
 
-  private func openDestination(_ destination: NativeDestination, preservingQuery: Bool = false) {
+  private func openDestination(
+    _ destination: NativeDestination, preservingQuery: Bool = false,
+    onOpened: (() -> Void)? = nil, onFailed: ((String) -> Void)? = nil
+  ) {
     guard canFind, let workspace = model.client else { return }
     let generation = model.workspaceGeneration
     let query = model.queryKey
@@ -276,15 +296,61 @@ public struct WorkspaceView: View {
         if let row = resolved.row { editor = EditorTarget(row: row.record, context: context) }
         model.error = nil
         recordNavigationSucceeded(recent)
+        onOpened?()
       } catch is CancellationError {
         // A closed or superseded workspace owns the next UI state.
       } catch {
         guard current() else { return }
         navigationError = error.localizedDescription
         model.error = error.localizedDescription
+        onFailed?(error.localizedDescription)
         await model.recents?.refresh()
       }
     }
+  }
+
+  @ViewBuilder private var pendingLinkBanner: some View {
+    if pendingLink.request != nil || pendingLink.error != nil {
+      VStack(alignment: .leading, spacing: 6) {
+        if pendingLink.request != nil {
+          Text(
+            model.client == nil
+              ? "A link is waiting. Open the workspace it belongs to, then open the link."
+              : "A link is waiting to open.")
+        }
+        if let error = pendingLink.error {
+          Text(error).foregroundStyle(.red).textSelection(.enabled)
+            .accessibilityIdentifier("pending-link-error")
+        }
+        HStack {
+          if pendingLink.request != nil {
+            Button("Open link", action: openPendingLink).disabled(!canFind)
+              .accessibilityIdentifier("open-pending-link")
+          }
+          Button("Dismiss") { pendingLink.dismiss() }
+            .accessibilityIdentifier("dismiss-pending-link")
+        }
+      }
+      .font(.callout).padding(.horizontal).padding(.vertical, 8)
+      .frame(maxWidth: .infinity, alignment: .leading).background(.bar)
+    }
+  }
+
+  private func openPendingLink() {
+    guard let request = pendingLink.requestToOpen(allowed: canFind) else { return }
+    do {
+      let destination = try model.linkedDestination(request.link)
+      openDestination(
+        destination, onOpened: { pendingLink.complete(request.id) },
+        onFailed: { pendingLink.fail(request.id, message: $0) })
+    } catch { pendingLink.fail(request.id, message: error.localizedDescription) }
+  }
+
+  private func copyLink(
+    _ destination: NativeDestination, context: WorkspaceEditingContext?
+  ) throws {
+    let url = try model.linkURL(for: destination, context: context)
+    CopyDraftButton.copy(url.absoluteString)
   }
 
   private func showRejections() {
@@ -375,6 +441,16 @@ public struct WorkspaceView: View {
 
   private func finishEditorDismissal() {
     model.refreshDrafts()
+    if let pending = pendingDuplicateEditor {
+      pendingDuplicateEditor = nil
+      // A superseded copy keeps its journal and stays available as an unsaved draft.
+      guard editor == nil, pending.generation == model.workspaceGeneration,
+        pending.target.context?.workspace === model.client,
+        pending.target.context?.table == model.table
+      else { return }
+      editor = pending.target
+      return
+    }
     guard let pending = pendingReferenceEditor else { return }
     pendingReferenceEditor = nil
     guard editor == nil, pending.generation == model.workspaceGeneration,
@@ -548,6 +624,17 @@ public struct WorkspaceView: View {
             }
           }.accessibilityIdentifier("view-options")
           Spacer()
+          Button {
+            guard let table = model.table else { return }
+            do {
+              try copyLink(
+                NativeDestination(table: table, viewID: model.appliedView?.id),
+                context: model.editingContext)
+            } catch { model.error = error.localizedDescription }
+          } label: {
+            Label("Copy link", systemImage: "link").labelStyle(.iconOnly)
+          }.disabled(!canFind || !model.canCopyLink || model.table == nil)
+            .accessibilityIdentifier("copy-workspace-link")
           Button(action: showQuickFind) { Label("Find", systemImage: "magnifyingglass") }
             .disabled(!canFind).accessibilityIdentifier("quick-find")
         }
@@ -614,6 +701,8 @@ private struct RecordEditor: View {
   let context: WorkspaceEditingContext?
   let onSaved: () -> Void
   let recordFields: [CatalogField]
+  let linkWaiting: Bool
+  let onDuplicate: (RecordEditorModel) -> Void
   let isCurrent: @MainActor () -> Bool
   @Environment(\.dismiss) private var dismiss
   @State private var editor: RecordEditorModel
@@ -622,18 +711,25 @@ private struct RecordEditor: View {
   @State private var saving = false
   @State private var discard = false
   @State private var actionFailure: String?
+  @State private var duplicating = false
+  @State private var preparedCopy: RecordEditorModel?
+  @State private var confirmDuplicate = false
   @FocusState private var focusedField: String?
 
   init(
     model: WorkspaceModel, original: WorkspaceRecord?, context: WorkspaceEditingContext?,
     recovered: StoredEditorDraft?, preparedEditor: RecordEditorModel? = nil,
-    isCurrent: @escaping @MainActor () -> Bool,
-    onReference: @escaping (ReferenceDestination) -> Void, onSaved: @escaping () -> Void
+    linkWaiting: Bool = false, isCurrent: @escaping @MainActor () -> Bool,
+    onReference: @escaping (ReferenceDestination) -> Void,
+    onDuplicate: @escaping (RecordEditorModel) -> Void = { _ in },
+    onSaved: @escaping () -> Void
   ) {
     self.model = model
     self.context = context
     self.onSaved = onSaved
     self.isCurrent = isCurrent
+    self.linkWaiting = linkWaiting
+    self.onDuplicate = onDuplicate
     recordFields = model.properties.map(CatalogField.init)
     let source = preparedEditor ?? RecordEditorModel(
       properties: model.properties,
@@ -654,6 +750,12 @@ private struct RecordEditor: View {
   var body: some View {
     NavigationStack {
       Form {
+        if linkWaiting {
+          Section {
+            Text("A link is waiting. Save or close this record to open it.")
+              .foregroundStyle(.secondary).accessibilityIdentifier("link-waiting-editor")
+          }
+        }
         if let action = model.undoAction {
           Section {
             Button {
@@ -814,6 +916,11 @@ private struct RecordEditor: View {
           }
           if model.canWrite && !editor.isTrashed {
             Section {
+              Button("Duplicate record", action: duplicate)
+                .disabled(
+                  duplicating || editor.saving || editor.recovery != nil || editor.needsReview
+                )
+                .accessibilityIdentifier("duplicate-record")
               Button(
                 "Move to trash", role: .destructive
               ) {
@@ -860,6 +967,20 @@ private struct RecordEditor: View {
             }.disabled(editor.saving)
           }
         }
+        if let id = editor.draft.original?["id"]?.text, let context {
+          ToolbarItem(placement: .primaryAction) {
+            Button {
+              do {
+                let url = try model.linkURL(
+                  for: NativeDestination(table: context.table, rowID: id), context: context)
+                CopyDraftButton.copy(url.absoluteString)
+                actionFailure = nil
+              } catch { actionFailure = error.localizedDescription }
+            } label: {
+              Label("Copy link", systemImage: "link")
+            }.disabled(!model.canCopyLink).accessibilityIdentifier("copy-record-link")
+          }
+        }
         if model.canWrite && !editor.isTrashed {
           ToolbarItem(placement: .confirmationAction) {
             Button("Save") { save() }.disabled(
@@ -871,6 +992,29 @@ private struct RecordEditor: View {
       }
       .disabled(saving || editor.undoing || referenceNavigation?.loading == true)
       .interactiveDismissDisabled(saving || editor.saving || editor.dirty || editor.recovery != nil)
+      .confirmationDialog(
+        "Discard unsaved changes and duplicate?", isPresented: $confirmDuplicate,
+        titleVisibility: .visible
+      ) {
+        Button("Discard changes and duplicate", role: .destructive) {
+          guard let copy = preparedCopy else { return }
+          preparedCopy = nil
+          do {
+            try editor.discardDraft()
+            onDuplicate(copy)
+          } catch {
+            discardPreparedCopy(copy)
+            actionFailure = error.localizedDescription
+          }
+        }
+      }
+      .onChange(of: confirmDuplicate) {
+        // Keeping the source draft also removes the unused copy's journal.
+        if !confirmDuplicate, let copy = preparedCopy {
+          preparedCopy = nil
+          discardPreparedCopy(copy)
+        }
+      }
       .confirmationDialog(
         "Discard unsaved changes?", isPresented: $discard, titleVisibility: .visible
       ) {
@@ -927,6 +1071,51 @@ private struct RecordEditor: View {
     Task {
       _ = await referenceNavigation?.open(table: table, id: id)
     }
+  }
+
+  private func duplicate() {
+    guard let context, let id = editor.draft.original?["id"]?.text, !duplicating else { return }
+    focusedField = nil
+    duplicating = true
+    actionFailure = nil
+    Task {
+      defer { duplicating = false }
+      do {
+        // Copy a fresh full row, never the possibly stale or projected editor baseline.
+        let resolved = try await NativeDestinationResolver(workspace: context.workspace).resolve(
+          NativeDestination(table: context.table, rowID: id), isCurrent: editorIsCurrent)
+        guard let row = resolved.row?.record, row["deleted_at"]?.text.nonempty == nil else {
+          throw WorkspaceError(
+            message: "This record is no longer available locally.", violations: [])
+        }
+        guard model.canWrite else {
+          throw WorkspaceError(
+            message: model.editingUnavailable ?? "This table is read-only.", violations: [])
+        }
+        let copy = RecordEditorModel(
+          properties: model.properties, original: nil, table: context.table,
+          store: context.draftStore, recovered: nil
+        ) { patch, baseline in
+          try await model.save(patch, original: baseline, context: context)
+        }
+        try copy.installDuplicateDraft(from: row, isCurrent: editorIsCurrent)
+        guard editorIsCurrent() else {
+          discardPreparedCopy(copy)
+          return
+        }
+        if editor.dirty {
+          preparedCopy = copy
+          confirmDuplicate = true
+        } else {
+          onDuplicate(copy)
+        }
+      } catch is CancellationError {
+      } catch { actionFailure = error.localizedDescription }
+    }
+  }
+
+  private func discardPreparedCopy(_ copy: RecordEditorModel) {
+    do { try copy.discardDraft() } catch { actionFailure = error.localizedDescription }
   }
 
   private func discardSavedDraft(close: Bool) {

@@ -68,7 +68,13 @@ the file stamp on opening. `C617.1` covers app-container files; macOS additional
 declares `3B52.1` for databases explicitly chosen in its file picker, following
 [Apple's approved reasons](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype).
 
-The lifecycle slice does not register the scheme, receive incoming system URLs,
-operate the clipboard or install a linked navigation destination. The prepared
-`DeepLinkUITests` require that later host integration and actual iOS verification;
-their presence is not evidence that those interactions work.
+Both apps register the `life` URL scheme. `WorkspaceView` receives incoming URLs
+with `onOpenURL` and only retains them in `PendingNativeLink`; a banner offers an
+explicit Open and Dismiss, and receipt never navigates, enrolls, opens or switches
+a workspace. Open is disabled while any editor, sheet, handoff or navigation is
+active; an open record editor shows a waiting notice instead. Open matches the
+binding through `linkedDestination`, then reuses the guarded `openDestination`
+path, and clears the request only after that destination installs. A mismatched
+or unavailable destination keeps the request with its error. Copy link in the
+records header copies the table and applied saved view; the record editor copies
+a saved record. Both copy only after encoding and identity persistence succeed.

@@ -95,6 +95,15 @@ Back restores the URL as well as the draft. Do not use shallow history entries
 that bypass those hooks. Ignore superseded lookup replies and block writes while
 resolving a linked record. Unsaved view settings and credentials stay out of URLs.
 
+Native `life://open/v1` links follow `docs/native-deep-links.md`. Receiving a URL
+only fills the single pending-link banner; it never opens, enrolls or switches a
+workspace. Open requires the same idle state as Find, matches the retained binding
+and reuses `openDestination`; clear the request only after the destination
+installs, and keep it with its error otherwise. Copy only after encoding and
+identity persistence succeed. Native Duplicate reads a fresh full active row into
+a new prepared editor, confirms discard only for a dirty source, and removes the
+unused copy's journal when the user keeps editing.
+
 Saved views use the core contract and the canonical `core/schema/saved-views.json`
 manifest vendored by `bundle-core.ts`. Only explicit app-owned local/sample
 initialization may create missing storage; replicas receive logged DDL through

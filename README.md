@@ -148,6 +148,16 @@ Catalog rules, read-only tables, validation, history and stale-revision checks
 come from shared core. An editor also captures its workspace and table, so
 changing connections cannot redirect a save. Unsaved drafts require explicit
 discard.
+
+The sidebar lists device-local recent destinations and a collapsible System
+tables section ([native recents](docs/native-recents.md)). **Find** (Cmd+K on the
+Mac) searches tables, saved views and records; each choice is re-read before it
+opens. **Copy link** in the records header copies a `life://` link to the table
+and applied saved view; the record editor copies a link to the saved record.
+Received links wait in a banner until **Open link** is chosen in the matching
+workspace, and never open a workspace, switch connections or replace an open
+editor ([link contract](docs/native-deep-links.md)). **Duplicate record** copies
+the current saved row into a new unsaved draft; nothing is written until Save.
 Select fields show catalog choices and their descriptions. Multi-select fields
 show removable choices and an **Add choice** menu. Choices supplied by a catalog
 query load from the open workspace and can be retried after an error. Unknown
@@ -530,7 +540,8 @@ The web grid supports inline keyboard editing. Native grid editing and Notes
 migration remain open work.
 The web sidebar includes device-local recent destinations and a collapsible
 System tables section. See [sidebar navigation](docs/sidebar-recents.md) for
-storage and availability behavior. Native sidebar parity remains open work.
+storage and availability behavior. Native Find activation with a hardware Return
+key and Mac Cmd+K have not been verified on a physical keyboard.
 
 Native references use named pickers and local record links. Select and multi-select
 fields show catalog choices; malformed selections and JSON fields retain source
