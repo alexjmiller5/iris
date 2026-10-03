@@ -35,24 +35,33 @@ final class DeepLinkUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 10))
   }
 
-  private func copiedURL(_ button: XCUIElement) throws -> URL {
+  private func copy(_ button: XCUIElement) {
+    // Writing needs no paste permission; the sentinel proves the next copy happened.
     UIPasteboard.general.string = "clipboard sentinel"
     tap(button)
-    let copied = XCTNSPredicateExpectation(
-      predicate: NSPredicate { _, _ in
-        MainActor.assumeIsolated {
-          UIPasteboard.general.string?.hasPrefix("life://open/v1?") == true
-        }
-      }, object: nil)
-    XCTAssertEqual(XCTWaiter.wait(for: [copied], timeout: 10), .completed)
-    return try XCTUnwrap(URL(string: try XCTUnwrap(UIPasteboard.general.string)))
+  }
+
+  /// Reads the clipboard through the app's own Quick Find field with the OS Paste
+  /// menu, as a user would. The runner itself cannot read another app's clipboard.
+  private func pastedURL(_ app: XCUIApplication) throws -> URL {
+    tap(app.buttons["quick-find"])
+    let query = app.textFields["quick-find-query"]
+    tap(query)
+    query.press(forDuration: 1.2)
+    tap(app.menuItems["Paste"].firstMatch)
+    let pasted = try XCTUnwrap(query.value as? String)
+    XCTAssertTrue(pasted.hasPrefix("life://open/v1?"), pasted)
+    tap(app.navigationBars["Quick Find"].buttons["Cancel"])
+    XCTAssertTrue(query.waitForNonExistence(timeout: 5))
+    return try XCTUnwrap(URL(string: pasted))
   }
 
   func testCopyAndColdURLRemainPendingUntilTheMatchingLocalWorkspaceIsOpened() throws {
     let app = try application()
     tap(app.buttons["open-local"])
     openNotes(app)
-    let url = try copiedURL(app.buttons["copy-workspace-link"])
+    copy(app.buttons["copy-workspace-link"])
+    let url = try pastedURL(app)
     let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
     XCTAssertEqual(Set(items.map(\.name)), ["local", "table"])
     XCTAssertEqual(items.first { $0.name == "table" }?.value, "notes")
@@ -68,7 +77,8 @@ final class DeepLinkUITests: XCTestCase {
     tap(app.buttons["open-pending-link"])
     XCTAssertTrue(app.buttons["open-pending-link"].waitForNonExistence(timeout: 10))
     XCTAssertTrue(app.navigationBars["notes"].exists)
-    XCTAssertEqual(try copiedURL(app.buttons["copy-workspace-link"]), url)
+    copy(app.buttons["copy-workspace-link"])
+    XCTAssertEqual(try pastedURL(app), url)
   }
 
   func testIncomingRecordLinkKeepsDirtyEditorAndCancelledDiscardUntilExplicitOpen() throws {
@@ -81,8 +91,13 @@ final class DeepLinkUITests: XCTestCase {
     let name = "Link fixture " + UUID().uuidString
     title.typeText(name)
     tap(app.buttons["save-record"])
-    tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch)
-    let url = try copiedURL(app.buttons["copy-record-link"])
+    let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+    tap(row)
+    copy(app.buttons["copy-record-link"])
+    tap(app.navigationBars["Record"].buttons["Cancel"])
+    XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
+    let url = try pastedURL(app)
+    tap(row)
     tap(title)
     title.typeText(" unsaved")
     let draft = try XCTUnwrap(title.value as? String)
