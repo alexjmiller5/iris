@@ -9,22 +9,33 @@ struct ForegroundSyncTests {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let syncHub = try transport()
+    let syncStarted = HeldSyncTransport.nextStart()
     let sync = Task { try await workspace.sync(using: syncHub) }
-    try await waitUntil { HeldSyncTransport.isWaiting }
+    defer {
+      HeldSyncTransport.release(host: "held-service.invalid")
+      HeldSyncTransport.release()
+    }
+    #expect(await syncStarted.wait(), "Sync must reach its held HTTP boundary")
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [HeldSyncTransport.self]
     let serviceHub = try HubTransport(
       endpoint: "https://held-service.invalid", token: "service-fixture",
       configuration: configuration)
+    let serviceStarted = HeldSyncTransport.nextStart(host: "held-service.invalid")
     let service = Task { try await workspace.notifications(using: serviceHub) }
-    try await waitUntil { HeldSyncTransport.isWaiting(host: "held-service.invalid") }
-    var readFinished = false
+    #expect(await serviceStarted.wait(), "Notifications must reach the separate held GET")
+    let readFinished = TestSignal()
     let read = Task {
+      defer { readFinished.signal() }
       let rows = try await workspace.rows(table: "notes")
       #expect(!rows.isEmpty)
-      readFinished = true
     }
-    try await waitUntil { readFinished }
+    #expect(
+      await readFinished.wait(), "Local read must complete before either HTTP request is released")
+    #expect(HeldSyncTransport.isWaiting, "Sync transport must still be held after local completion")
+    #expect(
+      HeldSyncTransport.isWaiting(host: "held-service.invalid"),
+      "GET transport must still be held after local completion")
     HeldSyncTransport.release(host: "held-service.invalid")
     _ = await service.result
     #expect(HeldSyncTransport.isWaiting)
@@ -94,11 +105,13 @@ struct ForegroundSyncTests {
     return try HubTransport(
       endpoint: "https://held-sync.invalid", token: "fixture", configuration: configuration)
   }
-  private func waitUntil(_ condition: () -> Bool) async throws {
+  private func waitUntil(
+    _ condition: () -> Bool, file: StaticString = #fileID, line: UInt = #line
+  ) async throws {
     let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: .seconds(2))
+    let deadline = clock.now.advanced(by: .seconds(20))
     while !condition() && clock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
-    #expect(condition())
+    #expect(condition(), Comment(rawValue: "Barrier watchdog expired at \(file):\(line)"))
   }
 
   @Test func responseCannotResumeSyncInsideAWholeForegroundTransaction() async throws {
@@ -184,6 +197,7 @@ struct ForegroundSyncTests {
 
   @Test func syncHTTPInsideATransactionFailsWithoutReleasingOwnership() async throws {
     defer { HeldSyncTransport.release() }
+    let requestsBefore = HeldSyncTransport.startCount
     let runtime = try LifeCoreRuntime()
     let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
     runtime.context.evaluateScript(
@@ -199,6 +213,9 @@ struct ForegroundSyncTests {
     await #expect(throws: WorkspaceError.self) {
       try await workspace.sync(using: transport(), timeout: .milliseconds(30))
     }
+    #expect(
+      HeldSyncTransport.startCount == requestsBefore,
+      "No HTTP may start inside an owned transaction")
     #expect(!HeldSyncTransport.isWaiting)
     try await workspace.close()
   }
@@ -216,12 +233,7 @@ struct ForegroundSyncTests {
     let transport = try HubTransport(
       endpoint: "https://held-sync.invalid", token: "fixture", configuration: configuration)
     let sync = Task { try await workspace.sync(using: transport) }
-    let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: .seconds(2))
-    while !HeldSyncTransport.isWaiting && clock.now < deadline {
-      try await Task.sleep(for: .milliseconds(5))
-    }
-    #expect(HeldSyncTransport.isWaiting)
+    try await waitUntil { HeldSyncTransport.isWaiting }
     var finished = false
     let foreground = Task {
       let catalog = try await workspace.catalog()
@@ -232,12 +244,10 @@ struct ForegroundSyncTests {
         expectedUpdatedAt: before.record["updated_at"]?.text)
       finished = true
     }
-    let foregroundDeadline = clock.now.advanced(by: .seconds(2))
-    while !finished && clock.now < foregroundDeadline {
-      try await Task.sleep(for: .milliseconds(5))
-    }
+    try await waitUntil { finished }
     #expect(
       finished, "Local catalog, rows and save must finish before the HTTP response is released")
+    #expect(HeldSyncTransport.isWaiting)
     #expect(throws: (any Error).self) { try SyncFileLock(databasePath: path) }
     HeldSyncTransport.release()
     _ = await sync.result
@@ -249,9 +259,43 @@ struct ForegroundSyncTests {
   }
 }
 
+/// Ordering proof, not a latency benchmark: the full suite shares MainActor.
+/// Keep a watchdog below the transport timeout so a missing yield still fails
+/// before URLSession can accidentally unblock the local operation for us.
+private struct TestSignal: Sendable {
+  private let stream: AsyncStream<Void>
+  private let continuation: AsyncStream<Void>.Continuation
+  init() {
+    (stream, continuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+  }
+  func signal() {
+    continuation.yield(())
+    continuation.finish()
+  }
+  func wait() async -> Bool {
+    let watchdog = Task {
+      do { try await Task.sleep(for: .seconds(20)) } catch { return }
+      continuation.finish()
+    }
+    defer { watchdog.cancel() }
+    var iterator = stream.makeAsyncIterator()
+    return await iterator.next() != nil
+  }
+}
+
 private final class HeldSyncTransport: URLProtocol, @unchecked Sendable {
   private static let lock = NSLock()
   nonisolated(unsafe) private static var pending: [String: HeldSyncTransport] = [:]
+  nonisolated(unsafe) private static var starts: [String: TestSignal] = [:]
+  nonisolated(unsafe) private static var started = 0
+  static var startCount: Int { lock.withLock { started } }
+  static func nextStart(host: String = "held-sync.invalid") -> TestSignal {
+    lock.withLock {
+      let signal = TestSignal()
+      starts[host] = signal
+      return signal
+    }
+  }
   static var isWaiting: Bool { isWaiting(host: "held-sync.invalid") }
   static func isWaiting(host: String) -> Bool { lock.withLock { pending[host] != nil } }
   static func release(host: String = "held-sync.invalid") {
@@ -271,8 +315,19 @@ private final class HeldSyncTransport: URLProtocol, @unchecked Sendable {
       client?.urlProtocol(self, didLoad: Data(#"{"name":"Fixture","scopes":["full"]}"#.utf8))
       client?.urlProtocolDidFinishLoading(self)
     } else {
-      Self.lock.withLock { Self.pending[request.url!.host!] = self }
+      let signal = Self.lock.withLock {
+        let host = request.url!.host!
+        Self.started += 1
+        Self.pending[host] = self
+        return Self.starts.removeValue(forKey: host)
+      }
+      signal?.signal()
     }
   }
-  override func stopLoading() {}
+  override func stopLoading() {
+    Self.lock.withLock {
+      let host = request.url!.host!
+      if Self.pending[host] === self { Self.pending.removeValue(forKey: host) }
+    }
+  }
 }
