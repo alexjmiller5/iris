@@ -58,6 +58,8 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
           test -n "$IDENTITY"
+          IDENTITY_SHA=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/Developer ID Application/ {print $2; exit}')
+          [[ "$IDENTITY_SHA" =~ ^[A-Fa-f0-9]{40}$ ]]
           TEAM_ID=$(printf '%s' "$IDENTITY" | sed -nE 's/.*\(([A-Z0-9]{10})\)$/\1/p')
           [[ "$TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]
           printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-notary.p8"
@@ -88,10 +90,10 @@ jobs:
             DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- \
             -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/life-ui-notary.p8" \
             -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" archive
-          python3 - "$TEAM_ID" "$RUNNER_TEMP/export.plist" <<'PYTHON'
+          python3 - "$TEAM_ID" "$RUNNER_TEMP/export.plist" "$IDENTITY_SHA" <<'PYTHON'
           import plistlib,sys
           with open(sys.argv[2], 'wb') as f:
-              plistlib.dump({'method':'developer-id','signingStyle':'automatic','teamID':sys.argv[1]},f)
+              plistlib.dump({'method':'developer-id','signingStyle':'automatic','teamID':sys.argv[1],'signingCertificate':sys.argv[3]},f)
           PYTHON
           xcodebuild -quiet -exportArchive -archivePath "$RUNNER_TEMP/KeychainProbe.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
@@ -112,6 +114,8 @@ jobs:
           probe=subprocess.run([str(app/'Contents/MacOS/KeychainProbe')],capture_output=True,text=True,timeout=30)
           print('DP CRUD exit:',probe.returncode,flush=True)
           print('DP CRUD passed:',probe.returncode==0,flush=True)
+          stage=re.search(r'Keychain probe stage: ([A-Za-z0-9 ()-]+)',probe.stderr)
+          print('Keychain diagnostic stage:',stage.group(1) if stage else '(none)',flush=True)
           print('Keychain diagnostic statuses:',','.join(sorted(set(re.findall(r'-[0-9]{4,6}',probe.stderr)))) or '(none)',flush=True)
           # Diagnostic runs even without the profile; never waive the final gate.
           sys.exit(0 if profile and probe.returncode==0 else 1)

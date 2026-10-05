@@ -14,16 +14,16 @@ struct KeychainProbe {
   static func main() throws {
     let store = HubCredentialStore(service: "life-ui.release-probe.\(UUID().uuidString)")
     defer { try? store.remove() }
-    func require(_ condition: Bool) throws {
-      if !condition { throw WorkspaceError(message: "Keychain roundtrip mismatch", violations: []) }
+    func require(_ condition: Bool, _ stage: String) throws {
+      if !condition { throw WorkspaceError(message: "Keychain probe stage: \(stage)", violations: []) }
     }
-    try require(store.load() == nil)
+    try require(store.load() == nil, "empty read")
     let first = HubCredentials(endpoint: "https://fixture.invalid", token: "synthetic-first")
     try store.save(first)
-    try require(store.load() == first)
+    try require(store.load() == first, "create readback")
     let rotated = HubCredentials(endpoint: first.endpoint, token: "synthetic-rotated")
     try store.save(rotated)
-    try require(store.load() == rotated)
+    try require(store.load() == rotated, "update readback")
     // Inspect the actual item: removing the DP flag in product code must not
     // silently let this smoke pass against the older file-based keychain.
     var attributes: CFTypeRef?
@@ -35,11 +35,11 @@ struct KeychainProbe {
       kSecReturnAttributes: true,
       kSecMatchLimit: kSecMatchLimitOne,
     ] as CFDictionary, &attributes)
-    try require(status == errSecSuccess)
+    try require(status == errSecSuccess, "DP attributes status \(status)")
     let values = attributes as? [String: Any]
-    try require(values?[kSecAttrAccessible as String] as? String == kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
+    try require(values?[kSecAttrAccessible as String] as? String == kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String, "device-only accessibility")
     try store.remove()
-    try require(store.load() == nil)
+    try require(store.load() == nil, "delete readback")
     print("Data Protection Keychain create/read/update/delete passed")
   }
 }

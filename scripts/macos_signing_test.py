@@ -42,6 +42,23 @@ class SigningTests(unittest.TestCase):
     def test_private_identity_accepts_distinct_profile_prefix(self):
         self.verify()
 
+    def test_wildcard_profile_authorizes_only_private_signature(self):
+        self.profile["Entitlements"]["com.apple.application-identifier"] = "PREFIX0001.*"
+        self.verify()
+
+    def test_profile_entitlement_team_and_debug_permissions_rejected(self):
+        for key, value in [
+            ("com.apple.developer.team-identifier", "OTHERTEAM1"),
+            ("get-task-allow", True),
+            ("com.apple.security.get-task-allow", True),
+        ]:
+            with self.subTest(key=key):
+                original = copy.deepcopy(self.profile["Entitlements"])
+                self.profile["Entitlements"][key] = value
+                with self.assertRaises(ValueError):
+                    self.verify()
+                self.profile["Entitlements"] = original
+
     def test_missing_or_changed_identity_rejected(self):
         for key in list(self.claims):
             with self.subTest(key=key):
