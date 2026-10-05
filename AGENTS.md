@@ -195,6 +195,11 @@ canonical equivalence must not merge records, recoveries or reference selections
 Keep the original String values at the core boundary.
 
 Whole Worker requests and whole native asynchronous requests are serialized.
+Native destination waits stay visible outside scrolling content and offer Cancel.
+Cancellation invalidates only the navigation request and immediately releases its
+controls; late results and old defers must not affect a newer request. It never
+cancels sync or removes a core continuation. Fresh navigation may still wait for
+the active sync to finish.
 Native SQLite connections force `legacy_alter_table=OFF` so logged renames
 rewrite trigger/view references consistently across hosts. Recovery repairs only
 an exact canonical timestamp trigger whose direct table rename is in the local
@@ -338,6 +343,10 @@ margin; keep title, controls and first list row separate and compact.
 `HeaderUITests` checks their geometry and retains screenshots. Its empty-workspace
 case uses `HeaderUIFixtureTests` with `TEST_RUNNER_LIFE_UI_TEST_HEADER_SIMULATOR`
 set to the exact disposable simulator UDID; run the fixture before the UI tests.
+`TableNavigationUIFixtureTests` seeds 50,000 synthetic provenance rows on the
+explicit `TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_SIMULATOR` only. Its local mode tests
+repeated table navigation; the optional loopback `navigation-hub.py` mode holds
+real sync HTTP while `TableNavigationUITests` verifies cancellation and late replies.
 
 Web design tokens live in `apps/web/src/theme.css`; use Tabler UI icons,
 accessible controls, keyboard focus and narrow-screen layouts. Native views use

@@ -5,13 +5,11 @@ struct WorkspaceSidebar: View {
   let recents: NativeRecentsModel?
   let selectedTable: String?
   let disabled: Bool
-  let opening: Bool
   let error: String?
   let onOpen: (NativeDestination) -> Void
   @State private var systemExpanded = false
 
   var body: some View {
-    if opening { ProgressView("Opening destination…") }
     if let error {
       Text(error).font(.callout).foregroundStyle(.red)
         .accessibilityIdentifier("sidebar-navigation-error")
