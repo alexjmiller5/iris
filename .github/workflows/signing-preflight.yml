@@ -97,8 +97,25 @@ jobs:
             -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
             -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/life-ui-notary.p8" \
             -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-          test -f "$RUNNER_TEMP/export/KeychainProbe.app/Contents/embedded.provisionprofile"
-          "$RUNNER_TEMP/export/KeychainProbe.app/Contents/MacOS/KeychainProbe"
+          python3 - "$RUNNER_TEMP/export/KeychainProbe.app" "$TEAM_ID" <<'PYTHON'
+          import pathlib,plistlib,subprocess,sys,re
+          app=pathlib.Path(sys.argv[1])
+          result=subprocess.run(['codesign','-d','--entitlements','-','--xml',str(app)],capture_output=True)
+          claims=plistlib.loads(result.stdout) if result.stdout.strip() else {}
+          print('Export entitlement keys:', ', '.join(sorted(claims)) or '(none)',flush=True)
+          info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
+          app_id=claims.get('com.apple.application-identifier','')
+          print('App ID resolved:',bool(app_id and '$' not in app_id and app_id.endswith('.'+info['CFBundleIdentifier'])),flush=True)
+          print('Team matches:',claims.get('com.apple.developer.team-identifier')==sys.argv[2],flush=True)
+          profile=(app/'Contents/embedded.provisionprofile').is_file()
+          print('Embedded profile present:',profile,flush=True)
+          probe=subprocess.run([str(app/'Contents/MacOS/KeychainProbe')],capture_output=True,text=True,timeout=30)
+          print('DP CRUD exit:',probe.returncode,flush=True)
+          print('DP CRUD passed:',probe.returncode==0,flush=True)
+          print('Keychain diagnostic statuses:',','.join(sorted(set(re.findall(r'-[0-9]{4,6}',probe.stderr)))) or '(none)',flush=True)
+          # Diagnostic runs even without the profile; never waive the final gate.
+          sys.exit(0 if profile and probe.returncode==0 else 1)
+          PYTHON
       - name: Delete temporary signing material
         if: always()
         run: |
