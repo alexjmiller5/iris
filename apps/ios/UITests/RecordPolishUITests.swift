@@ -33,11 +33,12 @@ final class RecordPolishUITests: XCTestCase {
     XCTAssertEqual(edit.value as? String, inlineDraft)
     edit.tap()
     title.tap()
-    title.typeText("Popup ")
+    title.typeText("Popup with a longer property value that should wrap across lines ")
     let draft = title.value as? String
     app.buttons["inline-open-record"].tap()
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
     XCTAssertEqual(title.value as? String, draft)
+    XCTAssertGreaterThan(title.frame.height, 40, "Long properties must wrap instead of clipping")
     app.buttons["save-record"].tap()
     XCTAssertTrue(edit.waitForExistence(timeout: 5))
     XCTAssertEqual(edit.value as? String, draft)

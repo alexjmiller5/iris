@@ -1771,6 +1771,7 @@ private struct FieldInput: View {
         }.accessibilityIdentifier("field-\(field.id)")
       } else {
         TextField(field.label, text: $value, axis: .vertical)
+          .fixedSize(horizontal: false, vertical: true)
           .focused(focus, equals: field.id)
           .accessibilityIdentifier("field-\(field.id)")
           .autocorrectionDisabled(field.type != "text")
