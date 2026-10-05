@@ -1,6 +1,6 @@
 import Foundation
-import GRDB
 import JavaScriptCore
+import SQLite3
 import Testing
 
 @testable import LifeKit
@@ -14,44 +14,36 @@ struct SQLiteBridgeTests {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: folder) }
     let path = folder.appendingPathComponent("replica.sqlite").path
-    let legacy = try DatabaseQueue(path: path)
-    let before = try legacy.write { db -> String in
-      try db.execute(
-        sql: """
-          PRAGMA legacy_alter_table=ON;
-          CREATE TABLE links (id TEXT PRIMARY KEY, updated_at TEXT);
-          CREATE TRIGGER links_updated_at AFTER UPDATE ON links FOR EACH ROW
-          WHEN NEW.updated_at = OLD.updated_at BEGIN
-            UPDATE links SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid;
-          END;
-          CREATE TABLE _schema_log (ddl TEXT);
-          ALTER TABLE links RENAME TO records;
-          """)
-      if reason != "no-log" {
-        try db.execute(
-          sql: "INSERT INTO _schema_log VALUES ('ALTER TABLE links RENAME TO records')")
-      }
-      if reason == "source-exists" {
-        try db.execute(sql: "CREATE TABLE links (id TEXT, updated_at TEXT)")
-      }
-      if reason == "source-view-exists" {
-        try db.execute(sql: "CREATE VIEW links AS SELECT * FROM records")
-      }
-      if reason == "custom-body" {
-        try db.execute(
-          sql: """
-            DROP TRIGGER links_updated_at;
-            CREATE TRIGGER links_updated_at AFTER UPDATE ON "records" FOR EACH ROW
-            WHEN NEW.updated_at = OLD.updated_at BEGIN
-              UPDATE links SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid;
-              DELETE FROM records;
-            END;
-            """)
-      }
-      return try #require(
-        try String.fetchOne(db, sql: "SELECT sql FROM sqlite_master WHERE type='trigger'"))
+    var sql = """
+      PRAGMA legacy_alter_table=ON;
+      CREATE TABLE links (id TEXT PRIMARY KEY, updated_at TEXT);
+      CREATE TRIGGER links_updated_at AFTER UPDATE ON links FOR EACH ROW
+      WHEN NEW.updated_at = OLD.updated_at BEGIN
+        UPDATE links SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid;
+      END;
+      CREATE TABLE _schema_log (ddl TEXT);
+      ALTER TABLE links RENAME TO records;
+      """
+    if reason != "no-log" {
+      sql += "; INSERT INTO _schema_log VALUES ('ALTER TABLE links RENAME TO records');"
     }
-    try legacy.close()
+    if reason == "source-exists" {
+      sql += "; CREATE TABLE links (id TEXT, updated_at TEXT);"
+    }
+    if reason == "source-view-exists" {
+      sql += "; CREATE VIEW links AS SELECT * FROM records;"
+    }
+    if reason == "custom-body" {
+      sql += """
+        DROP TRIGGER links_updated_at;
+        CREATE TRIGGER links_updated_at AFTER UPDATE ON "records" FOR EACH ROW
+        WHEN NEW.updated_at = OLD.updated_at BEGIN
+          UPDATE links SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid;
+          DELETE FROM records;
+        END;
+        """
+    }
+    let before = try seedLegacyFixture(path: path, sql: sql)
     let context = try #require(JSContext())
     let bridge = try SQLiteBridge(path: path)
     try bridge.install(in: context)
@@ -67,25 +59,21 @@ struct SQLiteBridgeTests {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: folder) }
     let path = folder.appendingPathComponent("replica.sqlite").path
-    let legacy = try DatabaseQueue(path: path)
-    try legacy.write { db in
-      try db.execute(
-        sql: """
-          PRAGMA legacy_alter_table=ON;
-          CREATE TABLE links (id TEXT PRIMARY KEY, updated_at TEXT, title TEXT);
-          CREATE TRIGGER links_updated_at AFTER UPDATE ON links FOR EACH ROW
-          WHEN NEW.updated_at = OLD.updated_at BEGIN
-            UPDATE links SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid;
-          END;
-          CREATE TABLE _schema_log (ddl TEXT);
-          INSERT INTO _schema_log VALUES ('ALTER TABLE links RENAME TO records');
-          INSERT INTO links VALUES ('one','2020-01-01T00:00:00.000Z','Retained draft');
-          ALTER TABLE links RENAME TO records;
-          CREATE TABLE _core_pending (row_id TEXT);
-          INSERT INTO _core_pending VALUES ('one');
-          """)
-    }
-    try legacy.close()
+    let sql = """
+      PRAGMA legacy_alter_table=ON;
+      CREATE TABLE links (id TEXT PRIMARY KEY, updated_at TEXT, title TEXT);
+      CREATE TRIGGER links_updated_at AFTER UPDATE ON links FOR EACH ROW
+      WHEN NEW.updated_at = OLD.updated_at BEGIN
+        UPDATE links SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid;
+      END;
+      CREATE TABLE _schema_log (ddl TEXT);
+      INSERT INTO _schema_log VALUES ('ALTER TABLE links RENAME TO records');
+      INSERT INTO links VALUES ('one','2020-01-01T00:00:00.000Z','Retained draft');
+      ALTER TABLE links RENAME TO records;
+      CREATE TABLE _core_pending (row_id TEXT);
+      INSERT INTO _core_pending VALUES ('one');
+      """
+    _ = try seedLegacyFixture(path: path, sql: sql)
     let context = try #require(JSContext())
     let bridge = try SQLiteBridge(path: path)
     try bridge.install(in: context)
@@ -104,6 +92,21 @@ struct SQLiteBridgeTests {
     #expect(!text.contains("2020-01-01"))
     #expect(text.contains("one"))
     #expect(text.hasSuffix(",1]"))
+  }
+
+  private func seedLegacyFixture(path: String, sql: String) throws -> String {
+    var database: OpaquePointer?
+    try #require(sqlite3_open(path, &database) == SQLITE_OK)
+    defer { sqlite3_close(database) }
+    try #require(sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK)
+    var statement: OpaquePointer?
+    try #require(
+      sqlite3_prepare_v2(
+        database, "SELECT sql FROM sqlite_master WHERE type='trigger'", -1, &statement, nil)
+        == SQLITE_OK)
+    defer { sqlite3_finalize(statement) }
+    try #require(sqlite3_step(statement) == SQLITE_ROW)
+    return String(cString: try #require(sqlite3_column_text(statement, 0)))
   }
 
   @Test func renameColumnPreservesStoredValues() throws {
