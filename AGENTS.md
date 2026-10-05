@@ -68,6 +68,15 @@ certificate. Never expand cloud-signing permissions or mint replacement
 certificates to compensate for a missing profile.
 Ordinary changes never bump a version or push a release tag.
 
+iOS Ad Hoc distribution uses the manual `build-ios.yml` workflow with existing
+Apple Signing distribution material and the project CI service account. It checks
+the intended `IOS_DEVICE_ID` project ENV field against the profile, signs using a
+temporary runner keychain, verifies the exported IPA and uploads only age-encrypted
+output with one-day retention. The required `artifact_recipient` dispatch input is
+a public age recipient; its temporary private identity stays with the operator.
+An IPA embeds a profile containing enrolled device IDs, so plaintext IPA artifacts
+are forbidden on this public repository. Installation and OTA remain separate.
+
 Shared core owns local FTS5 indexing and search. Web table search and Cmd+K use
 literal word prefixes combined with AND; user input never becomes raw MATCH
 syntax. Index queues survive external edits and reopen, and index updates run
