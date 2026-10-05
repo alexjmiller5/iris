@@ -222,3 +222,34 @@ test.skipIf(process.platform !== "darwin")(
     }
   },
 );
+
+// A valid signature alone is insufficient: the final universal executable must
+// retain the private Keychain identity in both slices after the release re-sign.
+test.skipIf(process.platform !== "darwin")("release signing retains private Keychain entitlements in both slices", async () => {
+  const root = await mkdtemp(join(tmpdir(), "life-ui-signing-test-"));
+  try {
+    const app = join(root, "build/Fixture.app");
+    await mkdir(join(app, "Contents/MacOS"), { recursive: true });
+    await writeFile(join(root, "fixture.c"), "int main(void) { return 0; }\n");
+    await writeFile(join(app, "Contents/Info.plist"), `<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.example.fixture</string><key>CFBundleExecutable</key><string>Fixture</string></dict></plist>`);
+    const entitlements = join(root, "entitlements.plist");
+    await writeFile(entitlements, `<?xml version="1.0"?><plist version="1.0"><dict><key>com.apple.application-identifier</key><string>TESTTEAM01.org.example.fixture</string><key>com.apple.developer.team-identifier</key><string>TESTTEAM01</string></dict></plist>`);
+    const compile = Bun.spawn(["xcrun", "clang", "-arch", "arm64", "-arch", "x86_64", join(root, "fixture.c"), "-o", join(app, "Contents/MacOS/Fixture")]);
+    expect(await compile.exited).toBe(0);
+    const signing = workflow.jobs.release.steps.find((step: any) => step.name === "Sign, notarize and package").run;
+    const command = signing.split("\n").find((line: string) => line.trim().startsWith("codesign --force") && line.endsWith('"build/$APP.app"'));
+    expect(command).toBeDefined();
+    // Ad-hoc fixtures validate what is embedded, not entitlement authorization.
+    // The release's Developer ID probe separately proves actual Keychain access.
+    const sign = Bun.spawn(["bash", "-euc", command.replace("--timestamp", "--timestamp=none")], {cwd: root, env: {...process.env, APP: "Fixture", IDENTITY: "-", ENTITLEMENTS: entitlements}, stdout: "pipe", stderr: "pipe"});
+    expect(await sign.exited).toBe(0);
+    for (const arch of ["arm64", "x86_64"]) {
+      const inspect = Bun.spawn(["codesign", "-d", "--arch", arch, "--entitlements", "-", "--xml", app], {stdout: "pipe", stderr: "pipe"});
+      const xml = await new Response(inspect.stdout).text();
+      expect(await inspect.exited).toBe(0);
+      expect(xml).toContain("TESTTEAM01.org.example.fixture");
+      expect(xml).toContain("com.apple.developer.team-identifier");
+      expect(xml).not.toContain("keychain-access-groups");
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

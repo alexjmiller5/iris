@@ -1,0 +1,37 @@
+name: Signing provisioning preflight
+on:
+  push:
+    branches: [fix/macos-keychain-entitlements]
+permissions:
+  contents: read
+jobs:
+  permissions:
+    runs-on: macos-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: 1Password/install-cli-action@v4
+      - uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          ASC_KEY_P8_BASE64: op://Apple Signing/App Store Connect API Key/p8_base64
+          ASC_KEY_ID: op://Apple Signing/App Store Connect API Key/key_id
+          ASC_ISSUER_ID: op://Apple Signing/App Store Connect API Key/issuer_id
+      - name: Verify provisioning API access without exposing account data
+        run: |
+          bun - <<'JS'
+          const { createPrivateKey, sign } = require('node:crypto');
+          const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
+          const now = Math.floor(Date.now()/1000);
+          const payload = encode({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'})+'.'+encode({iss:process.env.ASC_ISSUER_ID,iat:now,exp:now+120,aud:'appstoreconnect-v1'});
+          const key = createPrivateKey(Buffer.from(process.env.ASC_KEY_P8_BASE64,'base64'));
+          const jwt = payload+'.'+sign('sha256',Buffer.from(payload),{key,dsaEncoding:'ieee-p1363'}).toString('base64url');
+          for (const resource of ['profiles','bundleIds','certificates']) {
+            const response = await fetch('https://api.appstoreconnect.apple.com/v1/'+resource+'?limit=1',{headers:{Authorization:'Bearer '+jwt}});
+            console.log(resource+': HTTP '+response.status);
+            if (!response.ok) process.exitCode=1;
+          }
+          JS
