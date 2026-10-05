@@ -1,0 +1,68 @@
+name: Build iOS Ad Hoc
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_recipient:
+        description: Public age recipient for this build (keep the private identity locally)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-adhoc-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Install build tools
+        run: brew install xcodegen age
+      - name: Generate project
+        run: xcodegen generate --spec apps/ios/project.yml
+      - uses: 1Password/install-cli-action@v4
+      # Existing Apple Signing exception supplies iOS signing material only.
+      - uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          IOS_CERTIFICATE_P12_BASE64: op://Apple Signing/Apple Distribution Cert/p12_base64
+          IOS_CERTIFICATE_PASSWORD: op://Apple Signing/Apple Distribution Cert/password
+          IOS_PROFILE_BASE64: op://Apple Signing/Wildcard Ad Hoc Profile/mobileprovision_base64
+          IOS_DEVICE_ID: op://Life UI/Life UI ENV/IOS_DEVICE_ID
+      - name: Sign and verify Ad Hoc IPA
+        run: |
+          test -n "$IOS_DEVICE_ID" || { echo 'Set IOS_DEVICE_ID in the project ENV item.' >&2; exit 1; }
+          python3 scripts/sign-ios.py --project apps/ios/LifeUI.xcodeproj --scheme LifeUI --output "$RUNNER_TEMP/ios-output"
+      - name: Encrypt verified IPA
+        env:
+          ARTIFACT_RECIPIENT: ${{ inputs.artifact_recipient }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ios-artifact"
+          age --encrypt --recipient "$ARTIFACT_RECIPIENT" \
+            --output "$RUNNER_TEMP/ios-artifact/LifeUI.ipa.age" "$RUNNER_TEMP/ios-output/App.ipa"
+      - name: Remove plaintext output
+        if: always()
+        shell: python
+        run: |
+          import os, pathlib, shutil
+          shutil.rmtree(pathlib.Path(os.environ['RUNNER_TEMP']) / 'ios-output', ignore_errors=True)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LifeUI-iOS-${{ github.sha }}
+          path: ${{ runner.temp }}/ios-artifact/LifeUI.ipa.age
+          retention-days: 1
+          if-no-files-found: error

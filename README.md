@@ -641,8 +641,40 @@ native testing. Both use synthetic records and loopback interfaces only.
 - For iPhone development installation, enroll the device/team through Xcode,
   set `IOS_DEVELOPMENT_TEAM` and `IOS_DEVICE_ID`, then run the iOS `build`
   recipe. `IOS_INSTALL_HOST` can name the Mac paired to the device.
-- Ad Hoc distribution needs the distribution certificate and profile, then
-  `IOS_PROFILE` and the iOS `deploy` recipe.
+- Ad Hoc distribution uses the manual **Build iOS Ad Hoc** GitHub workflow.
+  The existing project CI service account reads the Apple Distribution P12,
+  password and Ad Hoc profile from the documented Apple Signing vault exception.
+  Store `IOS_DEVICE_ID` in the project ENV item for the intended enrolled phone.
+  The only GitHub secret remains `OP_SERVICE_ACCOUNT_TOKEN`.
+  CI checks profile eligibility, signs in a temporary keychain and verifies the
+  exported IPA before encrypting it. It does not install or start OTA.
+
+Generate a temporary age identity outside the repository, keep it until download
+and decryption finish, and pass only its public recipient to the dispatch:
+
+```sh
+umask 077
+signing_dir=$(mktemp -d)
+age-keygen -o "$signing_dir/identity.txt"
+age-keygen -y "$signing_dir/identity.txt"
+gh workflow run build-ios.yml --ref main -f artifact_recipient='<public-age-recipient>'
+gh run watch <run-id> --exit-status
+gh run download <run-id> -n LifeUI-iOS-<source-sha> -D '<private-output-directory>'
+age --decrypt -i "$signing_dir/identity.txt" \
+  -o '<private-output-directory>/LifeUI.ipa' '<private-output-directory>/LifeUI.ipa.age'
+```
+
+Keep the `signing_dir` location until the artifact is decrypted. On Nix hosts,
+`nix shell nixpkgs#age` provides these commands without a permanent installation.
+Only the encrypted IPA is uploaded, retained for one day. Public-repository
+Actions artifacts can be downloaded by signed-in readers; they are not private.
+The IPA must embed its provisioning profile, including registered device IDs, so
+never upload plaintext IPA/profile files or signing keys. Keep the temporary age
+identity locally, then delete it after successful decryption and verification.
+After verifying the downloaded app signature, profile and checksum, install the
+IPA on its enrolled phone or use `scripts/ota-install.sh <private-ipa-path>` through
+the separately authorized installer. An archive/export success is not proof of
+phone installation.
 
 ### Mac releases
 
