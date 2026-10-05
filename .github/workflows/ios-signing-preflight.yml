@@ -1,0 +1,55 @@
+name: iOS signing metadata preflight
+on:
+  push:
+    branches: [feat/ios-signing-ci]
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: 1Password/install-cli-action@v4
+      - name: Verify stored iOS signing material without exposing values
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        shell: python
+        run: |
+          import subprocess, json, base64, tempfile, pathlib, plistlib, datetime
+          def run(args, **kw):
+              r = subprocess.run(args, capture_output=True, **kw)
+              if r.returncode: raise SystemExit("Signing metadata operation failed (details suppressed)")
+              return r.stdout
+          vaults = json.loads(run(["op", "vault", "list", "--format", "json"]))
+          vault = next(v["id"] for v in vaults if v["name"] == "Apple Signing")
+          items = json.loads(run(["op", "item", "list", "--vault", vault, "--format", "json"]))
+          values = {}
+          for title, fields in [("Apple Distribution Cert", ["p12_base64", "password"]), ("Wildcard Ad Hoc Profile", ["mobileprovision_base64"])]:
+              item = next(i for i in items if i["title"] == title)
+              detail = json.loads(run(["op", "item", "get", item["id"], "--vault", vault, "--format", "json"]))
+              selected = {f["label"]: f.get("value", "") for f in detail["fields"]}
+              for field in fields:
+                  assert selected.get(field), "Required signing field empty"
+              values[title] = selected
+              print(json.dumps({"item":title,"fields":fields,"all_populated":True}))
+          with tempfile.TemporaryDirectory() as tmp:
+              root=pathlib.Path(tmp)
+              p12=root/"cert.p12"
+              p12.write_bytes(base64.b64decode(values["Apple Distribution Cert"]["p12_base64"],validate=True))
+              import os
+              env=dict(os.environ, P12_PASSWORD=values["Apple Distribution Cert"]["password"])
+              key=run(["openssl","pkcs12","-in",str(p12),"-passin","env:P12_PASSWORD","-nodes","-nocerts"],env=env)
+              assert b"PRIVATE KEY" in key, "P12 has no private key"
+              cert=run(["openssl","pkcs12","-in",str(p12),"-passin","env:P12_PASSWORD","-clcerts","-nokeys"],env=env)
+              subject=run(["openssl","x509","-noout","-subject"],input=cert)
+              assert b"Apple Distribution" in subject, "Wrong certificate class"
+              run(["openssl","x509","-noout","-checkend","0"],input=cert)
+              der=run(["openssl","x509","-outform","DER"],input=cert)
+              profile=root/"profile.mobileprovision"
+              profile.write_bytes(base64.b64decode(values["Wildcard Ad Hoc Profile"]["mobileprovision_base64"],validate=True))
+              data=plistlib.loads(run(["security","cms","-D","-i",str(profile)]))
+              assert data["ExpirationDate"] > datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None), "Profile expired"
+              assert data.get("ProvisionedDevices") and not data.get("ProvisionsAllDevices"), "Not Ad Hoc"
+              assert not data["Entitlements"].get("get-task-allow",False), "Development profile"
+              assert der in data["DeveloperCertificates"], "Certificate/profile mismatch"
+              print(json.dumps({"p12_private_key_present":True,"certificate_class":"Apple Distribution","certificate_unexpired":True,"profile_unexpired":True,"profile_type":"Ad Hoc","certificate_in_profile":True,"profile_app_scope":"wildcard" if data["Entitlements"]["application-identifier"].endswith(".*") else "explicit"}))
