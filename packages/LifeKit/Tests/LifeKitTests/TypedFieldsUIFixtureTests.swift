@@ -29,11 +29,15 @@ struct TypedFieldsUIFixtureTests {
           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
           updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
           deleted_at TEXT, hub_at TEXT, title TEXT, tags TEXT, dynamic TEXT,
-          spelling TEXT, day TEXT, moment TEXT, flag INTEGER, website TEXT, email TEXT, phone TEXT)`;
+          spelling TEXT, day TEXT, moment TEXT, flag INTEGER, website TEXT, email TEXT, phone TEXT, logo TEXT, locked TEXT)`;
         LifeSql.run(ddl);
         if (!LifeSql.all('SELECT 1 FROM _schema_log WHERE ddl=?', [ddl]).length)
           LifeSql.run('INSERT INTO _schema_log(ddl) VALUES (?)', [ddl]);
         LifeSql.run("INSERT OR REPLACE INTO catalog_tables(id,kind,display,purpose) VALUES ('field_examples','table','title','Synthetic typed-field verification')");
+        if (!LifeSql.all('PRAGMA table_info(field_examples)').some(c => c.name === 'logo'))
+          LifeSql.run('ALTER TABLE field_examples ADD COLUMN logo TEXT');
+        if (!LifeSql.all('PRAGMA table_info(field_examples)').some(c => c.name === 'locked'))
+          LifeSql.run('ALTER TABLE field_examples ADD COLUMN locked TEXT');
         const fields = [
           ['title','Title','text',null,null],
           ['tags','Tags','multi_select',JSON.stringify([{v:'Alpha'},{v:'Beta'}]),null],
@@ -41,7 +45,8 @@ struct TypedFieldsUIFixtureTests {
           ['spelling','Spelling','select',JSON.stringify([{v:'\u00e9',d:'First spelling'},{v:'e\u0301',d:'Second spelling'}]),null],
           ['day','Day','date',null,null],['moment','Moment','datetime',null,null],
           ['flag','Flag','bool',null,null],['website','Website','url',null,null],
-          ['email','Email','email',null,null],['phone','Phone','phone',null,null]
+          ['email','Email','email',null,null],['phone','Phone','phone',null,null],
+          ['logo','Logo','text',null,null],['locked','Locked','text',null,null]
         ];
         fields.forEach(([col,label,type,options,sql],sort) => LifeSql.run(
           'INSERT OR REPLACE INTO catalog_properties(id,tbl,col,label,type,options,options_sql,sort) VALUES (?,?,?,?,?,?,?,?)',
@@ -53,6 +58,9 @@ struct TypedFieldsUIFixtureTests {
         ]) LifeSql.run(`INSERT INTO field_examples(id,title,tags,dynamic,spelling,day,moment,flag,website,email,phone)
           VALUES (?,?,?,?,?,?,?,0,'https://example.test','note@example.test','+00 (000) 000-0000')`,
           [id,title,tags,'Dynamic one','\u00e9','2024-02-29','2024-02-29T23:04:05.123Z']);
+        LifeSql.run("UPDATE catalog_properties SET immutable=1 WHERE id='field_examples.locked'");
+        LifeSql.run("UPDATE field_examples SET locked='Read-only fixture value'");
+        LifeSql.run('UPDATE field_examples SET logo=?', ['data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#2060d0"/><circle cx="50" cy="50" r="30" fill="#f0c020"/></svg>')]);
         """#)
       try #require(runtime.context.exception == nil)
       #expect(

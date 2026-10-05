@@ -141,6 +141,18 @@ in the editor draft and are reachable through More properties. New required
 fields and validation failures stay visible. A title-only saved view keeps a
 catalog-valid title or ID column because core rejects empty projections. Resetting
 layout removes the projection; it never removes record values or resets widths.
+Mobile property editing and the full record pop-up share RecordEditorModel and its
+recovery journal. Resolve a fresh full row and field editability before inline
+editing; immutable/derived fields and recovery use the full presentation. Expand
+transfers the existing model, never a reconstructed draft. Keep the active row
+visible during background refresh and prevent context-changing actions until close.
+Empty-property grouping never hides zero, false, required creation fields or
+validation errors, and stays stable while the editor's values change.
+Image previews preserve editable source. Only retained file keys use hub auth;
+external HTTPS requests are credential-free and refuse redirects. Bound downloads
+and decoding. SVG renders as an inert data image inside a network-disabled WebKit
+view, never as an executable SVG document. Do not infer personal column names.
+
 Saved-view IDs also require byte-exact list and selection identity. Use the
 applied revision for deletion only when its ID bytes match the chosen view.
 

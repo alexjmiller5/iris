@@ -190,6 +190,7 @@ final class WorkspaceModel {
   private var draftStore: EditorDraftStore?
   let services = HubServicesModel()
   private var groupsURL: URL?
+  var imageTransport: HubTransport? { transport }
   private var transport: HubTransport?
   private var revision = 0
   private var scopedURL: URL?

@@ -42,15 +42,13 @@ final class TableNavigationUITests: XCTestCase {
     revealSidebar(notes, app)
     tap(notes, app)
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 5), app.debugDescription)
-    tap(
-      app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
-        .firstMatch, app)
+    tap(app.buttons["inline-property-title"].firstMatch, app)
     let title = app.textFields["field-title"]
     tap(title, app)
     title.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
     title.typeText(" saved during sync")
     let savedTitle = try XCTUnwrap(title.value as? String)
-    tap(app.buttons["save-record"], app)
+    tap(app.buttons["inline-save"], app)
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 5), app.debugDescription)
     tap(app.buttons["workspace-status"], app)
     XCTAssertTrue(app.buttons["sync-now"].exists)
