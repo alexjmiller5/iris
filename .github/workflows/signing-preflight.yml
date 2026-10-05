@@ -8,6 +8,9 @@ jobs:
   permissions:
     runs-on: macos-latest
     steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
@@ -17,6 +20,8 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          DEVELOPER_ID_P12_BASE64: op://Apple Signing/Developer ID Application Cert/p12_base64
+          DEVELOPER_ID_P12_PASSWORD: op://Apple Signing/Developer ID Application Cert/password
           ASC_KEY_P8_BASE64: op://Apple Signing/App Store Connect API Key/p8_base64
           ASC_KEY_ID: op://Apple Signing/App Store Connect API Key/key_id
           ASC_ISSUER_ID: op://Apple Signing/App Store Connect API Key/issuer_id
@@ -35,3 +40,69 @@ jobs:
             if (!response.ok) process.exitCode=1;
           }
           JS
+      - name: Prove automatic Developer ID provisioning and real DP Keychain
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          KEYCHAIN="$RUNNER_TEMP/life-ui-release.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          trap 'rm -f "$RUNNER_TEMP/life-ui-cert.p12" "$RUNNER_TEMP/life-ui-notary.p8"' EXIT
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          printf '%s' "$DEVELOPER_ID_P12_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-cert.p12"
+          security import "$RUNNER_TEMP/life-ui-cert.p12" -k "$KEYCHAIN" \
+            -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S 'apple-tool:,apple:' -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+          test -n "$IDENTITY"
+          TEAM_ID=$(printf '%s' "$IDENTITY" | sed -nE 's/.*\(([A-Z0-9]{10})\)$/\1/p')
+          [[ "$TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-notary.p8"
+          brew install xcodegen
+          mkdir -p "$RUNNER_TEMP/probe-source"
+          cp packages/LifeKit/Sources/LifeKit/HubCredentials.swift scripts/macos-keychain-probe.swift "$RUNNER_TEMP/probe-source/"
+          cp apps/macos/Signing/LifeUI.entitlements "$RUNNER_TEMP/probe-source/"
+          cat > "$RUNNER_TEMP/probe-source/project.yml" <<'YAML'
+          name: KeychainProbe
+          targets:
+            KeychainProbe:
+              type: application
+              platform: macOS
+              deploymentTarget: "14.0"
+              sources: [HubCredentials.swift, macos-keychain-probe.swift]
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.life-ui
+                  GENERATE_INFOPLIST_FILE: YES
+                  CODE_SIGN_STYLE: Automatic
+                  CODE_SIGN_ENTITLEMENTS: LifeUI.entitlements
+                  ENABLE_HARDENED_RUNTIME: YES
+          YAML
+          xcodegen generate --spec "$RUNNER_TEMP/probe-source/project.yml"
+          xcodebuild -quiet -project "$RUNNER_TEMP/probe-source/KeychainProbe.xcodeproj" -scheme KeychainProbe \
+            -configuration Release -destination 'generic/platform=macOS' \
+            -archivePath "$RUNNER_TEMP/KeychainProbe.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_IDENTITY="$IDENTITY" \
+            -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/life-ui-notary.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" archive
+          python3 - "$TEAM_ID" "$RUNNER_TEMP/export.plist" <<'PYTHON'
+          import plistlib,sys
+          with open(sys.argv[2], 'wb') as f:
+              plistlib.dump({'method':'developer-id','signingStyle':'automatic','teamID':sys.argv[1]},f)
+          PYTHON
+          xcodebuild -quiet -exportArchive -archivePath "$RUNNER_TEMP/KeychainProbe.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/life-ui-notary.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          test -f "$RUNNER_TEMP/export/KeychainProbe.app/Contents/embedded.provisionprofile"
+          "$RUNNER_TEMP/export/KeychainProbe.app/Contents/MacOS/KeychainProbe"
+      - name: Delete temporary signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/life-ui-cert.p12" "$RUNNER_TEMP/life-ui-notary.p8"
+          if [ -f "$RUNNER_TEMP/life-ui-release.keychain-db" ]; then
+            security delete-keychain "$RUNNER_TEMP/life-ui-release.keychain-db"
+          fi

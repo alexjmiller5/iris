@@ -59,7 +59,12 @@ struct HubCredentialStore: HubCredentialStorage {
     let status = SecItemDelete(query as CFDictionary)
     if status != errSecItemNotFound { try check(status) }
   }
-  private func check(_ status: OSStatus) throws {
+  func check(_ status: OSStatus) throws {
+    if status == errSecMissingEntitlement {
+      throw WorkspaceError(
+        message: "This app is missing a required Keychain signing entitlement (-34018). Install a corrected release.",
+        violations: [])
+    }
     guard status == errSecSuccess else {
       throw WorkspaceError(
         message: "Keychain is unavailable (\(status)). Unlock this device and try again.",
