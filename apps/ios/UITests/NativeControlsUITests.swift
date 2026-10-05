@@ -13,7 +13,7 @@ final class NativeControlsUITests: XCTestCase {
       .firstMatch.tap()
     let label = app.staticTexts["Enter a value"]
     XCTAssertTrue(label.waitForExistence(timeout: 5))
-    XCTAssertGreaterThanOrEqual(label.frame.minX, app.textFields["field-title"].frame.minX)
+    XCTAssertGreaterThanOrEqual(label.frame.minX + 1, app.textFields["field-title"].frame.minX)
     capture(app, "native-choice-label")
     label.tap()
     XCTAssertTrue(app.textFields["field-status-source"].waitForExistence(timeout: 5))

@@ -47,6 +47,7 @@ struct NativeChoiceField: View {
             multipleChoices(projected)
           } else if freeValues {
             TextField(field.label, text: $value, axis: .vertical)
+              .fixedSize(horizontal: false, vertical: true)
               .focused(focus, equals: field.id)
               .accessibilityIdentifier("field-\(field.id)")
           } else {
@@ -72,6 +73,8 @@ struct NativeChoiceField: View {
                 Text(label(option)).tag(option.id)
               }
             }
+            .pickerStyle(.menu)
+            .buttonStyle(.borderless)
             .accessibilityIdentifier("field-\(field.id)")
           }
         } else {
@@ -98,6 +101,7 @@ struct NativeChoiceField: View {
       } else if !freeValues {
         DisclosureGroup("Enter a value") {
           TextField(field.label, text: $value, axis: .vertical)
+            .fixedSize(horizontal: false, vertical: true)
             .focused(focus, equals: field.id)
             .accessibilityIdentifier("field-\(field.id)-source")
         }
@@ -184,10 +188,6 @@ struct NativeDateField: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      TextField(field.label, text: $value, axis: .vertical)
-        .focused(focus, equals: field.id)
-        .autocorrectionDisabled()
-        .accessibilityIdentifier("field-\(field.id)")
       if let date = NativeDateValue.parse(value, kind: kind) {
         DatePicker(
           field.label,
@@ -208,15 +208,20 @@ struct NativeDateField: View {
           focus.wrappedValue = nil
         }.accessibilityIdentifier("choose-date-\(field.id)")
       }
-      HStack {
+      DisclosureGroup {
+        TextField(field.label, text: $value)
+          .focused(focus, equals: field.id)
+          .autocorrectionDisabled()
+          .accessibilityIdentifier("field-\(field.id)")
         if kind == .datetime { Text("UTC").font(.caption).foregroundStyle(.secondary) }
-        Spacer()
         if !value.isEmpty {
           Button("Clear date") {
             value = ""
             focus.wrappedValue = nil
           }.accessibilityIdentifier("clear-date-\(field.id)")
         }
+      } label: {
+        Text("Date source").accessibilityIdentifier("date-source-\(field.id)")
       }
     }
   }
@@ -231,20 +236,28 @@ struct NativeLinkField: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      TextField(field.label, text: $value, axis: .vertical)
-        .focused(focus, equals: field.id)
-        .autocorrectionDisabled()
-        .accessibilityIdentifier("field-\(field.id)")
-      if let url = NativeFieldLink.destination(type: field.type, value: value) {
-        Button(
-          field.type == "email" ? "Compose email" : field.type == "phone" ? "Call" : "Open website"
-        ) {
-          focus.wrappedValue = nil
-          openURL(url) { accepted in failed = !accepted }
-        }.accessibilityIdentifier("open-link-\(field.id)")
+      HStack {
+        TextField(field.label, text: $value, axis: .vertical)
+          .fixedSize(horizontal: false, vertical: true)
+          .focused(focus, equals: field.id)
+          .autocorrectionDisabled()
+          .accessibilityIdentifier("field-\(field.id)")
+        if let url = NativeFieldLink.destination(type: field.type, value: value) {
+          Button {
+            focus.wrappedValue = nil
+            openURL(url) { accepted in failed = !accepted }
+          } label: {
+            Label(
+              field.type == "email"
+                ? "Compose email" : field.type == "phone" ? "Call" : "Open website",
+              systemImage: "arrow.up.right.square"
+            ).labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+          }.accessibilityIdentifier("open-link-\(field.id)")
+        }
       }
       if failed { Text("No app could open this link.").font(.caption).foregroundStyle(.red) }
     }
+    .fixedSize(horizontal: false, vertical: true)
     .onChange(of: value) { failed = false }
   }
 }

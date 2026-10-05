@@ -38,6 +38,7 @@ struct HubTransport: Sendable {
     self.endpoint = url.absoluteString.replacingOccurrences(
       of: #"/+$"#, with: "", options: .regularExpression)
     self.token = token
+    configuration.httpAdditionalHeaders = nil
     configuration.httpCookieStorage = nil
     configuration.httpShouldSetCookies = false
     configuration.urlCredentialStorage = nil
@@ -46,6 +47,17 @@ struct HubTransport: Sendable {
     configuration.timeoutIntervalForResource = 60
     session = URLSession(
       configuration: configuration, delegate: RefuseRedirects(), delegateQueue: nil)
+  }
+
+  var imageRequestIdentity: ObjectIdentifier { ObjectIdentifier(session) }
+
+  /// Binary previews stay on the supported file route and bypass the SQL queue.
+  func imageData(key: String, maxBytes: Int) async throws -> Data {
+    var request = URLRequest(url: try ImageReference.retained(key).url(endpoint: endpoint))
+    request.httpMethod = "GET"
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    request.setValue("image/*", forHTTPHeaderField: "Accept")
+    return try await ImagePreviewLoader.read(request: request, session: session, maxBytes: maxBytes)
   }
 
   func get(route: String) async throws -> HubReply {
@@ -160,7 +172,7 @@ struct HubTransport: Sendable {
   }
 }
 
-private final class RefuseRedirects: NSObject, URLSessionTaskDelegate, Sendable {
+final class RefuseRedirects: NSObject, URLSessionTaskDelegate, Sendable {
   func urlSession(
     _ session: URLSession, task: URLSessionTask,
     willPerformHTTPRedirection response: HTTPURLResponse,

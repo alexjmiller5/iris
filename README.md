@@ -169,8 +169,8 @@ stored choices stay selected until explicitly removed; core still validates Save
 **Edit JSON source** keeps malformed multi-select values available for repair.
 Opening a control does not rewrite its stored source.
 
-Dates retain their text source beside a native picker, with **Clear date** for an
-explicit unset value. Datetimes display in UTC; untouched milliseconds remain
+Dates use a native picker. **Date source** holds the original text and **Clear
+date** for an explicit unset value. Datetimes display in UTC; untouched milliseconds remain
 intact. An invalid date stays visible until edited or explicitly replaced.
 Boolean fields distinguish **Not set**, **True** and **False**. Website, email
 and phone fields offer explicit system open actions for supported addresses.
@@ -206,6 +206,24 @@ save or update a view to keep it across devices. Hidden values remain available
 under **More properties** in the record editor; required new fields and invalid
 values remain visible. **Record details** holds IDs and timestamps, and the
 small **Catalog rules** link at the bottom opens the table's rules separately.
+Empty existing properties collapse into **Empty properties**; zero and false
+stay visible. A property stays in its disclosure while being edited, and failed
+validation reveals the affected property. Required new fields stay visible.
+
+On iPhone, tap a property in the table list to edit it there, then **Save**.
+The expand icon opens the full record pop-up; **Open record** in an inline editor
+transfers the same unsaved draft. Both presentations use the same local save,
+validation and recovery journal. Close or save an inline editor before changing
+tables, filters, views or connections. Background sync continues while editing.
+Inline Markdown uses a native source editor with the existing autosave behavior;
+open the full record for the rich Markdown screen.
+
+Image filename URLs, retained file paths and JSON arrays of image references
+show previews. Bounded raster and SVG data URLs are supported too. **Image source**
+keeps the original value editable. Retained files use the current hub connection;
+public HTTPS images never receive its credential. Redirects are refused, and SVG
+previews cannot execute scripts or load network resources. Unrecognized or
+extensionless references retain their text presentation.
 
 Markdown fields open a dedicated screen containing the same **Write** and
 **Source** editor as web, bundled locally in WebKit. Existing records autosave
@@ -378,8 +396,8 @@ notes, saving an edit and reopening the stored record. Run again without
 `TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_HUB` for repeated
 local large-table navigation. Each mode skips the other mode's tests. Retained
 XCTest screenshots show the saved record while sync remains held. Stop the fixture server
-when finished. Cancellation affects navigation only; opening another destination
-can still wait behind sync's serialized transaction ownership.
+when finished. Local navigation and inline saves run while sync awaits HTTP;
+database transactions still retain complete ownership until they finish.
 
 Launch an Apple app with
 `--demo` for the temporary preview; app-hosted tests use fixture mode as well.
@@ -576,8 +594,8 @@ cross-table Find both use the shared local FTS5 index.
 The web grid supports inline keyboard editing. On macOS 14.4 and later, a native
 table shows catalog columns and saved column layouts; open a record by its title,
 double-click, or the context menu to edit its full contents. Earlier macOS versions
-and iOS retain the record list. Native inline editing and Notes migration remain
-open work.
+and iOS retain the record list. iOS properties support inline editing with an
+optional full record pop-up.
 The web sidebar includes device-local recent destinations and a collapsible
 System tables section. See [sidebar navigation](docs/sidebar-recents.md) for
 storage and availability behavior. Native Find opens with Cmd+K on the Mac, and

@@ -3,6 +3,57 @@ import XCTest
 
 @MainActor
 final class TypedFieldsUITests: XCTestCase {
+  func testDateUsesPickerAndImageUsesPreviewBeforeSource() throws {
+    let app = try openFixture("choices")
+    defer { app.terminate() }
+    let day = app.datePickers["date-picker-day"]
+    reveal(day, in: app)
+    XCTAssertFalse(app.textFields["field-day"].exists, "The picker is the primary date control")
+    tap(app.buttons["date-source-day"])
+    XCTAssertEqual(app.textFields["field-day"].value as? String, "2024-02-29")
+    tap(app.buttons["date-source-day"])
+    XCTAssertTrue(day.exists, "Collapsing Date source must not clear the date")
+    let image = app.scrollViews["image-previews-logo"]
+    reveal(image, in: app)
+    XCTAssertFalse(app.textFields["field-logo"].exists)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-svg-preview-and-compact-properties"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    tap(app.buttons["image-source-logo"])
+    XCTAssertTrue(
+      (app.descendants(matching: .any)["field-logo"].value as? String)?.hasPrefix(
+        "data:image/svg+xml") == true)
+  }
+
+  func testInlineDoesNotOfferAnEditorForImmutableProperties() throws {
+    let app = try openFixture("dates")
+    defer { app.terminate() }
+    app.navigationBars["Record"].buttons["Cancel"].tap()
+    let locked = app.buttons["inline-property-locked"].firstMatch
+    for _ in 0..<10 where !locked.isHittable { app.swipeUp() }
+    locked.tap()
+    XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.textFields["field-locked"].exists)
+    XCTAssertFalse(app.buttons["inline-save"].exists)
+  }
+
+  func testLinkInputsRemainVisibleWithinCompactRows() throws {
+    let app = try openFixture("dates")
+    defer { app.terminate() }
+    let field = app.textFields["field-website"]
+    reveal(app.buttons["open-link-website"], in: app)
+    XCTAssertGreaterThan(
+      field.frame.height, 15, "The editable URL must not collapse to zero height")
+    XCTAssertTrue(field.isHittable)
+    let row = app.collectionViews["record-form"].cells.containing(
+      .textField, identifier: "field-website"
+    ).firstMatch
+    XCTAssertGreaterThanOrEqual(
+      row.frame.maxY - app.buttons["open-link-website"].frame.maxY, 4,
+      "The link action must fit above its row separator")
+  }
+
   func testChoicesRetainUnknownValuesUntilExplicitRepairAndSave() throws {
     let app = try openFixture("choices")
     defer { app.terminate() }
@@ -55,33 +106,24 @@ final class TypedFieldsUITests: XCTestCase {
   func testDateControlsPreserveSourceUntilExplicitClear() throws {
     let app = try openFixture("dates")
     defer { app.terminate() }
-    let picker = app.datePickers["date-picker-day"]
-    reveal(picker, in: app)
+    let daySource = app.buttons["date-source-day"]
+    reveal(daySource, in: app)
+    tap(daySource)
     XCTAssertEqual(app.textFields["field-day"].value as? String, "2024-02-29")
-    let moment = app.textFields["field-moment"]
-    reveal(moment, in: app)
-    XCTAssertEqual(moment.value as? String, "2024-02-29T23:04:05.123Z")
-    XCTAssertTrue(app.datePickers["date-picker-moment"].exists)
-    let clear = app.buttons["clear-date-day"]
-    reveal(clear, in: app, down: true)
-    tap(clear)
-    let choose = app.buttons["choose-date-day"]
-    XCTAssertTrue(choose.waitForExistence(timeout: 5))
-    expectEmpty(app.textFields["field-day"])
+    reveal(app.buttons["clear-date-day"], in: app)
+    tap(app.buttons["clear-date-day"])
+    XCTAssertTrue(app.buttons["choose-date-day"].waitForExistence(timeout: 5))
     tap(app.navigationBars["Record"].buttons["save-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
     app.terminate()
     app.launch()
     tap(app.buttons["open-local"])
     findRecord(app, record: "dates")
+    let empty = app.collectionViews["record-form"].staticTexts["Empty properties"]
+    reveal(empty, in: app)
+    tap(empty)
+    let choose = app.buttons["choose-date-day"]
     reveal(choose, in: app)
-    expectEmpty(app.textFields["field-day"])
-    reveal(moment, in: app)
-    XCTAssertEqual(moment.value as? String, "2024-02-29T23:04:05.123Z")
-    let link = app.buttons["open-link-website"]
-    reveal(link, in: app)
-    XCTAssertTrue(link.isEnabled)
-    reveal(choose, in: app, down: true)
     tap(choose)
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -89,16 +131,19 @@ final class TypedFieldsUITests: XCTestCase {
     formatter.timeZone = .current
     formatter.dateFormat = "yyyy-MM-dd"
     let today = formatter.string(from: Date())
-    XCTAssertEqual(app.textFields["field-day"].value as? String, today)
-    XCTAssertTrue(app.datePickers["date-picker-day"].exists)
     tap(app.navigationBars["Record"].buttons["save-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
     app.terminate()
     app.launch()
     tap(app.buttons["open-local"])
     findRecord(app, record: "dates")
-    reveal(app.datePickers["date-picker-day"], in: app)
+    reveal(daySource, in: app)
+    tap(daySource)
     XCTAssertEqual(app.textFields["field-day"].value as? String, today)
+    let momentSource = app.buttons["date-source-moment"]
+    reveal(momentSource, in: app)
+    tap(momentSource)
+    XCTAssertEqual(app.textFields["field-moment"].value as? String, "2024-02-29T23:04:05.123Z")
     let screenshot = XCTAttachment(screenshot: app.screenshot())
     screenshot.name = "native-typed-date-today-reopened"
     screenshot.lifetime = .keepAlways

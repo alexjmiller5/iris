@@ -142,28 +142,12 @@ public struct WorkspaceView: View {
         }
       }
     }
-    .sheet(item: $editor, onDismiss: finishEditorDismissal) { target in
-      RecordEditor(
-        model: model, original: target.row, context: target.context, recovered: target.recovered,
-        preparedEditor: target.preparedEditor, linkWaiting: pendingLink.request != nil,
-        isCurrent: { editor?.id == target.id },
-        onReference: { destination in
-          guard editor?.id == target.id, let source = target.context,
-            source.workspace === model.client, source.table == model.table
-          else { return }
-          pendingReferenceEditor = (destination, source, model.workspaceGeneration)
-          editor = nil
-        },
-        onDuplicate: { copy in
-          guard editor?.id == target.id, let source = target.context,
-            source.workspace === model.client, source.table == model.table
-          else { return }
-          pendingDuplicateEditor = (
-            EditorTarget(row: nil, context: source, preparedEditor: copy),
-            model.workspaceGeneration
-          )
-          editor = nil
-        }, onSaved: { editor = nil })
+    .sheet(
+      item: Binding(
+        get: { editor?.inlineField == nil ? editor : nil },
+        set: { editor = $0 }), onDismiss: finishEditorDismissal
+    ) { target in
+      recordEditor(target)
     }
     .sheet(
       item: $online,
@@ -291,6 +275,39 @@ public struct WorkspaceView: View {
     }
   }
 
+  private func recordEditor(_ target: EditorTarget) -> some View {
+    RecordEditor(
+      model: model, original: target.row, context: target.context, recovered: target.recovered,
+      preparedEditor: target.preparedEditor, inlineField: target.inlineField,
+      onExpand: { prepared in
+        editor = EditorTarget(row: target.row, context: target.context, preparedEditor: prepared)
+      }, linkWaiting: pendingLink.request != nil,
+      isCurrent: { editor?.id == target.id },
+      onReference: { destination in
+        guard editor?.id == target.id, let source = target.context,
+          source.workspace === model.client, source.table == model.table
+        else { return }
+        pendingReferenceEditor = (destination, source, model.workspaceGeneration)
+        closeEditor(target)
+      },
+      onDuplicate: { copy in
+        guard editor?.id == target.id, let source = target.context,
+          source.workspace === model.client, source.table == model.table
+        else { return }
+        pendingDuplicateEditor = (
+          EditorTarget(row: nil, context: source, preparedEditor: copy),
+          model.workspaceGeneration
+        )
+        closeEditor(target)
+      }, onSaved: { closeEditor(target) })
+  }
+
+  private func closeEditor(_ target: EditorTarget) {
+    guard editor?.id == target.id else { return }
+    editor = nil
+    if target.inlineField != nil { finishEditorDismissal() }
+  }
+
   private var canFind: Bool {
     model.client != nil && !openingDestination && editor == nil && online == nil && quickFind == nil
       && pendingSearchEditor == nil && pendingDuplicateEditor == nil
@@ -314,7 +331,7 @@ public struct WorkspaceView: View {
   }
 
   private func openDestination(
-    _ destination: NativeDestination, preservingQuery: Bool = false,
+    _ destination: NativeDestination, preservingQuery: Bool = false, inlineField: String? = nil,
     onOpened: (() -> Void)? = nil, onFailed: ((String) -> Void)? = nil
   ) {
     guard canFind, let workspace = model.client else { return }
@@ -353,7 +370,27 @@ public struct WorkspaceView: View {
         if !preservingQuery { tableSearchPresented = false }
         showingGraph = false
         preferredColumn = .detail
-        if let row = resolved.row { editor = EditorTarget(row: row.record, context: context) }
+        if let row = resolved.row {
+          let prepared = inlineField.map { _ in
+            RecordEditorModel(
+              properties: model.properties, original: row.record,
+              table: context.table, store: context.draftStore, recovered: nil
+            ) { patch, baseline in
+              try await model.save(patch, original: baseline, context: context)
+            }
+          }
+          // Fresh catalog and row state decide editability, including immutable/derived fields.
+          let editable =
+            prepared.map { candidate in
+              candidate.recovery == nil && !candidate.isTrashed && model.canWrite
+                && candidate.draft.fields.contains { field in
+                  inlineField.map { field.id.utf8.elementsEqual($0.utf8) } == true
+                }
+            } ?? false
+          editor = EditorTarget(
+            row: row.record, context: context, preparedEditor: prepared,
+            inlineField: editable ? inlineField : nil)
+        }
         model.error = nil
         recordNavigationSucceeded(recent)
         onOpened?()
@@ -611,7 +648,7 @@ public struct WorkspaceView: View {
           }
           Text(saved.modifiedAt.formatted(date: .abbreviated, time: .standard)).font(.caption)
         }
-      }.accessibilityIdentifier("resume-unsaved-draft")
+      }.disabled(!canFind).accessibilityIdentifier("resume-unsaved-draft")
     }
     if model.isReplica,
       model.syncResult?.rejected.isEmpty == false || !model.skippedTables.isEmpty
@@ -636,27 +673,53 @@ public struct WorkspaceView: View {
             model.search.isEmpty && model.filters.isEmpty
               ? "Create a record to get started." : "Try a different search or filter."))
       }
-      ForEach(model.rows, id: \.byteExactID) { row in
-        Button {
-          openRecord(row)
-        } label: {
-          VStack(alignment: .leading, spacing: 5) {
-            Text(row.label).foregroundStyle(.primary).font(.headline).lineLimit(2)
-            if let columns = model.visibleRecordColumns {
-              ForEach(columns.filter { $0 != (model.titleProperty?.id ?? "id") }, id: \.self) {
-                column in
-                LabeledContent(
-                  model.properties.first { $0["col"]?.text == column }?["label"]?.text ?? column
-                ) {
-                  Text(row.record[column]?.text ?? "").lineLimit(2)
-                }.font(.caption).foregroundStyle(.secondary)
-              }
-            } else if let date = row.record["updated_at"]?.text {
-              Text(date).font(.caption).foregroundStyle(.secondary)
+      ForEach(displayedRows, id: \.byteExactID) { row in
+        VStack(alignment: .leading, spacing: 2) {
+          HStack {
+            if let title = model.titleProperty, model.canWrite && !model.trash {
+              propertyButton(title, row: row, title: true)
+            } else {
+              Text(row.label).font(.headline).lineLimit(2)
             }
-          }.padding(.vertical, 5).frame(maxWidth: .infinity, alignment: .leading).contentShape(
-            .rect)
-        }.buttonStyle(.plain)
+            Spacer(minLength: 4)
+            Button {
+              openRecord(row)
+            } label: {
+              Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel(row.label + ", Open record")
+            .accessibilityIdentifier("open-record-\(row.id)")
+            .disabled(!canFind)
+          }
+          if let target = editor, target.inlineField != nil,
+            target.row?["id"]?.text.utf8.elementsEqual(row.id.utf8) == true
+          {
+            recordEditor(target).id(target.id)
+          } else {
+            let fields = model.orderedRecordFields(model.properties.map(CatalogField.init))
+              .filter { field in
+                !["id", "created_at", "updated_at", "deleted_at", "hub_at"].contains(field.id)
+                  && field.id != model.titleProperty?.id
+                  && (model.visibleRecordColumns?.contains(field.id) ?? true)
+              }
+            let empty = NativeEditorFields.emptyColumns(
+              fields: fields,
+              values: row.record.mapValues(\.text))
+            ForEach(fields.filter { !empty.contains(Data($0.id.utf8)) }) { field in
+              propertyButton(field, row: row)
+            }
+            if fields.contains(where: { empty.contains(Data($0.id.utf8)) }) {
+              DisclosureGroup("Empty properties") {
+                ForEach(fields.filter { empty.contains(Data($0.id.utf8)) }) { field in
+                  propertyButton(field, row: row)
+                }
+              }.font(.caption).foregroundStyle(.secondary)
+            }
+          }
+        }
+        .buttonStyle(.borderless)
+        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 4, trailing: 16))
       }
       if model.canLoadMore { Button("Load more") { Task { await model.reload(more: true) } } }
       if model.loading { ProgressView().frame(maxWidth: .infinity) }
@@ -664,6 +727,54 @@ public struct WorkspaceView: View {
     #if os(iOS)
       .contentMargins(.top, 0, for: .scrollContent)
     #endif
+  }
+
+  private var displayedRows: [WorkspaceRow] {
+    guard let target = editor, target.inlineField != nil, let row = target.row,
+      let id = row["id"]?.text,
+      !model.rows.contains(where: { $0.id.utf8.elementsEqual(id.utf8) })
+    else { return model.rows }
+    return [WorkspaceRow(record: row, label: model.recordTitle(row))] + model.rows
+  }
+
+  @ViewBuilder private func propertyButton(
+    _ field: CatalogField, row: WorkspaceRow, title: Bool = false
+  )
+    -> some View
+  {
+    let open = {
+      guard let table = model.table else { return }
+      #if os(iOS)
+        let inlineField = model.canWrite && !model.trash ? field.id : nil
+      #else
+        let inlineField: String? = nil
+      #endif
+      openDestination(
+        NativeDestination(table: table, rowID: row.id), preservingQuery: true,
+        inlineField: inlineField)
+    }
+    Group {
+      if title {
+        Button(action: open) {
+          Text(row.label).foregroundStyle(.primary).font(.headline).lineLimit(2)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(.rect)
+        }.accessibilityLabel("Edit \(field.label)").accessibilityValue(row.label)
+      } else {
+        Button(action: open) {
+          LabeledContent(field.label) {
+            NativePropertyValue(
+              field: field, value: row.record[field.id]?.text ?? "",
+              workspace: model.client, transport: model.imageTransport
+            )
+            .lineLimit(2)
+          }.font(.subheadline).foregroundStyle(.secondary)
+            .frame(minHeight: 44).contentShape(.rect)
+        }
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("inline-property-\(field.id)")
+    .disabled(!canFind)
   }
 
   @ViewBuilder private var recordContent: some View {
@@ -749,7 +860,7 @@ public struct WorkspaceView: View {
           settings = true
         } label: {
           Label("Hub connection", systemImage: "gearshape")
-        }
+        }.disabled(editor != nil)
         Button(action: showRejections) { Label("Issues", systemImage: "exclamationmark.bubble") }
           .disabled(!canFind).accessibilityIdentifier("workspace-issues")
         Divider()
@@ -771,13 +882,13 @@ public struct WorkspaceView: View {
           Label(
             model.trash ? "Show active records" : "Show trash",
             systemImage: model.trash ? "tray" : "trash")
-        }.accessibilityIdentifier("toggle-trash")
+        }.disabled(editor != nil).accessibilityIdentifier("toggle-trash")
         Divider()
         Button {
           Task { await model.close() }
         } label: {
           Label("Close workspace", systemImage: "xmark.circle")
-        }
+        }.disabled(editor != nil)
       } label: {
         Label("Workspace actions", systemImage: "ellipsis")
           .labelStyle(.iconOnly)
@@ -827,7 +938,7 @@ public struct WorkspaceView: View {
                   }
                   if !model.filters.isEmpty { Text("\(model.filters.count) active") }
                 }
-              }.accessibilityIdentifier("view-options")
+              }.disabled(editor != nil).accessibilityIdentifier("view-options")
               Spacer()
               Button {
                 guard let table = model.table else { return }
@@ -861,9 +972,11 @@ public struct WorkspaceView: View {
       .navigationTitle(model.table ?? "Workspace")
       #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(editor?.inlineField != nil)
       #endif
       .searchable(
-        text: $model.search, isPresented: $tableSearchPresented, prompt: "Search this table"
+        text: Binding(get: { model.search }, set: { if editor == nil { model.search = $0 } }),
+        isPresented: $tableSearchPresented, prompt: "Search this table"
       )
       .refreshable { await model.reload() }
       .toolbar {
@@ -877,7 +990,7 @@ public struct WorkspaceView: View {
               } label: {
                 Label("New record", systemImage: "plus").labelStyle(.iconOnly).frame(
                   minWidth: 44, minHeight: 44)
-              }.accessibilityIdentifier("new-record")
+              }.disabled(editor != nil).accessibilityIdentifier("new-record")
             }
           }
           ToolbarItemGroup(placement: .bottomBar) {
@@ -897,7 +1010,7 @@ public struct WorkspaceView: View {
                   ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill"
               )
               .labelStyle(.iconOnly)
-            }.accessibilityIdentifier("view-options")
+            }.disabled(editor != nil).accessibilityIdentifier("view-options")
               .accessibilityValue("\(model.filters.count) active filters")
             Spacer()
             Button(action: showQuickFind) {
@@ -934,7 +1047,7 @@ public struct WorkspaceView: View {
               Label(
                 model.trash ? "Show active records" : "Show trash",
                 systemImage: model.trash ? "tray" : "trash")
-            }.accessibilityIdentifier("toggle-trash")
+            }.disabled(editor != nil).accessibilityIdentifier("toggle-trash")
             if model.canWrite && !model.trash {
               Button {
                 editor = EditorTarget(row: nil, context: model.editingContext)
@@ -956,9 +1069,12 @@ private struct EditorTarget: Identifiable {
   let context: WorkspaceEditingContext?
   var recovered: StoredEditorDraft? = nil
   var preparedEditor: RecordEditorModel? = nil
+  var inlineField: String? = nil
 }
 
 private struct RecordEditor: View {
+  let inlineField: String?
+  let onExpand: (RecordEditorModel) -> Void
   let model: WorkspaceModel
   let context: WorkspaceEditingContext?
   let onSaved: () -> Void
@@ -976,16 +1092,21 @@ private struct RecordEditor: View {
   @State private var duplicating = false
   @State private var preparedCopy: RecordEditorModel?
   @State private var confirmDuplicate = false
+  @State private var emptyColumns: Set<Data>
+  @State private var propertyHelp: CatalogField?
   @FocusState private var focusedField: String?
 
   init(
     model: WorkspaceModel, original: WorkspaceRecord?, context: WorkspaceEditingContext?,
     recovered: StoredEditorDraft?, preparedEditor: RecordEditorModel? = nil,
+    inlineField: String? = nil, onExpand: @escaping (RecordEditorModel) -> Void = { _ in },
     linkWaiting: Bool = false, isCurrent: @escaping @MainActor () -> Bool,
     onReference: @escaping (ReferenceDestination) -> Void,
     onDuplicate: @escaping (RecordEditorModel) -> Void = { _ in },
     onSaved: @escaping () -> Void
   ) {
+    self.inlineField = inlineField
+    self.onExpand = onExpand
     self.model = model
     self.context = context
     self.onSaved = onSaved
@@ -1003,6 +1124,11 @@ private struct RecordEditor: View {
         try await model.save(patch, original: baseline, context: context)
       }
     _editor = State(initialValue: source)
+    _emptyColumns = State(
+      initialValue: NativeEditorFields.emptyColumns(
+        fields: recordFields,
+        values: (source.draft.original ?? [:]).mapValues(\.text)
+          .merging(source.draft.values) { _, draft in draft }))
     _referenceNavigation = State(
       initialValue: context.map {
         model.makeReferenceNavigation(
@@ -1012,235 +1138,309 @@ private struct RecordEditor: View {
   }
 
   var body: some View {
-    NavigationStack {
-      Form {
-        if linkWaiting {
-          Section {
-            Text("A link is waiting. Save or close this record to open it.")
-              .foregroundStyle(.secondary).accessibilityIdentifier("link-waiting-editor")
+    Group {
+      if inlineField == nil { NavigationStack { editorContent } } else { editorContent }
+    }
+    #if os(macOS)
+      .frame(minWidth: 520, minHeight: 560)
+    #endif
+  }
+
+  private var editorFields: some View {
+    Group {
+      if let inlineField, let field = presentedFields.first(where: { $0.id == inlineField }) {
+        VStack(alignment: .leading, spacing: 8) {
+          presentedFieldRow(field)
+          if let failure = actionFailure ?? editor.failure {
+            Text(failure).font(.caption).foregroundStyle(.red)
           }
-        }
-        if let action = model.undoAction {
-          Section {
-            Button {
+          // Cross-property violations stay reachable in the full editor.
+          ForEach(editor.violations.filter { $0.col != inlineField }, id: \.rule) { violation in
+            Text(violation.message).font(.caption).foregroundStyle(.red)
+          }
+          HStack {
+            Button("Cancel") { if editor.dirty { discard = true } else { onSaved() } }
+              .disabled(editor.saving).accessibilityIdentifier("inline-cancel")
+            Spacer()
+            Button("Open record") {
               focusedField = nil
-              Task {
-                do {
-                  try await editor.performUndo(action, isCurrent: editorIsCurrent) {
-                    try await model.undo(action, context: context)
-                  }
-                  actionFailure = nil
-                } catch { actionFailure = error.localizedDescription }
-              }
-            } label: {
-              Label("Undo last saved change", systemImage: "arrow.uturn.backward")
+              onExpand(editor)
             }
-            .disabled(
-              editor.saving || editor.recovery != nil || editor.needsReview || model.undoing
-            )
-            .accessibilityIdentifier("undo-editor")
-          }
-        }
-        if editor.autosavePaused || editor.isTrashed {
-          Section {
-            Text(editor.status).foregroundStyle(.secondary)
-            if editor.isTrashed && model.canWrite, let id = editor.draft.original?["id"] {
-              Button("Restore record") { save(["id": id, "deleted_at": .null]) }
-                .disabled(editor.recovery != nil || editor.needsReview)
-                .accessibilityIdentifier("trash-record")
-            }
-          }
-        }
-        if editor.recovery != nil {
-          Section("Unsaved draft") {
-            Text("Continue your unsaved changes or start with the saved record.")
-            ForEach(editor.recoveryChoices) { saved in
-              if editor.recoveryChoices.count > 1 {
-                Text(saved.modifiedAt.formatted(date: .abbreviated, time: .standard)).font(.caption)
-                if let first = saved.draft.fields.first,
-                  let value = saved.draft.values[first.id]
-                {
-                  Text(value).lineLimit(2)
-                }
-              }
-              Button("Resume draft") { editor.resumeDraft(saved) }
-              Button("Discard draft", role: .destructive) {
-                do { try editor.discardRecovery(saved) } catch {
-                  actionFailure = error.localizedDescription
-                }
-              }
-            }
-            Button(editor.isNew ? "Start new record" : "Open saved record") {
-              editor.openSavedRecord()
-            }
-            Text("Your unsaved drafts will remain available until you discard them.")
-              .font(.caption).foregroundStyle(.secondary)
-          }
-        }
-        if editor.needsReview {
-          Section("Review recovered changes") {
-            Text(
-              "Copy the values you want to keep, then keep the draft and close. Open the saved record to review and paste your changes."
-            )
-          }
-        }
-        if let reason = model.editingUnavailable {
-          Section { Text(reason).foregroundStyle(.secondary) }
-        }
-        let layout = NativeEditorFields(
-          fields: presentedFields,
-          visibleColumns: model.visibleRecordColumns, titleColumn: model.titleProperty?.id,
-          isNew: editor.isNew, invalidColumns: editor.violations.compactMap(\.col))
-        ForEach(layout.primary) { field in presentedFieldRow(field) }
-        if !layout.additional.isEmpty {
-          DisclosureGroup("More properties") {
-            ForEach(layout.additional) { field in presentedFieldRow(field) }
-          }
-        }
-        if editor.isTrashed && editor.dirty {
-          Section("Kept draft") {
-            Text("Restore the record first, then review and save these changes.")
-            ForEach(editor.draft.fields.filter { editor.draft.patch[$0.id] != nil }) { field in
-              LabeledContent(field.label) {
-                Text(editor.draft.values[field.id] ?? "").textSelection(.enabled)
-              }
-              CopyDraftButton(
-                title: "Copy \(field.label)", value: editor.draft.values[field.id] ?? "")
-            }
-          }
-        }
-        if !editor.draft.unknownValues.isEmpty {
-          Section("Unavailable fields") {
-            Text("These draft values have been kept and will not be included when saving.")
-            ForEach(editor.draft.unknownValues.keys.sorted(), id: \.self) { key in
-              LabeledContent(key) {
-                Text(editor.draft.unknownValues[key] ?? "").textSelection(.enabled)
-              }
-              CopyDraftButton(title: "Copy \(key)", value: editor.draft.unknownValues[key] ?? "")
-            }
-          }
-        }
-        if let original = editor.draft.original {
-          if let identity = model.incomingReferencesIdentity(context: context, row: original) {
-            IncomingReferencesView(
-              makeModel: {
-                model.makeIncomingReferences(
-                  context: context, row: original, isCurrent: editorIsCurrent)
-              },
-              canOpen: !editor.saving, onOpenRecord: openReference
-            )
-            .id(identity)
-          }
-          Section {
-            DisclosureGroup("Record details") {
-              ForEach(original.keys.filter(Self.metadataKeys.contains).sorted(), id: \.self) {
-                key in
-                LabeledContent(key) { Text(original[key]?.text ?? "").textSelection(.enabled) }
-              }
-            }
-          }
-          if model.canWrite && !editor.isTrashed {
-            Section {
-              Button("Duplicate record", action: duplicate)
-                .disabled(
-                  duplicating || editor.saving || editor.recovery != nil || editor.needsReview
-                )
-                .accessibilityIdentifier("duplicate-record")
-              Button(
-                "Move to trash", role: .destructive
-              ) {
-                save(["id": original["id"]!, "deleted_at": .bool(true)])
-              }.accessibilityIdentifier("trash-record").disabled(editor.recovery != nil)
-            }
-          }
-        }
-        if let failure = actionFailure ?? editor.failure {
-          Section {
-            Text(failure).foregroundStyle(.red).textSelection(.enabled)
-            if !editor.isNew && editor.recovery == nil && !editor.needsReview
-              && !editor.autosavePaused && !editor.isTrashed
-            {
-              Button("Retry Markdown save") {
-                Task {
-                  do {
-                    try await editor.flushMarkdown(retry: true)
-                    actionFailure = nil
-                  } catch { actionFailure = error.localizedDescription }
-                }
-              }.disabled(editor.saving)
-            }
-          }
-        } else if editor.dirty && !editor.isNew && editor.markdownSaved {
-          Section { Text("Markdown saved. Other changes are unsaved.").foregroundStyle(.secondary) }
-        }
-        if !model.rules.isEmpty {
-          Section {
-            NavigationLink {
-              Form {
-                ForEach(model.rules, id: \.["id"]) { rule in
-                  Text(rule["text"]?.text ?? rule["id"]?.text ?? "")
-                    .textSelection(.enabled)
-                }
-              }
-              .navigationTitle("Catalog rules")
-              #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-              #endif
-            } label: {
-              Text("Catalog rules").font(.footnote)
-            }
-            .accessibilityIdentifier("catalog-rules")
-            .simultaneousGesture(TapGesture().onEnded { focusedField = nil })
-          }
-        }
-      }
-      .formStyle(.grouped)
-      .accessibilityIdentifier("record-form")
-      .navigationTitle(editor.isNew ? "New record" : "Record")
-      #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-      #endif
-      .toolbar {
-        if !editor.isNew {
-          ToolbarItem(placement: .principal) {
-            Text(recordHeading).font(.headline).lineLimit(1)
-              .accessibilityIdentifier("record-heading")
-          }
-        }
-        ToolbarItem(placement: .cancellationAction) {
+            .disabled(editor.saving).accessibilityIdentifier("inline-open-record")
+            Button("Save") { save() }
+              .disabled(editor.saving || editor.recovery != nil || editor.needsReview)
+              .buttonStyle(.borderedProminent).accessibilityIdentifier("inline-save")
+          }.font(.subheadline)
           if editor.failure != nil || editor.autosavePaused {
             Button("Keep draft and close") {
               do {
                 try editor.keepDraft()
-                dismiss()
+                onSaved()
               } catch { actionFailure = error.localizedDescription }
-            }.accessibilityIdentifier("keep-record-draft")
-          } else {
-            Button("Cancel") {
-              if editor.dirty { discard = true } else { dismiss() }
-            }.disabled(editor.saving)
+            }
           }
         }
-        if let id = editor.draft.original?["id"]?.text, let context {
-          ToolbarItem(placement: .primaryAction) {
-            Button {
-              do {
-                let url = try model.linkURL(
-                  for: NativeDestination(table: context.table, rowID: id), context: context)
-                CopyDraftButton.copy(url.absoluteString)
-                actionFailure = nil
-              } catch { actionFailure = error.localizedDescription }
-            } label: {
-              Label("Copy link", systemImage: "link")
-            }.disabled(!model.canCopyLink).accessibilityIdentifier("copy-record-link")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inline-record-editor")
+      } else {
+        Form {
+          if linkWaiting {
+            Section {
+              Text("A link is waiting. Save or close this record to open it.")
+                .foregroundStyle(.secondary).accessibilityIdentifier("link-waiting-editor")
+            }
+          }
+          if let action = model.undoAction {
+            Section {
+              Button {
+                focusedField = nil
+                Task {
+                  do {
+                    try await editor.performUndo(action, isCurrent: editorIsCurrent) {
+                      try await model.undo(action, context: context)
+                    }
+                    actionFailure = nil
+                  } catch { actionFailure = error.localizedDescription }
+                }
+              } label: {
+                Label("Undo last saved change", systemImage: "arrow.uturn.backward")
+              }
+              .disabled(
+                editor.saving || editor.recovery != nil || editor.needsReview || model.undoing
+              )
+              .accessibilityIdentifier("undo-editor")
+            }
+          }
+          if editor.autosavePaused || editor.isTrashed {
+            Section {
+              Text(editor.status).foregroundStyle(.secondary)
+              if editor.isTrashed && model.canWrite, let id = editor.draft.original?["id"] {
+                Button("Restore record") { save(["id": id, "deleted_at": .null]) }
+                  .disabled(editor.recovery != nil || editor.needsReview)
+                  .accessibilityIdentifier("trash-record")
+              }
+            }
+          }
+          if editor.recovery != nil {
+            Section("Unsaved draft") {
+              Text("Continue your unsaved changes or start with the saved record.")
+              ForEach(editor.recoveryChoices) { saved in
+                if editor.recoveryChoices.count > 1 {
+                  Text(saved.modifiedAt.formatted(date: .abbreviated, time: .standard)).font(
+                    .caption)
+                  if let first = saved.draft.fields.first,
+                    let value = saved.draft.values[first.id]
+                  {
+                    Text(value).lineLimit(2)
+                  }
+                }
+                Button("Resume draft") { editor.resumeDraft(saved) }
+                Button("Discard draft", role: .destructive) {
+                  do { try editor.discardRecovery(saved) } catch {
+                    actionFailure = error.localizedDescription
+                  }
+                }
+              }
+              Button(editor.isNew ? "Start new record" : "Open saved record") {
+                editor.openSavedRecord()
+              }
+              Text("Your unsaved drafts will remain available until you discard them.")
+                .font(.caption).foregroundStyle(.secondary)
+            }
+          }
+          if editor.needsReview {
+            Section("Review recovered changes") {
+              Text(
+                "Copy the values you want to keep, then keep the draft and close. Open the saved record to review and paste your changes."
+              )
+            }
+          }
+          if let reason = model.editingUnavailable {
+            Section { Text(reason).foregroundStyle(.secondary) }
+          }
+          let layout = NativeEditorFields(
+            fields: presentedFields,
+            visibleColumns: model.visibleRecordColumns, titleColumn: model.titleProperty?.id,
+            isNew: editor.isNew, invalidColumns: editor.violations.compactMap(\.col),
+            emptyColumns: emptyColumns)
+          ForEach(layout.primary) { field in presentedFieldRow(field) }
+          if !layout.empty.isEmpty {
+            DisclosureGroup("Empty properties") {
+              ForEach(layout.empty) { field in presentedFieldRow(field) }
+            }
+          }
+          if !layout.additional.isEmpty {
+            DisclosureGroup("More properties") {
+              ForEach(layout.additional) { field in presentedFieldRow(field) }
+            }
+          }
+          if editor.isTrashed && editor.dirty {
+            Section("Kept draft") {
+              Text("Restore the record first, then review and save these changes.")
+              ForEach(editor.draft.fields.filter { editor.draft.patch[$0.id] != nil }) { field in
+                LabeledContent(field.label) {
+                  Text(editor.draft.values[field.id] ?? "").textSelection(.enabled)
+                }
+                CopyDraftButton(
+                  title: "Copy \(field.label)", value: editor.draft.values[field.id] ?? "")
+              }
+            }
+          }
+          if !editor.draft.unknownValues.isEmpty {
+            Section("Unavailable fields") {
+              Text("These draft values have been kept and will not be included when saving.")
+              ForEach(editor.draft.unknownValues.keys.sorted(), id: \.self) { key in
+                LabeledContent(key) {
+                  Text(editor.draft.unknownValues[key] ?? "").textSelection(.enabled)
+                }
+                CopyDraftButton(title: "Copy \(key)", value: editor.draft.unknownValues[key] ?? "")
+              }
+            }
+          }
+          if let original = editor.draft.original {
+            if let identity = model.incomingReferencesIdentity(context: context, row: original) {
+              IncomingReferencesView(
+                makeModel: {
+                  model.makeIncomingReferences(
+                    context: context, row: original, isCurrent: editorIsCurrent)
+                },
+                canOpen: !editor.saving, onOpenRecord: openReference
+              )
+              .id(identity)
+            }
+            Section {
+              DisclosureGroup("Record details") {
+                ForEach(original.keys.filter(Self.metadataKeys.contains).sorted(), id: \.self) {
+                  key in
+                  LabeledContent(key) { Text(original[key]?.text ?? "").textSelection(.enabled) }
+                }
+              }
+            }
+            if model.canWrite && !editor.isTrashed {
+              Section {
+                Button("Duplicate record", action: duplicate)
+                  .disabled(
+                    duplicating || editor.saving || editor.recovery != nil || editor.needsReview
+                  )
+                  .accessibilityIdentifier("duplicate-record")
+                Button(
+                  "Move to trash", role: .destructive
+                ) {
+                  save(["id": original["id"]!, "deleted_at": .bool(true)])
+                }.accessibilityIdentifier("trash-record").disabled(editor.recovery != nil)
+              }
+            }
+          }
+          if let failure = actionFailure ?? editor.failure {
+            Section {
+              Text(failure).foregroundStyle(.red).textSelection(.enabled)
+              if !editor.isNew && editor.recovery == nil && !editor.needsReview
+                && !editor.autosavePaused && !editor.isTrashed
+              {
+                Button("Retry Markdown save") {
+                  Task {
+                    do {
+                      try await editor.flushMarkdown(retry: true)
+                      actionFailure = nil
+                    } catch { actionFailure = error.localizedDescription }
+                  }
+                }.disabled(editor.saving)
+              }
+            }
+          } else if editor.dirty && !editor.isNew && editor.markdownSaved {
+            Section {
+              Text("Markdown saved. Other changes are unsaved.").foregroundStyle(.secondary)
+            }
+          }
+          if !model.rules.isEmpty {
+            Section {
+              NavigationLink {
+                Form {
+                  ForEach(model.rules, id: \.["id"]) { rule in
+                    Text(rule["text"]?.text ?? rule["id"]?.text ?? "")
+                      .textSelection(.enabled)
+                  }
+                }
+                .navigationTitle("Catalog rules")
+                #if os(iOS)
+                  .navigationBarTitleDisplayMode(.inline)
+                #endif
+              } label: {
+                Text("Catalog rules").font(.footnote)
+              }
+              .accessibilityIdentifier("catalog-rules")
+              .simultaneousGesture(TapGesture().onEnded { focusedField = nil })
+            }
           }
         }
-        if model.canWrite && !editor.isTrashed {
-          ToolbarItem(placement: .confirmationAction) {
-            Button("Save") { save() }.disabled(
-              saving || editor.recovery != nil || editor.needsReview
-            )
-            .accessibilityIdentifier("save-record")
+        .formStyle(.grouped)
+        .accessibilityIdentifier("record-form")
+      }
+    }
+  }
+
+  private var editorContent: some View {
+    editorFields
+      .popover(item: $propertyHelp) { field in
+        Text(field.help).padding().presentationCompactAdaptation(.popover)
+      }
+      .onChange(of: editor.recovery == nil) { _, ready in
+        if ready {
+          emptyColumns = NativeEditorFields.emptyColumns(
+            fields: presentedFields,
+            values: (editor.draft.original ?? [:]).mapValues(\.text)
+              .merging(editor.draft.values) { _, draft in draft })
+        }
+      }
+      .navigationTitle(
+        inlineField != nil ? (model.table ?? "Workspace") : (editor.isNew ? "New record" : "Record")
+      )
+      #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+      #endif
+      .toolbar {
+        if inlineField == nil {
+          if !editor.isNew {
+            ToolbarItem(placement: .principal) {
+              Text(recordHeading).font(.headline).lineLimit(1)
+                .accessibilityIdentifier("record-heading")
+            }
+          }
+          ToolbarItem(placement: .cancellationAction) {
+            if editor.failure != nil || editor.autosavePaused {
+              Button("Keep draft and close") {
+                do {
+                  try editor.keepDraft()
+                  dismiss()
+                } catch { actionFailure = error.localizedDescription }
+              }.accessibilityIdentifier("keep-record-draft")
+            } else {
+              Button("Cancel") {
+                if editor.dirty { discard = true } else { dismiss() }
+              }.disabled(editor.saving)
+            }
+          }
+          if let id = editor.draft.original?["id"]?.text, let context {
+            ToolbarItem(placement: .primaryAction) {
+              Button {
+                do {
+                  let url = try model.linkURL(
+                    for: NativeDestination(table: context.table, rowID: id), context: context)
+                  CopyDraftButton.copy(url.absoluteString)
+                  actionFailure = nil
+                } catch { actionFailure = error.localizedDescription }
+              } label: {
+                Label("Copy link", systemImage: "link")
+              }.disabled(!model.canCopyLink).accessibilityIdentifier("copy-record-link")
+            }
+          }
+          if model.canWrite && !editor.isTrashed {
+            ToolbarItem(placement: .confirmationAction) {
+              Button("Save") { save() }.disabled(
+                saving || editor.recovery != nil || editor.needsReview
+              )
+              .accessibilityIdentifier("save-record")
+            }
           }
         }
       }
@@ -1300,10 +1500,6 @@ private struct RecordEditor: View {
       .onDisappear { referenceNavigation?.cancel() }
       .onChange(of: model.workspaceGeneration) { referenceNavigation?.cancel() }
       .onChange(of: model.table) { referenceNavigation?.cancel() }
-    }
-    #if os(macOS)
-      .frame(minWidth: 520, minHeight: 560)
-    #endif
   }
 
   private static let metadataKeys: Set<String> = [
@@ -1330,7 +1526,7 @@ private struct RecordEditor: View {
     {
       fieldRow(field)
     } else {
-      Section(field.label) {
+      LabeledContent(field.label) {
         if ["ref", "multi_ref"].contains(field.type), let workspace = context?.workspace,
           field.property["ref_table"]?.text.nonempty != nil
         {
@@ -1339,23 +1535,49 @@ private struct RecordEditor: View {
             workspace: workspace, canEdit: false, canOpen: !editor.saving,
             availability: referenceAvailability(field), onOpenRecord: openReference)
         } else {
-          Text(editor.draft.original?[field.id]?.text ?? "").textSelection(.enabled)
+          NativePropertyValue(
+            field: field, value: editor.draft.original?[field.id]?.text ?? "",
+            workspace: context?.workspace, transport: model.imageTransport, imageSize: 96
+          )
+          .textSelection(.enabled)
         }
       }
     }
   }
 
   @ViewBuilder private func fieldRow(_ field: CatalogField) -> some View {
-    Section {
-      FieldInput(
-        field: field, workspace: context?.workspace, focus: $focusedField,
-        editor: editor, onOpenReference: openReference,
-        undoAction: model.undoAction, undo: { try await model.undo($0, context: context) },
-        isCurrent: editorIsCurrent,
-        referenceAvailability: referenceAvailability(field),
-        value: Binding(
-          get: { editor.draft.values[field.id] ?? "" },
-          set: { editor.setValue($0, for: field.id) }))
+    VStack(alignment: .leading, spacing: 4) {
+      LabeledContent {
+        FieldInput(
+          field: field, workspace: context?.workspace, transport: model.imageTransport,
+          inline: inlineField != nil, focus: $focusedField,
+          editor: editor, onOpenReference: openReference,
+          undoAction: model.undoAction, undo: { try await model.undo($0, context: context) },
+          isCurrent: editorIsCurrent,
+          referenceAvailability: referenceAvailability(field),
+          value: Binding(
+            get: { editor.draft.values[field.id] ?? "" },
+            set: { editor.setValue($0, for: field.id) })
+        )
+        .labelsHidden()
+      } label: {
+        HStack(spacing: 4) {
+          Text(field.label)
+          if field.required {
+            Image(systemName: "asterisk").font(.caption2).foregroundStyle(.secondary)
+              .accessibilityLabel("Required")
+          }
+          if !field.description.isEmpty || field.property["pattern"]?.text.nonempty != nil {
+            Button {
+              propertyHelp = field
+            } label: {
+              Image(systemName: "info.circle")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("About \(field.label)")
+          }
+        }
+      }
       if editor.failure != nil {
         CopyDraftButton(
           title: "Copy \(field.label)", value: editor.draft.values[field.id] ?? "")
@@ -1363,11 +1585,7 @@ private struct RecordEditor: View {
       ForEach(editor.violations.filter { $0.col == field.id }, id: \.rule) { violation in
         Text(violation.message).foregroundStyle(.red).font(.callout)
       }
-    } header: {
-      Text(field.label)
-    } footer: {
       VStack(alignment: .leading, spacing: 4) {
-        if !field.help.isEmpty { Text(field.help) }
         if editor.isNew, let preview = field.defaultPreview {
           if editor.draft.usesDefault(field.id) {
             // Choice pickers already name the default as their empty choice.
@@ -1383,8 +1601,8 @@ private struct RecordEditor: View {
         }
       }
     }
+    .buttonStyle(.borderless)
     .disabled(editor.recovery != nil)
-
   }
 
   private var recordHeading: String {
@@ -1464,7 +1682,7 @@ private struct RecordEditor: View {
   private func discardSavedDraft(close: Bool) {
     do {
       try editor.discardDraft()
-      if close { dismiss() }
+      if close { if inlineField != nil { onSaved() } else { dismiss() } }
     } catch { actionFailure = error.localizedDescription }
   }
 
@@ -1489,6 +1707,8 @@ private struct RecordEditor: View {
 private struct FieldInput: View {
   let field: CatalogField
   let workspace: NativeWorkspace?
+  let transport: HubTransport?
+  let inline: Bool
   let focus: FocusState<String?>.Binding
   let editor: RecordEditorModel
   let onOpenReference: (String, String) -> Void
@@ -1500,7 +1720,9 @@ private struct FieldInput: View {
 
   var body: some View {
     Group {
-      if ["ref", "multi_ref"].contains(field.type) {
+      if !ImageReference.previews(type: field.type, value: value).isEmpty {
+        NativeImageField(field: field, focus: focus, value: $value, transport: transport)
+      } else if ["ref", "multi_ref"].contains(field.type) {
         if let workspace, field.property["ref_table"]?.text.nonempty != nil {
           ReferenceField(
             field: field, value: $value, workspace: workspace, onOpen: { focus.wrappedValue = nil },
@@ -1510,6 +1732,10 @@ private struct FieldInput: View {
           Text("Reference choices are unavailable. The original value has been preserved.")
             .foregroundStyle(.secondary)
         }
+      } else if field.type == "markdown" && inline {
+        TextEditor(text: $value).frame(minHeight: 100, maxHeight: 180)
+          .focused(focus, equals: field.id).accessibilityLabel(field.label)
+          .accessibilityIdentifier("field-\(field.id)")
       } else if field.type == "markdown" {
         NavigationLink {
           MarkdownEditorScreen(
@@ -1549,6 +1775,7 @@ private struct FieldInput: View {
         }.accessibilityIdentifier("field-\(field.id)")
       } else {
         TextField(field.label, text: $value, axis: .vertical)
+          .fixedSize(horizontal: false, vertical: true)
           .focused(focus, equals: field.id)
           .accessibilityIdentifier("field-\(field.id)")
           .autocorrectionDisabled(field.type != "text")
