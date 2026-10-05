@@ -184,6 +184,12 @@ canonical equivalence must not merge records, recoveries or reference selections
 Keep the original String values at the core boundary.
 
 Whole Worker requests and whole native asynchronous requests are serialized.
+Native SQLite connections force `legacy_alter_table=OFF` so logged renames
+rewrite trigger/view references consistently across hosts. Recovery repairs only
+an exact canonical timestamp trigger whose direct table rename is in the local
+schema log and whose old table/view name is absent. It changes no rows, pending
+edits, or log entries; custom triggers and unproven renames stay untouched.
+
 Native SQLite transactions retain ownership across awaited JS callbacks.
 Browser operations hold a Web Lock across tabs; native sync holds the
 Python-compatible `<database>.sync.lock`. A demo database must never sync.
@@ -316,6 +322,11 @@ notarization and installed distribution are separate verification steps.
 Test behavior before implementation, then verify real SQLite, JSC and browser
 flows. Run the full applicable suites after the final source change. Use an
 isolated simulator if another project is driving the shared default device.
+iOS record screens use inline navigation titles and no extra top list content
+margin; keep title, controls and first list row separate and compact.
+`HeaderUITests` checks their geometry and retains screenshots. Its empty-workspace
+case uses `HeaderUIFixtureTests` with `TEST_RUNNER_LIFE_UI_TEST_HEADER_SIMULATOR`
+set to the exact disposable simulator UDID; run the fixture before the UI tests.
 
 Web design tokens live in `apps/web/src/theme.css`; use Tabler UI icons,
 accessible controls, keyboard focus and narrow-screen layouts. Native views use

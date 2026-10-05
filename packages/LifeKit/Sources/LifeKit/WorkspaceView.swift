@@ -598,6 +598,9 @@ public struct WorkspaceView: View {
       if model.canLoadMore { Button("Load more") { Task { await model.reload(more: true) } } }
       if model.loading { ProgressView().frame(maxWidth: .infinity) }
     }
+    #if os(iOS)
+      .contentMargins(.top, 0, for: .scrollContent)
+    #endif
   }
 
   @ViewBuilder private var recordContent: some View {
@@ -715,6 +718,9 @@ public struct WorkspaceView: View {
         .background(.regularMaterial)
       }
       .navigationTitle(model.table ?? "Workspace")
+      #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+      #endif
       .searchable(
         text: $model.search, isPresented: $tableSearchPresented, prompt: "Search this table"
       )

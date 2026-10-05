@@ -10,7 +10,64 @@ public final class SQLiteBridge {
   public init(path: String) throws {
     var configuration = Configuration()
     configuration.allowsUnsafeTransactions = true
+    configuration.prepareDatabase { db in
+      // Apple SQLite defaults to legacy rename behavior, unlike other hosts.
+      // Replayed renames must update references inside triggers and views.
+      try db.execute(sql: "PRAGMA legacy_alter_table = OFF")
+    }
     database = try DatabaseQueue(path: path, configuration: configuration)
+    try database.write { db in try Self.repairLegacyTimestampRenames(db) }
+  }
+
+  /// Recover only the exact timestamp trigger damaged by a previously logged
+  /// legacy rename. This restores that DDL's intended effect without changing
+  /// user rows, pending writes, or the schema log. Custom triggers stay untouched.
+  private static func repairLegacyTimestampRenames(_ db: Database) throws {
+    guard try db.tableExists("_schema_log") else { return }
+    let log = try String.fetchAll(db, sql: "SELECT ddl FROM _schema_log")
+    let normalize: (String) -> String = {
+      $0.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+    let logged = Set(log.map(normalize))
+    let triggers = try Row.fetchAll(
+      db, sql: "SELECT name,tbl_name,sql FROM sqlite_master WHERE type='trigger'")
+    let identifier: (String) -> Bool = {
+      $0.range(of: "^[A-Za-z_][A-Za-z0-9_]*$", options: .regularExpression) != nil
+    }
+    for trigger in triggers {
+      let name: String = trigger["name"]
+      let table: String = trigger["tbl_name"]
+      guard name.hasSuffix("_updated_at"), identifier(name), identifier(table) else { continue }
+      let source = String(name.dropLast("_updated_at".count))
+      guard identifier(source), source != table, try !db.tableExists(source),
+        try !db.viewExists(source)
+      else { continue }
+      let quoted: (String) -> String = { "\"" + $0 + "\"" }
+      let sourceForms = [source, quoted(source)]
+      let targetForms = [table, quoted(table)]
+      let hasRename = sourceForms.contains { old in
+        targetForms.contains { new in
+          let ddl = "ALTER TABLE \(old) RENAME TO \(new)"
+          return logged.contains(ddl) || logged.contains(ddl + ";")
+        }
+      }
+      guard hasRename else { continue }
+      let sql = normalize(trigger["sql"] as String)
+      var repaired: String?
+      for quoteOriginal in [false, true] {
+        let original: (String) -> String = { quoteOriginal ? quoted($0) : $0 }
+        let prefix =
+          "CREATE TRIGGER \(original(name)) AFTER UPDATE ON \(quoted(table)) FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at BEGIN UPDATE "
+        let suffix =
+          " SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid; END"
+        if sql == prefix + original(source) + suffix {
+          repaired = prefix + quoted(table) + suffix
+        }
+      }
+      guard let repaired else { continue }
+      try db.execute(sql: "DROP TRIGGER \(quoted(name))")
+      try db.execute(sql: repaired)
+    }
   }
 
   public func close() throws { try database.close() }

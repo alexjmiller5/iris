@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "443d1c5a87202c664c860233f88fbff5fc96ad012b58448a408125ac9d7b41a7";
+export declare const CORE_CONTRACT_HASH = "4e276d615a2b88e8dc6a0a1946e2de99c41ac2479dd8961f792ad32c4edb67d8";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -361,6 +361,22 @@ export type RejectionsArgs = {
 export type RejectionsPage = {
     rejections: RejectedEdit[];
     nextOffset: Count | null;
+};
+export type HubCapabilities = {
+    row_api: "v1";
+    schema: "none" | "full-ddl-v1";
+    replica_sync: boolean;
+    subscriptions: "durable-pull-v1" | null;
+    files: "opaque-key-v1";
+};
+export type HubSession = {
+    name: string;
+    scopes: string[];
+    capabilities?: HubCapabilities;
+};
+export type ScopedReplicaUnsupported = {
+    error: "scoped_replica_unsupported";
+    message: string;
 };
 export interface CoreOperations {
     catalog: {
