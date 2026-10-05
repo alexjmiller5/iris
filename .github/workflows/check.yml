@@ -29,6 +29,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7.0.1
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun test scripts/release-macos.test.ts
       - run: brew install xcodegen just
       - run: swift test --package-path packages/LifeKit
       - run: just --justfile apps/macos/justfile check
