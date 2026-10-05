@@ -184,6 +184,12 @@ canonical equivalence must not merge records, recoveries or reference selections
 Keep the original String values at the core boundary.
 
 Whole Worker requests and whole native asynchronous requests are serialized.
+Native SQLite connections force `legacy_alter_table=OFF` so logged renames
+rewrite trigger/view references consistently across hosts. Recovery repairs only
+an exact canonical timestamp trigger whose direct table rename is in the local
+schema log and whose old table/view name is absent. It changes no rows, pending
+edits, or log entries; custom triggers and unproven renames stay untouched.
+
 Native SQLite transactions retain ownership across awaited JS callbacks.
 Browser operations hold a Web Lock across tabs; native sync holds the
 Python-compatible `<database>.sync.lock`. A demo database must never sync.

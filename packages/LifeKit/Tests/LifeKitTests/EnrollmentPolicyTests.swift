@@ -8,7 +8,7 @@ private final class EnrollmentFixtureBundle: NSObject {}
 
 @MainActor
 struct EnrollmentPolicyTests {
-  @Test(arguments: 0..<52)
+  @Test(arguments: 0..<58)
   func canonicalPolicyRunsInJavaScriptCoreWithoutDatabaseOrTransport(index: Int) async throws {
     #if SWIFT_PACKAGE
       let bundle = Bundle.module
@@ -19,7 +19,7 @@ struct EnrollmentPolicyTests {
       bundle.url(forResource: "enrollment-policy", withExtension: "json", subdirectory: "Fixtures")
         ?? bundle.url(forResource: "enrollment-policy", withExtension: "json"))
     let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
-    #expect(fixture.cases.count == 52)
+    #expect(fixture.cases.count == 58)
     let entry = fixture.cases[index]
     let runtime = try LifeCoreRuntime()
     let arguments = String(decoding: try JSONEncoder().encode(entry.args), as: UTF8.self)

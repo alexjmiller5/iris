@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import JavaScriptCore
 import Testing
 
@@ -6,6 +7,122 @@ import Testing
 
 @MainActor
 struct SQLiteBridgeTests {
+
+  @Test(arguments: ["no-log", "custom-body", "source-exists", "source-view-exists"])
+  func recoveryDoesNotRewriteUnprovenOrCustomTriggers(reason: String) throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let path = folder.appendingPathComponent("replica.sqlite").path
+    let legacy = try DatabaseQueue(path: path)
+    let before = try legacy.write { db -> String in
+      try db.execute(
+        sql: """
+          PRAGMA legacy_alter_table=ON;
+          CREATE TABLE links (id TEXT PRIMARY KEY, updated_at TEXT);
+          CREATE TRIGGER links_updated_at AFTER UPDATE ON links FOR EACH ROW
+          WHEN NEW.updated_at = OLD.updated_at BEGIN
+            UPDATE links SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid;
+          END;
+          CREATE TABLE _schema_log (ddl TEXT);
+          ALTER TABLE links RENAME TO records;
+          """)
+      if reason != "no-log" {
+        try db.execute(
+          sql: "INSERT INTO _schema_log VALUES ('ALTER TABLE links RENAME TO records')")
+      }
+      if reason == "source-exists" {
+        try db.execute(sql: "CREATE TABLE links (id TEXT, updated_at TEXT)")
+      }
+      if reason == "source-view-exists" {
+        try db.execute(sql: "CREATE VIEW links AS SELECT * FROM records")
+      }
+      if reason == "custom-body" {
+        try db.execute(
+          sql: """
+            DROP TRIGGER links_updated_at;
+            CREATE TRIGGER links_updated_at AFTER UPDATE ON "records" FOR EACH ROW
+            WHEN NEW.updated_at = OLD.updated_at BEGIN
+              UPDATE links SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid;
+              DELETE FROM records;
+            END;
+            """)
+      }
+      return try #require(
+        try String.fetchOne(db, sql: "SELECT sql FROM sqlite_master WHERE type='trigger'"))
+    }
+    try legacy.close()
+    let context = try #require(JSContext())
+    let bridge = try SQLiteBridge(path: path)
+    try bridge.install(in: context)
+    #expect(
+      context.evaluateScript(
+        "LifeSql.all(\"SELECT sql FROM sqlite_master WHERE type='trigger'\")[0].sql")?.toString()
+        == before)
+    #expect(context.exception == nil)
+  }
+
+  @Test func reopeningLegacyRenameRepairsOnlyLoggedCanonicalTimestampTriggers() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let path = folder.appendingPathComponent("replica.sqlite").path
+    let legacy = try DatabaseQueue(path: path)
+    try legacy.write { db in
+      try db.execute(
+        sql: """
+          PRAGMA legacy_alter_table=ON;
+          CREATE TABLE links (id TEXT PRIMARY KEY, updated_at TEXT, title TEXT);
+          CREATE TRIGGER links_updated_at AFTER UPDATE ON links FOR EACH ROW
+          WHEN NEW.updated_at = OLD.updated_at BEGIN
+            UPDATE links SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid;
+          END;
+          CREATE TABLE _schema_log (ddl TEXT);
+          INSERT INTO _schema_log VALUES ('ALTER TABLE links RENAME TO records');
+          INSERT INTO links VALUES ('one','2020-01-01T00:00:00.000Z','Retained draft');
+          ALTER TABLE links RENAME TO records;
+          CREATE TABLE _core_pending (row_id TEXT);
+          INSERT INTO _core_pending VALUES ('one');
+          """)
+    }
+    try legacy.close()
+    let context = try #require(JSContext())
+    let bridge = try SQLiteBridge(path: path)
+    try bridge.install(in: context)
+    let result = context.evaluateScript(
+      #"""
+      LifeSql.run('CREATE TABLE items (old_name TEXT)');
+      LifeSql.run('ALTER TABLE items RENAME COLUMN old_name TO new_name');
+      LifeSql.run("UPDATE records SET title='Edited' WHERE id='one'");
+      JSON.stringify([LifeSql.all('SELECT title,updated_at FROM records')[0],
+        LifeSql.all('SELECT row_id FROM _core_pending')[0].row_id,
+        LifeSql.all('SELECT count(*) AS n FROM _schema_log')[0].n]);
+      """#)
+    #expect(context.exception == nil)
+    let text = try #require(result?.toString())
+    #expect(text.contains("Edited"))
+    #expect(!text.contains("2020-01-01"))
+    #expect(text.contains("one"))
+    #expect(text.hasSuffix(",1]"))
+  }
+
+  @Test func renameColumnPreservesStoredValues() throws {
+    let context = try #require(JSContext())
+    let bridge = try SQLiteBridge(path: ":memory:")
+    try bridge.install(in: context)
+    let result = context.evaluateScript(
+      #"""
+      LifeSql.run('CREATE TABLE links (id TEXT PRIMARY KEY, updated_at TEXT)');
+      LifeSql.run("CREATE TRIGGER links_updated_at AFTER UPDATE ON links FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at BEGIN UPDATE links SET updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE rowid = NEW.rowid; END");
+      LifeSql.run('ALTER TABLE links RENAME TO records');
+      LifeSql.run('CREATE TABLE items (id TEXT PRIMARY KEY, old_name TEXT)');
+      LifeSql.run("INSERT INTO items VALUES ('one','Original')");
+      LifeSql.run('ALTER TABLE items RENAME COLUMN old_name TO new_name');
+      LifeSql.all('SELECT new_name FROM items')[0].new_name;
+      """#)
+    #expect(context.exception == nil)
+    #expect(result?.toString() == "Original")
+  }
 
   @Test func quotedDelimitersRemainDataAndCTECannotWrite() throws {
     let context = try #require(JSContext())
