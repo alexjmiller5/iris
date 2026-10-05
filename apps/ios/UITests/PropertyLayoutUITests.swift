@@ -51,6 +51,10 @@ final class PropertyLayoutUITests: XCTestCase {
     app.buttons["saved-views"].tap()
     app.buttons["view-properties"].tap()
     XCTAssertTrue(app.navigationBars["Properties"].waitForExistence(timeout: 5))
+    let settings = XCTAttachment(screenshot: app.screenshot())
+    settings.name = "record-property-settings"
+    settings.lifetime = .keepAlways
+    add(settings)
     app.buttons["properties-title-only"].tap()
     app.buttons["apply-property-layout"].tap()
     let name = app.textFields["saved-view-name"]
