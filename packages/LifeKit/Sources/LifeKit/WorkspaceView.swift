@@ -1146,7 +1146,7 @@ private struct RecordEditor: View {
     #endif
   }
 
-  private var editorContent: some View {
+  private var editorFields: some View {
     Group {
       if let inlineField, let field = presentedFields.first(where: { $0.id == inlineField }) {
         VStack(alignment: .leading, spacing: 8) {
@@ -1377,125 +1377,129 @@ private struct RecordEditor: View {
         .accessibilityIdentifier("record-form")
       }
     }
-    .popover(item: $propertyHelp) { field in
-      Text(field.help).padding().presentationCompactAdaptation(.popover)
-    }
-    .onChange(of: editor.recovery == nil) { _, ready in
-      if ready {
-        emptyColumns = NativeEditorFields.emptyColumns(
-          fields: presentedFields,
-          values: (editor.draft.original ?? [:]).mapValues(\.text)
-            .merging(editor.draft.values) { _, draft in draft })
+  }
+
+  private var editorContent: some View {
+    editorFields
+      .popover(item: $propertyHelp) { field in
+        Text(field.help).padding().presentationCompactAdaptation(.popover)
       }
-    }
-    .navigationTitle(
-      inlineField != nil ? (model.table ?? "Workspace") : (editor.isNew ? "New record" : "Record")
-    )
-    #if os(iOS)
-      .navigationBarTitleDisplayMode(.inline)
-    #endif
-    .toolbar {
-      if inlineField == nil {
-        if !editor.isNew {
-          ToolbarItem(placement: .principal) {
-            Text(recordHeading).font(.headline).lineLimit(1)
-              .accessibilityIdentifier("record-heading")
-          }
-        }
-        ToolbarItem(placement: .cancellationAction) {
-          if editor.failure != nil || editor.autosavePaused {
-            Button("Keep draft and close") {
-              do {
-                try editor.keepDraft()
-                dismiss()
-              } catch { actionFailure = error.localizedDescription }
-            }.accessibilityIdentifier("keep-record-draft")
-          } else {
-            Button("Cancel") {
-              if editor.dirty { discard = true } else { dismiss() }
-            }.disabled(editor.saving)
-          }
-        }
-        if let id = editor.draft.original?["id"]?.text, let context {
-          ToolbarItem(placement: .primaryAction) {
-            Button {
-              do {
-                let url = try model.linkURL(
-                  for: NativeDestination(table: context.table, rowID: id), context: context)
-                CopyDraftButton.copy(url.absoluteString)
-                actionFailure = nil
-              } catch { actionFailure = error.localizedDescription }
-            } label: {
-              Label("Copy link", systemImage: "link")
-            }.disabled(!model.canCopyLink).accessibilityIdentifier("copy-record-link")
-          }
-        }
-        if model.canWrite && !editor.isTrashed {
-          ToolbarItem(placement: .confirmationAction) {
-            Button("Save") { save() }.disabled(
-              saving || editor.recovery != nil || editor.needsReview
-            )
-            .accessibilityIdentifier("save-record")
-          }
+      .onChange(of: editor.recovery == nil) { _, ready in
+        if ready {
+          emptyColumns = NativeEditorFields.emptyColumns(
+            fields: presentedFields,
+            values: (editor.draft.original ?? [:]).mapValues(\.text)
+              .merging(editor.draft.values) { _, draft in draft })
         }
       }
-    }
-    .disabled(saving || editor.undoing || referenceNavigation?.loading == true)
-    .interactiveDismissDisabled(saving || editor.saving || editor.dirty || editor.recovery != nil)
-    .confirmationDialog(
-      "Discard unsaved changes and duplicate?", isPresented: $confirmDuplicate,
-      titleVisibility: .visible
-    ) {
-      Button("Discard changes and duplicate", role: .destructive) {
-        guard let copy = preparedCopy else { return }
-        preparedCopy = nil
-        do {
-          try editor.discardDraft()
-          onDuplicate(copy)
-        } catch {
+      .navigationTitle(
+        inlineField != nil ? (model.table ?? "Workspace") : (editor.isNew ? "New record" : "Record")
+      )
+      #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+      #endif
+      .toolbar {
+        if inlineField == nil {
+          if !editor.isNew {
+            ToolbarItem(placement: .principal) {
+              Text(recordHeading).font(.headline).lineLimit(1)
+                .accessibilityIdentifier("record-heading")
+            }
+          }
+          ToolbarItem(placement: .cancellationAction) {
+            if editor.failure != nil || editor.autosavePaused {
+              Button("Keep draft and close") {
+                do {
+                  try editor.keepDraft()
+                  dismiss()
+                } catch { actionFailure = error.localizedDescription }
+              }.accessibilityIdentifier("keep-record-draft")
+            } else {
+              Button("Cancel") {
+                if editor.dirty { discard = true } else { dismiss() }
+              }.disabled(editor.saving)
+            }
+          }
+          if let id = editor.draft.original?["id"]?.text, let context {
+            ToolbarItem(placement: .primaryAction) {
+              Button {
+                do {
+                  let url = try model.linkURL(
+                    for: NativeDestination(table: context.table, rowID: id), context: context)
+                  CopyDraftButton.copy(url.absoluteString)
+                  actionFailure = nil
+                } catch { actionFailure = error.localizedDescription }
+              } label: {
+                Label("Copy link", systemImage: "link")
+              }.disabled(!model.canCopyLink).accessibilityIdentifier("copy-record-link")
+            }
+          }
+          if model.canWrite && !editor.isTrashed {
+            ToolbarItem(placement: .confirmationAction) {
+              Button("Save") { save() }.disabled(
+                saving || editor.recovery != nil || editor.needsReview
+              )
+              .accessibilityIdentifier("save-record")
+            }
+          }
+        }
+      }
+      .disabled(saving || editor.undoing || referenceNavigation?.loading == true)
+      .interactiveDismissDisabled(saving || editor.saving || editor.dirty || editor.recovery != nil)
+      .confirmationDialog(
+        "Discard unsaved changes and duplicate?", isPresented: $confirmDuplicate,
+        titleVisibility: .visible
+      ) {
+        Button("Discard changes and duplicate", role: .destructive) {
+          guard let copy = preparedCopy else { return }
+          preparedCopy = nil
+          do {
+            try editor.discardDraft()
+            onDuplicate(copy)
+          } catch {
+            discardPreparedCopy(copy)
+            actionFailure = error.localizedDescription
+          }
+        }
+      }
+      .onChange(of: confirmDuplicate) {
+        // Keeping the source draft also removes the unused copy's journal.
+        if !confirmDuplicate, let copy = preparedCopy {
+          preparedCopy = nil
           discardPreparedCopy(copy)
-          actionFailure = error.localizedDescription
         }
       }
-    }
-    .onChange(of: confirmDuplicate) {
-      // Keeping the source draft also removes the unused copy's journal.
-      if !confirmDuplicate, let copy = preparedCopy {
-        preparedCopy = nil
-        discardPreparedCopy(copy)
+      .confirmationDialog(
+        "Discard unsaved changes?", isPresented: $discard, titleVisibility: .visible
+      ) {
+        Button("Discard changes", role: .destructive) { discardSavedDraft(close: true) }
+        Button("Keep editing", role: .cancel) {}
       }
-    }
-    .confirmationDialog(
-      "Discard unsaved changes?", isPresented: $discard, titleVisibility: .visible
-    ) {
-      Button("Discard changes", role: .destructive) { discardSavedDraft(close: true) }
-      Button("Keep editing", role: .cancel) {}
-    }
-    .alert(
-      referenceNavigation?.error == nil
-        ? "Discard unsaved changes and open the related record?" : "Cannot open record",
-      isPresented: $confirmReference
-    ) {
-      if referenceNavigation?.error != nil {
-        Button("OK") { referenceNavigation?.cancel() }
-      } else {
-        Button("Discard changes and open", role: .destructive) {
-          Task { _ = await referenceNavigation?.discardAndOpen() }
+      .alert(
+        referenceNavigation?.error == nil
+          ? "Discard unsaved changes and open the related record?" : "Cannot open record",
+        isPresented: $confirmReference
+      ) {
+        if referenceNavigation?.error != nil {
+          Button("OK") { referenceNavigation?.cancel() }
+        } else {
+          Button("Discard changes and open", role: .destructive) {
+            Task { _ = await referenceNavigation?.discardAndOpen() }
+          }
+          Button("Keep editing", role: .cancel) { referenceNavigation?.cancel() }
         }
-        Button("Keep editing", role: .cancel) { referenceNavigation?.cancel() }
+      } message: {
+        if let error = referenceNavigation?.error { Text(error) }
       }
-    } message: {
-      if let error = referenceNavigation?.error { Text(error) }
-    }
-    .onChange(of: referenceNavigation?.confirmation) {
-      confirmReference = referenceNavigation?.confirmation != nil
-    }
-    .onChange(of: referenceNavigation?.error) {
-      if referenceNavigation?.error != nil { confirmReference = true }
-    }
-    .onDisappear { referenceNavigation?.cancel() }
-    .onChange(of: model.workspaceGeneration) { referenceNavigation?.cancel() }
-    .onChange(of: model.table) { referenceNavigation?.cancel() }
+      .onChange(of: referenceNavigation?.confirmation) {
+        confirmReference = referenceNavigation?.confirmation != nil
+      }
+      .onChange(of: referenceNavigation?.error) {
+        if referenceNavigation?.error != nil { confirmReference = true }
+      }
+      .onDisappear { referenceNavigation?.cancel() }
+      .onChange(of: model.workspaceGeneration) { referenceNavigation?.cancel() }
+      .onChange(of: model.table) { referenceNavigation?.cancel() }
   }
 
   private static let metadataKeys: Set<String> = [
