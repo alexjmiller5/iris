@@ -2,6 +2,45 @@ import XCTest
 
 @MainActor
 final class PropertyLayoutUITests: XCTestCase {
+  func testReorderedPropertiesPersistWithTitlePinned() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    defer { app.terminate() }
+    XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 15))
+    app.buttons["saved-views"].tap()
+    app.buttons["view-properties"].tap()
+    let body = app.switches["property-visible-body"]
+    let status = app.switches["property-visible-status"]
+    XCTAssertTrue(body.waitForExistence(timeout: 5))
+    body.press(forDuration: 1)
+    app.buttons["Move up"].tap()
+    XCTAssertLessThan(body.frame.minY, status.frame.minY)
+    app.buttons["apply-property-layout"].tap()
+    let name = app.textFields["saved-view-name"]
+    for _ in 0..<5 where !name.isHittable { app.swipeUp() }
+    name.tap()
+    name.typeText("Body first")
+    app.buttons["save-view-copy"].tap()
+    XCTAssertTrue(app.staticTexts["saved-view-receipt"].waitForExistence(timeout: 5))
+    app.navigationBars["Saved views"].buttons["Done"].tap()
+    app.buttons["saved-views"].tap()
+    app.buttons["All records"].tap()
+    app.buttons["saved-views"].tap()
+    app.buttons["Body first"].tap()
+    app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
+      .firstMatch.tap()
+    XCTAssertTrue(app.textFields["field-title"].waitForExistence(timeout: 5))
+    XCTAssertLessThan(
+      app.textFields["field-title"].frame.minY, app.buttons["field-body"].frame.minY)
+    XCTAssertLessThan(app.buttons["field-body"].frame.minY, app.buttons["field-status"].frame.minY)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "reordered-properties-title-pinned"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
   func testTitleOnlyViewKeepsHiddenEditableProperties() throws {
     continueAfterFailure = false
     let app = XCUIApplication()

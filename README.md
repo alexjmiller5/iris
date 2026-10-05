@@ -200,6 +200,13 @@ including fields hidden by a view. Updating or deleting an applied view uses the
 revision opened by the user; refreshing the list cannot silently adopt another
 client's changes. Reopen a changed view before updating it.
 
+In **Views > Properties**, choose which properties appear and drag to reorder
+them. **Title only** keeps the record's title prominent. Apply the layout, then
+save or update a view to keep it across devices. Hidden values remain available
+under **More properties** in the record editor; required new fields and invalid
+values remain visible. **Record details** holds IDs and timestamps, and the
+small **Catalog rules** link at the bottom opens the table's rules separately.
+
 Markdown fields open a dedicated screen containing the same **Write** and
 **Source** editor as web, bundled locally in WebKit. Existing records autosave
 editable Markdown after a 600 ms typing pause. **Done** collects the live document
