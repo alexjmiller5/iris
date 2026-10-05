@@ -348,6 +348,29 @@ mark-all-read actions. To include interrupted-save UI recovery, set
 `TEST_RUNNER_LIFE_UI_TEST_RECOVERY_SIMULATOR` to the selected disposable simulator's
 UDID. The app-host test seeds only that simulator's local workspace before the
 UI test copies recovered text, exits, opens the saved row and relaunches.
+
+For the native navigation regression, use a disposable simulator: the fixture
+replaces its saved connection and seeds 50,000 synthetic provenance rows. Start
+`uv run scripts/navigation-hub.py --port 0` and use its printed loopback URL:
+
+```bash
+TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_SIMULATOR="$SIMULATOR_UDID" \
+TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_HUB="$FIXTURE_URL" \
+xcodebuild -project apps/ios/LifeUI.xcodeproj -scheme LifeUI \
+  -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+  -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- test \
+  -only-testing:LifeUITests/TableNavigationUIFixtureTests \
+  -only-testing:LifeUIUITests/TableNavigationUITests
+```
+
+This holds a real sync response, cancels queued navigation, verifies immediate
+control recovery with sync still running, and checks late replies and replacement
+navigation. Run again without `TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_HUB` for repeated
+local large-table navigation. Each mode skips the other mode's tests. Retained
+XCTest screenshots show the waiting and recovered states. Stop the fixture server
+when finished. Cancellation affects navigation only; opening another destination
+can still wait behind sync's serialized transaction ownership.
+
 Launch an Apple app with
 `--demo` for the temporary preview; app-hosted tests use fixture mode as well.
 Unsigned builds are development artifacts, not signed releases or phone installs.

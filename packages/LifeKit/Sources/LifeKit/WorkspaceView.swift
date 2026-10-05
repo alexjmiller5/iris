@@ -34,6 +34,29 @@ public struct WorkspaceView: View {
     // Stacked, not a safe-area inset: navigation bars ignore insets added outside them.
     VStack(spacing: 0) {
       pendingLinkBanner
+      if openingDestination {
+        HStack(spacing: 12) {
+          ProgressView().accessibilityLabel("Opening destination…")
+          VStack(alignment: .leading, spacing: 4) {
+            Text("Opening destination…")
+            if model.syncing {
+              Text("Waiting for sync to finish.")
+                .font(.caption).foregroundStyle(.secondary)
+            }
+          }
+          Spacer()
+          Button("Cancel") {
+            // Queued core calls retain transaction ownership. Ignore their late replies.
+            navigationRequest += 1
+            openingDestination = false
+            navigationError = nil
+          }
+          .accessibilityIdentifier("cancel-destination")
+          .accessibilityLabel("Cancel opening destination")
+        }
+        .padding()
+        .background(.bar)
+      }
       content
     }
     // Receiving a URL only retains it; navigation waits for an explicit Open.
@@ -65,7 +88,7 @@ public struct WorkspaceView: View {
             WorkspaceSidebar(
               tables: NativeSidebarTables(model.tables), recents: model.recents,
               selectedTable: model.table, disabled: !canFind,
-              opening: openingDestination, error: navigationError,
+              error: navigationError,
               onOpen: { openDestination($0) })
           }
           .navigationTitle("Life UI")
