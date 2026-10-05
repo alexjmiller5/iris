@@ -431,7 +431,7 @@ final class WorkspaceModel {
     // Core requires a nonempty projection. The title remains visible even when
     // the user hides every secondary property; edit queries still fetch full rows.
     definition.columns =
-      visibleRecordColumns == [] ? [titleColumn ?? "id"] : visibleRecordColumns
+      visibleRecordColumns == [] ? [titleProperty?.id ?? "id"] : visibleRecordColumns
     return definition
   }
 

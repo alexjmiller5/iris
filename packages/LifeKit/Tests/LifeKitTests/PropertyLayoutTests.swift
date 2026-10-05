@@ -1,4 +1,5 @@
 import Foundation
+import JavaScriptCore
 import Testing
 
 @testable import LifeKit
@@ -58,6 +59,27 @@ struct PropertyLayoutTests {
       model.recordTitle(["id": .string("opaque-id"), "title": .string("Readable")]) == "Readable")
     #expect(model.recordTitle(["id": .string("opaque-id"), "title": .bool(false)]) == "false")
     #expect(model.recordTitle(["id": .string("opaque-id"), "title": .number(2.5)]) == "2.5")
+    await model.close()
+  }
+
+  @Test func titleOnlyViewWithUncatalogedDisplayColumnRemainsValid() async throws {
+    let runtime = try LifeCoreRuntime()
+    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await workspace.createSample()
+    runtime.context.evaluateScript(
+      "LifeSql.run(\"DELETE FROM catalog_properties WHERE tbl='notes' AND col='title'\")")
+    let model = WorkspaceModel()
+    model.client = workspace
+    model.catalog = try await workspace.catalog()
+    model.table = "notes"
+    await model.reload()
+    let context = try #require(model.editingContext)
+    #expect(model.titleProperty == nil)
+    try model.applyPropertyLayout(columns: [], context: context)
+    try await model.saveCurrentView(name: "Title only", update: false, context: context)
+    #expect(model.appliedView?.definition?.columns == ["id"])
+    #expect(model.appliedView?.unavailable == nil)
+    #expect(model.recordTitle(model.rows.first?.record) == model.rows.first?.label)
     await model.close()
   }
 
