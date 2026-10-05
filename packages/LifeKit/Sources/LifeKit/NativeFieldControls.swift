@@ -36,7 +36,7 @@ struct NativeChoiceField: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    Group {
       if let projected = try? NativeChoiceOptions(
         field: field, dynamic: model.options, value: value)
       {

@@ -2,6 +2,23 @@ import XCTest
 
 @MainActor
 final class NativeControlsUITests: XCTestCase {
+  func testChoiceCustomValueLabelIsVisibleAndOpens() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    defer { app.terminate() }
+    XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 15))
+    app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
+      .firstMatch.tap()
+    let label = app.staticTexts["Enter a value"]
+    XCTAssertTrue(label.waitForExistence(timeout: 5))
+    XCTAssertGreaterThanOrEqual(label.frame.minX, app.textFields["field-title"].frame.minX)
+    capture(app, "native-choice-label")
+    label.tap()
+    XCTAssertTrue(app.textFields["field-status-source"].waitForExistence(timeout: 5))
+  }
+
   func testCompactControlsStatusAndGraphNavigation() throws {
     continueAfterFailure = false
     let app = XCUIApplication()
