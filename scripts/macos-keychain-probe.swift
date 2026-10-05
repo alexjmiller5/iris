@@ -11,7 +11,16 @@ struct WorkspaceError: Error, LocalizedError {
 
 @main
 struct KeychainProbe {
-  static func main() throws {
+  static func main() {
+    do {
+      try run()
+    } catch {
+      FileHandle.standardError.write(Data("Keychain probe failed: \(error.localizedDescription)\n".utf8))
+      exit(1)
+    }
+  }
+
+  static func run() throws {
     let store = HubCredentialStore(service: "life-ui.release-probe.\(UUID().uuidString)")
     defer { try? store.remove() }
     func require(_ condition: Bool, _ stage: String) throws {
