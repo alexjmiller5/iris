@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { IconTable } from '@tabler/icons-svelte';
+	import { IconTable, IconZoomIn, IconZoomOut, IconArrowsMaximize } from '@tabler/icons-svelte';
 	import type { Property, Row } from 'life-ui-core/client';
 	import { layoutSchema } from './schema-graph';
 
@@ -17,6 +17,10 @@
 	const uid = $props.id();
 	const graph = $derived(layoutSchema(tables, properties, groups));
 	const orderedNodes = $derived([...graph.nodes].sort((a, b) => a.id.localeCompare(b.id)));
+	let canvasWidth = $state(0);
+	let zoom = $state<number | null>(null);
+	const fit = $derived(canvasWidth > 8 ? Math.min(1, (canvasWidth - 8) / graph.width) : 1);
+	const scale = $derived(zoom ?? fit);
 </script>
 
 <section class="schema-graph" aria-label="Schema graph">
@@ -40,11 +44,44 @@
 				>Multiple references</span
 			>
 		</div>
+		<div class="zoom-controls" aria-label="Graph zoom">
+			<button
+				type="button"
+				aria-label="Zoom out"
+				title="Zoom out"
+				disabled={scale <= Math.min(fit, 0.25)}
+				onclick={() => (zoom = Math.max(Math.min(fit, 0.25), scale / 1.5))}
+			>
+				<IconZoomOut size={20} aria-hidden="true" />
+			</button>
+			<button
+				type="button"
+				aria-label="Fit graph"
+				title="Fit graph"
+				aria-pressed={zoom === null}
+				onclick={() => (zoom = null)}><IconArrowsMaximize size={20} aria-hidden="true" /></button
+			>
+			<button
+				type="button"
+				aria-label="Zoom in"
+				title="Zoom in"
+				disabled={scale >= 2}
+				onclick={() => (zoom = Math.min(2, Math.max(1, scale * 1.5)))}
+			>
+				<IconZoomIn size={20} aria-hidden="true" />
+			</button>
+		</div>
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex (The scrollable diagram needs a keyboard focus target.) -->
-		<div class="canvas" role="region" aria-label="Scrollable table graph" tabindex="0">
+		<div
+			class="canvas"
+			role="region"
+			aria-label="Scrollable table graph"
+			tabindex="0"
+			bind:clientWidth={canvasWidth}
+		>
 			<svg
-				width={graph.width}
-				height={graph.height}
+				width={graph.width * scale}
+				height={graph.height * scale}
 				viewBox={`0 0 ${graph.width} ${graph.height}`}
 				role="group"
 				aria-labelledby={`${uid}-title`}
@@ -204,6 +241,32 @@
 	}
 	.canvas > svg {
 		display: block;
+	}
+	.zoom-controls {
+		display: flex;
+		justify-content: flex-end;
+		gap: 4px;
+		margin-bottom: 8px;
+	}
+	.zoom-controls button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 44px;
+		height: 44px;
+		color: var(--color-ink);
+		background: var(--color-paper);
+		border: 1px solid var(--color-rule);
+		border-radius: 8px;
+		cursor: pointer;
+	}
+	.zoom-controls button:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
+	}
+	.zoom-controls button:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 	.band {
 		fill: var(--color-bone);

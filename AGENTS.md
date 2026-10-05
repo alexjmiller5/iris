@@ -366,7 +366,9 @@ real sync HTTP while `TableNavigationUITests` verifies cancellation and late rep
 
 Web design tokens live in `apps/web/src/theme.css`; use Tabler UI icons,
 accessible controls, keyboard focus and narrow-screen layouts. Native views use
-SwiftUI semantic styles. Native graph changes must regenerate the bundled island.
+SwiftUI semantic styles. The graph initially fits the viewport; zoom keeps the
+same offline SVG and table navigation, with one step reaching readable size.
+Native graph changes must regenerate the bundled island.
 `islands.css` explicitly scopes Tailwind sources to the embedded components;
 unrelated web files must not change native artifacts. Verify this with
 `bun scripts/test-island-builds.ts` before publishing regenerated resources.
