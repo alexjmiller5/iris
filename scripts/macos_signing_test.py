@@ -4,6 +4,8 @@ import datetime
 import importlib.util
 from pathlib import Path
 import unittest
+import platform
+import subprocess
 
 spec = importlib.util.spec_from_file_location(
     "signing", Path(__file__).with_name("verify-macos-signing.py")
@@ -38,6 +40,14 @@ class SigningTests(unittest.TestCase):
         signing.verify_claims(
             self.claims, self.profile, self.team, self.bundle, b"fixture-certificate"
         )
+
+    @unittest.skipUnless(platform.system() == "Darwin", "requires Apple codesign")
+    def test_extracts_real_leaf_certificate(self):
+        # A system-signed fixture catches codesign's optional-prefix CLI syntax
+        # without installing a test identity or touching any user credentials.
+        certificate = signing.extract_certificate("/usr/bin/codesign", platform.machine())
+        result = subprocess.run(["openssl", "x509", "-inform", "DER", "-noout"], input=certificate, capture_output=True)
+        self.assertEqual(result.returncode, 0)
 
     def test_private_identity_accepts_distinct_profile_prefix(self):
         self.verify()

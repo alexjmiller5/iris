@@ -179,9 +179,7 @@ test.skipIf(process.platform !== "darwin")(
       });
       const source = join(root, "fixture.c");
       await writeFile(source, "int main(void) { return 0; }\n");
-      const step = workflow.jobs.release.steps.find(
-        (step: any) => step.name === "Build unsigned universal app",
-      ).run;
+      const step = workflow.jobs.release.steps.map((step: any) => step.run ?? "").join("\n");
       const command = step
         .split("\n")
         .filter((line: string) => line.trim().startsWith("lipo "))

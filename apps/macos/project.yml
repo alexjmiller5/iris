@@ -29,6 +29,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Life UI
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Signing/LifeUI.entitlements
         ENABLE_HARDENED_RUNTIME: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:

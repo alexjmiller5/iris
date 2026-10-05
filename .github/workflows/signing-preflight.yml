@@ -160,7 +160,7 @@ jobs:
           # Diagnostic runs even without the profile; never waive the final gate.
           sys.exit(0 if profile and probe.returncode==0 else 1)
           PYTHON
-          python3 scripts/verify-macos-signing.py "$RUNNER_TEMP/export/KeychainProbe.app" "$TEAM_ID"
+          python3 scripts/verify-macos-signing.py "$RUNNER_TEMP/export/KeychainProbe.app" "$TEAM_ID" "$IDENTITY_SHA"
       - name: Delete temporary signing material
         if: always()
         run: |

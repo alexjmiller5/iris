@@ -1,6 +1,7 @@
 """Verify final distribution signing and private Data Protection identity."""
 import datetime
 import fnmatch
+import hashlib
 import plistlib
 from pathlib import Path
 import re
@@ -41,7 +42,15 @@ def read_claims(app):
         yield arch, claims
 
 
-def main(app, expected_team):
+
+def extract_certificate(app, arch):
+    with tempfile.TemporaryDirectory(prefix="life-ui-certificate-") as scratch:
+        prefix = str(Path(scratch) / "certificate")
+        subprocess.run(["codesign", "-d", "--arch", arch, "--extract-certificates=" + prefix, str(app)], check=True, capture_output=True)
+        return Path(prefix + "0").read_bytes()
+
+
+def main(app, expected_team, expected_certificate_sha1):
     app = Path(app)
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
     profile = plistlib.loads(subprocess.check_output([
@@ -52,10 +61,10 @@ def main(app, expected_team):
         details = subprocess.run(["codesign", "-d", "--verbose=4", "--arch", arch, str(app)], check=True, capture_output=True, text=True).stderr
         if not re.search(r"^TeamIdentifier=" + re.escape(expected_team) + r"$", details, re.M):
             raise ValueError("Signed team does not match selected distribution identity")
-        with tempfile.TemporaryDirectory(prefix="life-ui-certificate-") as scratch:
-            prefix = str(Path(scratch) / "certificate")
-            subprocess.run(["codesign", "-d", "--arch", arch, "--extract-certificates", prefix, str(app)], check=True, capture_output=True)
-            verify_claims(claims, profile, expected_team, info["CFBundleIdentifier"], Path(prefix + "0").read_bytes())
+        certificate = extract_certificate(app, arch)
+        if hashlib.sha1(certificate).hexdigest().upper() != expected_certificate_sha1.upper():
+            raise ValueError("Export did not use the selected existing certificate")
+        verify_claims(claims, profile, expected_team, info["CFBundleIdentifier"], certificate)
     print("Both app architectures have profile-authorized private Keychain identity")
 
 
