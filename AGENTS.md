@@ -362,7 +362,18 @@ set to the exact disposable simulator UDID; run the fixture before the UI tests.
 `TableNavigationUIFixtureTests` seeds 50,000 synthetic provenance rows on the
 explicit `TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_SIMULATOR` only. Its local mode tests
 repeated table navigation; the optional loopback `navigation-hub.py` mode holds
-real sync HTTP while `TableNavigationUITests` verifies cancellation and late replies.
+real sync HTTP while `TableNavigationUITests` verifies cached navigation and
+persisted local saves before the response is released.
+
+NativeWorkspace serializes whole database operations, yielding ownership only
+at transaction-free HTTP boundaries. Suspended requests capture their transport;
+responses reenter behind complete foreground operations. Close waits for every
+suspended owner, while duplicate sync requests do not block local requests ahead
+of close. The sync file lock lasts through suspension. Progress carries phase,
+table, page, row count and start time only. Cancel unwinds transport without
+resetting checkpoints or discarding local changes; the total deadline is fifteen
+minutes, with per-request transport timeouts retained. Incomplete rounds can
+repeat uncheckpointed pages on retry.
 
 Web design tokens live in `apps/web/src/theme.css`; use Tabler UI icons,
 accessible controls, keyboard focus and narrow-screen layouts. Native views use

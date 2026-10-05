@@ -29,6 +29,7 @@ final class WorkspaceModel {
         undoing = false
         writingRecord = false
         syncing = false
+        syncProgress = nil
         resetView()
       }
     }
@@ -121,6 +122,7 @@ final class WorkspaceModel {
   var location = ""
   var canLoadMore = false
   var syncing = false
+  private(set) var syncProgress: WorkspaceSyncProgress?
   var syncResult: WorkspaceSyncResult?
   var syncStatus: WorkspaceSyncStatus?
   private(set) var undoAction: CoreUndoAction?
@@ -1036,12 +1038,24 @@ final class WorkspaceModel {
     guard let client, let transport, !syncing else { return }
     let generation = workspaceGeneration
     syncing = true
-    defer { if client === self.client, generation == workspaceGeneration { syncing = false } }
-    invalidateWriteability()
+    defer {
+      if client === self.client, generation == workspaceGeneration {
+        syncing = false
+        syncProgress = nil
+      }
+    }
+    // Keep the last advisory while offline work continues. The core writer
+    // rechecks live metadata/coverage atomically for every actual save.
     error = nil
     do {
       let result = try await client.sync(
-        using: transport, maxRows: downloadPreferences.maxRows, tables: downloadPreferences.tables)
+        using: transport, maxRows: downloadPreferences.maxRows, tables: downloadPreferences.tables,
+        onProgress: { [weak self] progress in
+          guard let self, client === self.client, generation == self.workspaceGeneration else {
+            return
+          }
+          self.syncProgress = progress
+        })
       guard client === self.client, generation == workspaceGeneration else { return }
       let updatedCatalog = try await client.catalog()
       guard client === self.client, generation == workspaceGeneration else { return }
@@ -1065,6 +1079,8 @@ final class WorkspaceModel {
       self.error = error.localizedDescription
     }
   }
+
+  func cancelSync() { client?.cancelSync() }
 
   func forgetConnection() throws {
     try credentialStore.remove()
