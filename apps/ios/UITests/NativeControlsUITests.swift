@@ -17,6 +17,10 @@ final class NativeControlsUITests: XCTestCase {
     capture(app, "native-choice-label")
     label.tap()
     XCTAssertTrue(app.textFields["field-status-source"].waitForExistence(timeout: 5))
+    app.buttons["field-status"].tap()
+    app.buttons["Ready"].tap()
+    XCTAssertEqual(app.textFields["field-status-source"].value as? String, "Ready")
+    capture(app, "native-choice-custom-input")
   }
 
   func testCompactControlsStatusAndGraphNavigation() throws {

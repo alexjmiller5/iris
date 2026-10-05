@@ -146,6 +146,7 @@ public struct WorkspaceView: View {
     .task(id: "\(model.workspaceGeneration)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
       await model.recents?.refresh()
+      await model.runAutomaticSync()
     }
     .onChange(of: model.syncing) {
       if !model.syncing {

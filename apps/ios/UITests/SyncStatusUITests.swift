@@ -41,6 +41,7 @@ final class SyncStatusUITests: XCTestCase {
     cancel.tap()
     XCTAssertTrue(cancel.waitForNonExistence(timeout: 10))
     XCTAssertTrue(app.buttons["sync-now"].isEnabled)
+    XCTAssertFalse(app.staticTexts["Needs attention"].exists)
     let serverStillHeld = try await gate("status")
     XCTAssertTrue(
       serverStillHeld, "Client cancellation must finish before the controlled server release")
