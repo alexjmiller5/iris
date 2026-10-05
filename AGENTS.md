@@ -203,12 +203,22 @@ keys and SwiftUI row identity must preserve their exact bytes; Swift String
 canonical equivalence must not merge records, recoveries or reference selections.
 Keep the original String values at the core boundary.
 
-Whole Worker requests and whole native asynchronous requests are serialized.
+Whole Worker requests are serialized. Native requests retain SQLite ownership
+across every transaction and local await. HTTP outside a transaction suspends
+its request owner so complete foreground requests can run; the HTTP continuation
+resumes through that same queue, never inside another request's transaction.
+Close waits for every suspended owner, and queued duplicate syncs do not block
+eligible foreground requests before close. Keep the sync file lock while suspended.
 Native destination waits stay visible outside scrolling content and offer Cancel.
 Cancellation invalidates only the navigation request and immediately releases its
 controls; late results and old defers must not affect a newer request. It never
-cancels sync or removes a core continuation. Fresh navigation may still wait for
-the active sync to finish.
+cancels sync or removes a core continuation. Sync has its own progress and Cancel
+action, with cooperative transport cancellation and a 15-minute round deadline.
+The scene's single foreground task runs automatic catch-up every 60 seconds.
+Successful local record/view saves and undo debounce catch-up by 750 ms; edits
+during a round queue another round after its receipt. Failure or cancellation
+delays automatic retry by 60 seconds. Workspace/session guards cancel obsolete
+timers, and manual Sync now remains available. No closed-app delivery is implied.
 Native SQLite connections force `legacy_alter_table=OFF` so logged renames
 rewrite trigger/view references consistently across hosts. Recovery repairs only
 an exact canonical timestamp trigger whose direct table rename is in the local
