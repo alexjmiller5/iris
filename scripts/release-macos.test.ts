@@ -221,6 +221,7 @@ test.skipIf(process.platform !== "darwin")(
       await rm(root, { recursive: true, force: true });
     }
   },
+  30_000, // Real compiler/signing subprocesses can exceed Bun's 5-second unit-test default.
 );
 
 // Exercise the release verifier against real universal Mach-O signatures.
@@ -314,4 +315,5 @@ for arch, claims in module["read_claims"](sys.argv[2]):
       await rm(root, { recursive: true, force: true });
     }
   },
+  30_000, // Real compiler/signing subprocesses can exceed Bun's 5-second unit-test default.
 );
