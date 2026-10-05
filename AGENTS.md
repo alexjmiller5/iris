@@ -135,6 +135,12 @@ The core bundle source hash includes the manifest. Keep the applied view's
 revision until the user reopens it, even when a refreshed list has a newer one.
 Definitions control layout; edit queries must return full rows, not the
 saved definition's SQL column projection. Preserve imported multi-column sorts.
+Native Properties controls edit ordered visibility through that same definition.
+The configured table display column stays prominent, while hidden fields remain
+in the editor draft and are reachable through More properties. New required
+fields and validation failures stay visible. A title-only saved view keeps a
+catalog-valid title or ID column because core rejects empty projections. Resetting
+layout removes the projection; it never removes record values or resets widths.
 Saved-view IDs also require byte-exact list and selection identity. Use the
 applied revision for deletion only when its ID bytes match the chosen view.
 

@@ -33,33 +33,16 @@ public struct WorkspaceView: View {
   public init(demo: Bool = false) { self.demo = demo }
 
   public var body: some View {
-    // Stacked, not a safe-area inset: navigation bars ignore insets added outside them.
     VStack(spacing: 0) {
       pendingLinkBanner
-      if openingDestination {
-        HStack(spacing: 12) {
-          ProgressView().accessibilityLabel("Opening destination…")
-          VStack(alignment: .leading, spacing: 4) {
-            Text("Opening destination…")
-            if model.syncing {
-              Text("Waiting for sync to finish.")
-                .font(.caption).foregroundStyle(.secondary)
-            }
-          }
-          Spacer()
-          Button("Cancel") {
-            // Queued core calls retain transaction ownership. Ignore their late replies.
-            navigationRequest += 1
-            openingDestination = false
-            navigationError = nil
-          }
-          .accessibilityIdentifier("cancel-destination")
-          .accessibilityLabel("Cancel opening destination")
-        }
-        .padding()
-        .background(.bar)
+      DestinationProgress(isOpening: openingDestination) {
+        // Queued calls keep their ownership; only this navigation request is cancelled.
+        navigationRequest += 1
+        openingDestination = false
+        navigationError = nil
+      } content: {
+        content
       }
-      content
     }
     // Receiving a URL only retains it; navigation waits for an explicit Open.
     .onOpenURL { pendingLink.receive($0) }
@@ -660,7 +643,8 @@ public struct WorkspaceView: View {
           VStack(alignment: .leading, spacing: 5) {
             Text(row.label).foregroundStyle(.primary).font(.headline).lineLimit(2)
             if let columns = model.visibleRecordColumns {
-              ForEach(columns, id: \.self) { column in
+              ForEach(columns.filter { $0 != (model.titleProperty?.id ?? "id") }, id: \.self) {
+                column in
                 LabeledContent(
                   model.properties.first { $0["col"]?.text == column }?["label"]?.text ?? column
                 ) {
@@ -1100,56 +1084,17 @@ private struct RecordEditor: View {
             )
           }
         }
-        if !model.rules.isEmpty {
-          Section("Catalog rules") {
-            ForEach(model.rules, id: \.["id"]) { rule in
-              Text(rule["text"]?.text ?? rule["id"]?.text ?? "")
-            }
-          }
-        }
         if let reason = model.editingUnavailable {
           Section { Text(reason).foregroundStyle(.secondary) }
         }
-        if model.canWrite && !editor.isTrashed {
-          ForEach(editor.draft.fields) { field in
-            Section {
-              FieldInput(
-                field: field, workspace: context?.workspace, focus: $focusedField,
-                editor: editor, onOpenReference: openReference,
-                undoAction: model.undoAction, undo: { try await model.undo($0, context: context) },
-                isCurrent: editorIsCurrent,
-                referenceAvailability: referenceAvailability(field),
-                value: Binding(
-                  get: { editor.draft.values[field.id] ?? "" },
-                  set: { editor.setValue($0, for: field.id) }))
-              if editor.failure != nil {
-                CopyDraftButton(
-                  title: "Copy \(field.label)", value: editor.draft.values[field.id] ?? "")
-              }
-              ForEach(editor.violations.filter { $0.col == field.id }, id: \.rule) { violation in
-                Text(violation.message).foregroundStyle(.red).font(.callout)
-              }
-            } header: {
-              Text(field.label)
-            } footer: {
-              VStack(alignment: .leading, spacing: 4) {
-                if !field.help.isEmpty { Text(field.help) }
-                if editor.isNew, let preview = field.defaultPreview {
-                  if editor.draft.usesDefault(field.id) {
-                    // Choice pickers already name the default as their empty choice.
-                    if !["select", "multi_select"].contains(field.type) {
-                      Text("Default: \(preview)")
-                    }
-                    Button("Leave empty") { editor.setValue("", for: field.id, explicit: true) }
-                      .accessibilityIdentifier("leave-empty-\(field.id)")
-                  } else if (editor.draft.values[field.id] ?? "").isEmpty {
-                    Text("Saved empty instead of the default.")
-                      .accessibilityIdentifier("empty-instead-of-default-\(field.id)")
-                  }
-                }
-              }
-            }
-            .disabled(editor.recovery != nil)
+        let layout = NativeEditorFields(
+          fields: presentedFields,
+          visibleColumns: model.visibleRecordColumns, titleColumn: model.titleProperty?.id,
+          isNew: editor.isNew, invalidColumns: editor.violations.compactMap(\.col))
+        ForEach(layout.primary) { field in presentedFieldRow(field) }
+        if !layout.additional.isEmpty {
+          DisclosureGroup("More properties") {
+            ForEach(layout.additional) { field in presentedFieldRow(field) }
           }
         }
         if editor.isTrashed && editor.dirty {
@@ -1186,26 +1131,11 @@ private struct RecordEditor: View {
             )
             .id(identity)
           }
-          Section("Record") {
-            ForEach(original.keys.sorted(), id: \.self) { key in
-              if !editor.draft.fields.contains(where: { $0.id == key }) || !model.canWrite
-                || editor.isTrashed
-              {
-                if let field = recordFields.first(where: { $0.id == key }),
-                  ["ref", "multi_ref"].contains(field.type), let workspace = context?.workspace,
-                  field.property["ref_table"]?.text.nonempty != nil
-                {
-                  VStack(alignment: .leading, spacing: 8) {
-                    Text(field.label)
-                    ReferenceField(
-                      field: field, value: .constant(original[key]?.text ?? ""),
-                      workspace: workspace, canEdit: false,
-                      canOpen: !editor.saving,
-                      availability: referenceAvailability(field), onOpenRecord: openReference)
-                  }
-                } else {
-                  LabeledContent(key) { Text(original[key]?.text ?? "").textSelection(.enabled) }
-                }
+          Section {
+            DisclosureGroup("Record details") {
+              ForEach(original.keys.filter(Self.metadataKeys.contains).sorted(), id: \.self) {
+                key in
+                LabeledContent(key) { Text(original[key]?.text ?? "").textSelection(.enabled) }
               }
             }
           }
@@ -1243,11 +1173,40 @@ private struct RecordEditor: View {
         } else if editor.dirty && !editor.isNew && editor.markdownSaved {
           Section { Text("Markdown saved. Other changes are unsaved.").foregroundStyle(.secondary) }
         }
+        if !model.rules.isEmpty {
+          Section {
+            NavigationLink {
+              Form {
+                ForEach(model.rules, id: \.["id"]) { rule in
+                  Text(rule["text"]?.text ?? rule["id"]?.text ?? "")
+                    .textSelection(.enabled)
+                }
+              }
+              .navigationTitle("Catalog rules")
+              #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+              #endif
+            } label: {
+              Text("Catalog rules").font(.footnote)
+            }
+            .accessibilityIdentifier("catalog-rules")
+            .simultaneousGesture(TapGesture().onEnded { focusedField = nil })
+          }
+        }
       }
       .formStyle(.grouped)
       .accessibilityIdentifier("record-form")
       .navigationTitle(editor.isNew ? "New record" : "Record")
+      #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+      #endif
       .toolbar {
+        if !editor.isNew {
+          ToolbarItem(placement: .principal) {
+            Text(recordHeading).font(.headline).lineLimit(1)
+              .accessibilityIdentifier("record-heading")
+          }
+        }
         ToolbarItem(placement: .cancellationAction) {
           if editor.failure != nil || editor.autosavePaused {
             Button("Keep draft and close") {
@@ -1345,6 +1304,95 @@ private struct RecordEditor: View {
     #if os(macOS)
       .frame(minWidth: 520, minHeight: 560)
     #endif
+  }
+
+  private static let metadataKeys: Set<String> = [
+    "id", "created_at", "updated_at", "deleted_at", "hub_at",
+  ]
+
+  private var presentedFields: [CatalogField] {
+    guard let original = editor.draft.original else {
+      return model.orderedRecordFields(editor.draft.fields)
+    }
+    var fields = recordFields.filter { !Self.metadataKeys.contains($0.id) }
+    for key in original.keys.sorted()
+    where !Self.metadataKeys.contains(key)
+      && !fields.contains(where: { Data($0.id.utf8) == Data(key.utf8) })
+    {
+      fields.append(CatalogField(property: ["col": .string(key)]))
+    }
+    return model.orderedRecordFields(fields)
+  }
+
+  @ViewBuilder private func presentedFieldRow(_ field: CatalogField) -> some View {
+    if model.canWrite && !editor.isTrashed
+      && editor.draft.fields.contains(where: { Data($0.id.utf8) == Data(field.id.utf8) })
+    {
+      fieldRow(field)
+    } else {
+      Section(field.label) {
+        if ["ref", "multi_ref"].contains(field.type), let workspace = context?.workspace,
+          field.property["ref_table"]?.text.nonempty != nil
+        {
+          ReferenceField(
+            field: field, value: .constant(editor.draft.original?[field.id]?.text ?? ""),
+            workspace: workspace, canEdit: false, canOpen: !editor.saving,
+            availability: referenceAvailability(field), onOpenRecord: openReference)
+        } else {
+          Text(editor.draft.original?[field.id]?.text ?? "").textSelection(.enabled)
+        }
+      }
+    }
+  }
+
+  @ViewBuilder private func fieldRow(_ field: CatalogField) -> some View {
+    Section {
+      FieldInput(
+        field: field, workspace: context?.workspace, focus: $focusedField,
+        editor: editor, onOpenReference: openReference,
+        undoAction: model.undoAction, undo: { try await model.undo($0, context: context) },
+        isCurrent: editorIsCurrent,
+        referenceAvailability: referenceAvailability(field),
+        value: Binding(
+          get: { editor.draft.values[field.id] ?? "" },
+          set: { editor.setValue($0, for: field.id) }))
+      if editor.failure != nil {
+        CopyDraftButton(
+          title: "Copy \(field.label)", value: editor.draft.values[field.id] ?? "")
+      }
+      ForEach(editor.violations.filter { $0.col == field.id }, id: \.rule) { violation in
+        Text(violation.message).foregroundStyle(.red).font(.callout)
+      }
+    } header: {
+      Text(field.label)
+    } footer: {
+      VStack(alignment: .leading, spacing: 4) {
+        if !field.help.isEmpty { Text(field.help) }
+        if editor.isNew, let preview = field.defaultPreview {
+          if editor.draft.usesDefault(field.id) {
+            // Choice pickers already name the default as their empty choice.
+            if !["select", "multi_select"].contains(field.type) {
+              Text("Default: \(preview)")
+            }
+            Button("Leave empty") { editor.setValue("", for: field.id, explicit: true) }
+              .accessibilityIdentifier("leave-empty-\(field.id)")
+          } else if (editor.draft.values[field.id] ?? "").isEmpty {
+            Text("Saved empty instead of the default.")
+              .accessibilityIdentifier("empty-instead-of-default-\(field.id)")
+          }
+        }
+      }
+    }
+    .disabled(editor.recovery != nil)
+
+  }
+
+  private var recordHeading: String {
+    guard var record = editor.draft.original else { return "New record" }
+    if let title = model.titleProperty?.id, let value = editor.draft.values[title] {
+      record[title] = .string(value)
+    }
+    return model.recordTitle(record)
   }
 
   private func editorIsCurrent() -> Bool {

@@ -257,6 +257,7 @@ final class WorkspaceModel {
     viewsRequest += 1
     savedViews = []
     appliedView = nil
+    visibleRecordColumns = nil
     savedViewsUnavailable = nil
     savingView = false
     search = ""
@@ -369,7 +370,53 @@ final class WorkspaceModel {
     }
   }
 
-  var visibleRecordColumns: [String]? { appliedView?.definition?.columns }
+  private(set) var visibleRecordColumns: [String]?
+
+  private var titleColumn: String? {
+    tables.first(where: { $0["id"]?.text == table })?["display"]?.text.nonempty
+  }
+
+  var titleProperty: CatalogField? {
+    guard let column = titleColumn,
+      let property = properties.first(where: { $0["col"]?.text == column })
+    else { return nil }
+    return CatalogField(property: property)
+  }
+
+  func recordTitle(_ record: WorkspaceRecord?) -> String {
+    guard let record else { return "New record" }
+    func scalar(_ value: JSONValue?) -> String? {
+      switch value {
+      case .string(let text): return text.trimmingCharacters(in: .whitespacesAndNewlines).nonempty
+      case .number(let number) where number.isFinite: return value?.text
+      case .bool: return value?.text
+      default: return nil
+      }
+    }
+    return titleColumn.flatMap { scalar(record[$0]) } ?? scalar(record["id"]) ?? "Untitled"
+  }
+
+  func orderedRecordFields(_ fields: [CatalogField]) -> [CatalogField] {
+    let order = [titleProperty?.id].compactMap { $0 } + (visibleRecordColumns ?? [])
+    var seen = Set<Data>()
+    return (order + fields.map(\.id)).compactMap { id in
+      guard seen.insert(Data(id.utf8)).inserted else { return nil }
+      return fields.first { Data($0.id.utf8) == Data(id.utf8) }
+    }
+  }
+
+  func applyPropertyLayout(columns: [String]?, context: WorkspaceEditingContext?) throws {
+    _ = try requireViewContext(context)
+    if let columns {
+      let available = Set(properties.compactMap { $0["col"]?.text }.map { Data($0.utf8) })
+      let selected = columns.map { Data($0.utf8) }
+      guard Set(selected).count == selected.count, selected.allSatisfy(available.contains) else {
+        throw WorkspaceError(
+          message: "The properties changed. Reopen Properties and try again.", violations: [])
+      }
+    }
+    visibleRecordColumns = columns
+  }
 
   func currentViewDefinition() throws -> CoreSavedViewDefinition {
     var definition = appliedView?.definition ?? CoreSavedViewDefinition(version: 1)
@@ -381,6 +428,10 @@ final class WorkspaceModel {
     if sortRules != (definition.sort ?? []) { definition.sort = sortRules }
     if search != (definition.search ?? "") { definition.search = search }
     if trash != (definition.trash ?? false) { definition.trash = trash }
+    // Core requires a nonempty projection. The title remains visible even when
+    // the user hides every secondary property; edit queries still fetch full rows.
+    definition.columns =
+      visibleRecordColumns == [] ? [titleProperty?.id ?? "id"] : visibleRecordColumns
     return definition
   }
 
@@ -431,6 +482,7 @@ final class WorkspaceModel {
           message: saved.unavailable ?? "This saved view is unavailable.", violations: [])
       }
       appliedView = saved
+      visibleRecordColumns = definition.columns
       search = definition.search ?? ""
       trash = definition.trash ?? false
       sortRules = definition.sort ?? []
@@ -440,6 +492,7 @@ final class WorkspaceModel {
       }
     } else {
       appliedView = nil
+      visibleRecordColumns = nil
       search = ""
       trash = false
       sortRules = []
