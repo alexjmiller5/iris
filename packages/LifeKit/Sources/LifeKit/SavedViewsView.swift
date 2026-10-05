@@ -33,6 +33,17 @@ struct SavedViewsView: View {
     NavigationStack {
       Form {
         Section {
+          NavigationLink {
+            PropertyLayoutView(model: model)
+          } label: {
+            Label("Properties", systemImage: "slider.horizontal.3")
+          }.accessibilityIdentifier("view-properties")
+        } footer: {
+          Text(
+            "Choose the order and visibility of properties, then save or update a view to keep your layout."
+          )
+        }
+        Section {
           Button("All records") { choose(nil) }
           ForEach(model.savedViews, id: \.byteExactID) { saved in
             HStack(alignment: .top) {
