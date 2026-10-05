@@ -223,33 +223,42 @@ test.skipIf(process.platform !== "darwin")(
   },
 );
 
-// A valid signature alone is insufficient: the final universal executable must
-// retain the private Keychain identity in both slices after the release re-sign.
-test.skipIf(process.platform !== "darwin")("release signing retains private Keychain entitlements in both slices", async () => {
+// Exercise the release verifier against real universal Mach-O signatures.
+// Removing either architecture inspection must accept a broken fixture and fail.
+test.skipIf(process.platform !== "darwin")("private Keychain identity is required in each signed architecture", async () => {
   const root = await mkdtemp(join(tmpdir(), "life-ui-signing-test-"));
   try {
-    const app = join(root, "build/Fixture.app");
+    const app = join(root, "Fixture.app");
     await mkdir(join(app, "Contents/MacOS"), { recursive: true });
     await writeFile(join(root, "fixture.c"), "int main(void) { return 0; }\n");
-    await writeFile(join(app, "Contents/Info.plist"), `<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.example.fixture</string><key>CFBundleExecutable</key><string>Fixture</string></dict></plist>`);
-    const entitlements = join(root, "entitlements.plist");
-    await writeFile(entitlements, `<?xml version="1.0"?><plist version="1.0"><dict><key>com.apple.application-identifier</key><string>TESTTEAM01.org.example.fixture</string><key>com.apple.developer.team-identifier</key><string>TESTTEAM01</string></dict></plist>`);
-    const compile = Bun.spawn(["xcrun", "clang", "-arch", "arm64", "-arch", "x86_64", join(root, "fixture.c"), "-o", join(app, "Contents/MacOS/Fixture")]);
-    expect(await compile.exited).toBe(0);
-    const signing = workflow.jobs.release.steps.find((step: any) => step.name === "Sign, notarize and package").run;
-    const command = signing.split("\n").find((line: string) => line.trim().startsWith("codesign --force") && line.endsWith('"build/$APP.app"'));
-    expect(command).toBeDefined();
-    // Ad-hoc fixtures validate what is embedded, not entitlement authorization.
-    // The release's Developer ID probe separately proves actual Keychain access.
-    const sign = Bun.spawn(["bash", "-euc", command.replace("--timestamp", "--timestamp=none")], {cwd: root, env: {...process.env, APP: "Fixture", IDENTITY: "-", ENTITLEMENTS: entitlements}, stdout: "pipe", stderr: "pipe"});
-    expect(await sign.exited).toBe(0);
-    for (const arch of ["arm64", "x86_64"]) {
-      const inspect = Bun.spawn(["codesign", "-d", "--arch", arch, "--entitlements", "-", "--xml", app], {stdout: "pipe", stderr: "pipe"});
-      const xml = await new Response(inspect.stdout).text();
-      expect(await inspect.exited).toBe(0);
-      expect(xml).toContain("TESTTEAM01.org.example.fixture");
-      expect(xml).toContain("com.apple.developer.team-identifier");
-      expect(xml).not.toContain("keychain-access-groups");
+    const valid = join(root, "valid.plist");
+    const empty = join(root, "empty.plist");
+    await writeFile(valid, `<?xml version="1.0"?><plist version="1.0"><dict><key>com.apple.application-identifier</key><string>TESTTEAM01.org.example.fixture</string><key>com.apple.developer.team-identifier</key><string>TESTTEAM01</string></dict></plist>`);
+    await writeFile(empty, `<?xml version="1.0"?><plist version="1.0"><dict/></plist>`);
+    async function run(args: string[]) {
+      const process = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" });
+      const [code, out, err] = await Promise.all([process.exited, new Response(process.stdout).text(), new Response(process.stderr).text()]);
+      return { code, diagnostic: out + err };
+    }
+    for (const missing of [null, "arm64", "x86_64"]) {
+      for (const arch of ["arm64", "x86_64"]) {
+        const binary = join(root, arch);
+        const compile = await run(["xcrun", "clang", "-arch", arch, join(root, "fixture.c"), "-o", binary]);
+        expect(compile.code, compile.diagnostic).toBe(0);
+        const sign = await run(["codesign", "--force", "--sign", "-", "--identifier", "org.example.fixture", "--entitlements", arch === missing ? empty : valid, binary]);
+        expect(sign.code, sign.diagnostic).toBe(0);
+      }
+      const merge = await run(["lipo", "-create", join(root, "arm64"), join(root, "x86_64"), "-output", join(app, "Contents/MacOS/Fixture")]);
+      expect(merge.code, merge.diagnostic).toBe(0);
+      const verify = await run(["python3", "-c", `
+import datetime,runpy,sys
+module=runpy.run_path(sys.argv[1])
+profile={"ApplicationIdentifierPrefix":["TESTTEAM01"],"TeamIdentifier":["TESTTEAM01"],"Platform":["OSX"],"ProvisionsAllDevices":True,"ExpirationDate":datetime.datetime(2099,1,1),"DeveloperCertificates":[b"fixture"],"Entitlements":{"com.apple.application-identifier":"TESTTEAM01.org.example.fixture","com.apple.developer.team-identifier":"TESTTEAM01"}}
+for arch, claims in module["read_claims"](sys.argv[2]):
+    module["verify_claims"](claims,profile,"TESTTEAM01","org.example.fixture",b"fixture")
+`, new URL("./verify-macos-signing.py", import.meta.url).pathname, app]);
+      if (missing === null) expect(verify.code, verify.diagnostic).toBe(0);
+      else expect(verify.code, "Missing " + missing + " identity was accepted").not.toBe(0);
     }
   } finally { await rm(root, { recursive: true, force: true }); }
 });

@@ -92,7 +92,13 @@ jobs:
           if(valid.length>1) throw Error('Ambiguous app profile');
           const profile=valid[0]??(await api('profiles',{type:'profiles',attributes:{name:'Life UI Developer ID',profileType:'MAC_APP_DIRECT'},relationships:{bundleId:{data:{type:'bundleIds',id:app.id}},certificates:{data:[{type:'certificates',id:cert.id}]}}})).data;
           await Bun.write(process.env.RUNNER_TEMP+'/profile-selection.json',JSON.stringify({uuid:profile.attributes.uuid,bundle}));
-          console.log('Existing-certificate app profile selected');
+          const {mkdirSync}=require('node:fs');
+          const {homedir}=require('node:os');
+          const directory=homedir()+'/Library/Developer/Xcode/UserData/Provisioning Profiles';
+          mkdirSync(directory,{recursive:true});
+          await Bun.write(directory+'/'+profile.attributes.uuid+'.provisionprofile',Buffer.from(profile.attributes.profileContent,'base64'));
+          console.log('Existing-certificate app profile installed');
+          console.log('Selected profile API ID: '+profile.id);
           JS
           brew install xcodegen
           mkdir -p "$RUNNER_TEMP/probe-source"
@@ -119,6 +125,7 @@ jobs:
             -configuration Release -destination 'generic/platform=macOS' \
             -archivePath "$RUNNER_TEMP/KeychainProbe.xcarchive" \
             DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- \
+            ONLY_ACTIVE_ARCH=NO 'ARCHS=arm64 x86_64' \
             -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/life-ui-notary.p8" \
             -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" archive
           python3 - "$TEAM_ID" "$RUNNER_TEMP/export.plist" "$IDENTITY_SHA" <<'PYTHON'
@@ -153,6 +160,7 @@ jobs:
           # Diagnostic runs even without the profile; never waive the final gate.
           sys.exit(0 if profile and probe.returncode==0 else 1)
           PYTHON
+          python3 scripts/verify-macos-signing.py "$RUNNER_TEMP/export/KeychainProbe.app" "$TEAM_ID"
       - name: Delete temporary signing material
         if: always()
         run: |

@@ -32,6 +32,15 @@ def verify_claims(claims, profile, team, bundle, certificate):
     require(not allowed.get("get-task-allow") and not allowed.get("com.apple.security.get-task-allow"), "Development profile is not distributable")
 
 
+
+def read_claims(app):
+    for arch in ("arm64", "x86_64"):
+        claims = plistlib.loads(subprocess.check_output([
+            "codesign", "-d", "--arch", arch, "--entitlements", "-", "--xml", str(app)
+        ], stderr=subprocess.DEVNULL))
+        yield arch, claims
+
+
 def main(app, expected_team):
     app = Path(app)
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
@@ -39,13 +48,10 @@ def main(app, expected_team):
         "security", "cms", "-D", "-i", str(app / "Contents/embedded.provisionprofile")
     ], stderr=subprocess.DEVNULL))
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
-    for arch in ("arm64", "x86_64"):
+    for arch, claims in read_claims(app):
         details = subprocess.run(["codesign", "-d", "--verbose=4", "--arch", arch, str(app)], check=True, capture_output=True, text=True).stderr
         if not re.search(r"^TeamIdentifier=" + re.escape(expected_team) + r"$", details, re.M):
             raise ValueError("Signed team does not match selected distribution identity")
-        claims = plistlib.loads(subprocess.check_output([
-            "codesign", "-d", "--arch", arch, "--entitlements", "-", "--xml", str(app)
-        ], stderr=subprocess.DEVNULL))
         with tempfile.TemporaryDirectory(prefix="life-ui-certificate-") as scratch:
             prefix = str(Path(scratch) / "certificate")
             subprocess.run(["codesign", "-d", "--arch", arch, "--extract-certificates", prefix, str(app)], check=True, capture_output=True)
