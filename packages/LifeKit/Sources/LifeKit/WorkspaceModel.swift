@@ -1119,7 +1119,7 @@ final class WorkspaceModel {
   func runAutomaticSync(
     interval: Duration = .seconds(60), debounce: Duration = .milliseconds(750)
   ) async {
-    guard client != nil, transport != nil else { return }
+    guard !Task.isCancelled, client != nil, transport != nil else { return }
     let generation = workspaceGeneration
     let session = UUID()
     stopAutomaticSync()

@@ -89,6 +89,28 @@ struct AutomaticSyncTests {
     await model.close()
   }
 
+  @Test func aCancelledSceneTaskCannotReplaceTheCurrentForegroundLoop() async throws {
+    let (model, directory) = try await fixture()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var release: CheckedContinuation<Void, Never>?
+    let old = Task {
+      await withCheckedContinuation { release = $0 }
+      await model.runAutomaticSync()
+    }
+    await Task.yield()
+    old.cancel()
+    let current = Task { await model.runAutomaticSync(debounce: .milliseconds(20)) }
+    await Task.yield()
+    try #require(release).resume()
+    await old.value
+    try await save(model, title: "Current foreground edit")
+    try await waitUntil { AutoSyncHub.rounds == 1 && !model.syncing }
+    #expect(AutoSyncHub.uploadedTitles.last == "Current foreground edit")
+    current.cancel()
+    await current.value
+    await model.close()
+  }
+
   private func save(_ model: WorkspaceModel, title: String) async throws {
     let row = try #require(model.rows.first?.record)
     _ = try await model.save(
