@@ -108,6 +108,8 @@ class SigningTests(unittest.TestCase):
                 self.assertTrue(any(c[:2] == ('codesign', '--verify') for c in calls))
                 with self.assertRaises(ValueError):
                     m.verify_app(app, 'com.example.App', 'TESTTEAM', fingerprint, 'synthetic-device', 'wrong-uuid')
+                with self.assertRaises(ValueError):
+                    m.verify_app(app, 'com.example.App', 'TESTTEAM', fingerprint, 'unregistered-device')
                 entitlements['keychain-access-groups'] = ['OTHERTEAM.private']
                 with self.assertRaises(ValueError):
                     m.verify_app(app, 'com.example.App', 'TESTTEAM', fingerprint, 'synthetic-device')
