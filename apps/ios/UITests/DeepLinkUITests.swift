@@ -60,6 +60,7 @@ final class DeepLinkUITests: XCTestCase {
     let app = try application()
     tap(app.buttons["open-local"])
     openNotes(app)
+    tap(app.buttons["workspace-menu"])
     copy(app.buttons["copy-workspace-link"])
     let url = try pastedURL(app)
     let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
@@ -78,6 +79,7 @@ final class DeepLinkUITests: XCTestCase {
     tap(app.buttons["open-pending-link"])
     XCTAssertTrue(app.buttons["open-pending-link"].waitForNonExistence(timeout: 10))
     XCTAssertTrue(app.navigationBars["notes"].exists)
+    tap(app.buttons["workspace-menu"])
     copy(app.buttons["copy-workspace-link"])
     XCTAssertEqual(try pastedURL(app), url)
   }

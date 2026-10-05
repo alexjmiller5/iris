@@ -19,6 +19,10 @@ final class WorkspaceModel {
   var client: NativeWorkspace? {
     didSet {
       if oldValue !== client {
+        stopAutomaticSync()
+        localSyncRevision = 0
+        uploadedSyncRevision = 0
+        automaticRetryAfter = .distantPast
         linkBinding = nil
         linkIdentityStore = nil
         linkError = nil
@@ -29,6 +33,7 @@ final class WorkspaceModel {
         undoing = false
         writingRecord = false
         syncing = false
+        syncProgress = nil
         resetView()
       }
     }
@@ -121,11 +126,19 @@ final class WorkspaceModel {
   var location = ""
   var canLoadMore = false
   var syncing = false
+  private(set) var syncProgress: WorkspaceSyncProgress?
+  private var syncCancelledByUser = false
   var syncResult: WorkspaceSyncResult?
   var syncStatus: WorkspaceSyncStatus?
   private(set) var undoAction: CoreUndoAction?
   private(set) var undoing = false
   private var writingRecord = false
+  private var automaticSyncSession: UUID?
+  private var automaticSyncTask: Task<Void, Never>?
+  private var automaticSyncDebounce: Duration = .milliseconds(750)
+  private var automaticRetryAfter = Date.distantPast
+  private var localSyncRevision = 0
+  private var uploadedSyncRevision = 0
 
   @discardableResult
   func undo(_ action: CoreUndoAction, context: WorkspaceEditingContext?) async throws
@@ -153,6 +166,7 @@ final class WorkspaceModel {
           violations: [])
       }
       undoAction = nil
+      recordLocalChange()
       await reload()
       guard context.workspace === client, generation == workspaceGeneration, context.table == table
       else {
@@ -460,6 +474,7 @@ final class WorkspaceModel {
         message: "The selected view changed while saving. Reopen saved views.", violations: [])
     }
     appliedView = saved
+    recordLocalChange()
     savedViews.removeAll { $0.byteExactID == saved.byteExactID }
     savedViews.append(saved)
     savedViews.sort {
@@ -488,6 +503,7 @@ final class WorkspaceModel {
         message: "The selected view changed while deleting. Reopen saved views.", violations: [])
     }
     savingView = false
+    recordLocalChange()
     savedViews.removeAll { $0.byteExactID == saved.byteExactID }
     if appliedView?.byteExactID == saved.byteExactID { try applySavedView(nil, context: context) }
     await reload()
@@ -828,6 +844,7 @@ final class WorkspaceModel {
     defer { if generation == workspaceGeneration { writingRecord = false } }
     let receipt = try await context.workspace.write(
       table: context.table, patch: patch, expectedUpdatedAt: original?["updated_at"]?.text)
+    if context.workspace === client { recordLocalChange() }
     await reload()
     return receipt
   }
@@ -1035,13 +1052,35 @@ final class WorkspaceModel {
   func synchronize() async {
     guard let client, let transport, !syncing else { return }
     let generation = workspaceGeneration
+    let outgoingRevision = localSyncRevision
+    var completed = false
+    syncCancelledByUser = false
     syncing = true
-    defer { if client === self.client, generation == workspaceGeneration { syncing = false } }
-    invalidateWriteability()
+    defer {
+      if client === self.client, generation == workspaceGeneration {
+        syncing = false
+        syncProgress = nil
+        if completed {
+          uploadedSyncRevision = max(uploadedSyncRevision, outgoingRevision)
+          if !syncCancelledByUser { automaticRetryAfter = .distantPast }
+        } else {
+          automaticRetryAfter = Date().addingTimeInterval(60)
+        }
+        scheduleAutomaticSync()
+      }
+    }
+    // Keep the last advisory while offline work continues. The core writer
+    // rechecks live metadata/coverage atomically for every actual save.
     error = nil
     do {
       let result = try await client.sync(
-        using: transport, maxRows: downloadPreferences.maxRows, tables: downloadPreferences.tables)
+        using: transport, maxRows: downloadPreferences.maxRows, tables: downloadPreferences.tables,
+        onProgress: { [weak self] progress in
+          guard let self, client === self.client, generation == self.workspaceGeneration else {
+            return
+          }
+          self.syncProgress = progress
+        })
       guard client === self.client, generation == workspaceGeneration else { return }
       let updatedCatalog = try await client.catalog()
       guard client === self.client, generation == workspaceGeneration else { return }
@@ -1053,6 +1092,7 @@ final class WorkspaceModel {
           ?? tables.first?["id"]?.text
       }
       await reload()
+      completed = true
     } catch {
       // Keep the replica and queued edits available offline after a failed request.
       guard client === self.client, generation == workspaceGeneration else { return }
@@ -1062,12 +1102,74 @@ final class WorkspaceModel {
       if table == nil { table = tables.first?["id"]?.text }
       await reload()
       guard client === self.client, generation == workspaceGeneration else { return }
-      self.error = error.localizedDescription
+      self.error = syncCancelledByUser ? nil : error.localizedDescription
+    }
+  }
+
+  func cancelSync() {
+    if syncing { syncCancelledByUser = true }
+    automaticSyncTask?.cancel()
+    automaticSyncTask = nil
+    automaticRetryAfter = Date().addingTimeInterval(60)
+    client?.cancelSync()
+  }
+
+  /// The view runs one loop while this workspace is in the foreground. Local
+  /// commits only schedule catch-up; neither saves nor navigation await it.
+  func runAutomaticSync(
+    interval: Duration = .seconds(60), debounce: Duration = .milliseconds(750)
+  ) async {
+    guard !Task.isCancelled, client != nil, transport != nil else { return }
+    let generation = workspaceGeneration
+    let session = UUID()
+    stopAutomaticSync()
+    automaticSyncSession = session
+    automaticSyncDebounce = debounce
+    defer { if automaticSyncSession == session { stopAutomaticSync() } }
+    scheduleAutomaticSync()
+    while generation == workspaceGeneration, automaticSyncSession == session, !Task.isCancelled {
+      do { try await Task.sleep(for: interval) } catch { return }
+      guard generation == workspaceGeneration, automaticSyncSession == session, !Task.isCancelled
+      else { return }
+      if !syncing, Date() >= automaticRetryAfter { await synchronize() }
+    }
+  }
+
+  private func recordLocalChange() {
+    localSyncRevision += 1
+    scheduleAutomaticSync()
+  }
+
+  private func stopAutomaticSync() {
+    automaticSyncSession = nil
+    automaticSyncTask?.cancel()
+    automaticSyncTask = nil
+  }
+
+  private func scheduleAutomaticSync() {
+    guard let session = automaticSyncSession, transport != nil,
+      localSyncRevision > uploadedSyncRevision
+    else { return }
+    let generation = workspaceGeneration
+    automaticSyncTask?.cancel()
+    automaticSyncTask = Task { @MainActor [weak self] in
+      guard let self else { return }
+      do {
+        try await Task.sleep(for: self.automaticSyncDebounce)
+        while self.syncing { try await Task.sleep(for: .milliseconds(100)) }
+        let delay = self.automaticRetryAfter.timeIntervalSinceNow
+        if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
+      } catch { return }
+      guard !Task.isCancelled, generation == self.workspaceGeneration,
+        self.automaticSyncSession == session, self.localSyncRevision > self.uploadedSyncRevision
+      else { return }
+      await self.synchronize()
     }
   }
 
   func forgetConnection() throws {
     try credentialStore.remove()
+    stopAutomaticSync()
     workspaceGeneration += 1
     syncing = false
     connection = nil
@@ -1079,6 +1181,7 @@ final class WorkspaceModel {
   }
 
   func close() async {
+    stopAutomaticSync()
     workspaceGeneration += 1
     revision += 1
     services.configure(workspace: nil, transport: nil)

@@ -7,6 +7,10 @@ import JavaScriptCore
 public final class SQLiteBridge {
   private let database: DatabaseQueue
 
+  var isInsideTransaction: Bool {
+    database.unsafeRead { $0.isInsideTransaction }
+  }
+
   public init(path: String) throws {
     var configuration = Configuration()
     configuration.allowsUnsafeTransactions = true

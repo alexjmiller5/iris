@@ -310,14 +310,12 @@ struct HubSyncTests {
     #expect(model.canWrite)
     HubFixture.state.failPull("notes")
     await model.synchronize()
-    #expect(!model.canWrite)
+    #expect(model.canWrite)
     #expect(model.error?.contains("503") == true)
-    #expect(model.editingUnavailable?.contains("incomplete") == true)
+    #expect(model.editingUnavailable == nil)
     #expect(model.rows.first?.label == "Allowed")
-    await #expect(throws: WorkspaceError.self) {
-      try await model.save(
-        ["id": original["id"]!, "title": .string("Unsafe")], original: nil, context: context)
-    }
+    _ = try await model.save(
+      ["id": original["id"]!, "title": .string("Saved offline")], original: nil, context: context)
     HubFixture.state.failPull(nil)
     await model.synchronize()
     #expect(model.canWrite)
@@ -362,7 +360,11 @@ struct HubSyncTests {
     await #expect(throws: Error.self) { try await replica.sync(using: transport) }
     #expect(try await replica.status().pendingUiEdits == 1)
     HubFixture.state.setStatus(200)
-    let second = try await replica.sync(using: transport)
+    var progress: [WorkspaceSyncProgress] = []
+    let second = try await replica.sync(using: transport, onProgress: { progress.append($0) })
+    let uploads = progress.filter { $0.phase == "Uploading" && $0.table == "notes" }
+    #expect(uploads.count >= 2)
+    #expect((uploads.last?.processedRows ?? 0) > (uploads.first?.processedRows ?? 0))
     #expect(try await replica.status().pendingUiEdits == 0)
     #expect(try await replica.status().lastSuccessfulSync != nil)
     #expect(second.pushed > 0)

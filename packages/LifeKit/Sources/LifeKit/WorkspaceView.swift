@@ -9,6 +9,8 @@ public struct WorkspaceView: View {
   @State private var options = false
   @State private var savedViews = false
   @State private var showingGraph = false
+  @State private var showingStatus = false
+  @State private var pendingGraphTable: (table: String, generation: Int)?
   @State private var preferredColumn: NavigationSplitViewColumn = .detail
   @State private var navigationRequest = 0
   @State private var openingDestination = false
@@ -78,13 +80,11 @@ public struct WorkspaceView: View {
             .keyboardShortcut("k", modifiers: .command)
             .disabled(!canFind)
             .accessibilityIdentifier("quick-find-sidebar")
-            #if os(macOS)
-              Button {
-                showingGraph = true
-              } label: {
-                Label("Schema graph", systemImage: "point.3.connected.trianglepath.dotted")
-              }.disabled(!canFind)
-            #endif
+            Button {
+              showingGraph = true
+            } label: {
+              Label("Schema graph", systemImage: "point.3.connected.trianglepath.dotted")
+            }.disabled(!canFind).accessibilityIdentifier("schema-graph-sidebar")
             WorkspaceSidebar(
               tables: NativeSidebarTables(model.tables), recents: model.recents,
               selectedTable: model.table, disabled: !canFind,
@@ -93,21 +93,29 @@ public struct WorkspaceView: View {
           }
           .navigationTitle("Life UI")
           .navigationSplitViewColumnWidth(min: 200, ideal: 240)
-          .safeAreaInset(edge: .bottom) {
-            VStack(alignment: .leading, spacing: 8) {
-              Text(model.location).font(.caption).foregroundStyle(.secondary)
-              if model.isReplica {
-                SyncSummary(model: model)
-                Button(model.syncing ? "Syncing…" : "Sync now") {
-                  Task { await model.synchronize() }
+          #if os(iOS)
+            .toolbar {
+              ToolbarItem(placement: .bottomBar) { statusButton }
+              ToolbarItem(placement: .bottomBar) { Spacer() }
+              ToolbarItem(placement: .bottomBar) { workspaceMenu }
+            }
+          #else
+            .safeAreaInset(edge: .bottom) {
+              VStack(alignment: .leading, spacing: 8) {
+                Text(model.location).font(.caption).foregroundStyle(.secondary)
+                if model.isReplica {
+                  SyncSummary(model: model)
+                  Button(model.syncing ? "Syncing…" : "Sync now") {
+                    Task { await model.synchronize() }
+                  }
+                  .disabled(model.syncing).accessibilityIdentifier("sync-now")
                 }
-                .disabled(model.syncing).accessibilityIdentifier("sync-now")
-              }
-              Button("Hub connection") { settings = true }.disabled(openingDestination)
-              Button("Close workspace") { Task { await model.close() } }
-            }.padding().frame(maxWidth: .infinity, alignment: .leading)
+                Button("Hub connection") { settings = true }.disabled(openingDestination)
+                Button("Close workspace") { Task { await model.close() } }
+              }.padding().frame(maxWidth: .infinity, alignment: .leading)
               .background(.bar)
-          }
+            }
+          #endif
         } detail: {
           #if os(macOS)
             if showingGraph, let catalog = model.catalog {
@@ -138,6 +146,8 @@ public struct WorkspaceView: View {
     .task(id: "\(model.workspaceGeneration)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
       await model.recents?.refresh()
+      guard !Task.isCancelled else { return }
+      await model.runAutomaticSync()
     }
     .onChange(of: model.syncing) {
       if !model.syncing {
@@ -189,6 +199,38 @@ public struct WorkspaceView: View {
       online?.cancel()
       online = nil
     }
+    #if os(iOS)
+      .sheet(
+        isPresented: $showingGraph,
+        onDismiss: {
+          guard let pending = pendingGraphTable else { return }
+          pendingGraphTable = nil
+          guard pending.generation == model.workspaceGeneration else { return }
+          openDestination(NativeDestination(table: pending.table))
+        }
+      ) {
+        NavigationStack {
+          if let catalog = model.catalog {
+            SchemaGraphView(
+              catalog: catalog, groups: model.groups,
+              openTable: { table in
+                guard showingGraph, canFind else { return }
+                pendingGraphTable = (table, model.workspaceGeneration)
+                showingGraph = false
+              }, saveGroups: model.saveGroups
+            )
+            .navigationTitle("Schema graph")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+              ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { showingGraph = false }.accessibilityIdentifier("graph-done")
+              }
+            }
+          }
+        }
+      }
+      .sheet(isPresented: $showingStatus) { WorkspaceStatusSheet(model: model) }
+    #endif
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
     .sheet(isPresented: $options) { WorkspaceOptionsView(model: model) }
     .sheet(isPresented: $savedViews) {
@@ -243,6 +285,8 @@ public struct WorkspaceView: View {
       navigationRequest += 1
       openingDestination = false
       navigationError = nil
+      showingGraph = false
+      pendingGraphTable = nil
       preferredColumn = .detail
       online?.cancel()
       online = nil
@@ -533,9 +577,21 @@ public struct WorkspaceView: View {
   }
 
   @ViewBuilder private var recordNotices: some View {
-    Button(action: showRejections) {
-      Label("Issues", systemImage: "exclamationmark.bubble")
-    }.disabled(!canFind).accessibilityIdentifier("workspace-issues")
+    #if os(macOS)
+      Button(action: showRejections) {
+        Label("Issues", systemImage: "exclamationmark.bubble")
+      }.disabled(!canFind).accessibilityIdentifier("workspace-issues")
+    #else
+      if let message = model.partialTableNotice, let context = model.downloadContext,
+        let table = model.table
+      {
+        PartialReplicaNotice(model: model, context: context, table: table, message: message)
+      }
+      if let reason = model.editingUnavailable {
+        Text(reason).font(.caption).foregroundStyle(.secondary)
+          .accessibilityIdentifier("editing-availability")
+      }
+    #endif
     if let action = model.undoAction {
       Button {
         let context = model.editingContext
@@ -675,70 +731,148 @@ public struct WorkspaceView: View {
       .padding(12).frame(maxWidth: .infinity, alignment: .leading)
   }
 
+  #if os(iOS)
+    private var statusButton: some View {
+      Button {
+        showingStatus = true
+      } label: {
+        Label(
+          model.syncing ? "Syncing" : "Workspace status",
+          systemImage: model.syncing ? "arrow.triangle.2.circlepath" : "info.circle"
+        )
+        .labelStyle(.iconOnly)
+      }.accessibilityIdentifier("workspace-status")
+    }
+
+    private var workspaceMenu: some View {
+      Menu {
+        if model.isReplica {
+          Button {
+            Task { await model.synchronize() }
+          } label: {
+            Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
+          }.disabled(model.syncing).accessibilityIdentifier("sync-now")
+          Button {
+            guard canFind else { return }
+            tableSearchPresented = false
+            online = model.makeOnlineBrowser()
+          } label: {
+            Label("Browse online", systemImage: "cloud")
+          }
+          .disabled(!canFind || model.table == nil).accessibilityIdentifier("browse-online")
+        }
+        Button {
+          settings = true
+        } label: {
+          Label("Hub connection", systemImage: "gearshape")
+        }
+        Button(action: showRejections) { Label("Issues", systemImage: "exclamationmark.bubble") }
+          .disabled(!canFind).accessibilityIdentifier("workspace-issues")
+        Divider()
+        Button {
+          guard let table = model.table else { return }
+          do {
+            try copyLink(
+              NativeDestination(table: table, viewID: model.appliedView?.id),
+              context: model.editingContext)
+          } catch { model.error = error.localizedDescription }
+        } label: {
+          Label("Copy link", systemImage: "link")
+        }
+        .disabled(!canFind || !model.canCopyLink || model.table == nil).accessibilityIdentifier(
+          "copy-workspace-link")
+        Button {
+          model.trash.toggle()
+        } label: {
+          Label(
+            model.trash ? "Show active records" : "Show trash",
+            systemImage: model.trash ? "tray" : "trash")
+        }.accessibilityIdentifier("toggle-trash")
+        Divider()
+        Button {
+          Task { await model.close() }
+        } label: {
+          Label("Close workspace", systemImage: "xmark.circle")
+        }
+      } label: {
+        Label("Workspace actions", systemImage: "ellipsis")
+          .labelStyle(.iconOnly)
+      }
+      .accessibilityIdentifier("workspace-menu")
+    }
+  #endif
+
   private var records: some View {
     recordContent
       .safeAreaInset(edge: .top, spacing: 0) {
-        VStack(alignment: .leading, spacing: 8) {
-          if model.isReplica { SyncSummary(model: model) }
-          if let message = model.partialTableNotice, let context = model.downloadContext,
-            let table = model.table
-          {
-            PartialReplicaNotice(model: model, context: context, table: table, message: message)
-          }
-          if model.isReplica, model.table != nil {
-            Button {
-              guard canFind else { return }
-              tableSearchPresented = false
-              online = model.makeOnlineBrowser()
-            } label: {
-              Label("Browse online", systemImage: "cloud")
-            }.disabled(!canFind).accessibilityIdentifier("browse-online")
-          }
-          if let reason = model.editingUnavailable {
-            Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-              .accessibilityIdentifier("editing-availability")
-          }
-          HStack {
-            Button {
-              savedViews = true
-            } label: {
-              Label("Views", systemImage: "rectangle.stack")
-            }.disabled(editor != nil || model.client == nil)
-              .accessibilityIdentifier("saved-views")
-            Button {
-              options = true
-            } label: {
-              HStack {
-                Label("Sort and filter", systemImage: "line.3.horizontal.decrease")
-                if !model.sortColumn.isEmpty {
-                  Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
+        #if os(macOS)
+          VStack(alignment: .leading, spacing: 8) {
+            if model.isReplica { SyncSummary(model: model) }
+            if let message = model.partialTableNotice, let context = model.downloadContext,
+              let table = model.table
+            {
+              PartialReplicaNotice(model: model, context: context, table: table, message: message)
+            }
+            if model.isReplica, model.table != nil {
+              Button {
+                guard canFind else { return }
+                tableSearchPresented = false
+                online = model.makeOnlineBrowser()
+              } label: {
+                Label("Browse online", systemImage: "cloud")
+              }.disabled(!canFind).accessibilityIdentifier("browse-online")
+            }
+            if let reason = model.editingUnavailable {
+              Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                .accessibilityIdentifier("editing-availability")
+            }
+            HStack {
+              Button {
+                savedViews = true
+              } label: {
+                Label("Views", systemImage: "rectangle.stack")
+              }.disabled(editor != nil || model.client == nil)
+                .accessibilityIdentifier("saved-views")
+              Button {
+                options = true
+              } label: {
+                HStack {
+                  Label("Sort and filter", systemImage: "line.3.horizontal.decrease")
+                  if !model.sortColumn.isEmpty {
+                    Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
+                  }
+                  if !model.filters.isEmpty { Text("\(model.filters.count) active") }
                 }
-                if !model.filters.isEmpty { Text("\(model.filters.count) active") }
-              }
-            }.accessibilityIdentifier("view-options")
-            Spacer()
-            Button {
-              guard let table = model.table else { return }
-              do {
-                try copyLink(
-                  NativeDestination(table: table, viewID: model.appliedView?.id),
-                  context: model.editingContext)
-              } catch { model.error = error.localizedDescription }
-            } label: {
-              Label("Copy link", systemImage: "link").labelStyle(.iconOnly)
-            }.disabled(!canFind || !model.canCopyLink || model.table == nil)
-              .accessibilityIdentifier("copy-workspace-link")
-            Button(action: showQuickFind) { Label("Find", systemImage: "magnifyingglass") }
-              .disabled(!canFind).accessibilityIdentifier("quick-find")
+              }.accessibilityIdentifier("view-options")
+              Spacer()
+              Button {
+                guard let table = model.table else { return }
+                do {
+                  try copyLink(
+                    NativeDestination(table: table, viewID: model.appliedView?.id),
+                    context: model.editingContext)
+                } catch { model.error = error.localizedDescription }
+              } label: {
+                Label("Copy link", systemImage: "link").labelStyle(.iconOnly)
+              }.disabled(!canFind || !model.canCopyLink || model.table == nil)
+                .accessibilityIdentifier("copy-workspace-link")
+              Button(action: showQuickFind) { Label("Find", systemImage: "magnifyingglass") }
+                .disabled(!canFind).accessibilityIdentifier("quick-find")
+            }
+            if let applied = model.appliedView {
+              Text(applied.name + (model.viewModified ? " · Modified" : ""))
+                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
           }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal).padding(.vertical, 8)
+          .background(.regularMaterial)
+        #else
           if let applied = model.appliedView {
             Text(applied.name + (model.viewModified ? " · Modified" : ""))
               .font(.caption).foregroundStyle(.secondary).lineLimit(1)
           }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal).padding(.vertical, 8)
-        .background(.regularMaterial)
+        #endif
       }
       .navigationTitle(model.table ?? "Workspace")
       #if os(iOS)
@@ -749,36 +883,84 @@ public struct WorkspaceView: View {
       )
       .refreshable { await model.reload() }
       .toolbar {
-        ToolbarItemGroup(placement: .primaryAction) {
-          if model.isReplica {
-            Button {
-              Task { await model.synchronize() }
-            } label: {
-              Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
+        #if os(iOS)
+          ToolbarItemGroup(placement: .primaryAction) {
+            statusButton
+            workspaceMenu
+            if model.canWrite && !model.trash {
+              Button {
+                editor = EditorTarget(row: nil, context: model.editingContext)
+              } label: {
+                Label("New record", systemImage: "plus").labelStyle(.iconOnly).frame(
+                  minWidth: 44, minHeight: 44)
+              }.accessibilityIdentifier("new-record")
             }
-            .disabled(model.syncing).accessibilityIdentifier("sync-now")
           }
-          Button {
-            settings = true
-          } label: {
-            Label("Hub connection", systemImage: "gearshape")
-          }
-          Button {
-            model.trash.toggle()
-          } label: {
-            Label(
-              model.trash ? "Show active records" : "Show trash",
-              systemImage: model.trash ? "tray" : "trash")
-          }.accessibilityIdentifier("toggle-trash")
-          if model.canWrite && !model.trash {
+          ToolbarItemGroup(placement: .bottomBar) {
             Button {
-              editor = EditorTarget(row: nil, context: model.editingContext)
+              savedViews = true
             } label: {
-              Label("New record", systemImage: "plus")
+              Label("Views", systemImage: "rectangle.stack").labelStyle(.iconOnly).frame(
+                minWidth: 44, minHeight: 44)
+            }.disabled(editor != nil || model.client == nil).accessibilityIdentifier("saved-views")
+            Spacer()
+            Button {
+              options = true
+            } label: {
+              Label(
+                "Sort and filter",
+                systemImage: model.filters.isEmpty
+                  ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill"
+              )
+              .labelStyle(.iconOnly)
+            }.accessibilityIdentifier("view-options")
+              .accessibilityValue("\(model.filters.count) active filters")
+            Spacer()
+            Button(action: showQuickFind) {
+              Label("Find", systemImage: "magnifyingglass").labelStyle(.iconOnly).frame(
+                minWidth: 44, minHeight: 44)
             }
-            .accessibilityIdentifier("new-record")
+            .disabled(!canFind).accessibilityIdentifier("quick-find")
+            Spacer()
+            Button {
+              showingGraph = true
+            } label: {
+              Label("Schema graph", systemImage: "point.3.connected.trianglepath.dotted")
+                .labelStyle(.iconOnly)
+            }.disabled(!canFind).accessibilityIdentifier("schema-graph")
           }
-        }
+        #else
+          ToolbarItemGroup(placement: .primaryAction) {
+            if model.isReplica {
+              Button {
+                Task { await model.synchronize() }
+              } label: {
+                Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
+              }
+              .disabled(model.syncing).accessibilityIdentifier("sync-now")
+            }
+            Button {
+              settings = true
+            } label: {
+              Label("Hub connection", systemImage: "gearshape")
+            }
+            Button {
+              model.trash.toggle()
+            } label: {
+              Label(
+                model.trash ? "Show active records" : "Show trash",
+                systemImage: model.trash ? "tray" : "trash")
+            }.accessibilityIdentifier("toggle-trash")
+            if model.canWrite && !model.trash {
+              Button {
+                editor = EditorTarget(row: nil, context: model.editingContext)
+              } label: {
+                Label("New record", systemImage: "plus")
+              }
+              .accessibilityIdentifier("new-record")
+            }
+          }
+        #endif
       }
       .disabled(openingDestination)
   }

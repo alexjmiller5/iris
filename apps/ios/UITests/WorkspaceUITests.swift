@@ -103,7 +103,8 @@ final class WorkspaceUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["--demo"]
     app.launch()
-    tapWhenReady(app.navigationBars["notes"].buttons["Hub connection"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["Hub connection"])
     tapWhenReady(app.textFields["hub-endpoint"])
     app.textFields["hub-endpoint"].typeText(endpoint)
     let begin = app.buttons["begin-enrollment"]
@@ -158,7 +159,8 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     tapWhenReady(app.buttons["close"])
-    tapWhenReady(app.navigationBars["widgets"].buttons["Hub connection"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["Hub connection"])
     let forget = app.buttons["Forget saved connection"]
     for _ in 0..<8 where !forget.isHittable { app.swipeUp() }
     tapWhenReady(forget)
@@ -348,12 +350,14 @@ final class WorkspaceUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["--demo"]
     app.launch()
-    tapWhenReady(app.navigationBars["notes"].buttons["Hub connection"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["Hub connection"])
     tapWhenReady(app.textFields["hub-endpoint"])
     app.textFields["hub-endpoint"].typeText(endpoint)
     connectUsingFixtureToken(app)
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 15))
     if app.sheets["Save Password?"].waitForExistence(timeout: 3) { dismissPasswordPrompt() }
+    tapWhenReady(app.buttons["workspace-menu"])
     tapWhenReady(app.buttons["browse-online"])
     XCTAssertTrue(app.staticTexts["online-read-only-notice"].waitForExistence(timeout: 5))
     let recordID = app.textFields["online-record-id"]
@@ -415,13 +419,15 @@ final class WorkspaceUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["--demo"]
     app.launch()
-    tapWhenReady(app.navigationBars["notes"].buttons["Hub connection"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["Hub connection"])
     tapWhenReady(app.textFields["hub-endpoint"])
     app.textFields["hub-endpoint"].typeText(endpoint)
     connectUsingFixtureToken(app)
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 15))
     if app.sheets["Save Password?"].waitForExistence(timeout: 3) { dismissPasswordPrompt() }
-    tapWhenReady(app.navigationBars["widgets"].buttons["Hub connection"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["Hub connection"])
     tapWhenReady(app.buttons["hub-downloads"])
     tapWhenReady(app.buttons["download-table-widgets"])
     tapWhenReady(app.buttons["Automatic"])
@@ -432,7 +438,8 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.navigationBars["Downloads"].buttons["save-downloads"])
     XCTAssertTrue(app.navigationBars["Hub connection"].waitForExistence(timeout: 5))
     tapWhenReady(app.navigationBars["Hub connection"].buttons["Done"])
-    tapWhenReady(app.navigationBars["widgets"].buttons["sync-now"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["sync-now"])
     let notice = app.staticTexts["partial-table-notice"]
     XCTAssertTrue(notice.waitForExistence(timeout: 15))
     let search = app.searchFields.firstMatch
@@ -446,9 +453,11 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
     tapWhenReady(app.buttons["include-table-next-sync"])
     XCTAssertTrue(notice.waitForExistence(timeout: 5))
-    tapWhenReady(app.navigationBars["widgets"].buttons["sync-now"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["sync-now"])
     XCTAssertTrue(notice.waitForNonExistence(timeout: 15))
-    tapWhenReady(app.navigationBars["widgets"].buttons["Hub connection"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["Hub connection"])
     tapWhenReady(app.buttons["hub-downloads"])
     XCTAssertEqual(limit.value as? String, "0")
     let widgetChoice = app.buttons["download-table-widgets"]
@@ -1050,12 +1059,14 @@ final class WorkspaceUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["--demo"]
     app.launch()
-    tapWhenReady(app.navigationBars["notes"].buttons["Hub connection"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["Hub connection"])
     tapWhenReady(app.textFields["hub-endpoint"])
     app.textFields["hub-endpoint"].typeText(endpoint)
     connectUsingFixtureToken(app)
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 15))
-    tapWhenReady(app.navigationBars["widgets"].buttons["Hub connection"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["Hub connection"])
     tapWhenReady(app.buttons["hub-usage"])
     XCTAssertTrue(app.navigationBars["Usage"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["Rows read"].firstMatch.waitForExistence(timeout: 10))
@@ -1130,7 +1141,8 @@ final class WorkspaceUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["--demo"]
     app.launch()
-    let sampleSettings = app.navigationBars["notes"].buttons["Hub connection"]
+    tapWhenReady(app.buttons["workspace-menu"])
+    let sampleSettings = app.buttons["Hub connection"]
     tapWhenReady(sampleSettings)
     tapWhenReady(app.textFields["hub-endpoint"])
     app.textFields["hub-endpoint"].typeText(endpoint)
@@ -1149,6 +1161,7 @@ final class WorkspaceUITests: XCTestCase {
       notNow.tap()
       XCTAssertTrue(passwordPrompt.waitForNonExistence(timeout: 10), app.debugDescription)
     }
+    tapWhenReady(app.buttons["workspace-status"])
     let status = app.staticTexts["No local edits waiting to sync."].firstMatch
     XCTAssertTrue(status.waitForExistence(timeout: 5))
     for _ in 0..<3 { app.swipeUp() }
@@ -1159,8 +1172,9 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertTrue(status.waitForExistence(timeout: 5), app.debugDescription)
     XCTAssertGreaterThan(status.frame.height, 0)
     XCTAssertGreaterThan(status.frame.width, 0)
-    XCTAssertGreaterThanOrEqual(status.frame.minY, app.navigationBars["widgets"].frame.maxY)
+    XCTAssertGreaterThanOrEqual(status.frame.minY, app.navigationBars["Workspace status"].frame.maxY)
     XCTAssertLessThanOrEqual(status.frame.maxY, app.frame.maxY)
+    tapWhenReady(app.buttons["status-done"])
     let bar = app.navigationBars["widgets"]
     let create = bar.buttons["new-record"]
     XCTAssertTrue(create.waitForExistence(timeout: 5))
@@ -1192,22 +1206,26 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertEqual(quantity.value as? String, "7", app.debugDescription)
     let save = app.navigationBars["New record"].buttons["save-record"]
     tapWhenReady(save)
+    tapWhenReady(app.buttons["workspace-status"])
     XCTAssertTrue(
       app.staticTexts["1 record waiting to sync."].waitForExistence(timeout: 5),
       app.debugDescription)
-    tapWhenReady(app.navigationBars["widgets"].buttons["sync-now"])
+    tapWhenReady(app.buttons["sync-now"])
     XCTAssertTrue(app.staticTexts["No local edits waiting to sync."].waitForExistence(timeout: 15))
+    tapWhenReady(app.buttons["status-done"])
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "native-hub-workspace"
     shot.lifetime = .keepAlways
     add(shot)
-    let replicaSettings = app.navigationBars["widgets"].buttons["Hub connection"]
+    tapWhenReady(app.buttons["workspace-menu"])
+    let replicaSettings = app.buttons["Hub connection"]
     tapWhenReady(replicaSettings)
     let forget = app.buttons["Forget saved connection"]
     for _ in 0..<4 where !forget.isHittable { app.swipeUp() }
     tapWhenReady(forget)
     XCTAssertTrue(app.navigationBars["Hub connection"].waitForNonExistence(timeout: 5))
-    XCTAssertTrue(app.navigationBars["widgets"].buttons["sync-now"].waitForNonExistence(timeout: 5))
+    tapWhenReady(app.buttons["workspace-menu"])
+    XCTAssertFalse(app.buttons["sync-now"].exists)
   }
 
   func testCreateEditMarkdownTrashAndRestore() throws {
@@ -1278,13 +1296,14 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(trash)
     XCTAssertTrue(create.waitForExistence(timeout: 5))
     XCTAssertTrue(edited.waitForNonExistence(timeout: 5))
-    tapWhenReady(app.navigationBars["notes"].buttons["toggle-trash"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["toggle-trash"])
     tapWhenReady(edited)
     let restore = app.buttons["trash-record"]
     for _ in 0..<5 where !restore.isHittable { app.swipeUp() }
     tapWhenReady(restore)
-    XCTAssertTrue(app.buttons["toggle-trash"].waitForExistence(timeout: 5))
-    tapWhenReady(app.navigationBars["notes"].buttons["toggle-trash"])
+    tapWhenReady(app.buttons["workspace-menu"])
+    tapWhenReady(app.buttons["toggle-trash"])
     XCTAssertTrue(edited.waitForExistence(timeout: 5))
     let listShot = XCTAttachment(screenshot: app.screenshot())
     listShot.name = "native-local-workspace"
@@ -1351,6 +1370,7 @@ final class WorkspaceUITests: XCTestCase {
       // A preceding failed network test may leave a saved synthetic connection.
       // Navigate through the supported UI instead of assuming the welcome screen.
       tapWhenReady(app.navigationBars.buttons["BackButton"].firstMatch)
+      tapWhenReady(app.buttons["workspace-menu"])
       tapWhenReady(app.buttons["Close workspace"])
     }
     tapWhenReady(open)

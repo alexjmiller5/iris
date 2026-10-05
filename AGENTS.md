@@ -203,12 +203,22 @@ keys and SwiftUI row identity must preserve their exact bytes; Swift String
 canonical equivalence must not merge records, recoveries or reference selections.
 Keep the original String values at the core boundary.
 
-Whole Worker requests and whole native asynchronous requests are serialized.
+Whole Worker requests are serialized. Native requests retain SQLite ownership
+across every transaction and local await. HTTP outside a transaction suspends
+its request owner so complete foreground requests can run; the HTTP continuation
+resumes through that same queue, never inside another request's transaction.
+Close waits for every suspended owner, and queued duplicate syncs do not block
+eligible foreground requests before close. Keep the sync file lock while suspended.
 Native destination waits stay visible outside scrolling content and offer Cancel.
 Cancellation invalidates only the navigation request and immediately releases its
 controls; late results and old defers must not affect a newer request. It never
-cancels sync or removes a core continuation. Fresh navigation may still wait for
-the active sync to finish.
+cancels sync or removes a core continuation. Sync has its own progress and Cancel
+action, with cooperative transport cancellation and a 15-minute round deadline.
+The scene's single foreground task runs automatic catch-up every 60 seconds.
+Successful local record/view saves and undo debounce catch-up by 750 ms; edits
+during a round queue another round after its receipt. Failure or cancellation
+delays automatic retry by 60 seconds. Workspace/session guards cancel obsolete
+timers, and manual Sync now remains available. No closed-app delivery is implied.
 Native SQLite connections force `legacy_alter_table=OFF` so logged renames
 rewrite trigger/view references consistently across hosts. Recovery repairs only
 an exact canonical timestamp trigger whose direct table rename is in the local
@@ -349,17 +359,41 @@ flows. Run the full applicable suites after the final source change. Use an
 isolated simulator if another project is driving the shared default device.
 iOS record screens use inline navigation titles and no extra top list content
 margin; keep title, controls and first list row separate and compact.
+iOS uses native bottom toolbar actions for Views, Filter, Find and Schema graph;
+workspace actions are in the ellipsis Menu and full sync/location details in the
+status sheet. Active sync details show phase, table, page/row counts and elapsed
+time with Cancel sync. Cancellation calls the model and keeps sync controls busy
+until the owning operation unwinds. `SyncStatusUITests` uses the held loopback
+fixture to verify cancellation before server release and preserve the workspace.
+Keep active errors and incomplete-table notices visible. Do not
+reintroduce a permanent multiline sync footer. The graph sheet shares the offline
+WebKit coordinator and bundled FK/group component with macOS; dismiss first,
+then re-resolve the selected table through guarded navigation. `NativeControlsUITests`
+checks menu/status/graph navigation and accessibility text sizing with screenshots.
 `HeaderUITests` checks their geometry and retains screenshots. Its empty-workspace
 case uses `HeaderUIFixtureTests` with `TEST_RUNNER_LIFE_UI_TEST_HEADER_SIMULATOR`
 set to the exact disposable simulator UDID; run the fixture before the UI tests.
 `TableNavigationUIFixtureTests` seeds 50,000 synthetic provenance rows on the
 explicit `TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_SIMULATOR` only. Its local mode tests
 repeated table navigation; the optional loopback `navigation-hub.py` mode holds
-real sync HTTP while `TableNavigationUITests` verifies cancellation and late replies.
+real sync HTTP while `TableNavigationUITests` verifies cached navigation and
+persisted local saves before the response is released.
+
+NativeWorkspace serializes whole database operations, yielding ownership only
+at transaction-free HTTP boundaries. Suspended requests capture their transport;
+responses reenter behind complete foreground operations. Close waits for every
+suspended owner, while duplicate sync requests do not block local requests ahead
+of close. The sync file lock lasts through suspension. Progress carries phase,
+table, page, row count and start time only. Cancel unwinds transport without
+resetting checkpoints or discarding local changes; the total deadline is fifteen
+minutes, with per-request transport timeouts retained. Incomplete rounds can
+repeat uncheckpointed pages on retry.
 
 Web design tokens live in `apps/web/src/theme.css`; use Tabler UI icons,
 accessible controls, keyboard focus and narrow-screen layouts. Native views use
-SwiftUI semantic styles. Native graph changes must regenerate the bundled island.
+SwiftUI semantic styles. The graph initially fits the viewport; zoom keeps the
+same offline SVG and table navigation, with one step reaching readable size.
+Native graph changes must regenerate the bundled island.
 `islands.css` explicitly scopes Tailwind sources to the embedded components;
 unrelated web files must not change native artifacts. Verify this with
 `bun scripts/test-island-builds.ts` before publishing regenerated resources.
