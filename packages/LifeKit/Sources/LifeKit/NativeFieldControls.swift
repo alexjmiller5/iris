@@ -11,24 +11,26 @@ struct NativeChoiceField: View {
 
   init(
     field: CatalogField, isNew: Bool, value: Binding<String>, workspace: NativeWorkspace?,
-    focus: FocusState<String?>.Binding, isCurrent: @escaping () -> Bool
+    focus: FocusState<String?>.Binding, isCurrent: @escaping () -> Bool,
+    choiceModel: NativeChoiceModel? = nil
   ) {
     self.field = field
     self.isNew = isNew
     self.focus = focus
     _value = value
     _model = State(
-      initialValue: NativeChoiceModel(
-        load: {
-          guard let workspace, let table = field.property["tbl"]?.text.nonempty else {
-            if field.property["options_sql"]?.text.nonempty != nil {
-              throw WorkspaceError(
-                message: "Choices are unavailable. Your value has been kept.", violations: [])
+      initialValue: choiceModel
+        ?? NativeChoiceModel(
+          load: {
+            guard let workspace, let table = field.property["tbl"]?.text.nonempty else {
+              if field.property["options_sql"]?.text.nonempty != nil {
+                throw WorkspaceError(
+                  message: "Choices are unavailable. Your value has been kept.", violations: [])
+              }
+              return field.options
             }
-            return field.options
-          }
-          return try await workspace.options(table: table, column: field.id)
-        }, isCurrent: isCurrent))
+            return try await workspace.options(table: table, column: field.id)
+          }, isCurrent: isCurrent))
   }
 
   private var freeValues: Bool {
@@ -37,44 +39,48 @@ struct NativeChoiceField: View {
 
   var body: some View {
     Group {
-      if let projected = try? NativeChoiceOptions(
-        field: field, dynamic: model.options, value: value)
-      {
-        if field.type == "multi_select" {
-          multipleChoices(projected)
-        } else if freeValues {
-          TextField(field.label, text: $value, axis: .vertical)
-            .focused(focus, equals: field.id)
-            .accessibilityIdentifier("field-\(field.id)")
-        } else {
-          Picker(
-            field.label,
-            selection: Binding(
-              get: { Data(value.utf8) },
-              set: { id in
-                if id.isEmpty {
-                  value = ""
-                } else if let option = projected.choices.first(where: { $0.id == id }) {
-                  choose(option.value)
-                }
-              })
-          ) {
-            Text(
-              isNew
-                ? field.property["default_value"]?.text.nonempty.map { "Default: \($0)" }
-                  ?? "Not set" : "Not set"
-            )
-            .tag(Data())
-            ForEach(projected.choices.filter { !$0.value.isEmpty }) { option in
-              Text(label(option)).tag(option.id)
+      VStack(alignment: .leading, spacing: 10) {
+        if let projected = try? NativeChoiceOptions(
+          field: field, dynamic: model.options, value: value)
+        {
+          if field.type == "multi_select" {
+            multipleChoices(projected)
+          } else if freeValues {
+            TextField(field.label, text: $value, axis: .vertical)
+              .focused(focus, equals: field.id)
+              .accessibilityIdentifier("field-\(field.id)")
+          } else {
+            Picker(
+              field.label,
+              selection: Binding(
+                get: { Data(value.utf8) },
+                set: { id in
+                  if id.isEmpty {
+                    value = ""
+                  } else if let option = projected.choices.first(where: { $0.id == id }) {
+                    choose(option.value)
+                  }
+                })
+            ) {
+              Text(
+                isNew
+                  ? field.property["default_value"]?.text.nonempty.map { "Default: \($0)" }
+                    ?? "Not set" : "Not set"
+              )
+              .tag(Data())
+              ForEach(projected.choices.filter { !$0.value.isEmpty }) { option in
+                Text(label(option)).tag(option.id)
+              }
             }
+            .accessibilityIdentifier("field-\(field.id)")
           }
-          .accessibilityIdentifier("field-\(field.id)")
+        } else {
+          Text("This value is not a list of text choices. Edit the JSON source to repair it.")
+            .foregroundStyle(.red)
         }
-      } else {
-        Text("This value is not a list of text choices. Edit the JSON source to repair it.")
-          .foregroundStyle(.red)
       }
+      .task(id: field.property["options_sql"]?.text) { await model.refresh() }
+      .onDisappear { model.cancel() }
       if model.loading { ProgressView("Loading choices") }
       if let error = model.error {
         Text(error).font(.caption).foregroundStyle(.red)
@@ -97,8 +103,6 @@ struct NativeChoiceField: View {
         }
       }
     }
-    .task(id: field.property["options_sql"]?.text) { await model.refresh() }
-    .onDisappear { model.cancel() }
   }
 
   private func multipleChoices(_ projected: NativeChoiceOptions) -> some View {
