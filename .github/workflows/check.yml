@@ -33,6 +33,7 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun test scripts/release-macos.test.ts
+      - run: python3 scripts/macos_signing_test.py
       - run: brew install xcodegen just
       - run: swift test --package-path packages/LifeKit
       - run: just --justfile apps/macos/justfile check

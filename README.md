@@ -632,11 +632,24 @@ Before the first release, bootstrap the project CI account with the `.env.tpl`
 manifest, including its documented access to the shared Apple Signing vault.
 Set the GitHub repository variable `HOMEBREW_TAP_REPOSITORY` to the tap's
 `owner/repository`. The shared tap credential must have write access there.
+Set `MACOS_PROVISIONING_PROFILE_ID` to the App Store Connect API ID of this
+app's Developer ID (`MAC_APP_DIRECT`) provisioning profile. The profile must
+authorize the existing signing certificate and this app's bundle ID. Create or
+renew that app-owned profile through Apple's developer tools; CI downloads it
+with the existing App Store Connect team API key. That key needs profile read
+access. CI neither creates certificates nor uses cloud signing.
 The app itself never receives any of these credentials.
 
 After release approval, push the chosen version tag and watch both workflow jobs.
-Signing, notarization, Gatekeeper verification and upload must succeed before the
-cask is updated. If only the cask job fails, rerun that failed job; do not move the
+Before notarization/publication, CI verifies the final app's private App ID and
+team entitlements in both architectures against its embedded profile and exact
+selected certificate. A separately signed probe uses the production credential
+store to create, read, update and delete a unique synthetic item in the Data
+Protection Keychain, including its device-only accessibility policy. These checks
+require a logged-in macOS user context. A missing profile or failed storage test
+stops publication; CI never falls back to the file-based Keychain.
+Signing, storage verification, notarization, Gatekeeper verification and upload
+must succeed before the cask is updated. If only the cask job fails, rerun that failed job; do not move the
 published tag or replace its archive. Older retries and identical version/hash
 pairs leave the tap unchanged. A different hash for the same version or unsupported
 version/checksum format fails closed. Install through the configured, fully
@@ -644,9 +657,8 @@ qualified tap token, such as `owner/tap/life-ui`. In nix-darwin that token belon
 in `homebrew.casks`; rebuild the machine configuration. The installed app keeps
 its workspace in Application Support and its device credential in Keychain.
 
-The workflow configuration is prepared; no signed release or cask is published
-by development or tests. The first release still requires signing credentials,
-an approved tag, an installed-app check and declarative machine installation.
+Development and tests do not publish a release or cask. Release verification also
+includes enrollment through the installed app after declarative installation.
 
 No production data is migrated by development or tests.
 

@@ -46,15 +46,26 @@ notice). Cloudflare Access protects the Worker's hostnames; converge it with
 
 Mac distribution uses `.github/workflows/release-macos.yml`, triggered only by
 explicitly approved stable version tags. It stamps the tag version, builds both
-Apple Silicon and Intel, signs with Developer ID, notarizes, staples, checks
-Gatekeeper and publishes the archive before updating the configured Homebrew tap.
+Apple Silicon and Intel, exports with the existing Developer ID certificate and
+an app-owned distribution profile, notarizes, staples, checks Gatekeeper and
+publishes the archive before updating the configured Homebrew tap. Xcode resolves
+the private App ID from that profile; no shared Keychain groups are requested.
+Before publication, both signed architectures must match the profile and selected
+certificate, and a separate signed probe using the production HubCredentialStore
+must pass Data Protection Keychain create/read/update/delete with a unique
+synthetic service. Never replace this gate with signature validity alone.
 The tap is a separate job so its failure never requires republishing an asset.
 It only advances stable versions; identical version/hash retries are no-ops,
 while conflicting hashes or unsupported version/checksum formats fail closed.
 The documented Apple Signing vault exception supplies shared signing/notary
 material and the tap credential to the project CI service account. This grants
 CI read access to that shared vault; it is not app runtime or consumer auth.
-`HOMEBREW_TAP_REPOSITORY` is a repository variable, not a client preference.
+`HOMEBREW_TAP_REPOSITORY` and `MACOS_PROVISIONING_PROFILE_ID` are repository
+variables, not client preferences. The latter is the stable App Store Connect
+API ID of Life UI's MAC_APP_DIRECT profile. Release CI only downloads it;
+profile creation/renewal is an operator action using the existing signing
+certificate. Never expand cloud-signing permissions or mint replacement
+certificates to compensate for a missing profile.
 Ordinary changes never bump a version or push a release tag.
 
 Shared core owns local FTS5 indexing and search. Web table search and Cmd+K use

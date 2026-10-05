@@ -16,6 +16,7 @@ env:
   APP: LifeUI
   CASK: life-ui
   TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+  PROFILE_ID: ${{ vars.MACOS_PROVISIONING_PROFILE_ID }}
 
 jobs:
   release:
@@ -47,6 +48,7 @@ jobs:
           [[ "$TAP_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
             echo 'Set HOMEBREW_TAP_REPOSITORY to the release tap owner/repository.' >&2; exit 1;
           }
+          [[ "$PROFILE_ID" =~ ^[A-Za-z0-9-]+$ ]] || { echo "Set MACOS_PROVISIONING_PROFILE_ID." >&2; exit 1; }
           echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
@@ -63,20 +65,10 @@ jobs:
           git diff --exit-code -- packages/LifeKit/Sources/LifeKit/Resources
           swift test --package-path packages/LifeKit
 
-      - name: Build unsigned universal app
+      - name: Generate macOS project
         run: |
           brew install xcodegen
           xcodegen generate --spec apps/macos/project.yml
-          xcodebuild -project apps/macos/LifeUI.xcodeproj -scheme LifeUI \
-            -configuration Release -destination 'generic/platform=macOS' \
-            -derivedDataPath "$RUNNER_TEMP/life-ui-release" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
-            ONLY_ACTIVE_ARCH=NO 'ARCHS=arm64 x86_64' \
-            MARKETING_VERSION="$RELEASE_VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" build
-          mkdir -p build
-          ditto "$RUNNER_TEMP/life-ui-release/Build/Products/Release/$APP.app" "build/$APP.app"
-          lipo "build/$APP.app/Contents/MacOS/$APP" -verify_arch arm64
-          lipo "build/$APP.app/Contents/MacOS/$APP" -verify_arch x86_64
 
       - uses: 1Password/install-cli-action@v4
       # Bootstrap manifest references intentionally use names. Apple Signing is
@@ -111,13 +103,59 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
           test -n "$IDENTITY"
-          find "build/$APP.app/Contents" -depth \
-            \( -name '*.framework' -o -name '*.dylib' -o -name '*.xpc' -o -name '*.app' \) \
-            -print0 | while IFS= read -r -d '' ITEM; do
-              codesign --force --options runtime --timestamp --sign "$IDENTITY" "$ITEM"
-            done
-          codesign --force --options runtime --timestamp --sign "$IDENTITY" "build/$APP.app"
-          codesign --verify --deep --strict --verbose=2 "build/$APP.app"
+          IDENTITY_SHA=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/Developer ID Application/ {print $2; exit}')
+          [[ "$IDENTITY_SHA" =~ ^[A-Fa-f0-9]{40}$ ]]
+          TEAM_ID=$(printf '%s' "$IDENTITY" | sed -nE 's/.*\(([A-Z0-9]{10})\)$/\1/p')
+          [[ "$TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]
+          # Read the app-owned profile by its stable API ID. This lane never
+          # creates profiles/certificates or requests cloud signing permissions.
+          bun - <<'JS'
+          const {createPrivateKey,sign}=require('node:crypto');
+          const {mkdirSync}=require('node:fs');
+          const {homedir}=require('node:os');
+          const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
+          const now=Math.floor(Date.now()/1000);
+          const input=encode({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'})+'.'+encode({iss:process.env.ASC_ISSUER_ID,iat:now,exp:now+120,aud:'appstoreconnect-v1'});
+          const key=createPrivateKey(Buffer.from(process.env.ASC_KEY_P8_BASE64,'base64'));
+          const jwt=input+'.'+sign('sha256',Buffer.from(input),{key,dsaEncoding:'ieee-p1363'}).toString('base64url');
+          const response=await fetch('https://api.appstoreconnect.apple.com/v1/profiles/'+encodeURIComponent(process.env.PROFILE_ID),{headers:{Authorization:'Bearer '+jwt}});
+          if(!response.ok) throw Error('Profile download HTTP '+response.status);
+          const profile=(await response.json()).data.attributes;
+          if(profile.profileType!=='MAC_APP_DIRECT'||profile.profileState!=='ACTIVE'||Date.parse(profile.expirationDate)<=Date.now()) throw Error('Active Developer ID profile required');
+          if(!/^[a-f0-9-]{36}$/i.test(profile.uuid)) throw Error('Invalid profile UUID');
+          const directory=homedir()+'/Library/Developer/Xcode/UserData/Provisioning Profiles';
+          mkdirSync(directory,{recursive:true});
+          await Bun.write(directory+'/'+profile.uuid+'.provisionprofile',Buffer.from(profile.profileContent,'base64'));
+          await Bun.write(process.env.RUNNER_TEMP+'/profile-selection.json',JSON.stringify({uuid:profile.uuid}));
+          JS
+          # Keep entitlement metadata in the archive; Xcode resolves the final
+          # App ID prefix from the distribution profile during manual export.
+          xcodebuild -project apps/macos/LifeUI.xcodeproj -scheme LifeUI \
+            -configuration Release -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/life-ui-release" \
+            -archivePath "$RUNNER_TEMP/LifeUI.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- \
+            ONLY_ACTIVE_ARCH=NO 'ARCHS=arm64 x86_64' \
+            MARKETING_VERSION="$RELEASE_VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" archive
+          python3 - "$TEAM_ID" "$IDENTITY_SHA" "$RUNNER_TEMP" "$APP" <<'PYTHON'
+          import json,plistlib,sys
+          from pathlib import Path
+          team,certificate,root,app=sys.argv[1:]
+          root=Path(root)
+          info=plistlib.loads((root/'LifeUI.xcarchive/Products/Applications'/f'{app}.app/Contents/Info.plist').read_bytes())
+          profile=json.loads((root/'profile-selection.json').read_text())
+          (root/'export-options.plist').write_bytes(plistlib.dumps({'method':'developer-id','signingStyle':'manual','teamID':team,'signingCertificate':certificate,'provisioningProfiles':{info['CFBundleIdentifier']:profile['uuid']}}))
+          PYTHON
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/LifeUI.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export-options.plist"
+          mkdir -p build
+          ditto "$RUNNER_TEMP/export/$APP.app" "build/$APP.app"
+          lipo "build/$APP.app/Contents/MacOS/$APP" -verify_arch arm64
+          lipo "build/$APP.app/Contents/MacOS/$APP" -verify_arch x86_64
+          python3 scripts/verify-macos-signing.py "build/$APP.app" "$TEAM_ID" "$IDENTITY_SHA"
+          ENTITLEMENTS="$RUNNER_TEMP/life-ui-entitlements.plist"
+          codesign -d --entitlements - --xml "build/$APP.app" > "$ENTITLEMENTS"
+          bash scripts/test-macos-keychain.sh "build/$APP.app" "$IDENTITY_SHA" "$ENTITLEMENTS"
           ditto -c -k --keepParent "build/$APP.app" "build/$APP-notarize.zip"
           printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-notary.p8"
           xcrun notarytool submit "build/$APP-notarize.zip" \
