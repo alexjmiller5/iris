@@ -349,6 +349,13 @@ flows. Run the full applicable suites after the final source change. Use an
 isolated simulator if another project is driving the shared default device.
 iOS record screens use inline navigation titles and no extra top list content
 margin; keep title, controls and first list row separate and compact.
+iOS uses native bottom toolbar actions for Views, Filter, Find and Schema graph;
+workspace actions are in the ellipsis Menu and full sync/location details in the
+status sheet. Keep active errors and incomplete-table notices visible. Do not
+reintroduce a permanent multiline sync footer. The graph sheet shares the offline
+WebKit coordinator and bundled FK/group component with macOS; dismiss first,
+then re-resolve the selected table through guarded navigation. `NativeControlsUITests`
+checks menu/status/graph navigation and accessibility text sizing with screenshots.
 `HeaderUITests` checks their geometry and retains screenshots. Its empty-workspace
 case uses `HeaderUIFixtureTests` with `TEST_RUNNER_LIFE_UI_TEST_HEADER_SIMULATOR`
 set to the exact disposable simulator UDID; run the fixture before the UI tests.

@@ -122,6 +122,7 @@ final class NavigationUITests: XCTestCase {
     showSidebar(app)
     capture(app, "native-navigation-system-tables")
     let close = app.buttons["Close workspace"]
+    tap(app.buttons["workspace-menu"])
     tap(close)
     tap(app.buttons["open-sample"])
     showSidebar(app)
@@ -129,6 +130,7 @@ final class NavigationUITests: XCTestCase {
     tap(app.buttons["sidebar-table-topics"])
     showSidebar(app)
     XCTAssertEqual(app.buttons.matching(identifier: "open-recent").count, 1)
+    tap(app.buttons["workspace-menu"])
     tap(close)
     tap(app.buttons["open-sample"])
     showSidebar(app)

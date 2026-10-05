@@ -119,6 +119,7 @@ final class RejectionInboxUITests: XCTestCase {
   }
 
   private func openIssues(_ app: XCUIApplication) {
+    tap(app.buttons["workspace-menu"])
     tap(app.buttons["workspace-issues"])
     XCTAssertTrue(app.staticTexts["rejected-edit-count"].waitForExistence(timeout: 10))
   }

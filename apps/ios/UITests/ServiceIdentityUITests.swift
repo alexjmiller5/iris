@@ -73,7 +73,8 @@ final class ServiceIdentityUITests: XCTestCase {
   private func openServices(_ app: XCUIApplication, destination: String) throws {
     let bar = app.navigationBars["widgets"]
     XCTAssertTrue(bar.waitForExistence(timeout: 20))
-    let settings = bar.buttons["Hub connection"]
+    app.buttons["workspace-menu"].tap()
+    let settings = app.buttons["Hub connection"]
     XCTAssertTrue(settings.waitForExistence(timeout: 5))
     settings.tap()
     let link = app.buttons[destination]

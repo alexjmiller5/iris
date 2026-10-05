@@ -1,4 +1,4 @@
-#if os(macOS)
+#if canImport(WebKit)
   import Foundation
   import Testing
   import WebKit
@@ -8,14 +8,23 @@
   struct SchemaGraphTests {
     @Test func bundledGraphRendersAndNavigatesWithoutNetwork() async throws {
       let coordinator = SchemaGraphView.Coordinator()
-      coordinator.tableIDs = ["widgets"]
+      coordinator.tableIDs = ["widgets", "categories"]
       coordinator.payload = .object([
         "tables": .array([
-          .object(["id": .string("widgets"), "purpose": .string("Synthetic table")])
+          .object(["id": .string("widgets"), "purpose": .string("Synthetic table")]),
+          .object(["id": .string("categories")]),
         ]),
-        "properties": .array([]), "groups": .object([:]),
+        "properties": .array([
+          .object([
+            "tbl": .string("widgets"), "col": .string("category"),
+            "type": .string("ref"), "ref_table": .string("categories"),
+          ])
+        ]),
+        "groups": .object(["widgets": .string("Inventory")]),
       ])
       var opened: String?
+      var savedGroups: [String: String]?
+      coordinator.saveGroups = { savedGroups = $0 }
       coordinator.openTable = { opened = $0 }
       let config = WKWebViewConfiguration()
       config.websiteDataStore = .nonPersistent()
@@ -39,6 +48,25 @@
       )
       for _ in 0..<50 where opened == nil { try await Task.sleep(for: .milliseconds(10)) }
       #expect(opened == "widgets")
+      let relationships = try await script(
+        view, "String(document.querySelectorAll('.relationship').length)")
+      #expect(relationships == "1")
+      _ = try await script(
+        view, "document.querySelector('.relationships button:last-of-type').click(); 'clicked'")
+      for _ in 0..<50 where opened != "categories" { try await Task.sleep(for: .milliseconds(10)) }
+      #expect(opened == "categories")
+      _ = try await script(
+        view,
+        "const i = document.querySelector('[aria-label=\"Group for widgets\"]'); i.value='Supplies'; i.dispatchEvent(new Event('change', {bubbles:true})); 'changed'"
+      )
+      for _ in 0..<50 where savedGroups == nil { try await Task.sleep(for: .milliseconds(10)) }
+      #expect(savedGroups?["widgets"] == "Supplies")
+      _ = try await script(
+        view,
+        "window.webkit.messageHandlers.lifeGraph.postMessage({type:'openTable',table:'not-in-catalog'}); 'sent'"
+      )
+      try await Task.sleep(for: .milliseconds(50))
+      #expect(opened == "categories")
     }
     private func script(_ view: WKWebView, _ script: String) async throws -> String {
       try await withCheckedThrowingContinuation { continuation in

@@ -42,15 +42,12 @@ final class HeaderUITests: XCTestCase {
     XCTAssertLessThanOrEqual(title.frame.maxY, views.frame.minY)
     XCTAssertLessThanOrEqual(
       bar.frame.height, 64, "Use a compact navigation title above table controls")
-    XCTAssertLessThan(views.frame.maxY, app.frame.height * 0.25)
-    let issues = app.buttons["workspace-issues"]
-    XCTAssertTrue(issues.exists)
-    print(
-      "Header geometry: \(name), bar=\(bar.frame.height), list gap=\(issues.frame.minY - views.frame.maxY)"
-    )
-    XCTAssertLessThanOrEqual(
-      issues.frame.minY - views.frame.maxY, 32,
-      "The list must follow the controls without a second navigation-sized gap")
+    XCTAssertGreaterThan(views.frame.minY, app.frame.height * 0.7)
+    let list = app.collectionViews.firstMatch
+    XCTAssertTrue(list.exists)
+    XCTAssertGreaterThan(
+      list.frame.height, app.frame.height * 0.5,
+      "Native controls must leave the records most of the screen")
     XCTAssertTrue(views.isHittable)
   }
 
