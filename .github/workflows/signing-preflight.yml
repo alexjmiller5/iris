@@ -63,6 +63,37 @@ jobs:
           TEAM_ID=$(printf '%s' "$IDENTITY" | sed -nE 's/.*\(([A-Z0-9]{10})\)$/\1/p')
           [[ "$TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]
           printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-notary.p8"
+          # One app-owned profile against the already imported certificate only.
+          # No certificate creation endpoint is used.
+          IDENTITY_SHA="$IDENTITY_SHA" bun - <<'JS'
+          const {createPrivateKey,sign,X509Certificate}=require('node:crypto');
+          const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
+          const now=Math.floor(Date.now()/1000);
+          const input=encode({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'})+'.'+encode({iss:process.env.ASC_ISSUER_ID,iat:now,exp:now+300,aud:'appstoreconnect-v1'});
+          const key=createPrivateKey(Buffer.from(process.env.ASC_KEY_P8_BASE64,'base64'));
+          const jwt=input+'.'+sign('sha256',Buffer.from(input),{key,dsaEncoding:'ieee-p1363'}).toString('base64url');
+          async function api(path,data) {
+            const response=await fetch('https://api.appstoreconnect.apple.com/v1/'+path,{method:data?'POST':'GET',headers:{Authorization:'Bearer '+jwt,'Content-Type':'application/json'},body:data?JSON.stringify({data}):undefined});
+            const result=await response.json();
+            console.log((data?'POST ':'GET ')+path.split('?')[0]+': HTTP '+response.status);
+            if(!response.ok) { console.log('API error codes:',(result.errors??[]).map(e=>e.code).join(','));process.exit(1); }
+            return result;
+          }
+          const bundle='com.alexmiller.life-ui';
+          const certs=await api('certificates?filter[certificateType]=DEVELOPER_ID_APPLICATION,DEVELOPER_ID_APPLICATION_G2&limit=200');
+          const matches=certs.data.filter(c=>new X509Certificate(Buffer.from(c.attributes.certificateContent,'base64')).fingerprint.replaceAll(':','').toUpperCase()===process.env.IDENTITY_SHA.toUpperCase());
+          if(matches.length!==1) throw Error('Expected exactly one existing certificate match');
+          const cert=matches[0];
+          const ids=await api('bundleIds?filter[identifier]='+bundle+'&filter[platform]=MAC_OS&limit=200');
+          if(ids.data.length>1) throw Error('Ambiguous app identity');
+          const app=ids.data[0]??(await api('bundleIds',{type:'bundleIds',attributes:{identifier:bundle,name:'Life UI',platform:'MAC_OS'}})).data;
+          const profiles=await api('profiles?filter[profileType]=MAC_APP_DIRECT&filter[name]=Life%20UI%20Developer%20ID&include=bundleId,certificates&limit=200');
+          const valid=profiles.data.filter(p=>p.attributes.profileState==='ACTIVE'&&Date.parse(p.attributes.expirationDate)>Date.now()&&p.relationships.bundleId.data.id===app.id&&p.relationships.certificates.data.some(c=>c.id===cert.id));
+          if(valid.length>1) throw Error('Ambiguous app profile');
+          const profile=valid[0]??(await api('profiles',{type:'profiles',attributes:{name:'Life UI Developer ID',profileType:'MAC_APP_DIRECT'},relationships:{bundleId:{data:{type:'bundleIds',id:app.id}},certificates:{data:[{type:'certificates',id:cert.id}]}}})).data;
+          await Bun.write(process.env.RUNNER_TEMP+'/profile-selection.json',JSON.stringify({uuid:profile.attributes.uuid,bundle}));
+          console.log('Existing-certificate app profile selected');
+          JS
           brew install xcodegen
           mkdir -p "$RUNNER_TEMP/probe-source"
           cp packages/LifeKit/Sources/LifeKit/HubCredentials.swift scripts/macos-keychain-probe.swift "$RUNNER_TEMP/probe-source/"
@@ -93,7 +124,9 @@ jobs:
           python3 - "$TEAM_ID" "$RUNNER_TEMP/export.plist" "$IDENTITY_SHA" <<'PYTHON'
           import plistlib,sys
           with open(sys.argv[2], 'wb') as f:
-              plistlib.dump({'method':'developer-id','signingStyle':'automatic','teamID':sys.argv[1],'signingCertificate':sys.argv[3]},f)
+              import json,os
+              profile=json.load(open(os.environ['RUNNER_TEMP']+'/profile-selection.json'))
+              plistlib.dump({'method':'developer-id','signingStyle':'manual','teamID':sys.argv[1],'signingCertificate':sys.argv[3],'provisioningProfiles':{profile['bundle']:profile['uuid']}},f)
           PYTHON
           xcodebuild -quiet -exportArchive -archivePath "$RUNNER_TEMP/KeychainProbe.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \

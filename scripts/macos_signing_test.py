@@ -88,6 +88,8 @@ class SigningTests(unittest.TestCase):
             ("ExpirationDate", datetime.datetime(2000, 1, 1)),
             ("DeveloperCertificates", [b"different-cert"]),
             ("ApplicationIdentifierPrefix", [self.team]),
+            ("ApplicationIdentifierPrefix", []),
+            ("ApplicationIdentifierPrefix", ["PREFIX0001", "PREFIX0002"]),
             ("TeamIdentifier", ["OTHERTEAM1"]),
             ("ProvisionsAllDevices", False),
             ("Platform", ["iOS"]),
