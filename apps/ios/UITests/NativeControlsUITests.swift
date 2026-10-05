@@ -25,7 +25,20 @@ final class NativeControlsUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["Schema graph"].waitForExistence(timeout: 3))
     let table = app.webViews.buttons["Open table topics"]
     XCTAssertTrue(table.waitForExistence(timeout: 10), app.debugDescription)
+    for name in ["notes", "topics", "history", "views"] {
+      let node = app.webViews.buttons["Open table " + name]
+      XCTAssertTrue(node.exists)
+      XCTAssertGreaterThanOrEqual(node.frame.minX, app.webViews.firstMatch.frame.minX)
+      XCTAssertLessThanOrEqual(node.frame.maxX, app.webViews.firstMatch.frame.maxX)
+    }
     capture(app, "native-schema-graph")
+    let fittedWidth = table.frame.width
+    app.webViews.buttons["Zoom in"].tap()
+    XCTAssertGreaterThan(table.frame.width, fittedWidth)
+    capture(app, "native-schema-graph-readable-zoom")
+    // aria-pressed exposes the native WebKit fit control as a toggle, not a plain button.
+    app.webViews.descendants(matching: .any)["Fit graph"].firstMatch.tap()
+    XCTAssertEqual(table.frame.width, fittedWidth, accuracy: 1)
     let relationships = app.webViews.descendants(matching: .any).matching(
       NSPredicate(format: "label BEGINSWITH %@", "Relationship details (")
     ).firstMatch
