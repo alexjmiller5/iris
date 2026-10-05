@@ -52,12 +52,11 @@ final class TableNavigationUITests: XCTestCase {
     let savedTitle = try XCTUnwrap(title.value as? String)
     tap(app.buttons["save-record"], app)
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 5), app.debugDescription)
-    let menu = app.buttons["workspace-menu"]
-    if menu.exists { tap(menu, app) }
+    tap(app.buttons["workspace-status"], app)
     XCTAssertTrue(app.buttons["sync-now"].exists)
     XCTAssertFalse(
       app.buttons["sync-now"].isEnabled, "The sync must still be active after the save")
-    if menu.exists { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).tap() }
+    tap(app.buttons["status-done"], app)
     tap(
       app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", savedTitle)).firstMatch, app)
     XCTAssertEqual(
@@ -108,13 +107,7 @@ final class TableNavigationUITests: XCTestCase {
   }
 
   private func revealSidebar(_ element: XCUIElement, _ app: XCUIApplication) {
-    let footer = app.staticTexts.matching(
-      NSPredicate(
-        format: "label IN %@",
-        [
-          "Hub workspace · local replica", "Local workspace · saved on this device",
-        ])
-    ).firstMatch
+    let footer = app.toolbars.buttons["workspace-status"]
     for _ in 0..<8 {
       if element.exists {
         let frame = element.frame
@@ -131,7 +124,7 @@ final class TableNavigationUITests: XCTestCase {
         app.swipeUp()
       }
     }
-    XCTFail("Sidebar control must be visible above the fixed footer: \(element)")
+    XCTFail("Sidebar control must be visible above the native toolbar: \(element)")
   }
 
   private func tap(_ element: XCUIElement, _ app: XCUIApplication) {

@@ -351,7 +351,11 @@ iOS record screens use inline navigation titles and no extra top list content
 margin; keep title, controls and first list row separate and compact.
 iOS uses native bottom toolbar actions for Views, Filter, Find and Schema graph;
 workspace actions are in the ellipsis Menu and full sync/location details in the
-status sheet. Keep active errors and incomplete-table notices visible. Do not
+status sheet. Active sync details show phase, table, page/row counts and elapsed
+time with Cancel sync. Cancellation calls the model and keeps sync controls busy
+until the owning operation unwinds. `SyncStatusUITests` uses the held loopback
+fixture to verify cancellation before server release and preserve the workspace.
+Keep active errors and incomplete-table notices visible. Do not
 reintroduce a permanent multiline sync footer. The graph sheet shares the offline
 WebKit coordinator and bundled FK/group component with macOS; dismiss first,
 then re-resolve the selected table through guarded navigation. `NativeControlsUITests`
