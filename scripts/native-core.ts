@@ -16,7 +16,8 @@ declare function __lifePost(route: string, body: string, callback: (json: string
 declare function __lifeGet(route: string, callback: (json: string) => void): void;
 declare function __lifeFinish(id: number, json: string): void;
 
-// The Swift facade queues whole requests, including every awaited callback.
+// The Swift facade owns whole database operations. HTTP awaits yield ownership
+// only outside transactions; their callbacks resume after foreground work.
 // JSC has no browser event loop: the host schedules a real main-actor turn.
 const turn = () => new Promise<void>((resolve) => __lifeYield(resolve));
 const db: SqlDriver = {

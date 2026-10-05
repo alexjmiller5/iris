@@ -363,11 +363,11 @@ xcodebuild -project apps/ios/LifeUI.xcodeproj -scheme LifeUI \
   -only-testing:LifeUIUITests/TableNavigationUITests
 ```
 
-This holds a real sync response, cancels queued navigation, verifies immediate
-control recovery with sync still running, and checks late replies and replacement
-navigation. Run again without `TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_HUB` for repeated
+This holds a real sync response while opening a large cached table, returning to
+notes, saving an edit and reopening the stored record. Run again without
+`TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_HUB` for repeated
 local large-table navigation. Each mode skips the other mode's tests. Retained
-XCTest screenshots show the waiting and recovered states. Stop the fixture server
+XCTest screenshots show the saved record while sync remains held. Stop the fixture server
 when finished. Cancellation affects navigation only; opening another destination
 can still wait behind sync's serialized transaction ownership.
 
