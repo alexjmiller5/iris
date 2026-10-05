@@ -275,10 +275,13 @@ The credential stays in this device's Keychain and is never copied to another
 device. Loopback HTTP is supported for development.
 
 An established Keychain-backed replica reopens offline without requiring a fresh
-session response. Cached records appear before sync finishes. **Sync now** sends
-and receives updates; failures keep local records and edits available. Durable
-pending/rejected counts and the last successful sync remain visible while
-scrolling. Open **Issues** to page through durable rejected edits, including after
+session response. Cached records and local saves remain available while network
+sync runs. While the app is open, saved edits sync automatically after a short
+pause, with periodic catch-up every minute. Failed or cancelled rounds wait a
+minute before automatic retry; **Sync now** retries immediately. The status button
+opens progress, elapsed time, Cancel, pending/rejected counts and the last
+successful sync. Failures keep local records, edits and drafts available.
+Open **Issues** to page through durable rejected edits, including after
 reopening offline. **Review edit** opens the current local record with the rejected
 editable values held in a paused draft. Save a correction, then sync; only an
 accepted sync removes the inbox entry. Trashed records require Restore first,
