@@ -322,6 +322,11 @@ notarization and installed distribution are separate verification steps.
 Test behavior before implementation, then verify real SQLite, JSC and browser
 flows. Run the full applicable suites after the final source change. Use an
 isolated simulator if another project is driving the shared default device.
+iOS record screens use inline navigation titles and no extra top list content
+margin; keep title, controls and first list row separate and compact.
+`HeaderUITests` checks their geometry and retains screenshots. Its empty-workspace
+case uses `HeaderUIFixtureTests` with `TEST_RUNNER_LIFE_UI_TEST_HEADER_SIMULATOR`
+set to the exact disposable simulator UDID; run the fixture before the UI tests.
 
 Web design tokens live in `apps/web/src/theme.css`; use Tabler UI icons,
 accessible controls, keyboard focus and narrow-screen layouts. Native views use
