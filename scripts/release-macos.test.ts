@@ -167,3 +167,58 @@ for (const fixture of cases)
       await rm(root, { recursive: true, force: true });
     }
   });
+
+test.skipIf(process.platform !== "darwin")(
+  "universal verification accepts both architectures and rejects a thin app",
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "life-ui-universal-test-"));
+    try {
+      const executable = join(root, "build/Fixture.app/Contents/MacOS/Fixture");
+      await mkdir(join(root, "build/Fixture.app/Contents/MacOS"), {
+        recursive: true,
+      });
+      const source = join(root, "fixture.c");
+      await writeFile(source, "int main(void) { return 0; }\n");
+      const step = workflow.jobs.release.steps.find(
+        (step: any) => step.name === "Build unsigned universal app",
+      ).run;
+      const command = step
+        .split("\n")
+        .filter((line: string) => line.trim().startsWith("lipo "))
+        .join("\n");
+      expect(command).toBeDefined();
+      for (const architectures of [
+        ["arm64", "x86_64"],
+        ["arm64"],
+        ["x86_64"],
+      ]) {
+        const compile = Bun.spawn(
+          [
+            "xcrun",
+            "clang",
+            ...architectures.flatMap((arch) => ["-arch", arch]),
+            source,
+            "-o",
+            executable,
+          ],
+          { stdout: "pipe", stderr: "pipe" },
+        );
+        expect(await compile.exited).toBe(0);
+        const verify = Bun.spawn(["bash", "-euc", command], {
+          cwd: root,
+          env: { ...process.env, APP: "Fixture" },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const code = await verify.exited;
+        const diagnostic =
+          (await new Response(verify.stdout).text()) +
+          (await new Response(verify.stderr).text());
+        if (architectures.length === 2) expect(code, diagnostic).toBe(0);
+        else expect(code).not.toBe(0);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
