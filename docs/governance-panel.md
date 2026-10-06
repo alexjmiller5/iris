@@ -35,8 +35,9 @@ are displayed without interpreting markup. Unknown historical values, SQL null,
 empty text and lossless integer strings remain distinct. Purge/authority loss clears
 cached display content and invalidates late page/preview responses.
 
-`contract.ts` is the explicitly permitted provisional type-only copy of the Life Data
-contract. Root must replace it with generated imports after regenerating from
+`contract.ts` re-exports the canonical generated Life Data wire types; `api.ts`
+uses generated argument and result types for every method. The generic read
+envelope remains only for local presentation helpers. The bundle is generated from
 Life Data `f0ed465d230c96dd63c2610691274034c34c79e9`, contract hash
 `323ba793aeb8962d9555f48d80ccf486bf1010116f1f1b89d8c33f9491c26d12`.
 This is the generated DTO source prerequisite, separate from the proposed transport
@@ -106,8 +107,8 @@ not exercise HTTP classification. The future core adapter must validate the comp
 status/code/resolution matrix, mapping malformed or unlisted pairs to indeterminate after
 dispatch. The model does not implement that matrix or infer authentication/negative-receipt
 durability. Real positive and negative receipt writers and capability advertisement remain
-required before activation. No generated core/resource, host, service or release change is
-part of this model correction.
+required before activation. Importing canonical types does not enable a host, service
+adapter or approval action.
 
 Actual browser checks are prepared in `scripts/check-governance-browser.ts`. Allocate
 two owned disposable targets through the existing browser helper and supply their IDs;
