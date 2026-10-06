@@ -25,7 +25,7 @@ jobs:
       - run: bun run test
       - name: Governance presentation boundaries
         run: |
-          bun test scripts/governance-review.test.ts scripts/governance-approval.test.ts scripts/governance-journal.test.ts scripts/governance-list.test.ts scripts/governance-panel.test.ts
+          bun test scripts/governance-review.test.ts scripts/governance-approval.test.ts scripts/governance-journal.test.ts scripts/governance-list.test.ts scripts/governance-panel.test.ts scripts/governance-service-binding.test.ts
           bun scripts/check-governance-boundaries.ts
           bun --conditions=browser scripts/check-governance-panel-dom.ts
       - run: bun run check
