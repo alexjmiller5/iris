@@ -75,6 +75,13 @@ authenticated installation registration, not from a token callback, permission
 grant, previous session or registration attempt. Its default is false because
 the existing apps do not yet register for push.
 
+Readiness must bind the server receipt to the exact deployment, current
+authenticated session, installation and token generation. Rotation, logout,
+session replacement or deployment replacement invalidates readiness immediately.
+An async registration receipt is accepted only when its captured generation
+still equals the current generation. The canonical registration API is not yet
+available; this gate is the integration boundary, not a client HTTP adapter.
+
 The delivery gate checks readiness again after awaiting OS permission settings,
 so registration that finishes during that lookup suppresses local scheduling.
 Suppression advances the presentation baseline but does not claim the event was
