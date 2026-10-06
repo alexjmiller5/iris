@@ -4,6 +4,7 @@
 	import { IconPlus, IconCopy, IconTrash, IconRestore } from '@tabler/icons-svelte';
 	import type { Property, Row, RowAction, ViewLayoutItem } from 'life-ui-core/client';
 	import FieldEditor from './FieldEditor.svelte';
+	import type { RetainedFileResolver } from './retained-files';
 	import {
 		createCellEditor,
 		moveCell,
@@ -31,6 +32,8 @@
 		options = {},
 		referenceOptions = () => [],
 		onsearch = () => {},
+		resolveFile,
+		onopenlink,
 		actions = [],
 		actionLayout = undefined,
 		canRunAction = false,
@@ -59,6 +62,8 @@
 		options?: Record<string, string[]>;
 		referenceOptions?(p: Property): { id: string; label: string }[];
 		onsearch?(p: Property, query: string): void;
+		resolveFile?: RetainedFileResolver;
+		onopenlink?(href: string): Promise<boolean>;
 	} = $props();
 	let root: HTMLDivElement, virtualizer: Virtualizer<Row>;
 	let scrollRef: HTMLDivElement | undefined = $state();
@@ -78,15 +83,6 @@
 	$effect(() => {
 		if (!edit && cellState.edit && cellState.phase !== 'saving') controller.discard();
 	});
-	const columns = $derived(properties.map((p) => p.col));
-	$effect(() => {
-		if (
-			cursor &&
-			!edit &&
-			(!columns.includes(cursor.column) || !rows.some((row) => String(row.id) === cursor?.rowId))
-		)
-			cursor = moveCell(rows, columns, cursor, 0, 0);
-	});
 	const gridItems = $derived.by(() => {
 		const candidates = [
 			...properties.map((p) => ({ kind: 'column' as const, id: p.col })),
@@ -99,6 +95,17 @@
 			...ordered,
 			...candidates.filter((c) => !ordered.some((i) => c.kind === i.kind && c.id === i.id))
 		];
+	});
+	const columns = $derived(
+		gridItems.filter((item) => item.kind === 'column').map((item) => item.id)
+	);
+	$effect(() => {
+		if (
+			cursor &&
+			!edit &&
+			(!columns.includes(cursor.column) || !rows.some((row) => String(row.id) === cursor?.rowId))
+		)
+			cursor = moveCell(rows, columns, cursor, 0, 0);
 	});
 	const itemWidth = (item: ViewLayoutItem) =>
 		item.kind === 'action'
@@ -115,7 +122,12 @@
 		if (busy || runningAction || !canRunAction) return;
 		runningAction = true;
 		try {
-			if (await commit()) await onaction(id, row);
+			const saved = await commit();
+			if (saved && alive) {
+				const target =
+					typeof saved === 'object' && String(saved.id) === String(row.id) ? saved : row;
+				await onaction(id, target);
+			}
 		} finally {
 			runningAction = false;
 		}
@@ -149,6 +161,33 @@
 			element?.focus();
 			element?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 		}
+	}
+	async function leaveGrid(cell: CellKey, backwards: boolean) {
+		// The save removes the focused editor and may filter its row out. Restore
+		// the cursor, then traverse from the grid boundary that survives a refresh.
+		await focus(cell);
+		if (!alive) return;
+		const anchor = root.querySelector<HTMLElement>('[role="grid"]');
+		if (!anchor) return;
+		const stops = Array.from(
+			root.ownerDocument.querySelectorAll<HTMLElement>(
+				'a[href],button,input,select,textarea,summary,[tabindex],[contenteditable="true"],[role="grid"]'
+			)
+		)
+			.filter(
+				(element) =>
+					(element === anchor || (element.tabIndex >= 0 && !anchor.contains(element))) &&
+					!element.matches(':disabled') &&
+					!element.closest('[inert]') &&
+					element.getClientRects().length > 0 &&
+					getComputedStyle(element).visibility === 'visible'
+			)
+			.sort(
+				(a, b) =>
+					(a.tabIndex > 0 ? a.tabIndex : Infinity) - (b.tabIndex > 0 ? b.tabIndex : Infinity)
+			);
+		const index = stops.indexOf(anchor);
+		if (index >= 0) stops[index + (backwards ? -1 : 1)]?.focus();
 	}
 	async function commit() {
 		const saved = await controller.commit(oncommit);
@@ -209,7 +248,7 @@
 					: cell;
 			if (await commit()) {
 				if (next) await focus(next);
-				else root.querySelector<HTMLButtonElement>('[aria-label="New record at bottom"]')?.focus();
+				else await leaveGrid(cell, event.shiftKey);
 			}
 			return;
 		}
@@ -245,6 +284,8 @@
 			{property}
 			value={draft.raw}
 			onchange={controller.change}
+			{resolveFile}
+			{onopenlink}
 			disabled={busy || cellState.phase === 'saving' || !canEdit(property)}
 			options={options[property.col]}
 			references={referenceOptions(property)}
@@ -329,7 +370,7 @@
 									? cursor.rowId === cell.rowId && cursor.column === cell.column
 										? 0
 										: -1
-									: rows[0] === row && columnIndex === 0
+									: rows[0] === row && property.col === columns[0]
 										? 0
 										: -1}
 								class:pinned={columnIndex === 0}

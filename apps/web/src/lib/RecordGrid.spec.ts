@@ -69,7 +69,7 @@ test.each([false, true])(
 	}
 );
 
-test('configured action columns interleave with data and honor disabled state', () => {
+test('configured action columns reorder data and keep the first visible data cell tabbable', () => {
 	const window = new Window();
 	window.document.body.innerHTML = render(RecordGrid, {
 		props: {
@@ -83,9 +83,9 @@ test('configured action columns interleave with data and honor disabled state', 
 			canCreate: false,
 			actions: [{ id: 'close', label: 'Close item', values: { state: 'Closed' } }],
 			actionLayout: [
-				{ kind: 'column', id: 'title' },
 				{ kind: 'action', id: 'close' },
-				{ kind: 'column', id: 'state' }
+				{ kind: 'column', id: 'state' },
+				{ kind: 'column', id: 'title' }
 			],
 			canRunAction: false,
 			onaction: async () => {},
@@ -99,10 +99,16 @@ test('configured action columns interleave with data and honor disabled state', 
 		} as never
 	}).body;
 	expect([...window.document.querySelectorAll('th')].map((e) => e.textContent?.trim())).toEqual([
-		'Title',
 		'Close item',
-		'State'
+		'State',
+		'Title'
 	]);
+	expect(window.document.querySelector('[data-column="state"]')?.getAttribute('tabindex')).toBe(
+		'0'
+	);
+	expect(window.document.querySelector('[data-column="title"]')?.getAttribute('tabindex')).toBe(
+		'-1'
+	);
 	expect(
 		window.document.querySelector('button[aria-label="Close item"]')?.hasAttribute('disabled')
 	).toBe(true);

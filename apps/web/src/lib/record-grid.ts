@@ -105,7 +105,9 @@ export function createCellEditor(publish: (state: CellState) => void) {
 			if (state.phase === 'editing' && state.edit)
 				set({ ...state, edit: { ...state.edit, raw }, error: '' });
 		},
-		async commit(save: (edit: CellDraft) => Promise<Row>) {
+		// Keep the complete accepted row for an action that follows this save.
+		// true means no write was needed; false means the caller must stay put.
+		async commit(save: (edit: CellDraft) => Promise<Row>): Promise<Row | boolean> {
 			if (state.phase === 'saving' || state.phase === 'loading') return false;
 			const edit = state.edit;
 			if (!edit) return true;
@@ -116,10 +118,10 @@ export function createCellEditor(publish: (state: CellState) => void) {
 			const request = generation;
 			set({ ...state, phase: 'saving', error: '' });
 			try {
-				await save(edit);
+				const stored = await save(edit);
 				if (request !== generation) return false;
 				set({ edit: null, phase: 'idle', error: '' });
-				return true;
+				return stored;
 			} catch (error) {
 				if (request === generation)
 					set({

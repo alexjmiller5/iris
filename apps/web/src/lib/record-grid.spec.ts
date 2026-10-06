@@ -103,9 +103,25 @@ test('rejected commit keeps raw input and the original revision; retry returns i
 			calls.push(edit);
 			return { ...row, qty: 44 };
 		})
-	).toBe(true);
+	).toEqual({ ...row, qty: 44 });
 	expect(calls).toEqual([{ cell: { rowId: 'a', column: 'qty' }, baseline: row, raw: '44' }]);
 	expect(editor.state.edit).toBeNull();
+});
+
+test('a committed cell returns the complete writer receipt for a following row action', async () => {
+	const editor = createCellEditor(() => {});
+	await editor.begin({ rowId: 'a', column: 'qty' }, async () => row);
+	editor.change('44');
+	const stored = { ...row, qty: 44, updated_at: '2026-01-02T00:00:00.000Z', derived: 'new' };
+	const receipt = await editor.commit(async () => stored);
+	expect(receipt).toEqual(stored);
+	expect(editor.state.edit).toBeNull();
+	// A later action with no edit must never reuse a prior receipt.
+	expect(
+		await editor.commit(async () => {
+			throw Error('No write expected');
+		})
+	).toBe(true);
 });
 
 test('pending commits cannot discard, type or submit twice, and unchanged cells do not write', async () => {
