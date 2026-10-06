@@ -8,7 +8,7 @@ development prerequisite; the Nix app package does not build Swift.
 ## Signed macOS app
 
 `nix build .#life-ui` produces `result/Applications/LifeUI.app`. The default
-package pins the published universal **0.2.0** ZIP by SHA-256. It extracts and
+package pins the published universal **0.3.0** ZIP by SHA-256. It extracts and
 copies the bundle without fixup, stripping, patching or re-signing. The embedded
 profile, entitlements and stapled notarization ticket stay with the app.
 App packages support Apple Silicon and Intel macOS. Their Nixpkgs 26.05 pin
@@ -71,20 +71,22 @@ xcrun stapler validate '<output>/Applications/LifeUI.app'
 spctl --assess --type execute --verbose=2 '<output>/Applications/LifeUI.app'
 ```
 
-Verification on macOS, 2026-10-06, against published 0.2.0:
+Verification on macOS, 2026-10-06, against published 0.3.0:
 
 | Check | Result |
 | --- | --- |
-| Archive SHA-256 | `181ed18d86e7f33d1b549a5315d66573ee59d46b7201ac9a994355963d8b5325` |
+| Archive SHA-256 | `b272ca153f0b29eb9b0c5ef20e01d4bdae6988324350a819a849a5addffc47ac` |
 | Nix build and synthetic preservation/module checks | Pass |
 | All source/output file hashes, symlink targets, executable bits | Identical |
 | arm64 and x86_64 entitlements and designated requirements | Identical |
 | Strict signature, stapled ticket, Gatekeeper | Pass; Notarized Developer ID |
 
-The [0.2.0 release CI](https://github.com/alexjmiller5/life-ui/actions/runs/37404541578)
+The [0.3.0 release CI](https://github.com/alexjmiller5/life-ui/actions/runs/37490257126)
 also records `Data Protection Keychain create/read/update/delete passed` from
 the separately signed production-adapter probe with a unique synthetic service.
 That is release evidence, not a fresh local Keychain probe of the Nix output.
 No user credentials were accessed and no application was installed for these
-packaging checks. A future release must retain the existing release CI Keychain
-gate; byte/signature preservation alone is not a substitute for it.
+packaging checks. Installed-app launch, enrollment and fresh Nix-output Keychain
+acceptance remain separate and unverified. A future release must retain the
+existing release CI Keychain gate; byte/signature preservation alone is not a
+substitute for it.
