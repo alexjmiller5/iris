@@ -95,6 +95,44 @@ try {
     name: "Export loaded rows",
     exact: true,
   });
+  const disclosure = page.getByRole("button", { name: "Export", exact: true });
+  await expect(disclosure).toBeVisible();
+  expect((await disclosure.locator("..").boundingBox())?.width).toBeLessThan(
+    160,
+  );
+  await expect(action).toBeHidden();
+  if (process.env.LIFE_UI_TEST_SCREENSHOTS) {
+    await page.screenshot({
+      path: `${process.env.LIFE_UI_TEST_SCREENSHOTS}/export-collapsed.png`,
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  const narrow = await disclosure.locator("..").boundingBox();
+  expect(narrow?.width).toBeLessThan(160);
+  expect(narrow!.x).toBeGreaterThanOrEqual(0);
+  expect(narrow!.x + narrow!.width).toBeLessThanOrEqual(390);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const formatControl = page.getByRole("combobox", {
+    name: "Export format",
+    exact: true,
+  });
+  await expect(formatControl).toBeHidden();
+  await disclosure.focus();
+  await disclosure.press("Enter");
+  await expect(action).toBeVisible();
+  if (process.env.LIFE_UI_TEST_SCREENSHOTS) {
+    await page.screenshot({
+      path: `${process.env.LIFE_UI_TEST_SCREENSHOTS}/export-expanded.png`,
+      fullPage: true,
+    });
+  }
+  await formatControl.focus();
+  await formatControl.press("Escape");
+  await expect(action).toBeHidden();
+  await expect(disclosure).toBeFocused();
+  await disclosure.press("Space");
+  await expect(action).toBeVisible();
   await expect(action).toBeEnabled();
   await page.getByRole("button", { name: "=2+2", exact: true }).waitFor();
   await expect(
