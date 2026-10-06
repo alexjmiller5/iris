@@ -312,6 +312,7 @@ public struct WorkspaceView: View {
 
   private func closeEditor(_ target: EditorTarget) {
     guard editor?.id == target.id else { return }
+    target.preparedEditor?.endInlineMarkdown()
     editor = nil
     if target.inlineField != nil { finishEditorDismissal() }
   }
@@ -836,7 +837,7 @@ public struct WorkspaceView: View {
             guard canFind else { return }
             filterColumn = column
             options = true
-          }
+          }, workspace: model.client, transport: model.imageTransport
         ) {
           if let target = editor, target.inlineField != nil {
             recordEditor(target)
@@ -1129,7 +1130,9 @@ private struct RecordEditor: View {
   let onDuplicate: (RecordEditorModel) -> Void
   let isCurrent: @MainActor () -> Bool
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.scenePhase) private var scenePhase
   @State private var editor: RecordEditorModel
+  @State private var inlineMarkdown: InlineMarkdownEditor?
   @State private var referenceNavigation: ReferenceNavigationModel?
   @State private var confirmReference = false
   @State private var saving = false
@@ -1169,6 +1172,13 @@ private struct RecordEditor: View {
         try await model.save(patch, original: baseline, context: context)
       }
     _editor = State(initialValue: source)
+    if let field = source.draft.fields.first(where: {
+      $0.id == inlineField && $0.type == "markdown"
+    }) {
+      _inlineMarkdown = State(initialValue: source.markdownEditor(for: field))
+    } else {
+      _inlineMarkdown = State(initialValue: nil)
+    }
     _emptyColumns = State(
       initialValue: NativeEditorFields.emptyColumns(
         fields: recordFields,
@@ -1195,7 +1205,14 @@ private struct RecordEditor: View {
     Group {
       if let inlineField, let field = presentedFields.first(where: { $0.id == inlineField }) {
         VStack(alignment: .leading, spacing: 8) {
-          presentedFieldRow(field)
+          if let inlineMarkdown {
+            InlineMarkdownField(editor: inlineMarkdown)
+            ForEach(editor.violations.filter { $0.col == field.id }, id: \.rule) { violation in
+              Text(violation.message).font(.caption).foregroundStyle(.red)
+            }
+          } else {
+            presentedFieldRow(field)
+          }
           if let failure = actionFailure ?? editor.failure {
             Text(failure).font(.caption).foregroundStyle(.red)
           }
@@ -1204,12 +1221,17 @@ private struct RecordEditor: View {
             Text(violation.message).font(.caption).foregroundStyle(.red)
           }
           HStack {
-            Button("Cancel") { if editor.dirty { discard = true } else { onSaved() } }
-              .disabled(editor.saving).accessibilityIdentifier("inline-cancel")
+            Button("Cancel") {
+              withInlineSnapshot { if editor.dirty { discard = true } else { onSaved() } }
+            }
+            .disabled(editor.saving).accessibilityIdentifier("inline-cancel")
             Spacer()
             Button("Open record") {
-              focusedField = nil
-              onExpand(editor)
+              withInlineSnapshot {
+                focusedField = nil
+                editor.endInlineMarkdown()
+                onExpand(editor)
+              }
             }
             .disabled(editor.saving).accessibilityIdentifier("inline-open-record")
             Button("Save") { save() }
@@ -1218,16 +1240,27 @@ private struct RecordEditor: View {
           }.font(.subheadline)
           if editor.failure != nil || editor.autosavePaused {
             Button("Keep draft and close") {
-              do {
-                try editor.keepDraft()
-                onSaved()
-              } catch { actionFailure = error.localizedDescription }
+              withInlineSnapshot {
+                do {
+                  try editor.keepDraft()
+                  onSaved()
+                } catch { actionFailure = error.localizedDescription }
+              }
             }
           }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inline-record-editor")
         .onAppear { focusedField = inlineField }
+        .onChange(of: scenePhase) { _, phase in
+          guard phase == .inactive, inlineMarkdown != nil, !saving else { return }
+          Task {
+            do {
+              try await collectInlineMarkdown(lock: false)
+              try editor.keepDraft()
+            } catch { actionFailure = error.localizedDescription }
+          }
+        }
       } else {
         Form {
           if linkWaiting {
@@ -1593,7 +1626,7 @@ private struct RecordEditor: View {
       LabeledContent {
         FieldInput(
           field: field, workspace: context?.workspace, transport: model.imageTransport,
-          inline: inlineField != nil, focus: $focusedField,
+          focus: $focusedField,
           editor: editor, onOpenReference: openReference,
           undoAction: model.undoAction, undo: { try await model.undo($0, context: context) },
           isCurrent: editorIsCurrent,
@@ -1727,7 +1760,12 @@ private struct RecordEditor: View {
     saving = true
     actionFailure = nil
     Task {
+      defer {
+        inlineMarkdown?.session.resumeEditing?()
+        saving = false
+      }
       do {
+        try await collectInlineMarkdown(lock: true)
         try await editor.saveAll(patch)
         if editor.dirty {
           actionFailure =
@@ -1736,7 +1774,26 @@ private struct RecordEditor: View {
           onSaved()
         }
       } catch { actionFailure = error.localizedDescription }
-      saving = false
+    }
+  }
+
+  private func collectInlineMarkdown(lock: Bool) async throws {
+    try await inlineMarkdown?.collect(lock: lock)
+    guard editorIsCurrent() else { throw CancellationError() }
+  }
+
+  private func withInlineSnapshot(_ action: @escaping @MainActor () -> Void) {
+    saving = true
+    actionFailure = nil
+    Task {
+      defer {
+        inlineMarkdown?.session.resumeEditing?()
+        saving = false
+      }
+      do {
+        try await collectInlineMarkdown(lock: true)
+        action()
+      } catch { actionFailure = error.localizedDescription }
     }
   }
 }
@@ -1766,7 +1823,6 @@ private struct FieldInput: View {
   let field: CatalogField
   let workspace: NativeWorkspace?
   let transport: HubTransport?
-  let inline: Bool
   let focus: FocusState<String?>.Binding
   let editor: RecordEditorModel
   let onOpenReference: (String, String) -> Void
@@ -1790,10 +1846,6 @@ private struct FieldInput: View {
           Text("Reference choices are unavailable. The original value has been preserved.")
             .foregroundStyle(.secondary)
         }
-      } else if field.type == "markdown" && inline {
-        TextEditor(text: $value).frame(minHeight: 100, maxHeight: 180)
-          .focused(focus, equals: field.id).accessibilityLabel(field.label)
-          .accessibilityIdentifier("field-\(field.id)")
       } else if field.type == "markdown" {
         NavigationLink {
           MarkdownEditorScreen(
@@ -1805,7 +1857,8 @@ private struct FieldInput: View {
           VStack(alignment: .leading, spacing: 6) {
             Text("Edit Markdown")
             if !value.isEmpty {
-              Text(value).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+              NativeMarkdownPreview(value: value).font(.caption).foregroundStyle(.secondary)
+                .lineLimit(3)
             }
           }
         }.accessibilityIdentifier("field-\(field.id)")

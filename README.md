@@ -215,8 +215,10 @@ The expand icon opens the full record pop-up; **Open record** in an inline edito
 transfers the same unsaved draft. Both presentations use the same local save,
 validation and recovery journal. Close or save an inline editor before changing
 tables, filters, views or connections. Background sync continues while editing.
-Inline Markdown uses a native source editor with the existing autosave behavior;
-open the full record for the rich Markdown screen.
+Markdown cells show a bounded, formatted preview. Editing expands only the active
+cell into the rich editor; other properties keep their compact presentation.
+The prepared draft retains its live editor across background refreshes and table
+scrolling. Save, Cancel and Open record collect the final text before acting.
 
 Image filename URLs, retained file paths and JSON arrays of image references
 show previews. Bounded raster and SVG data URLs are supported too. **Image source**
@@ -225,8 +227,10 @@ public HTTPS images never receive its credential. Redirects are refused, and SVG
 previews cannot execute scripts or load network resources. Unrecognized or
 extensionless references retain their text presentation.
 
-Markdown fields open a dedicated screen containing the same **Write** and
-**Source** editor as web, bundled locally in WebKit. Existing records autosave
+Markdown uses the same editor as web, bundled locally in WebKit. Type `# ` or
+`## ` for headings, `- ` for bullets, or `/` on an empty line for block choices.
+Formatting actions appear when text is selected; the options menu contains
+Source, Undo and Redo. Existing records autosave
 editable Markdown after a 600 ms typing pause. **Done** collects the live document
 and awaits the local write. Other property changes and new records still require
 **Save**. Later typing stays in the draft while a write is pending, and successful

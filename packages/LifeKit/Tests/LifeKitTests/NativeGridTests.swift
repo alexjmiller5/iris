@@ -30,7 +30,7 @@ struct NativeGridTests {
 
   @Test func importedWidthsApplyToTheirColumnOnly() {
     let columns = NativeGridColumn.columns(properties: properties, widths: ["done": 300])
-    #expect(columns.map(\.width) == [180, 300, 180])
+    #expect(columns.map(\.width) == [180, 300, 360])
   }
 
   @Test func booleanCellsDisplayStoredFalseAndUnknownAsDifferentValues() throws {

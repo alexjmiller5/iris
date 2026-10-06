@@ -3,6 +3,26 @@ import Observation
 
 @Observable @MainActor
 final class RecordEditorModel {
+  @ObservationIgnored private var inlineMarkdown: InlineMarkdownEditor?
+
+  func markdownEditor(for field: CatalogField) -> InlineMarkdownEditor {
+    if let inlineMarkdown, inlineMarkdown.fieldID.utf8.elementsEqual(field.id.utf8) {
+      return inlineMarkdown
+    }
+    endInlineMarkdown()
+    let next = InlineMarkdownEditor(field: field, value: draft.values[field.id] ?? "") {
+      [weak self] in
+      self?.setValue($0, for: field.id)
+    }
+    inlineMarkdown = next
+    return next
+  }
+
+  func endInlineMarkdown() {
+    inlineMarkdown?.stop()
+    inlineMarkdown = nil
+  }
+
   private(set) var draft: RecordDraft
   private(set) var recoveryChoices: [StoredEditorDraft] = []
   var recovery: StoredEditorDraft? { recoveryChoices.first }

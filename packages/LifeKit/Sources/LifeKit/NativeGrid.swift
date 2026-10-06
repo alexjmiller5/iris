@@ -16,7 +16,7 @@ struct NativeGridColumn: Identifiable {
       guard seen.insert(id).inserted, let field = fields.first(where: { $0.id == id }) else {
         return nil
       }
-      return Self(field: field, width: widths[id] ?? 180)
+      return Self(field: field, width: widths[id] ?? (field.type == "markdown" ? 360 : 180))
     }
   }
 

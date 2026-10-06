@@ -299,6 +299,13 @@ Keep active drafts and their action controls mounted through catalog/row refresh
 measure editor height before retiling the row. Disable workspace replacement and
 new-record actions while an inline editor is active. Property help popovers belong
 to their individual buttons.
+Markdown previews parse a bounded prefix off the main actor and never rewrite
+source. Only the active cell mounts a rich editor. Its prepared record model owns
+the live WebKit view across table recycling; dismantling a cell is not an editor
+close. Collect a locking snapshot before save, expand, cancel or keep-draft, and
+release the host only when the authoritative draft presentation closes. A locking
+snapshot wins over delayed intermediate change notifications; nonlocking background
+reads still preserve later received changes.
 Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never
