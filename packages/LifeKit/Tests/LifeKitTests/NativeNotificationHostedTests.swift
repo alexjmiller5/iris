@@ -63,6 +63,7 @@
           NotificationAlertState.self, from: Data(contentsOf: checkpoint))
         try #require(baseline.baseline == 205 && baseline.deliveredIDs.isEmpty)
 
+        await recordNotificationSettings(phase: .beforeUI)
         window.contentView = NSHostingView(rootView: HostedNotificationView(fixture: fixture))
         window.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -73,8 +74,15 @@
         // separately; a scheduling receipt or delivered-list entry is not proof
         // of a visibly presented banner.
         let deadline = ContinuousClock.now.advanced(by: .seconds(300))
+        var recordedAuthorizationFailure = false
         while !fixture.finished && window.isVisible && ContinuousClock.now < deadline {
           try Task.checkCancellation()
+          if !recordedAuthorizationFailure, !model.services.changingAlerts,
+            model.services.alertError != nil
+          {
+            recordedAuthorizationFailure = true
+            await recordNotificationSettings(phase: .authorizationFailure)
+          }
           try await Task.sleep(for: .milliseconds(100))
         }
         try #require(
@@ -102,6 +110,28 @@
         throw error
       }
       await cleanup(window: window, fixture: fixture, checkpoint: checkpoint, root: root)
+    }
+
+    private enum NotificationSettingsPhase: String {
+      case beforeUI = "before-ui"
+      case authorizationFailure = "authorization-failure"
+    }
+
+    private func recordNotificationSettings(phase: NotificationSettingsPhase) async {
+      let settings = await UNUserNotificationCenter.current().notificationSettings()
+      let bundle = Bundle.main
+      let isTestHost =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        && bundle.bundleURL.pathExtension == "app"
+      // Fixed phases and limited host metadata only; never paths or credentials.
+      print(
+        "notification-host phase=\(phase.rawValue)"
+          + " authorizationStatus=\(settings.authorizationStatus.rawValue)"
+          + " alertSetting=\(settings.alertSetting.rawValue)"
+          + " bundleID=\(bundle.bundleIdentifier ?? "missing")"
+          + " bundle=\(bundle.bundleURL.lastPathComponent)"
+          + " executable=\(bundle.executableURL?.lastPathComponent ?? "missing")"
+          + " isTestHost=\(isTestHost)")
     }
 
     private func cleanup(
