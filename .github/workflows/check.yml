@@ -44,5 +44,33 @@ jobs:
       - run: python3 scripts/sign_ios_test.py
       - run: brew install xcodegen just
       - run: swift test --package-path packages/LifeKit
+      - name: Hosted catalog acceptance (synthetic opt-in)
+        timeout-minutes: 3
+        env:
+          LIFE_UI_TEST_CATALOG_HOSTED: "1"
+        run: |
+          set -o pipefail
+          swift test --package-path packages/LifeKit --skip-build \
+            --filter CatalogRecordAcceptanceTests.hostedCatalogRuleFailureRetainsDraftAndMetadata \
+            2>&1 | tee "$RUNNER_TEMP/catalog-hosted.log"
+          python3 - "$RUNNER_TEMP/catalog-hosted.log" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          output = pathlib.Path(sys.argv[1]).read_text()
+          output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
+          name = r"hostedCatalogRuleFailureRetainsDraftAndMetadata\(\)"
+          required = [
+              rf"\bTest {name} started\.",
+              rf"\bTest {name} passed after ",
+              r"\bTest run with 1 test in 1 suite passed after ",
+          ]
+          if any(re.search(pattern, output) is None for pattern in required):
+              raise SystemExit("Hosted acceptance did not execute and pass exactly one test")
+          if re.search(rf"\bTest {name}[^\n]*skipped", output, re.IGNORECASE):
+              raise SystemExit("Hosted acceptance was skipped")
+          print("Verified one executed hosted catalog test; not XCUI or installed-app acceptance")
+          PY
       - run: just --justfile apps/macos/justfile check
       - run: just --justfile apps/ios/justfile check
