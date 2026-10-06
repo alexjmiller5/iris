@@ -62,6 +62,8 @@ try {
 	await mode('write');
 	await page.getByRole('textbox',{name:'Body',exact:true}).press('/');
 	const blocks=page.getByRole('menu',{name:'Insert block',exact:true});
+	await expect(blocks.getByRole('menuitem',{name:'Text',exact:true})).toBeFocused();
+	await page.keyboard.press('ArrowDown');
 	await expect(blocks.getByRole('menuitem',{name:'Heading 1',exact:true})).toBeFocused();
 	await page.keyboard.press('ArrowDown');
 	await expect(blocks.getByRole('menuitem',{name:'Heading 2',exact:true})).toBeFocused();
@@ -126,7 +128,7 @@ try {
 	await inline.getByRole('textbox',{name:'Body',exact:true}).press('/');
 	await expect(page.getByRole('menu',{name:'Insert block',exact:true})).toBeVisible();
 	await page.keyboard.press('Tab');
-	await expect(page.getByRole('menuitem',{name:'Heading 2',exact:true}), 'Tab stays within the block menu without saving the cell').toBeFocused();
+	await expect(page.getByRole('menuitem',{name:'Heading 1',exact:true}), 'Tab stays within the block menu without saving the cell').toBeFocused();
 	await page.keyboard.press('Escape');
 	await expect(page.getByRole('menu',{name:'Insert block',exact:true})).toBeHidden();
 	await expect(inline, 'Closing the slash menu must keep the unsaved cell open').toBeVisible();

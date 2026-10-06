@@ -9,6 +9,7 @@ import {
 import {
 	commonmark,
 	imageSchema,
+	turnIntoTextCommand,
 	wrapInHeadingCommand,
 	wrapInBulletListCommand,
 	wrapInOrderedListCommand,
@@ -16,14 +17,17 @@ import {
 	createCodeBlockCommand,
 	toggleStrongCommand,
 	toggleEmphasisCommand,
+	toggleInlineCodeCommand,
 	toggleLinkCommand
 } from '@milkdown/kit/preset/commonmark';
 import { gfm, insertTableCommand } from '@milkdown/kit/preset/gfm';
 import { history, undoCommand, redoCommand } from '@milkdown/kit/plugin/history';
 import { Plugin, TextSelection } from '@milkdown/kit/prose/state';
+import { undoInputRule } from '@milkdown/kit/prose/inputrules';
 import { $prose, callCommand, replaceAll } from '@milkdown/kit/utils';
 
 export type MarkdownCommand =
+	| 'paragraph'
 	| 'heading1'
 	| 'heading2'
 	| 'heading3'
@@ -37,6 +41,7 @@ export type MarkdownCommand =
 	| 'redo'
 	| 'bold'
 	| 'italic'
+	| 'inlineCode'
 	| 'link';
 export interface MarkdownController {
 	getMarkdown(): string;
@@ -98,12 +103,23 @@ export async function createMarkdownEditor(
 			ctx.set(editorViewOptionsCtx, {
 				editable: () => !readOnly,
 				handleKeyDown(view, event) {
+					if (
+						!readOnly &&
+						(event.metaKey || event.ctrlKey) &&
+						!event.shiftKey &&
+						!event.altKey &&
+						event.key.toLowerCase() === 'z' &&
+						undoInputRule(view.state, view.dispatch)
+					) {
+						event.preventDefault();
+						return true;
+					}
 					const { empty, $from } = view.state.selection;
 					if (
 						!readOnly &&
 						event.key === '/' &&
 						empty &&
-						$from.parent.type.name === 'paragraph' &&
+						['paragraph', 'heading'].includes($from.parent.type.name) &&
 						!$from.parent.content.size &&
 						options.onslash
 					) {
@@ -118,7 +134,7 @@ export async function createMarkdownEditor(
 						!readOnly &&
 						text === '/' &&
 						from === to &&
-						view.state.selection.$from.parent.type.name === 'paragraph' &&
+						['paragraph', 'heading'].includes(view.state.selection.$from.parent.type.name) &&
 						!view.state.selection.$from.parent.content.size &&
 						options.onslash
 					) {
@@ -213,6 +229,9 @@ export async function createMarkdownEditor(
 			if (readOnly || destroyed) return false;
 			let result = false;
 			switch (command) {
+				case 'paragraph':
+					result = editor.action(callCommand(turnIntoTextCommand.key));
+					break;
 				case 'heading1':
 				case 'heading2':
 				case 'heading3':
@@ -220,6 +239,9 @@ export async function createMarkdownEditor(
 					break;
 				case 'italic':
 					result = editor.action(callCommand(toggleEmphasisCommand.key));
+					break;
+				case 'inlineCode':
+					result = editor.action(callCommand(toggleInlineCodeCommand.key));
 					break;
 				case 'link':
 					result =
@@ -246,7 +268,11 @@ export async function createMarkdownEditor(
 					result = editor.action(callCommand(insertTableCommand.key, { row: 2, col: 2 }));
 					break;
 				case 'undo':
-					result = editor.action(callCommand(undoCommand.key));
+					result =
+						editor.action((ctx) => {
+							const view = ctx.get(editorViewCtx);
+							return undoInputRule(view.state, view.dispatch);
+						}) || editor.action(callCommand(undoCommand.key));
 					break;
 				case 'redo':
 					result = editor.action(callCommand(redoCommand.key));

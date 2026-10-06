@@ -157,7 +157,6 @@ final class WorkspaceUITests: XCTestCase {
     focused.lifetime = .keepAlways
     add(focused)
     tapWhenReady(app.navigationBars["Record"].buttons["save-record"])
-    tapWhenReady(app.buttons["close"])
     tapWhenReady(app.buttons["workspace-menu"])
     tapWhenReady(app.buttons["Hub connection"])
     let forget = app.buttons["Forget saved connection"]
@@ -196,12 +195,12 @@ final class WorkspaceUITests: XCTestCase {
     revealRecordControl(undo, in: app)
     tapWhenReady(undo)
     let restore = app.buttons["trash-record"]
+    revealRecordControl(restore, in: app, down: true)
     let trashed = XCTNSPredicateExpectation(
       predicate: NSPredicate { _, _ in
         MainActor.assumeIsolated { restore.exists && restore.label == "Restore record" }
       }, object: nil)
     XCTAssertEqual(XCTWaiter.wait(for: [trashed], timeout: 5), .completed)
-    revealRecordControl(restore, in: app, down: true)
     let keptDraft = XCTAttachment(screenshot: app.screenshot())
     keptDraft.name = "native-undo-tombstone-kept-draft"
     keptDraft.lifetime = .keepAlways
@@ -276,11 +275,7 @@ final class WorkspaceUITests: XCTestCase {
     title.typeText(name)
     tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
     XCTAssertTrue(app.navigationBars["New record"].waitForNonExistence(timeout: 10))
-    // Submitting dismisses the keyboard so the bottom search bar cannot cover the row.
-    let search = app.searchFields.firstMatch
-    tapWhenReady(search)
-    search.typeText(name + "\n")
-    tapWhenReady(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch)
+    openRecord(app, title: String(name), table: "notes")
     tapWhenReady(title)
     title.typeText(" dirty")
     let dirty = try XCTUnwrap(title.value as? String)
@@ -443,14 +438,9 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.buttons["sync-now"])
     let notice = app.staticTexts["partial-table-notice"]
     XCTAssertTrue(notice.waitForExistence(timeout: 15))
-    let search = app.searchFields.firstMatch
-    tapWhenReady(search)
-    search.typeText("Fixture record")
-    let record = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture record"))
-      .firstMatch
-    XCTAssertTrue(
-      record.waitForExistence(timeout: 5), "Skipping must retain previously downloaded rows")
-    tapWhenReady(app.buttons["close"])
+    // Skipping must retain the downloaded record and keep it available offline.
+    openRecord(app, title: "Fixture record")
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
     tapWhenReady(app.buttons["include-table-next-sync"])
     XCTAssertTrue(notice.waitForExistence(timeout: 5))
@@ -753,7 +743,6 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     // Paste the copied source into a separate new draft using the actual OS
     // clipboard, then relaunch to verify the original recovery is still there.
-    tapWhenReady(app.toolbars.buttons["close"])
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
     revealMarkdown(app)
     tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
@@ -826,7 +815,6 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "Synthetic autosave final!")
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
-    tapWhenReady(app.toolbars.buttons["close"])
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
     tapWhenReady(title)
     title.typeText("Uncreated recovery fixture")
@@ -1394,7 +1382,7 @@ final class WorkspaceUITests: XCTestCase {
     element.tap()
   }
 
-  private func openRecord(_ app: XCUIApplication, title: String) {
+  private func openRecord(_ app: XCUIApplication, title: String, table: String? = nil) {
     let visibleRecord = app.buttons.matching(
       NSPredicate(format: "label == %@", title + ", Open record")
     ).firstMatch
@@ -1411,7 +1399,7 @@ final class WorkspaceUITests: XCTestCase {
         app.buttons.matching(
           NSPredicate(
             format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
-            "quick-find-result-", title)
+            table.map { "quick-find-result-\($0)-" } ?? "quick-find-result-", title)
         ).firstMatch)
     }
     let heading = app.staticTexts["record-heading"]

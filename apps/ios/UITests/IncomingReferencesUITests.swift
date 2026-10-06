@@ -64,7 +64,7 @@ final class IncomingReferencesUITests: XCTestCase {
     tap(app.webViews.descendants(matching: .any)["Body source"])
     expectValue(app.webViews.textViews["Body"], "Composed full body")
     tap(app.navigationBars["Record"].buttons["Cancel"])
-    openRecord(app, title: "Target notebook")
+    openTargetRecord(app)
     reveal(group, in: app)
     tap(group)
     reveal(more, in: app)
@@ -124,7 +124,7 @@ final class IncomingReferencesUITests: XCTestCase {
     expectValue(title, "Incoming 01")
     XCTAssertEqual(app.navigationBars.matching(identifier: "Record").count, 1)
     tap(app.navigationBars["Record"].buttons["Cancel"])
-    openRecord(app, title: "Target notebook")
+    openTargetRecord(app)
     expectValue(title, "Target notebook")
     reveal(options, in: app)
     tap(options)
@@ -142,18 +142,25 @@ final class IncomingReferencesUITests: XCTestCase {
     let app = XCUIApplication()
     app.launch()
     tap(app.buttons["open-local"])
-    openRecord(app, title: "Target notebook")
+    openTargetRecord(app)
     return app
   }
 
-  private func openRecord(_ app: XCUIApplication, title: String) {
-    let search = app.searchFields.firstMatch
-    tap(search)
-    let clear = search.buttons["Clear text"]
-    if clear.exists { clear.tap() }
-    search.typeText(title)
-    tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch)
+  private func openTargetRecord(_ app: XCUIApplication) {
+    let title = "Target notebook"
+    let record = app.buttons["open-record-incoming-target"]
+    if record.exists && record.isHittable {
+      XCTAssertEqual(record.label, title + ", Open record")
+      tap(record)
+    } else {
+      tap(app.buttons["quick-find"])
+      let query = app.textFields["quick-find-query"]
+      tap(query)
+      query.typeText(title)
+      tap(app.buttons["quick-find-result-notes-incoming-target"])
+    }
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
+    XCTAssertEqual(app.staticTexts["record-heading"].label, title)
   }
 
   private func reveal(

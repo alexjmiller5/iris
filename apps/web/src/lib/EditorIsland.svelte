@@ -18,18 +18,35 @@
 	}
 </script>
 
-{#each [current] as document (document.id)}
-	<MarkdownEditor
-		id="document"
-		label={document.label}
-		value={document.value}
-		disabled={document.readOnly}
-		onready={ready}
-		onchange={(value) => {
-			if (document.id === current.id && !current.readOnly) {
-				current.value = value;
-				onMessage({ type: 'change', id: document.id, value });
-			}
-		}}
-	/>
-{/each}
+<div class="native-editor">
+	{#each [current] as document (document.id)}
+		<MarkdownEditor
+			id="document"
+			label={document.label}
+			value={document.value}
+			disabled={document.readOnly}
+			onready={ready}
+			onchange={(value) => {
+				if (document.id === current.id && !current.readOnly) {
+					current.value = value;
+					onMessage({ type: 'change', id: document.id, value });
+				}
+			}}
+		/>
+	{/each}
+</div>
+
+<style>
+	:global(body:has(.native-editor)) {
+		background: var(--color-paper);
+	}
+	.native-editor :global(.markdown-editor) {
+		border: 0;
+		border-radius: 0;
+	}
+	.native-editor :global(.markdown-editor),
+	.native-editor :global(.ProseMirror),
+	.native-editor :global(textarea) {
+		min-height: 100dvh;
+	}
+</style>
