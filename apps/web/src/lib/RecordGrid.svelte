@@ -150,6 +150,33 @@
 			element?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 		}
 	}
+	async function leaveGrid(cell: CellKey, backwards: boolean) {
+		// The save removes the focused editor and may filter its row out. Restore
+		// the cursor, then traverse from the grid boundary that survives a refresh.
+		await focus(cell);
+		if (!alive) return;
+		const anchor = root.querySelector<HTMLElement>('[role="grid"]');
+		if (!anchor) return;
+		const stops = Array.from(
+			root.ownerDocument.querySelectorAll<HTMLElement>(
+				'a[href],button,input,select,textarea,summary,[tabindex],[contenteditable="true"],[role="grid"]'
+			)
+		)
+			.filter(
+				(element) =>
+					(element === anchor || (element.tabIndex >= 0 && !anchor.contains(element))) &&
+					!element.matches(':disabled') &&
+					!element.closest('[inert]') &&
+					element.getClientRects().length > 0 &&
+					getComputedStyle(element).visibility === 'visible'
+			)
+			.sort(
+				(a, b) =>
+					(a.tabIndex > 0 ? a.tabIndex : Infinity) - (b.tabIndex > 0 ? b.tabIndex : Infinity)
+			);
+		const index = stops.indexOf(anchor);
+		if (index >= 0) stops[index + (backwards ? -1 : 1)]?.focus();
+	}
 	async function commit() {
 		const saved = await controller.commit(oncommit);
 		if (!saved && cellState.phase === 'editing') {
@@ -209,7 +236,7 @@
 					: cell;
 			if (await commit()) {
 				if (next) await focus(next);
-				else root.querySelector<HTMLButtonElement>('[aria-label="New record at bottom"]')?.focus();
+				else await leaveGrid(cell, event.shiftKey);
 			}
 			return;
 		}
