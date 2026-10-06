@@ -9,6 +9,13 @@ const cases = [
   { name: 'cross-session journal adoption', file: 'approval-journal.ts', before: 'scopeKey(value.scope) !== scopeKey(scope)', after: 'false' },
   { name: 'old approval refreshes replacement context', file: 'proposal-review.ts', before: "result.kind === 'success' && !disposed && current === generation", after: "result.kind === 'success'" },
   { name: 'approval dispatches before durable retain', file: 'proposal-review.ts', before: 'await journal.retain(structuredClone(pending));', after: 'void journal.retain(structuredClone(pending)).catch(() => {});' },
+  { name: 'unresolved rejection settles original request', file: 'proposal-review.ts', before: "result.resolution === 'not_committed'", after: "result.resolution === 'unresolved'" },
+  { name: 'malformed approval envelope bypasses guard', file: 'proposal-review.ts', before: 'result = approvalResult(received)', after: 'result = true' },
+  { name: 'missing error resolution accepted', file: 'proposal-review.ts', before: "oneOf(value.resolution, ['unresolved', 'not_committed'])", after: 'true' },
+  { name: 'receipt version binding ignored', file: 'proposal-review.ts', before: 'result.value.proposalVersion !== retained.request.expectedVersion', after: 'false' },
+  { name: 'retry silently replaces idempotency key', file: 'proposal-review.ts', before: 'const sent = { ...retained.request };', after: 'const sent = { ...retained.request, idempotencyKey: crypto.randomUUID() };' },
+  { name: 'replayed receipt incorrectly requires history', file: 'proposal-review.ts', before: 'strings(receipt.historyEventIds) &&', after: 'strings(receipt.historyEventIds) && receipt.historyEventIds.length > 0 &&' },
+  { name: 'successful retry retains obsolete rejection feedback', file: 'proposal-review.ts', before: 'receipt: result.value, conflicts: [], contentUnavailable: false', after: 'receipt: result.value' },
   { name: 'late page resurrects purged content', file: 'review-list.ts', before: 'if (disposed || current !== generation) return;', after: 'if (disposed) return;' },
 ];
 async function run(env: Record<string,string> = {}) {

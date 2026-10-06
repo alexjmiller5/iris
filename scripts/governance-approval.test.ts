@@ -6,7 +6,7 @@ const { createProposalReview: createModel } = await import(process.env.LIFE_UI_T
 import type { Preview, Proposal, ApprovalReceipt, ApprovalResult } from '../apps/web/src/lib/governance/contract';
 
 const scope = { deploymentId: 'deployment-1', sessionId: 'session-1', principalId: 'user-1' };
-function memoryJournal() { let entry: import('../apps/web/src/lib/governance/api').PendingApproval | null = null; return { load: async () => entry, retain: async (value: NonNullable<typeof entry>) => { entry = structuredClone(value); }, resolve: async () => { entry = null; } }; }
+function memoryJournal() { let entry: import('../apps/web/src/lib/governance/api').PendingApproval | null = null; return { load: async () => entry, retain: async (value: NonNullable<typeof entry>) => { entry = structuredClone(value); }, resolve: async (value: NonNullable<typeof entry>) => { if (JSON.stringify(value) !== JSON.stringify(entry)) throw new Error("Journal comparison failed"); entry = null; } }; }
 const createProposalReview = (api: Parameters<typeof createModel>[0]) => createModel(api, memoryJournal(), scope);
 const read = (value: Preview) => ({ kind: 'success' as const, value });
 const success = (value: ApprovalReceipt): ApprovalResult => ({ kind: 'success', value });
@@ -97,7 +97,7 @@ test('double approval clicks send one request; core actor authority failures rem
   model.setOnline(true); await model.open(proposal);
   const applying = model.approve(); await model.approve(); pending.resolve(success(receipt)); await applying;
   expect(commits).toBe(1);
-  const denied = createProposalReview({ previewProposal: async () => read(preview), approveProposal: async () => { return { kind: 'error', code: 'permission_denied', conflicts: [] };  } });
+  const denied = createProposalReview({ previewProposal: async () => read(preview), approveProposal: async () => { return { kind: 'error', code: 'permission_denied', resolution: 'unresolved', conflicts: [] };  } });
   denied.setOnline(true); await denied.open(proposal); await denied.approve();
   expect(get(denied).error).toBe('permission denied');
   expect(get(denied).receipt).toBeNull();
@@ -158,7 +158,7 @@ test('unavailable reads and purged mutation outcomes remove retained display con
 
 test('definitive stale approval invalidates its preview and cannot silently mint another request', async () => {
   let commits = 0;
-  const model = createModel({ previewProposal: async () => read(preview), approveProposal: async () => { commits++; return { kind: 'error', code: 'proposal_changed', conflicts: [] }; } }, memoryJournal(), scope);
+  const model = createModel({ previewProposal: async () => read(preview), approveProposal: async () => { commits++; return { kind: 'error', code: 'proposal_changed', resolution: 'not_committed', conflicts: [] }; } }, memoryJournal(), scope);
   model.setOnline(true); await model.open(proposal); await model.approve(); await model.approve();
   expect(commits).toBe(1);
   expect(get(model).preview).toBeNull();
@@ -188,4 +188,161 @@ test('failed retention disables replacement attempts and sends nothing', async (
   const model = createModel({ previewProposal: async () => read(preview), approveProposal: async () => { commits++; return success(receipt); } }, { ...memoryJournal(), retain: async () => { retains++; throw new Error('Existing competing entry'); } }, scope);
   model.setOnline(true); await model.open(proposal); await model.approve(); await model.approve();
   expect(commits).toBe(0); expect(retains).toBe(1);
+});
+
+// These are normalized API results. HTTP/status validation belongs to the future
+// core adapter, which remains unavailable. Exercise the real model and its journal
+// protocol so a rejected retry cannot erase an earlier uncertain approval.
+async function retryAfterLostResponse(result: ApprovalResult) {
+  const journal = memoryJournal();
+  const requests: object[] = [];
+  let previews = 0;
+  const api = {
+    previewProposal: async () => { previews++; return read(preview); },
+    approveProposal: async (args: object): Promise<ApprovalResult> => {
+      requests.push(structuredClone(args));
+      if (requests.length === 1) return { kind: 'transport_error', code: 'indeterminate' };
+      return requests.length === 2 ? result : success(receipt);
+    },
+  };
+  const model = createModel(api, journal, scope);
+  model.setOnline(true); await model.open(proposal); await model.approve();
+  const original = structuredClone(await journal.load());
+  await model.approve();
+  expect(await journal.load()).toEqual(original);
+  expect(get(model)).toMatchObject({ unresolved: true, preview: null, receipt: null });
+  const unresolved = get(model);
+  await model.open({ ...proposal, version: 'replacement-version' });
+  expect(previews).toBe(1);
+  model.dispose();
+  const reopened = createModel(api, journal, scope);
+  reopened.setOnline(true); await reopened.ready; await reopened.approve();
+  expect(requests).toEqual([original!.request, original!.request, original!.request]);
+  expect(await journal.load()).toBeNull();
+  expect(get(reopened).receipt).toEqual(receipt);
+  reopened.dispose();
+  return unresolved;
+}
+
+test.each([
+  ['authentication retry (401)', 'permission_denied'],
+  ['authority retry (403)', 'permission_denied'],
+  ['usage-cap retry (429)', 'unavailable'],
+  ['missing resource', 'unavailable'],
+  ['changed proposal', 'proposal_changed'],
+  ['changed row', 'revision_changed'],
+  ['incomplete history', 'history_unavailable'],
+  ['validation failure', 'validation_failed'],
+  ['expired preview', 'expired_preview'],
+  ['idempotency conflict', 'idempotency_conflict'],
+] as const)('%s with unresolved resolution preserves the exact request through reopen', async (_label, code) => {
+  const state = await retryAfterLostResponse({ kind: 'error', code, resolution: 'unresolved', conflicts: [] });
+  expect(state.contentUnavailable).toBe(code === 'permission_denied' || code === 'unavailable');
+});
+
+test.each([
+  ['missing', {}],
+  ['null', { resolution: null }],
+  ['unknown', { resolution: 'settled' }],
+  ['boolean', { resolution: true }],
+  ['object', { resolution: { kind: 'not_committed' } }],
+] as const)('%s resolution cannot settle or reinterpret an uncertain approval', async (_label, fields) => {
+  const state = await retryAfterLostResponse({ kind: 'error', code: 'revision_changed', conflicts: [], ...fields } as unknown as ApprovalResult);
+  expect(state.error).toContain('unknown');
+});
+
+test('an offline retry retains an earlier uncertain approval through reopen', async () => {
+  await retryAfterLostResponse({ kind: 'transport_error', code: 'offline' });
+});
+
+test.each([
+  ['read unavailable', { kind: 'unavailable' }],
+  ['unknown kind', { kind: 'settled' }],
+  ['null', null],
+  ['undefined', undefined],
+  ['primitive', 'success'],
+  ['purged with payload', { kind: 'purged', value: receipt }],
+  ['success without receipt', { kind: 'success' }],
+  ['success with incomplete receipt', { kind: 'success', value: { operationId: 'op' } }],
+  ['success with resolution', { ...success(receipt), resolution: 'not_committed' }],
+  ['error without conflicts', { kind: 'error', code: 'revision_changed', resolution: 'not_committed' }],
+  ['error with unknown code', { kind: 'error', code: 'gone', resolution: 'not_committed', conflicts: [] }],
+  ['error with malformed conflict', { kind: 'error', code: 'revision_changed', resolution: 'not_committed', conflicts: [{}] }],
+] as const)('%s response preserves the journal as indeterminate', async (_label, result) => {
+  const state = await retryAfterLostResponse(result as unknown as ApprovalResult);
+  expect(state.error).toContain('unknown');
+});
+
+test.each(['proposal_changed', 'revision_changed', 'history_unavailable', 'validation_failed', 'unavailable', 'expired_preview'] as const)(
+  'durable not_committed %s settles only the original request and requires fresh review', async code => {
+    const journal = memoryJournal(); const requests: { idempotencyKey: string }[] = [];
+    const model = createModel({ previewProposal: async () => read(preview), approveProposal: async args => {
+      requests.push(args); return { kind: 'error', code, resolution: 'not_committed', conflicts: [] };
+    } }, journal, scope);
+    model.setOnline(true); await model.open(proposal); await model.approve();
+    expect(await journal.load()).toBeNull();
+    expect(get(model)).toMatchObject({ unresolved: false, preview: null, receipt: null });
+    await model.approve(); expect(requests).toHaveLength(1);
+    await model.open({ ...proposal, version: 'v2' }); await model.approve();
+    expect(requests).toHaveLength(2);
+    expect(requests[1].idempotencyKey).not.toBe(requests[0].idempotencyKey);
+    model.dispose();
+  }
+);
+
+test.each(['reset', 'dispose'] as const)('late unresolved denial after %s preserves its original journal', async transition => {
+  const response = deferred<ApprovalResult>(); const journal = memoryJournal();
+  const model = createModel({ previewProposal: async () => read(preview), approveProposal: () => response.promise }, journal, scope);
+  model.setOnline(true); await model.open(proposal);
+  const applying = model.approve(); await new Promise(resolve => setTimeout(resolve, 0));
+  const original = structuredClone(await journal.load());
+  model[transition]();
+  response.resolve({ kind: 'error', code: 'permission_denied', resolution: 'unresolved', conflicts: [] });
+  await applying;
+  expect(await journal.load()).toEqual(original);
+  expect(get(model).receipt).toBeNull();
+});
+
+test.each([
+  ['proposal', { ...receipt, proposalId: 'other-proposal' }],
+  ['version', { ...receipt, proposalVersion: 'other-version' }],
+  ['table', { ...receipt, target: { ...target, table: 'other-items' } }],
+  ['row', { ...receipt, target: { ...target, rowId: 'other-row' } }],
+] as const)('a receipt for another %s cannot settle the captured approval', async (_label, other) => {
+  const state = await retryAfterLostResponse(success(other));
+  expect(state.error).toContain('unknown');
+});
+
+test.each(['reset', 'dispose'] as const)('a matching replay after %s settles its captured request with an older revision and empty history', async transition => {
+  const response = deferred<ApprovalResult>(); const journal = memoryJournal();
+  let refreshed = 0;
+  const model = createModel({ previewProposal: async () => read(preview), approveProposal: () => response.promise }, journal, scope, () => { refreshed++; });
+  model.setOnline(true); await model.open(proposal);
+  const applying = model.approve(); await new Promise(resolve => setTimeout(resolve, 0));
+  const original = structuredClone(await journal.load());
+  const resolved: unknown[] = [];
+  const resolve = journal.resolve;
+  journal.resolve = async entry => { resolved.push(structuredClone(entry)); await resolve(entry); };
+  model[transition]();
+  response.resolve(success({ ...receipt, revision: { updated_at: '2024-01-01T00:00:00.000Z', hub_at: null }, historyEventIds: [] }));
+  await applying;
+  expect(resolved).toEqual([original]);
+  expect(await journal.load()).toBeNull();
+  expect(refreshed).toBe(0);
+});
+
+test.each([
+  { kind: 'error', code: 'revision_changed', resolution: 'unresolved', conflicts: [{ code: 'revision_changed', column: 'status', eventIds: ['e1'], message: 'Earlier attempt conflict' }] },
+  { kind: 'error', code: 'permission_denied', resolution: 'unresolved', conflicts: [] },
+] satisfies ApprovalResult[])('a successful same-instance retry clears prior $code feedback', async rejection => {
+  const requests: object[] = []; const journal = memoryJournal();
+  const model = createModel({ previewProposal: async () => read(preview), approveProposal: async args => {
+    requests.push(args); return requests.length === 1 ? structuredClone(rejection) : success(receipt);
+  } }, journal, scope);
+  model.setOnline(true); await model.open(proposal); await model.approve();
+  expect(get(model).unresolved).toBe(true);
+  await model.approve();
+  expect(requests[1]).toEqual(requests[0]);
+  expect(get(model)).toMatchObject({ receipt, conflicts: [], contentUnavailable: false, unresolved: false, error: '' });
+  expect(await journal.load()).toBeNull();
 });

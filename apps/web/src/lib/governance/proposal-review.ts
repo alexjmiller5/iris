@@ -2,6 +2,86 @@ import { writable } from 'svelte/store';
 import type { ApprovalReceipt, ApprovalResult, Conflict, Preview, Proposal } from './contract';
 import type { ApprovalJournal, ApprovalScope, PendingApproval, GovernanceAPI } from './api';
 
+function record(value: unknown, keys: string[]): value is Record<string, unknown> {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		!Array.isArray(value) &&
+		Object.keys(value).length === keys.length &&
+		keys.every((key) => Object.hasOwn(value, key))
+	);
+}
+const strings = (value: unknown): value is string[] =>
+	Array.isArray(value) && value.every((item) => typeof item === 'string');
+const oneOf = (value: unknown, options: string[]) =>
+	typeof value === 'string' && options.includes(value);
+
+// Defensive settlement guard at the injected, typed API seam. This cannot
+// authenticate a receipt or validate HTTP status/body pairs; the core adapter
+// must do both before it can be enabled. Unknown envelopes never settle a key.
+function approvalResult(value: unknown): value is ApprovalResult {
+	if (record(value, ['kind']) && value.kind === 'purged') return true;
+	if (record(value, ['kind', 'code']) && value.kind === 'transport_error')
+		return oneOf(value.code, ['offline', 'indeterminate']);
+	if (record(value, ['kind', 'code', 'resolution', 'conflicts']) && value.kind === 'error')
+		return (
+			oneOf(value.code, [
+				'proposal_changed',
+				'revision_changed',
+				'history_unavailable',
+				'validation_failed',
+				'permission_denied',
+				'unavailable',
+				'expired_preview',
+				'idempotency_conflict'
+			]) &&
+			oneOf(value.resolution, ['unresolved', 'not_committed']) &&
+			Array.isArray(value.conflicts) &&
+			value.conflicts.every(
+				(conflict) =>
+					record(conflict, ['code', 'column', 'eventIds', 'message']) &&
+					oneOf(conflict.code, [
+						'later_column_change',
+						'history_unavailable',
+						'revision_changed',
+						'validation_failed',
+						'proposal_changed',
+						'unavailable'
+					]) &&
+					(conflict.column === null || typeof conflict.column === 'string') &&
+					strings(conflict.eventIds) &&
+					typeof conflict.message === 'string'
+			)
+		);
+	if (!record(value, ['kind', 'value']) || value.kind !== 'success') return false;
+	const receipt = value.value;
+	return (
+		record(receipt, [
+			'operationId',
+			'proposalId',
+			'proposalVersion',
+			'target',
+			'revision',
+			'historyEventIds',
+			'approvedBy',
+			'committedAt'
+		]) &&
+		['operationId', 'proposalId', 'proposalVersion', 'committedAt'].every(
+			(key) => typeof receipt[key] === 'string'
+		) &&
+		record(receipt.target, ['table', 'rowId']) &&
+		typeof receipt.target.table === 'string' &&
+		typeof receipt.target.rowId === 'string' &&
+		record(receipt.revision, ['updated_at', 'hub_at']) &&
+		typeof receipt.revision.updated_at === 'string' &&
+		(receipt.revision.hub_at === null || typeof receipt.revision.hub_at === 'string') &&
+		strings(receipt.historyEventIds) &&
+		record(receipt.approvedBy, ['principalId', 'kind']) &&
+		typeof receipt.approvedBy.principalId === 'string' &&
+		oneOf(receipt.approvedBy.kind, ['user', 'agent', 'service'])
+	);
+}
+
 export interface ProposalReviewState {
 	proposal: Proposal | null;
 	preview: Preview | null;
@@ -207,12 +287,28 @@ export function createProposalReview(
 				publish();
 				let result: ApprovalResult;
 				try {
-					result = await api.approveProposal(sent);
+					const received: unknown = await api.approveProposal(sent);
+					result = approvalResult(received)
+						? received
+						: { kind: 'transport_error', code: 'indeterminate' };
+					if (
+						result.kind === 'success' &&
+						(result.value.proposalId !== retained.request.proposalId ||
+							result.value.proposalVersion !== retained.request.expectedVersion ||
+							result.value.target.table !== retained.target.table ||
+							result.value.target.rowId !== retained.target.rowId)
+					)
+						result = { kind: 'transport_error', code: 'indeterminate' };
 				} catch {
 					result = { kind: 'transport_error', code: 'indeterminate' };
 				}
-				// A completed request still resolves its durable journal after unmount.
-				if (result.kind !== 'transport_error') {
+				// Only a terminal receipt settles the original request, even after unmount.
+				// A rejection of this retry says nothing about an earlier dispatch.
+				if (
+					result.kind === 'success' ||
+					result.kind === 'purged' ||
+					(result.kind === 'error' && result.resolution === 'not_committed')
+				) {
 					try {
 						await journal.resolve(retained);
 						pending = null;
@@ -234,7 +330,8 @@ export function createProposalReview(
 					return;
 				}
 				state = { ...state, busy: false, preview: null, unresolved: pending !== null };
-				if (result.kind === 'success') state = { ...state, receipt: result.value };
+				if (result.kind === 'success')
+					state = { ...state, receipt: result.value, conflicts: [], contentUnavailable: false };
 				else if (result.kind === 'purged')
 					state = {
 						...empty(),
