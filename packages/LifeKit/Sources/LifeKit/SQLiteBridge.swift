@@ -7,6 +7,8 @@ import JavaScriptCore
 public final class SQLiteBridge {
   private let database: DatabaseQueue
   private var prepared = false
+  /// Aggregate execution/encoding duration only; never receives SQL or parameters.
+  var onExecution: ((Double) -> Void)?
 
   var isInsideTransaction: Bool {
     database.unsafeRead { $0.isInsideTransaction }
@@ -97,6 +99,11 @@ public final class SQLiteBridge {
   /// Install only in a trusted core context, never a web page or user script.
   public func install(in context: JSContext) throws {
     let call: @convention(block) (String) -> String = { [self] json in
+      let started = ContinuousClock.now
+      defer {
+        let elapsed = started.duration(to: .now).components
+        onExecution?(Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
+      }
       do {
         return try encode(["value": execute(json)])
       } catch {
