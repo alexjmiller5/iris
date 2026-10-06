@@ -86,6 +86,52 @@ that row 9,999 is visible. It keeps long stalls. A foreground tab is required;
 rAF cadence is a diagnostic proxy, not proof that every frame was presented
 without blank content. No pass/fail acceptance is inferred from rounding fps.
 
+## Recorded desktop baseline
+
+[Raw samples and resource sizes](performance/2026-10-06-desktop-chrome.json)
+were captured on 2026-10-06 at 14:58 UTC from commit
+`12d93c67e51a64710725df6a59e2d6611cd0b05c` (production source based on
+`5ecf0e469ebbe0b695c293b9f4647408f4240e52`). This is a desktop Chrome 154
+baseline at 1280 by 800 on a Mac mini with macOS 26.6, during an exclusively
+allocated browser/CPU window with native builds and benchmarks idle.
+It does not measure later production changes, physical iPhone Safari or native
+app startup. It cannot diagnose native startup latency or the effect of native
+read-cancellation changes.
+
+| Measurement | Samples | Median | p95 / maximum |
+| --- | ---: | ---: | ---: |
+| New sample creation, click to rows | 1 | 115.30 ms | 115.30 ms |
+| Existing one-row OPFS replica reopen, click to rows | 5 | 65.60 ms | 65.90 ms |
+| Warm local table reselect, click to rows | 10 | 47.95 ms | 49.10 ms |
+| Shell navigation to FCP, existing-replica runs | 5 | 80 ms | 96 ms |
+| 10k in-memory grid rAF interval | 300 | 16.70 ms | 16.80 / 18.70 ms |
+
+All six startup samples loaded 12 JavaScript resources, including the dedicated
+Worker: **427,760 encoded body bytes**, **427,760 decoded body bytes**, and
+**431,360 transfer bytes including headers**. The fixture serves uncompressed
+responses. Separately, SQLite WASM used 725,083 body bytes and 725,383 transfer
+bytes. Both the Worker and WASM are retained in the raw resource records.
+
+The five-second grid traversal recorded 301 rAF callbacks, averaging 60 callbacks
+per second across 300 intervals, with at most 34 mounted cells; row 9,999 was
+visible at the end. There were 190 intervals strictly above 1000/60 ms. That
+strict counter includes ordinary 16.7 ms timestamp quantization, so it is not a
+dropped-frame count; the unrounded timestamps and 18.7 ms maximum remain visible.
+No claim about compositor presentation or blank-free touch scrolling follows
+from the average cadence alone.
+
+Warm reselections made zero network requests. No browser exception was reported.
+The direct page WebSocket run completed; the synthetic origin was cleared, its
+group closed, and the fixture server stopped afterward. Failed earlier driver
+attachments produced no samples and are excluded from this report.
+
+These desktop reopen samples and JS totals fall below the original numerical
+limits for their stated boundaries. New sample creation exceeded 100 ms.
+Neither result closes the replica-first-paint requirement on physical iPhone:
+the one-row click-to-paint proxy, fixture build, and localhost serving policy
+still have the limitations above. Ordinary-production transfer verification,
+device measurements and actual presented-frame evidence remain open.
+
 ## Physical iPhone acceptance
 
 1. Use the same production commit, synthetic fixture and a separately authorized
