@@ -83,7 +83,9 @@ import Testing
     #expect(delivery.delivered.count == 2)
     #expect(Set(delivery.delivered).count == 2)
     #expect(try reloaded.state(endpoint: endpoint).baseline == 9)
-    try await reloaded.apply(.init(notifications: [event(8)], baseline: 10), endpoint: endpoint)
+    var replay = event(8)
+    replay.seq = 10
+    try await reloaded.apply(.init(notifications: [replay], baseline: 10), endpoint: endpoint)
     #expect(delivery.delivered.count == 2)
     #expect(try await alerts.enable(endpoint: "https://two.invalid"))
     try await alerts.apply(
@@ -113,9 +115,13 @@ import Testing
     authorizationRequests += 1
     return granted
   }
-  func present(_ notification: HubNotification, identifier: String) async throws {
+  func present(
+    _ notification: HubNotification, identifier: String, shouldPresent: () throws -> Bool
+  ) async throws -> Bool {
+    guard try shouldPresent() else { return false }
     if notification.id == failID { throw URLError(.cannotConnectToHost) }
     delivered.append(identifier)
     onPresent?()
+    return true
   }
 }
