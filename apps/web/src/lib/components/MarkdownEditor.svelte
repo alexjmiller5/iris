@@ -36,6 +36,7 @@
 		onready?(): void;
 	} = $props();
 	let host: HTMLDivElement;
+	let editorRoot: HTMLDivElement;
 	let controller = $state<MarkdownController>();
 	let source = $state(false);
 	let error = $state('');
@@ -71,6 +72,9 @@
 		node: HTMLElement,
 		{ anchor, above = false }: { anchor(): DOMRect; above?: boolean }
 	) {
+		// The top layer escapes containment and clipping in virtualized table rows.
+		node.popover = 'manual';
+		node.showPopover();
 		const place = () => {
 			const rect = anchor();
 			const viewport = window.visualViewport;
@@ -219,17 +223,30 @@
 <svelte:document
 	onselectionchange={trackSelection}
 	onpointerdown={(event) => {
-		if (!(event.target as Element).closest('.editor-popup, .options-trigger')) closePopup(false);
-	}}
-	onkeydown={(event) => {
-		if (event.key === 'Escape' && popup) {
-			event.preventDefault();
-			closePopup();
-		}
+		const target = event.target as Element;
+		if (!editorRoot.contains(target) || !target.closest('.editor-popup, .options-trigger'))
+			closePopup(false);
 	}}
 />
 
-<div class="markdown-editor">
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions (handles keys bubbling from the editor and popup controls) -->
+<div
+	class="markdown-editor"
+	bind:this={editorRoot}
+	role="group"
+	aria-label={`${label} editor`}
+	onkeydown={(event) => {
+		if (!popup) return;
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			closePopup();
+		} else if (event.key === 'Tab') {
+			// Keep native focus traversal inside popups from committing an enclosing grid cell.
+			event.stopPropagation();
+		}
+	}}
+>
 	<button
 		class="options-trigger"
 		bind:this={optionsButton}
@@ -411,6 +428,7 @@
 		background: var(--color-paper);
 	}
 	.options-trigger {
+		justify-content: center;
 		position: absolute;
 		top: 0.35rem;
 		right: 0.35rem;
@@ -442,6 +460,9 @@
 	}
 	.editor-popup {
 		position: fixed;
+		inset: auto;
+		margin: 0;
+		color: var(--color-ink);
 		z-index: 50;
 		padding: 0.3rem;
 		border: 1px solid var(--color-rule);
@@ -515,12 +536,24 @@
 		outline: none;
 		font-size: 0.92rem;
 		line-height: 1.75;
+		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 	}
 	@media (max-width: 640px) {
 		textarea,
 		.rich-document :global(.ProseMirror) {
 			font-size: 1rem;
+		}
+	}
+	@media (max-width: 640px), (pointer: coarse) {
+		.options-trigger,
+		.editor-popup button {
+			min-width: 2.75rem;
+			min-height: 2.75rem;
+		}
+		textarea,
+		.rich-document :global(.ProseMirror) {
+			padding-right: 3.25rem;
 		}
 	}
 	.rich-document :global(.ProseMirror:focus-visible) {

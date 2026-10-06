@@ -143,13 +143,13 @@ final class WorkspaceUITests: XCTestCase {
     let body = app.buttons["field-body"]
     for _ in 0..<8 where !body.isHittable { scrollRecordFormUp(app) }
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     let sourceButton = app.webViews.descendants(matching: .any)["Body source"]
     tapWhenReady(sourceButton)
     let source = app.webViews.textViews["Body"]
     tapWhenReady(source)
     source.typeText(" Enrollment source check")
-    let options = app.webViews.buttons["Body options"]
+    let options = app.webViews.descendants(matching: .any)["Body options"]
     XCTAssertTrue(options.isHittable)
     XCTAssertGreaterThan(options.frame.height, 0)
     XCTAssertLessThanOrEqual(options.frame.maxX, app.frame.maxX)
@@ -217,7 +217,7 @@ final class WorkspaceUITests: XCTestCase {
     let body = app.buttons["field-body"]
     for _ in 0..<10 where !body.isHittable { scrollRecordFormUp(app) }
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let source = app.webViews.textViews["Body"]
     tapWhenReady(source)
@@ -233,7 +233,7 @@ final class WorkspaceUITests: XCTestCase {
     offered.lifetime = .keepAlways
     add(offered)
     tapWhenReady(app.buttons["undo-markdown"])
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let undone = XCTNSPredicateExpectation(
       predicate: NSPredicate { _, _ in
@@ -249,7 +249,7 @@ final class WorkspaceUITests: XCTestCase {
     openRecord(app, title: draftTitle)
     for _ in 0..<10 where !body.isHittable { scrollRecordFormUp(app) }
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "")
   }
@@ -387,7 +387,7 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertFalse(app.textFields["field-title"].exists)
     tapWhenReady(app.buttons["online-markdown-body"])
     XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 10))
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     let source = app.webViews.descendants(matching: .any)["Body source"]
     tapWhenReady(source)
     let markdown = app.webViews.textViews.firstMatch
@@ -588,7 +588,7 @@ final class WorkspaceUITests: XCTestCase {
     let body = app.buttons["field-body"]
     for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(
       app.webViews.textViews["Body"].value as? String, "Hidden source for Viewfixture Zulu")
@@ -710,7 +710,7 @@ final class WorkspaceUITests: XCTestCase {
     let body = app.buttons["field-body"]
     for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(app.webViews.textViews["Body"].value as? String, "Synthetic body for note 00.")
     tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
@@ -742,7 +742,7 @@ final class WorkspaceUITests: XCTestCase {
     let body = app.buttons["field-body"]
     for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let source = app.webViews.textViews["Body"]
     XCTAssertEqual(source.value as? String, "Recovered body to keep")
@@ -757,7 +757,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.buttons["Open saved record"])
     XCTAssertEqual(app.textFields["field-title"].value as? String, "Pending recovery fixture")
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "Submitted body on disk")
     tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
@@ -767,7 +767,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.toolbars.buttons["close"])
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     tapWhenReady(source)
     source.press(forDuration: 1.2)
@@ -783,7 +783,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.buttons["Resume draft"])
     XCTAssertEqual(app.textFields["field-title"].value as? String, "Recovered property to keep")
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, retained)
     let shot = XCTAttachment(screenshot: app.screenshot())
@@ -812,7 +812,7 @@ final class WorkspaceUITests: XCTestCase {
     let body = app.buttons["field-body"]
     for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let source = app.webViews.textViews["Body"]
     tapWhenReady(source)
@@ -829,7 +829,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.buttons["Resume draft"])
     XCTAssertEqual(title.value as? String, dirtyTitle)
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "Synthetic autosave final!")
     tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
@@ -838,7 +838,7 @@ final class WorkspaceUITests: XCTestCase {
     openRecord(app, title: String(name))
     XCTAssertEqual(title.value as? String, String(name))
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "Synthetic autosave final!")
     tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
@@ -849,7 +849,7 @@ final class WorkspaceUITests: XCTestCase {
     title.typeText("Uncreated recovery fixture")
     for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     tapWhenReady(source)
     source.typeText("Unsaved new source!")
@@ -865,7 +865,7 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["New record"].waitForExistence(timeout: 5))
     XCTAssertEqual(title.value as? String, "Uncreated recovery fixture")
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "Unsaved new source!")
     let shot = XCTAttachment(screenshot: app.screenshot())
@@ -948,11 +948,11 @@ final class WorkspaceUITests: XCTestCase {
         ).firstMatch
         tapWhenReady(row)
         tapWhenReady(body)
-        tapWhenReady(app.webViews.buttons["Body options"])
+        tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
         tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
         XCTAssertEqual(
           (editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), expected)
-        tapWhenReady(app.webViews.buttons["Body options"])
+        tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
         tapWhenReady(app.webViews.descendants(matching: .any)["Body write"])
       }
     }
@@ -1267,7 +1267,7 @@ final class WorkspaceUITests: XCTestCase {
       scrollRecordFormUp(app)
     }
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let source = app.webViews.textViews["Body"]
     tapWhenReady(source)
@@ -1283,10 +1283,10 @@ final class WorkspaceUITests: XCTestCase {
       .firstMatch
     tapWhenReady(row)
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "# Markdown source\n\nA synthetic paragraph.")
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body write"])
     let rich = app.webViews.textViews["Body"]
     tapWhenReady(rich)
@@ -1295,11 +1295,11 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.navigationBars["Record"].buttons["save-record"])
     tapWhenReady(row)
     tapWhenReady(body)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertTrue(
       (source.value as? String)?.contains("Final rich keystroke.") == true, app.debugDescription)
-    tapWhenReady(app.webViews.buttons["Body options"])
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body write"])
     XCTAssertTrue(app.webViews.textViews["Body"].waitForExistence(timeout: 5))
     XCTAssertFalse(app.webViews.buttons["Heading 1"].exists)

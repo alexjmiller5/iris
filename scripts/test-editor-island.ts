@@ -21,7 +21,13 @@ try {
 	await expect.poll(() => page.evaluate(() => (window as any).events)).toEqual([{type: 'ready'}]);
 	async function mode(mode: 'source' | 'write') {
 		if (await page.locator('textarea[aria-label="Body"]').isVisible() === (mode === 'source')) return;
-		await page.getByRole('button', {name:'Body options',exact:true}).click();
+		const trigger = page.getByRole('button', {name:'Body options',exact:true});
+		const triggerBounds = await trigger.boundingBox();
+		expect(triggerBounds!.width, 'Mobile options must have a comfortable touch target').toBeGreaterThanOrEqual(44);
+		expect(triggerBounds!.height).toBeGreaterThanOrEqual(44);
+		await trigger.click();
+		const actionBounds = await page.getByRole('menuitem', {name:`Body ${mode}`,exact:true}).boundingBox();
+		expect(actionBounds!.height, 'Mobile menu rows must have a comfortable touch target').toBeGreaterThanOrEqual(44);
 		await page.getByRole('menuitem', {name:`Body ${mode}`,exact:true}).click();
 	}
 	const value = '# Native draft\n\n<mention-page url="https://example.com/kept"/>\n';
@@ -68,6 +74,31 @@ try {
 	await page.keyboard.press('Escape');
 	await expect(blocks).toBeHidden();
 	await expect(page.getByRole('textbox',{name:'Body',exact:true})).toBeFocused();
+	// Reopening literal spaces must render the same gaps the user typed.
+	const longLine = 'A sentence long enough to wrap inside a narrow editor without losing any of its words.';
+	const spaced = `A B\n\nA  B\n\n${longLine}\n`;
+	await page.evaluate(value => (window as any).lifeEditor.setDocument({id:'spaces',value,label:'Body',readOnly:false}), spaced);
+	await expect(page.locator('.ProseMirror p')).toHaveText(['A B', 'A  B', longLine]);
+	const gaps = await page.locator('.ProseMirror p').evaluateAll(paragraphs => paragraphs.slice(0, 2).map(paragraph => {
+		const text = paragraph.firstChild!;
+		const range = document.createRange();
+		range.setStart(text, 1);
+		range.setEnd(text, text.textContent!.indexOf('B'));
+		return range.getBoundingClientRect().width;
+	}));
+	expect(gaps[1], 'Two stored spaces must occupy more room than one').toBeGreaterThan(gaps[0] * 1.8);
+	const wrapped = await page.locator('.ProseMirror p').last().evaluate(paragraph => {
+		const text = paragraph.firstChild!;
+		const range = document.createRange();
+		range.setStart(text, 0);
+		range.setEnd(text, 1);
+		const firstLine = range.getBoundingClientRect().top;
+		range.setStart(text, text.textContent!.length - 1);
+		range.setEnd(text, text.textContent!.length);
+		return range.getBoundingClientRect().top > firstLine;
+	});
+	expect(wrapped, 'Preserving spaces must still wrap long paragraphs').toBe(true);
+	expect(await page.evaluate(() => (window as any).lifeEditor.getDocument().value)).toBe(spaced);
 	const blocked = await page.evaluate(async () => { try { await fetch('https://example.com/forbidden'); return false; } catch { return true; } });
 	expect(blocked).toBe(true);
 	console.log('PASS: native editor bundle, exact host source, typed change identity, readonly, malformed input and network isolation');

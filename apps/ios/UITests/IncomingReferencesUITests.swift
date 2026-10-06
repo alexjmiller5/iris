@@ -61,7 +61,7 @@ final class IncomingReferencesUITests: XCTestCase {
     let body = app.buttons["field-body"]
     reveal(body, in: app)
     tap(body)
-    tap(app.webViews.buttons["Body options"])
+    tap(app.webViews.descendants(matching: .any)["Body options"])
     tap(app.webViews.descendants(matching: .any)["Body source"])
     expectValue(app.webViews.textViews["Body"], "Composed full body")
     tap(app.navigationBars["Body"].buttons["finish-markdown"])
@@ -98,7 +98,7 @@ final class IncomingReferencesUITests: XCTestCase {
     let body = app.buttons["field-body"]
     reveal(body, in: app)
     tap(body)
-    tap(app.webViews.buttons["Body options"])
+    tap(app.webViews.descendants(matching: .any)["Body options"])
     tap(app.webViews.descendants(matching: .any)["Body source"])
     let sourceText = app.webViews.textViews["Body"]
     tap(sourceText)
@@ -124,7 +124,7 @@ final class IncomingReferencesUITests: XCTestCase {
     expectValue(title, "Target notebook")
     reveal(body, in: app)
     tap(body)
-    tap(app.webViews.buttons["Body options"])
+    tap(app.webViews.descendants(matching: .any)["Body options"])
     tap(app.webViews.descendants(matching: .any)["Body source"])
     expectValue(sourceText, bodyDraft)
   }
