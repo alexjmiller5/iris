@@ -500,6 +500,11 @@ final class WorkspaceModel {
   }
 
   var visibleRecordColumns: [String]? { appliedView?.definition?.columns }
+  var defaultViewLayout: [CoreViewLayoutItem] {
+    let columns = visibleRecordColumns ?? properties.compactMap { $0["col"]?.text }
+    return (columns.isEmpty ? ["id"] : columns).map { CoreViewLayoutItem(kind: "column", id: $0) }
+      + viewActions.map { CoreViewLayoutItem(kind: "action", id: $0.id) }
+  }
 
   func currentViewDefinition() throws -> CoreSavedViewDefinition {
     var definition = appliedView?.definition ?? CoreSavedViewDefinition(version: 1)
@@ -530,6 +535,7 @@ final class WorkspaceModel {
     }
     if currentFilters != (definition.filters ?? []) { definition.filters = currentFilters }
     if sortRules != (definition.sort ?? []) { definition.sort = sortRules }
+    if sortRules.contains(where: { $0.mode != nil }) { definition.version = 2 }
     if search != (definition.search ?? "") { definition.search = search }
     if trash != (definition.trash ?? false) { definition.trash = trash }
     return definition

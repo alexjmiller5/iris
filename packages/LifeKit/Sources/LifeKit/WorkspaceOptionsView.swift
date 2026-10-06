@@ -42,10 +42,7 @@ struct WorkspaceOptionsView: View {
     }
   }
   private var items: [CoreViewLayoutItem] {
-    layout ?? (model.visibleRecordColumns ?? fields.map(\.id)).map {
-      CoreViewLayoutItem(kind: "column", id: $0)
-    }
-      + actions.map { CoreViewLayoutItem(kind: "action", id: $0.id) }
+    layout ?? model.defaultViewLayout
   }
 
   var body: some View {

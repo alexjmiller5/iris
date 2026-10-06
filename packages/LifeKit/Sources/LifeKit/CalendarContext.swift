@@ -35,6 +35,14 @@ public func calendarContext(timeZone: String, now: Date = Date(), dayStartMinute
     }
     interval = previous
   }
+  // Some transitions cross midnight before folding into the previous wall
+  // date. The first boundary still begins the new effective day.
+  while now >= (try boundary(interval.end)) {
+    guard let next = calendar.dateInterval(of: .day, for: interval.end) else {
+      throw WorkspaceError(message: "Cannot resolve this calendar day.", violations: [])
+    }
+    interval = next
+  }
   let parts = calendar.dateComponents([.year, .month, .day], from: interval.start)
   let today = String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
   let formatter = ISO8601DateFormatter()
