@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "3490987a509818b5309efb68e864a83c7b57acbad3285c711e341fa9f7c3c369";
+export declare const CORE_CONTRACT_HASH = "323ba793aeb8962d9555f48d80ccf486bf1010116f1f1b89d8c33f9491c26d12";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -425,6 +425,205 @@ export type SourceRecordDestination = {
 };
 export type SourceLinkResult = {
     destination?: SourceRecordDestination;
+};
+export type Target = {
+    table: string;
+    rowId: string;
+};
+export type Revision = {
+    updated_at: string;
+    hub_at: string | null;
+};
+export type NullCell = {
+    type: "null";
+};
+export type TextCell = {
+    type: "text";
+    value: string;
+};
+export type IntegerCell = {
+    type: "integer";
+    value: string;
+};
+export type RealCell = {
+    type: "real";
+    value: number;
+};
+export type CellValue = NullCell | TextCell | IntegerCell | RealCell;
+export type ActorKind = "user" | "agent" | "service";
+export type Actor = {
+    principalId: string;
+    kind: ActorKind;
+};
+export type Change = {
+    column: string;
+    before: CellValue;
+    after: CellValue;
+};
+export type ConflictCode = "later_column_change" | "history_unavailable" | "revision_changed" | "validation_failed" | "proposal_changed" | "unavailable";
+export type Conflict = {
+    code: ConflictCode;
+    column: string | null;
+    eventIds: string[];
+    message: string;
+};
+export type SelectedInverseIntent = {
+    kind: "selected_inverse";
+    eventIds: string[];
+};
+export type ProposedCellChange = {
+    column: string;
+    after: CellValue;
+};
+export type PatchIntent = {
+    kind: "patch";
+    changes: ProposedCellChange[];
+};
+export type Intent = SelectedInverseIntent | PatchIntent;
+export type PreviewRequest = {
+    target: Target;
+    intent: Intent;
+};
+export type Preview = {
+    target: Target;
+    revision: Revision;
+    changes: Change[];
+    selectedEventIds: string[];
+    conflicts: Conflict[];
+    previewToken: string | null;
+    expiresAt: string | null;
+};
+export type HistoryEvent = {
+    id: string;
+    operationId: string | null;
+    target: Target;
+    column: string;
+    before: CellValue | null;
+    after: CellValue | null;
+    occurredAt: string;
+    actor: Actor | null;
+    claimedOrigin: string | null;
+    reversible: boolean;
+    unavailableReason: string | null;
+};
+export type ProposalState = "pending" | "approved" | "rejected";
+export type Proposal = {
+    id: string;
+    version: string;
+    target: Target;
+    intent: Intent;
+    changes: Change[];
+    baseRevision: Revision;
+    state: ProposalState;
+    proposedBy: Actor;
+    claimedOrigin: string | null;
+    createdAt: string;
+    updatedAt: string;
+};
+export type ApprovalReceipt = {
+    operationId: string;
+    proposalId: string;
+    proposalVersion: string;
+    target: Target;
+    revision: Revision;
+    historyEventIds: string[];
+    approvedBy: Actor;
+    committedAt: string;
+};
+export type MutationErrorCode = "proposal_changed" | "revision_changed" | "history_unavailable" | "validation_failed" | "permission_denied" | "unavailable" | "expired_preview" | "idempotency_conflict";
+export type MutationResolution = "unresolved" | "not_committed";
+export type MutationError = {
+    kind: "error";
+    code: MutationErrorCode;
+    resolution: MutationResolution;
+    conflicts: Conflict[];
+};
+export type PurgedResult = {
+    kind: "purged";
+};
+export type TransportErrorCode = "offline" | "indeterminate";
+export type TransportError = {
+    kind: "transport_error";
+    code: TransportErrorCode;
+};
+export type UnavailableResult = {
+    kind: "unavailable";
+};
+export type ProposalSuccess = {
+    kind: "success";
+    value: Proposal;
+};
+export type ApprovalSuccess = {
+    kind: "success";
+    value: ApprovalReceipt;
+};
+export type ProposalMutationResult = ProposalSuccess | PurgedResult | MutationError | TransportError;
+export type ApprovalResult = ApprovalSuccess | PurgedResult | MutationError | TransportError;
+export type ProposalResult = ProposalSuccess | UnavailableResult | TransportError;
+export type PreviewSuccess = {
+    kind: "success";
+    value: Preview;
+};
+export type PreviewResult = PreviewSuccess | UnavailableResult | TransportError;
+export type HistoryEventsPage = {
+    events: HistoryEvent[];
+    nextCursor: string | null;
+};
+export type HistoryEventsSuccess = {
+    kind: "success";
+    value: HistoryEventsPage;
+};
+export type HistoryEventsResult = HistoryEventsSuccess | UnavailableResult | TransportError;
+export type ProposalsPage = {
+    proposals: Proposal[];
+    nextCursor: string | null;
+};
+export type ProposalsSuccess = {
+    kind: "success";
+    value: ProposalsPage;
+};
+export type ProposalsResult = ProposalsSuccess | UnavailableResult | TransportError;
+export type HistoryEventsArgs = {
+    target: Target;
+    cursor?: string;
+    limit?: Count;
+};
+export type CreateProposalArgs = {
+    previewToken: string;
+    idempotencyKey: string;
+    claimedOrigin?: string;
+};
+export type ListProposalsArgs = {
+    target?: Target;
+    state?: ProposalState;
+    cursor?: string;
+    limit?: Count;
+};
+export type GetProposalArgs = {
+    proposalId: string;
+    version?: string;
+};
+export type EditProposalArgs = {
+    proposalId: string;
+    expectedVersion: string;
+    previewToken: string;
+    idempotencyKey: string;
+    claimedOrigin?: string;
+};
+export type PreviewProposalArgs = {
+    proposalId: string;
+    expectedVersion: string;
+};
+export type ApproveProposalArgs = {
+    proposalId: string;
+    expectedVersion: string;
+    previewToken: string;
+    idempotencyKey: string;
+};
+export type RejectProposalArgs = {
+    proposalId: string;
+    expectedVersion: string;
+    idempotencyKey: string;
 };
 export interface CoreOperations {
     catalog: {
