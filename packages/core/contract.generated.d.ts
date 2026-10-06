@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "4e276d615a2b88e8dc6a0a1946e2de99c41ac2479dd8961f792ad32c4edb67d8";
+export declare const CORE_CONTRACT_HASH = "f56c9b19b667c1b06d46a2474e2185ae38891cf3de493d5ec28d8bbb6bab8afa";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -8,11 +8,13 @@ export type SortDirection = "asc" | "desc";
 export type Sort = {
     column: string;
     direction: SortDirection;
+    mode?: SortMode;
 };
 export type Filter = {
     column: string;
     op: FilterOp;
     value?: FilterValue;
+    relative?: FilterRelative;
 };
 export type View = {
     table: string;
@@ -23,6 +25,8 @@ export type View = {
     offset?: Count;
     trash?: boolean;
     search?: string;
+    groups?: FilterGroup[];
+    calendar?: CalendarContext;
 };
 export type OptionDef = {
     v: string;
@@ -201,6 +205,10 @@ export type SavedViewDefinition = {
     search?: string;
     trash?: boolean;
     widths?: Record<string, number>;
+    groups?: FilterGroup[];
+    timeZone?: string;
+    actions?: RowAction[];
+    layout?: ViewLayoutItem[];
 };
 export type SavedViewRecord = {
     id: string;
@@ -368,6 +376,8 @@ export type HubCapabilities = {
     replica_sync: boolean;
     subscriptions: "durable-pull-v1" | null;
     files: "opaque-key-v1";
+    conditional_patch?: "revision-v1";
+    subscription_features?: "scalar-lifecycle-v1";
 };
 export type HubSession = {
     name: string;
@@ -377,6 +387,32 @@ export type HubSession = {
 export type ScopedReplicaUnsupported = {
     error: "scoped_replica_unsupported";
     message: string;
+};
+export type SortMode = "value" | "options";
+export type FilterRelative = "today";
+export type FilterGroup = {
+    match: "all" | "any";
+    filters: Filter[];
+};
+export type CalendarContext = {
+    today: string;
+    start: string;
+    end: string;
+};
+export type RowAction = {
+    id: string;
+    label: string;
+    values: Row;
+};
+export type ViewLayoutItem = {
+    kind: "column" | "action";
+    id: string;
+};
+export type RunRowActionArgs = {
+    viewId: string;
+    actionId: string;
+    rowId: string;
+    expectedUpdatedAt: string;
 };
 export interface CoreOperations {
     catalog: {
@@ -482,6 +518,10 @@ export interface CoreOperations {
     rejections: {
         args: RejectionsArgs;
         result: RejectionsPage;
+    };
+    runRowAction: {
+        args: RunRowActionArgs;
+        result: Row;
     };
 }
 export type CoreMethod = keyof CoreOperations;

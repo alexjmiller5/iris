@@ -12,6 +12,7 @@ export interface WorkspaceSnapshot {
 	undo: CoreResult<'undoStatus'>['action'];
 }
 export interface DatabaseOperations {
+	runRowAction: { args: CoreArgs<'runRowAction'>; result: CoreResult<'runRowAction'> };
 	enrollmentEndpoint: { args: { endpoint: string }; result: string };
 	enrollmentApproval: {
 		args: CoreArgs<'enrollmentApproval'>;

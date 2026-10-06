@@ -271,6 +271,9 @@ public final class NativeWorkspace {
   public func status() async throws -> WorkspaceSyncStatus {
     try await decode(CoreRequests.Status(CoreEmptyArgs()))
   }
+  public func runRowAction(_ args: CoreRunRowActionArgs) async throws -> WorkspaceRecord {
+    try await decode(CoreRequests.RunRowAction(args))
+  }
   public func undoStatus() async throws -> CoreUndoStatus {
     try await decode(CoreRequests.UndoStatus(CoreEmptyArgs()))
   }

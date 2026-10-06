@@ -18,7 +18,7 @@ for(const [table,records] of [['catalog_tables',[schema.table]],['catalog_proper
  }
 }
 db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('agent-view','Only the second record','widgets',JSON.stringify({version:1,columns:['title','body'],filters:[{column:'title',op:'eq',value:'Second record'}],sort:[{column:'title',direction:'desc'},{column:'quantity',direction:'asc'}],widths:{body:430}}));
-db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('future-view','A newer definition','widgets',JSON.stringify({version:2}));
+db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('future-view','A newer definition','widgets',JSON.stringify({version:99}));
 const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
 let ownedPage: import('@playwright/test').Page | undefined;
 try{
@@ -58,6 +58,8 @@ try{
  await expect(page.getByLabel('Quantity',{exact:true})).toHaveValue('42');
  await page.getByRole('button',{name:'Close record',exact:true}).click();
  console.log('PASS: synced saved view applies filters and layout while keeping hidden edit values');
+ await page.getByText('Sort order (2)',{exact:true}).click();
+ await page.getByLabel('Sort by',{exact:true}).selectOption('id');
  await page.getByText('Columns',{exact:true}).click();
  await expect(page.getByLabel('Width Body',{exact:true})).toHaveValue('430');
  await page.getByLabel('Width Body',{exact:true}).fill('360');
@@ -79,13 +81,14 @@ try{
  await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled();
  const stored=db.db.query('SELECT * FROM views WHERE id=?').get(copyId) as any;
  expect(stored?.name).toBe('A saved copy');
- expect(JSON.parse(stored.definition)).toMatchObject({columns:['title','body'],filters:[{column:'title',op:'eq',value:'Second record'}],widths:{body:360},sort:[{column:'title',direction:'desc'},{column:'quantity',direction:'asc'}]});
+ expect(JSON.parse(stored.definition)).toMatchObject({columns:['title','body'],filters:[{column:'title',op:'eq',value:'Second record'}],widths:{body:360},sort:[{column:'id',direction:'desc'},{column:'quantity',direction:'asc'}]});
  console.log('PASS: save-as writes a guarded synced row with the current layout');
  await page.reload();
  await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
  await page.getByRole('navigation',{name:'Tables'}).getByRole('button',{name:'widgets',exact:true}).click();
  await expect(views).toContainText('A saved copy');
  await views.selectOption(copyId);
+ await expect(views).toHaveValue(copyId);
  await expect(page.getByRole('columnheader')).toHaveText(['Record','Body']);
  await expect(page.getByRole('button',{name:'Second record',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Second record',exact:true}).click();

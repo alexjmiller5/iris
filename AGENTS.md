@@ -167,6 +167,17 @@ columns on existing rows; it updates the acknowledged baseline without replacing
 the live draft. Failed identical patches must not loop. Preserve unknown existing
 multi-select values.
 
+Saved view version 2 supports bounded all/any groups, host-resolved Today,
+ordered option/value sorts, literal row actions and interleaved action columns.
+Preserve every clause and source order when editing or reopening. Browser Intl
+and native Foundation resolve the saved timezone's day boundaries, refreshing
+at local midnight and foreground entry; the shared JSC core has no Intl.
+Calendar contexts are query arguments only, never persisted in definitions.
+Actions use the generated runRowAction operation with the selected full row's
+revision. Disable them during writes or while view settings are unsaved. Core
+resolves the current saved action, validates its ordinary write and publishes
+undo only after commit. Local receipts remain subject to sync rejection.
+
 Native catalog choices load through `NativeWorkspace.options`; controls only
 change draft bindings. Keep selected unknown choices and exact UTF-8 option keys,
 and expose malformed multi-select source for explicit repair. Late option replies

@@ -101,7 +101,11 @@ final class WorkspaceModel {
         sortRules = []
       } else {
         sortRules =
-          [CoreSort(column: newValue, direction: sortRules.first?.direction ?? .asc)]
+          [
+            CoreSort(
+              column: newValue, direction: sortRules.first?.direction ?? .asc,
+              mode: newValue == sortRules.first?.column ? sortRules.first?.mode : nil)
+          ]
           + sortRules.dropFirst().filter { $0.column != newValue }
       }
     }
@@ -111,6 +115,67 @@ final class WorkspaceModel {
     set { if !sortRules.isEmpty { sortRules[0].direction = newValue ? .asc : .desc } }
   }
   var filters: [WorkspaceFilter] = []
+  var filterGroups: [WorkspaceFilterGroup] = []
+  var viewActions: [CoreRowAction] = []
+  var viewLayout: [CoreViewLayoutItem]?
+  var viewTimeZone = TimeZone.current.identifier
+  private(set) var calendarDay = ""
+  var viewFields: [CatalogField] {
+    properties.map(CatalogField.init)
+      + ["id", "created_at", "updated_at", "deleted_at", "hub_at"].filter { id in
+        !properties.contains { $0["col"]?.text == id }
+      }.map { id in
+        CatalogField(property: [
+          "col": .string(id), "type": .string(id == "id" ? "text" : "datetime"),
+        ])
+      }
+  }
+  var hasRelativeFilters: Bool {
+    (filters + filterGroups.flatMap(\.filters)).contains(where: \.today)
+  }
+  func refreshCalendar(now: Date = Date()) throws {
+    calendarDay =
+      hasRelativeFilters ? try calendarContext(timeZone: viewTimeZone, now: now).today : ""
+  }
+  func runCalendarRefresh() async {
+    guard hasRelativeFilters else { return }
+    let generation = workspaceGeneration
+    do {
+      while !Task.isCancelled, generation == workspaceGeneration {
+        try refreshCalendar()
+        let day = try calendarContext(timeZone: viewTimeZone)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let end = formatter.date(from: day.end) else { return }
+        try await Task.sleep(for: .seconds(max(0.01, end.timeIntervalSinceNow)))
+      }
+    } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+  }
+  var canRunRowAction: Bool {
+    client != nil && !loading && !writingRecord && !undoing && !savingView && appliedView != nil
+      && !viewModified && !trash && writeability?.writable == true
+  }
+  func runRowAction(_ actionID: String, row: WorkspaceRow, context: WorkspaceEditingContext?)
+    async throws
+  {
+    let context = try requireViewContext(context)
+    guard canRunRowAction, let view = appliedView, let revision = row.record["updated_at"]?.text
+    else {
+      throw WorkspaceError(
+        message: "Save or reopen this view before running its actions.", violations: [])
+    }
+    let generation = workspaceGeneration
+    let selectedView = viewGeneration
+    writingRecord = true
+    defer { if generation == workspaceGeneration { writingRecord = false } }
+    _ = try await context.workspace.runRowAction(
+      CoreRunRowActionArgs(
+        viewId: view.id, actionId: actionID, rowId: row.id, expectedUpdatedAt: revision))
+    guard client === context.workspace, generation == workspaceGeneration else { return }
+    recordLocalChange()
+    if selectedView == viewGeneration { await reload() }
+  }
+
   private(set) var savedViews: [CoreSavedViewRecord] = []
   private(set) var appliedView: CoreSavedViewRecord?
   private(set) var savedViewsUnavailable: String?
@@ -246,8 +311,12 @@ final class WorkspaceModel {
 
   var queryKey: [String] {
     [table ?? "", search, String(trash), appliedView?.id ?? "", String(viewGeneration)]
-      + sortRules.flatMap { [$0.column, $0.direction.rawValue] }
-      + filters.flatMap { [$0.column, $0.operation.rawValue, $0.value] }
+      + [
+        viewTimeZone, calendarDay,
+        String(describing: try? filterGroups.map { try $0.core(fields: viewFields) }),
+      ]
+      + sortRules.flatMap { [$0.column, $0.direction.rawValue, $0.mode?.rawValue ?? ""] }
+      + filters.flatMap { [$0.column, $0.operation.rawValue, $0.value, String($0.today)] }
   }
 
   private func resetView() {
@@ -264,6 +333,11 @@ final class WorkspaceModel {
     sortColumn = ""
     sortAscending = true
     filters = []
+    filterGroups = []
+    viewActions = []
+    viewLayout = nil
+    viewTimeZone = TimeZone.current.identifier
+    calendarDay = ""
     rows = []
     canLoadMore = false
     loading = false
@@ -286,6 +360,27 @@ final class WorkspaceModel {
     self.filters = filters
   }
 
+  func applyWorkflowOptions(
+    sorts: [CoreSort], filters: [WorkspaceFilter], groups: [WorkspaceFilterGroup],
+    actions: [CoreRowAction], layout: [CoreViewLayoutItem]?, timeZone: String,
+    context: WorkspaceEditingContext?
+  ) throws {
+    _ = try requireViewContext(context)
+    for filter in filters {
+      _ = try filter.coreFilter(field: viewFields.first { $0.id == filter.column })
+    }
+    for group in groups { _ = try group.core(fields: viewFields) }
+    if (filters + groups.flatMap(\.filters)).contains(where: \.today) {
+      _ = try calendarContext(timeZone: timeZone)
+    }
+    sortRules = sorts
+    self.filters = filters
+    filterGroups = groups
+    viewActions = actions
+    viewLayout = layout
+    viewTimeZone = timeZone
+  }
+
   var editingContext: WorkspaceEditingContext? {
     guard let client, let table else { return nil }
     return WorkspaceEditingContext(workspace: client, table: table, draftStore: draftStore)
@@ -302,6 +397,9 @@ final class WorkspaceModel {
     catalog = resolved.catalog
     return WorkspaceEditingContext(
       workspace: workspace, table: resolved.destination.table, draftStore: draftStore)
+  }
+  var displayColumn: String {
+    tables.first { $0["id"]?.text == table }?["display"]?.text.nonempty ?? "id"
   }
   var tables: [WorkspaceRecord] { catalog?.tables ?? [] }
   var properties: [WorkspaceRecord] {
@@ -373,9 +471,26 @@ final class WorkspaceModel {
 
   func currentViewDefinition() throws -> CoreSavedViewDefinition {
     var definition = appliedView?.definition ?? CoreSavedViewDefinition(version: 1)
-    let fields = properties.map(CatalogField.init)
+    let fields = viewFields
     let currentFilters = try filters.map { filter in
       try filter.coreFilter(field: fields.first { $0.id == filter.column })
+    }
+    let groups = try filterGroups.map { try $0.core(fields: fields) }
+    if groups != (definition.groups ?? []) {
+      definition.groups = groups
+      definition.version = 2
+    }
+    if viewActions != (definition.actions ?? []) {
+      definition.actions = viewActions
+      definition.version = 2
+    }
+    if viewLayout != definition.layout {
+      definition.layout = viewLayout
+      definition.version = 2
+    }
+    if hasRelativeFilters || definition.timeZone != nil {
+      definition.timeZone = viewTimeZone
+      definition.version = 2
     }
     if currentFilters != (definition.filters ?? []) { definition.filters = currentFilters }
     if sortRules != (definition.sort ?? []) { definition.sort = sortRules }
@@ -434,7 +549,11 @@ final class WorkspaceModel {
       search = definition.search ?? ""
       trash = definition.trash ?? false
       sortRules = definition.sort ?? []
-      let fields = properties.map(CatalogField.init)
+      let fields = viewFields
+      filterGroups = (definition.groups ?? []).map { WorkspaceFilterGroup($0, fields: fields) }
+      viewActions = definition.actions ?? []
+      viewLayout = definition.layout
+      viewTimeZone = definition.timeZone ?? TimeZone.current.identifier
       filters = (definition.filters ?? []).map { filter in
         WorkspaceFilter(filter, field: fields.first { $0.id == filter.column })
       }
@@ -444,6 +563,10 @@ final class WorkspaceModel {
       trash = false
       sortRules = []
       filters = []
+      filterGroups = []
+      viewActions = []
+      viewLayout = nil
+      viewTimeZone = TimeZone.current.identifier
     }
     viewGeneration += 1
   }
@@ -807,7 +930,9 @@ final class WorkspaceModel {
       let view = CoreView(
         table: table,
         filters: definition.filters, sort: definition.sort,
-        limit: 100, offset: more ? rows.count : 0, trash: trash, search: search)
+        limit: 100, offset: more ? rows.count : 0, trash: trash, search: search,
+        groups: definition.groups,
+        calendar: hasRelativeFilters ? try calendarContext(timeZone: viewTimeZone) : nil)
       let result = try await client.rows(view: view)
       let status = isReplica ? try await client.status() : nil
       let undo = try await client.undoStatus()

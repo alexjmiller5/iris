@@ -50,6 +50,9 @@
         },
         "direction": {
           "$ref": "#/$defs/SortDirection"
+        },
+        "mode": {
+          "$ref": "#/$defs/SortMode"
         }
       },
       "required": [
@@ -68,6 +71,9 @@
         },
         "value": {
           "$ref": "#/$defs/FilterValue"
+        },
+        "relative": {
+          "$ref": "#/$defs/FilterRelative"
         }
       },
       "required": [
@@ -110,6 +116,15 @@
         },
         "search": {
           "type": "string"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FilterGroup"
+          }
+        },
+        "calendar": {
+          "$ref": "#/$defs/CalendarContext"
         }
       },
       "required": [
@@ -1024,6 +1039,27 @@
           "additionalProperties": {
             "type": "number"
           }
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FilterGroup"
+          }
+        },
+        "timeZone": {
+          "type": "string"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RowAction"
+          }
+        },
+        "layout": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ViewLayoutItem"
+          }
         }
       },
       "required": [
@@ -1819,6 +1855,18 @@
           "enum": [
             "opaque-key-v1"
           ]
+        },
+        "conditional_patch": {
+          "type": "string",
+          "enum": [
+            "revision-v1"
+          ]
+        },
+        "subscription_features": {
+          "type": "string",
+          "enum": [
+            "scalar-lifecycle-v1"
+          ]
         }
       },
       "required": [
@@ -1869,6 +1917,121 @@
         "message"
       ],
       "description": "HTTP 403. Canonical message and response fixture: tests/fixtures/hub-capabilities-contract.json."
+    },
+    "SortMode": {
+      "type": "string",
+      "enum": [
+        "value",
+        "options"
+      ]
+    },
+    "FilterRelative": {
+      "type": "string",
+      "enum": [
+        "today"
+      ]
+    },
+    "FilterGroup": {
+      "type": "object",
+      "properties": {
+        "match": {
+          "type": "string",
+          "enum": [
+            "all",
+            "any"
+          ]
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Filter"
+          }
+        }
+      },
+      "required": [
+        "match",
+        "filters"
+      ]
+    },
+    "CalendarContext": {
+      "type": "object",
+      "properties": {
+        "today": {
+          "type": "string"
+        },
+        "start": {
+          "type": "string"
+        },
+        "end": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "today",
+        "start",
+        "end"
+      ]
+    },
+    "RowAction": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "values": {
+          "$ref": "#/$defs/Row"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "values"
+      ]
+    },
+    "ViewLayoutItem": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "column",
+            "action"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ]
+    },
+    "RunRowActionArgs": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "type": "string"
+        },
+        "actionId": {
+          "type": "string"
+        },
+        "rowId": {
+          "type": "string"
+        },
+        "expectedUpdatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "viewId",
+        "actionId",
+        "rowId",
+        "expectedUpdatedAt"
+      ]
     }
   },
   "operations": {
@@ -2105,6 +2268,14 @@
       },
       "result": {
         "$ref": "#/$defs/RejectionsPage"
+      }
+    },
+    "runRowAction": {
+      "args": {
+        "$ref": "#/$defs/RunRowActionArgs"
+      },
+      "result": {
+        "$ref": "#/$defs/Row"
       }
     }
   }

@@ -143,6 +143,13 @@ public struct WorkspaceView: View {
       await model.services.poll()
     }
     .task(id: model.queryKey) { await model.reload() }
+    .task(
+      id:
+        "\(model.workspaceGeneration)|\(model.table ?? "")|\(model.viewTimeZone)|\(model.hasRelativeFilters)|\(scenePhase == .active)"
+    ) {
+      guard scenePhase == .active else { return }
+      await model.runCalendarRefresh()
+    }
     .task(id: "\(model.workspaceGeneration)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
       await model.recents?.refresh()
@@ -654,25 +661,43 @@ public struct WorkspaceView: View {
               ? "Create a record to get started." : "Try a different search or filter."))
       }
       ForEach(model.rows, id: \.byteExactID) { row in
-        Button {
-          openRecord(row)
-        } label: {
-          VStack(alignment: .leading, spacing: 5) {
-            Text(row.label).foregroundStyle(.primary).font(.headline).lineLimit(2)
-            if let columns = model.visibleRecordColumns {
-              ForEach(columns, id: \.self) { column in
-                LabeledContent(
-                  model.properties.first { $0["col"]?.text == column }?["label"]?.text ?? column
-                ) {
-                  Text(row.record[column]?.text ?? "").lineLimit(2)
-                }.font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+          if model.viewLayout == nil
+            || !(model.visibleRecordColumns ?? []).contains(model.displayColumn)
+          {
+            Button {
+              openRecord(row)
+            } label: {
+              Text(row.label).foregroundStyle(.primary).font(.headline).lineLimit(2).frame(
+                maxWidth: .infinity, alignment: .leading
+              ).contentShape(.rect)
+            }.buttonStyle(.plain)
+          }
+          if model.visibleRecordColumns != nil || !model.viewActions.isEmpty {
+            ForEach(
+              NativeGridItem.items(
+                columns: NativeGridColumn.columns(
+                  properties: model.viewFields.map(\.property), selected: model.visibleRecordColumns
+                ), actions: model.viewActions, layout: model.viewLayout)
+            ) { item in
+              if let action = item.action {
+                Button(action.label) { runRowAction(action.id, row) }.disabled(
+                  !model.canRunRowAction
+                ).buttonStyle(.bordered)
+              } else if let column = item.column {
+                if model.viewLayout != nil && column.id == model.displayColumn {
+                  Button(row.label) { openRecord(row) }.font(.headline).buttonStyle(.plain)
+                } else {
+                  LabeledContent(column.label) {
+                    Text(column.text(in: row.record)).lineLimit(3).textSelection(.enabled)
+                  }.font(.caption).foregroundStyle(.secondary)
+                }
               }
-            } else if let date = row.record["updated_at"]?.text {
-              Text(date).font(.caption).foregroundStyle(.secondary)
             }
-          }.padding(.vertical, 5).frame(maxWidth: .infinity, alignment: .leading).contentShape(
-            .rect)
-        }.buttonStyle(.plain)
+          } else if let date = row.record["updated_at"]?.text {
+            Text(date).font(.caption).foregroundStyle(.secondary)
+          }
+        }.padding(.vertical, 5)
       }
       if model.canLoadMore { Button("Load more") { Task { await model.reload(more: true) } } }
       if model.loading { ProgressView().frame(maxWidth: .infinity) }
@@ -680,6 +705,15 @@ public struct WorkspaceView: View {
     #if os(iOS)
       .contentMargins(.top, 0, for: .scrollContent)
     #endif
+  }
+
+  private func runRowAction(_ id: String, _ row: WorkspaceRow) {
+    let context = model.editingContext
+    Task {
+      do { try await model.runRowAction(id, row: row, context: context) } catch {
+        model.error = error.localizedDescription
+      }
+    }
   }
 
   @ViewBuilder private var recordContent: some View {
@@ -694,9 +728,12 @@ public struct WorkspaceView: View {
           MacRecordTable(
             rows: model.rows,
             columns: NativeGridColumn.columns(
-              properties: model.properties, selected: model.visibleRecordColumns,
+              properties: model.viewFields.map(\.property), selected: model.visibleRecordColumns,
               widths: model.appliedView?.definition?.widths ?? [:]),
-            onOpen: openRecord
+            displayColumn: model.displayColumn, actions: model.viewActions,
+            layout: model.viewLayout,
+            canRunAction: model.canRunRowAction,
+            onAction: runRowAction, onOpen: openRecord
           )
           .id(model.queryKey + [String(model.workspaceGeneration)])
           .overlay {

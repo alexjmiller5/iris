@@ -5,6 +5,7 @@ struct WorkspaceFilter: Identifiable, Equatable {
   var column: String
   var operation: CoreFilterOp = .eq
   var value = ""
+  var today = false
   private var imported: CoreFilter?
   private var importedText: String?
 
@@ -15,6 +16,7 @@ struct WorkspaceFilter: Identifiable, Equatable {
   }
 
   init(_ filter: CoreFilter, field: CatalogField? = nil) {
+    today = filter.relative == .today
     column = filter.column
     operation = filter.op
     switch filter.value {
@@ -40,11 +42,19 @@ struct WorkspaceFilter: Identifiable, Equatable {
   }
 
   func coreFilter(field: CatalogField?) throws -> CoreFilter {
-    if let imported, imported.column == column, imported.op == operation, importedText == value {
+    if let imported, imported.column == column, imported.op == operation, importedText == value,
+      (imported.relative == .today) == today
+    {
       return imported
     }
     if operation == .empty || operation == .notEmpty {
       return CoreFilter(column: column, op: operation)
+    }
+    if today {
+      guard ["date", "datetime"].contains(field?.type ?? ""), operation != .contains else {
+        throw WorkspaceError(message: "Today requires a date comparison.", violations: [])
+      }
+      return CoreFilter(column: column, op: operation, relative: .today)
     }
     let typed: CoreFilterValue
     if ["int", "number"].contains(field?.type ?? "") {
@@ -79,5 +89,28 @@ extension CoreFilterOp {
     case .empty: "Is empty"
     case .notEmpty: "Is not empty"
     }
+  }
+}
+
+struct WorkspaceFilterGroup: Identifiable, Equatable {
+  let id = UUID()
+  var match: String = "any"
+  var filters: [WorkspaceFilter] = []
+  init(match: String = "any", filters: [WorkspaceFilter] = []) {
+    self.match = match
+    self.filters = filters
+  }
+  init(_ group: CoreFilterGroup, fields: [CatalogField]) {
+    match = group.match
+    filters = group.filters.map { filter in
+      WorkspaceFilter(filter, field: fields.first { $0.id == filter.column })
+    }
+  }
+  func core(fields: [CatalogField]) throws -> CoreFilterGroup {
+    CoreFilterGroup(
+      match: match,
+      filters: try filters.map { filter in
+        try filter.coreFilter(field: fields.first { $0.id == filter.column })
+      })
   }
 }

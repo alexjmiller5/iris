@@ -67,6 +67,11 @@
 	} from '$lib/command-palette';
 	import ColumnSettings from '$lib/ColumnSettings.svelte';
 	import SavedViews from '$lib/SavedViews.svelte';
+	import ViewControls from '$lib/ViewControls.svelte';
+	import { queryDefinition } from '$lib/view-controls';
+	import { calendarContext } from '$lib/calendar-context';
+	import { untrack } from 'svelte';
+	import type { FilterGroup, RowAction, ViewLayoutItem } from 'life-ui-core/client';
 	import SidebarTables from '$lib/SidebarTables.svelte';
 	import SidebarRecents from '$lib/SidebarRecents.svelte';
 	import {
@@ -366,6 +371,10 @@
 	let viewVersion = 0,
 		viewsRequest = 0;
 	let importedSort = $state<Sort[] | null>(null);
+	let filterGroups = $state<FilterGroup[]>([]),
+		actions = $state<RowAction[]>([]),
+		actionLayout = $state<ViewLayoutItem[] | undefined>(),
+		timeZone = $state('UTC');
 	const sortClauses = $derived(
 		importedSort ?? [{ column: sort, direction: descending ? ('desc' as const) : ('asc' as const) }]
 	);
@@ -391,7 +400,7 @@
 		lte: 'at most'
 	};
 	const describeFilter = (filter: Filter) =>
-		`${properties.find((p) => p.col === filter.column)?.label || filter.column} ${filterLabels[filter.op]}${filter.value === undefined ? '' : ` ${filter.value}`}`;
+		`${properties.find((p) => p.col === filter.column)?.label || filter.column} ${filterLabels[filter.op]}${filter.relative === 'today' ? ' Today' : filter.value === undefined ? '' : ` ${filter.value}`}`;
 	const system = new Set(['id', 'created_at', 'updated_at', 'deleted_at', 'hub_at']);
 	const properties = $derived(
 		catalog.properties
@@ -616,6 +625,15 @@
 		)
 			return;
 		columns = next;
+		if (actionLayout) {
+			const ids = [display ?? 'id', ...next];
+			actionLayout = [
+				...actionLayout.filter((i) => i.kind === 'action' || ids.includes(i.id)),
+				...ids
+					.filter((id) => !actionLayout?.some((i) => i.kind === 'column' && i.id === id))
+					.map((id) => ({ kind: 'column' as const, id }))
+			];
+		}
 		widths = sizes;
 		void loadRows().catch((e) => (error = message(e)));
 	}
@@ -851,17 +869,90 @@
 			if (current()) error = message(e);
 		}
 	}
+	async function runSavedAction(actionId: string, row: Row) {
+		if (
+			!database ||
+			busy ||
+			navigationLoading ||
+			!chosenView ||
+			viewModified ||
+			blocked ||
+			readOnly ||
+			trash ||
+			!discard()
+		)
+			return;
+		const workspace = database,
+			version = viewVersion;
+		busy = true;
+		writing = true;
+		error = '';
+		try {
+			await workspace.request('runRowAction', {
+				viewId: chosenView.id,
+				actionId,
+				rowId: String(row.id),
+				expectedUpdatedAt: editRevision(row)
+			});
+			if (database !== workspace || viewVersion !== version) return;
+			selected = null;
+			editing = false;
+			gridDraft = null;
+			draft = {};
+			savedDraft = '';
+			await loadRows();
+			notice = 'Action saved on this device';
+		} catch (e) {
+			if (database === workspace && viewVersion === version) error = message(e);
+		} finally {
+			if (database === workspace) {
+				busy = false;
+				writing = false;
+			}
+		}
+	}
+	$effect(() => {
+		const workspace = database,
+			zone = timeZone;
+		const relative = [...filters, ...filterGroups.flatMap((g) => g.filters)].some(
+			(f) => f.relative === 'today'
+		);
+		if (!workspace || !relative) return;
+		let timer: ReturnType<typeof setTimeout>, previous: string;
+		try {
+			previous = calendarContext(zone).today;
+		} catch (e) {
+			error = message(e);
+			return;
+		}
+		const refresh = () => {
+			clearTimeout(timer);
+			const next = calendarContext(zone);
+			if (next.today !== previous) {
+				previous = next.today;
+				untrack(() => void loadRows().catch((e) => (error = message(e))));
+			}
+			timer = setTimeout(refresh, Math.max(1, Date.parse(next.end) - Date.now() + 1));
+		};
+		refresh();
+		window.addEventListener('focus', refresh);
+		window.addEventListener('pageshow', refresh);
+		document.addEventListener('visibilitychange', refresh);
+		return () => {
+			clearTimeout(timer);
+			window.removeEventListener('focus', refresh);
+			window.removeEventListener('pageshow', refresh);
+			document.removeEventListener('visibilitychange', refresh);
+		};
+	});
+
 	async function loadRows() {
 		if (!database || !table) return;
 		const workspace = database;
 		const request = ++rowsRequest;
 		const found: Row[] = await workspace.request('rows', {
 			view: {
-				table,
-				search,
-				trash,
-				filters: $state.snapshot(filters),
-				sort: $state.snapshot(sortClauses),
+				...queryDefinition(table, viewDefinition()),
 				limit: 50,
 				offset
 			}
@@ -935,6 +1026,10 @@
 		columns = null;
 		widths = {};
 		importedSort = null;
+		filterGroups = [];
+		actions = [];
+		actionLayout = undefined;
+		timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		chosenView = null;
 		viewBaseline = '';
 		savedViews = [];
@@ -1029,7 +1124,11 @@
 
 	function viewDefinition(): SavedViewDefinition {
 		return $state.snapshot({
-			version: 1,
+			version: 2,
+			groups: filterGroups,
+			timeZone,
+			actions,
+			...(actionLayout ? { layout: actionLayout } : {}),
 			columns: [...new Set([display ?? 'id', ...visibleColumns])],
 			filters,
 			sort: sortClauses,
@@ -1080,6 +1179,10 @@
 		columns = definition?.columns?.filter((col) => col !== (display ?? 'id')) ?? null;
 		widths = { ...definition?.widths };
 		filters = definition?.filters?.map((filter) => ({ ...filter })) ?? [];
+		filterGroups = $state.snapshot(definition?.groups ?? []);
+		actions = $state.snapshot(definition?.actions ?? []);
+		actionLayout = definition?.layout ? $state.snapshot(definition.layout) : undefined;
+		timeZone = definition?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 		search = definition?.search ?? '';
 		trash = definition?.trash ?? false;
 		importedSort = definition?.sort?.map((clause) => ({ ...clause })) ?? null;
@@ -1861,27 +1964,30 @@
 									loadRows().catch((e) => (error = message(e)));
 								}}><IconTrash size={16} />{trash ? 'All records' : 'Trash'}</button
 							>
-							<select
-								aria-label="Sort by"
-								bind:value={sort}
-								onchange={() => {
-									importedSort = null;
-									find();
-								}}
-								><option value="id">Sort by ID</option
-								>{#each viewProperties.filter((p) => p.col !== 'id') as p}<option value={p.col}
-										>Sort by {label(p)}</option
-									>{/each}</select
-							>
-							<button
-								class="secondary"
-								onclick={() => {
-									descending = !descending;
-									importedSort = null;
-									find();
-								}}>{descending ? 'Descending' : 'Ascending'}</button
-							>
 						</div>
+						<ViewControls
+							properties={viewProperties}
+							sorts={sortClauses}
+							{filters}
+							groups={filterGroups}
+							{actions}
+							layout={actionLayout}
+							{timeZone}
+							columns={[display ?? 'id', ...visibleColumns]}
+							disabled={busy || navigationLoading}
+							onchange={(patch) => {
+								if (!closeRecord()) return;
+								if (patch.sorts) importedSort = patch.sorts;
+								if (patch.groups) filterGroups = patch.groups;
+								if (patch.filters) filters = patch.filters;
+								if (patch.actions) actions = patch.actions;
+								if (patch.layout) actionLayout = patch.layout;
+								if (patch.timeZone !== undefined) timeZone = patch.timeZone;
+								offset = 0;
+								loadRows().catch((e) => (error = message(e)));
+							}}
+						/>
+
 						<form
 							class="filters"
 							onsubmit={(e) => {
@@ -1955,6 +2061,15 @@
 						{#key gridContext}
 							<RecordGrid
 								{rows}
+								{actions}
+								{actionLayout}
+								canRunAction={!!chosenView &&
+									!viewModified &&
+									!blocked &&
+									!readOnly &&
+									!trash &&
+									!navigationLoading}
+								onaction={runSavedAction}
 								properties={gridColumns}
 								{widths}
 								busy={busy || gridActionOpening !== null}
@@ -2596,9 +2711,6 @@
 		}
 		.pagination {
 			flex-wrap: wrap;
-		}
-		.toolbar select {
-			max-width: 170px;
 		}
 	}
 </style>

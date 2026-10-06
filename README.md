@@ -736,3 +736,15 @@ Run the real OPFS Undo checks against a reserved fixture origin:
 ```sh
 LIFE_UI_TEST_URL=http://life-ui-markdown.localhost:5198/workspace?review bun scripts/test-session-undo.ts /path/to/life-data
 ```
+
+Saved views can combine individual filters with all/any rule groups, compare date
+fields to Today in a chosen timezone, and preserve multiple ordered sorts.
+Option order follows the catalog. View options also define labeled buttons with
+literal property values and their position among visible columns. Save the view
+before using its actions; local edits retain the normal undo and sync behavior.
+
+The workflow browser regression uses a reserved disposable origin and synthetic
+hub state: `LIFE_UI_TEST_URL=<reserved-url> bun scripts/test-workflow-views.ts <life-data-checkout>`.
+It checks grouped conditions, midnight/foreground refresh, actions and reopen.
+The native `WorkflowViewsUITests` uses `SavedViewsTests.prepareSavedViewsUIFixture`
+on the exact disposable simulator selected by `LIFE_UI_TEST_SAVED_VIEWS_SIMULATOR`.

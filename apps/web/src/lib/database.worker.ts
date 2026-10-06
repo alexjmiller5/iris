@@ -392,6 +392,8 @@ async function dispatch(request: DatabaseRequest) {
 			return local.deleteView(args);
 		case 'options':
 			return local.options(args);
+		case 'runRowAction':
+			return local.runRowAction(args);
 		case 'write':
 			return local.write(args);
 		case 'undo':
@@ -454,7 +456,9 @@ scope.onmessage = ({ data }) => {
 				dispatch(data as DatabaseRequest)
 			);
 			respond({ id: data.id, result });
-			if (['write', 'undo', 'sync', 'saveView', 'deleteView'].includes(data.method)) {
+			if (
+				['write', 'runRowAction', 'undo', 'sync', 'saveView', 'deleteView'].includes(data.method)
+			) {
 				channel?.postMessage({ changed: true });
 				respond({ changed: true });
 			}
