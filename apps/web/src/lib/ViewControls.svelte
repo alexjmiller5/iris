@@ -9,7 +9,7 @@
 	} from 'life-ui-core/client';
 	import ViewFilter from './ViewFilter.svelte';
 	import FieldEditor from './FieldEditor.svelte';
-	import { editSort } from './view-controls';
+	import { editSort, parseDayStart } from './view-controls';
 	import { cellPatch, rawValue } from './record-grid';
 	let {
 		properties,
@@ -19,6 +19,7 @@
 		actions,
 		layout,
 		timeZone,
+		dayStartMinutes = 0,
 		columns,
 		disabled = false,
 		onchange
@@ -30,6 +31,7 @@
 		actions: RowAction[];
 		layout?: ViewLayoutItem[];
 		timeZone: string;
+		dayStartMinutes?: number;
 		columns: string[];
 		disabled?: boolean;
 		onchange: (patch: {
@@ -39,6 +41,7 @@
 			actions?: RowAction[];
 			layout?: ViewLayoutItem[];
 			timeZone?: string;
+			dayStartMinutes?: number;
 		}) => void;
 	} = $props();
 	let error = $state('');
@@ -203,6 +206,22 @@
 				onchange={(e) => onchange({ timeZone: e.currentTarget.value })}
 			/></label
 		>
+		<label
+			>Day starts at <input
+				type="time"
+				aria-label="Day starts at"
+				value={`${String(Math.floor(dayStartMinutes / 60)).padStart(2, '0')}:${String(dayStartMinutes % 60).padStart(2, '0')}`}
+				onchange={(e) => {
+					try {
+						onchange({ dayStartMinutes: parseDayStart(e.currentTarget.value) });
+						error = '';
+					} catch (e) {
+						error = (e as Error).message;
+					}
+				}}
+			/></label
+		>
+		<p>Today starts at this time in the selected timezone.</p>
 	</details>
 	<details>
 		<summary>Row actions{actions.length ? ` (${actions.length})` : ''}</summary>

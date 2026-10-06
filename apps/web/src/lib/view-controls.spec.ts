@@ -1,5 +1,13 @@
 import { expect, test } from 'vitest';
-import { editSort, parseFilter, queryDefinition } from './view-controls';
+import { editSort, parseDayStart, parseFilter, queryDefinition } from './view-controls';
+
+test('day-start controls preserve midnight, minute precision and reject incomplete input', () => {
+	expect(parseDayStart('00:00')).toBe(0);
+	expect(parseDayStart('03:00')).toBe(180);
+	expect(parseDayStart('23:59')).toBe(1439);
+	for (const invalid of ['', '24:00', '03:60', '3:00', '03:00:00'])
+		expect(() => parseDayStart(invalid)).toThrow();
+});
 
 test('changing the first sort retains the second and its option mode', () => {
 	const initial = [
@@ -41,4 +49,26 @@ test('runtime query keeps grouped conditions and resolves Today without serializ
 	expect(view.groups).toEqual(definition.groups);
 	expect(view).not.toHaveProperty('actions');
 	expect(definition).not.toHaveProperty('calendar');
+});
+
+test('the selected view policy changes query bounds without changing saved values', () => {
+	const definition = {
+		version: 2,
+		timeZone: 'America/New_York',
+		dayStartMinutes: 180,
+		filters: [{ column: 'due', op: 'lte' as const, relative: 'today' as const }]
+	};
+	const original = JSON.stringify(definition);
+	expect(
+		queryDefinition('items', definition, new Date('2026-06-02T06:59:59.999Z')).calendar
+	).toEqual({
+		today: '2026-06-01',
+		start: '2026-06-01T07:00:00.000Z',
+		end: '2026-06-02T07:00:00.000Z'
+	});
+	expect(
+		queryDefinition('items', definition, new Date('2026-06-02T07:00:00Z')).calendar?.today
+	).toBe('2026-06-02');
+	expect(JSON.stringify(definition)).toBe(original);
+	expect(queryDefinition('items', { ...definition, filters: [] })).not.toHaveProperty('calendar');
 });

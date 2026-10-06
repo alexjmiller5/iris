@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "23c4c53e4ae4178d28e00d9fd698c8c2502b50d517b89ad15d3020edca4ab6e4";
+export declare const CORE_CONTRACT_HASH = "98bd9b7229d436cc2bbfac9f2507bf66ba998985b366ffbbe713b58dfab98cb9";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -207,6 +207,7 @@ export type SavedViewDefinition = {
     widths?: Record<string, number>;
     groups?: FilterGroup[];
     timeZone?: string;
+    dayStartMinutes?: number;
     actions?: RowAction[];
     layout?: ViewLayoutItem[];
 };

@@ -119,6 +119,7 @@ final class WorkspaceModel {
   var viewActions: [CoreRowAction] = []
   var viewLayout: [CoreViewLayoutItem]?
   var viewTimeZone = TimeZone.current.identifier
+  var viewDayStartMinutes = 0
   private(set) var calendarDay = ""
   var viewFields: [CatalogField] {
     properties.map(CatalogField.init)
@@ -133,17 +134,25 @@ final class WorkspaceModel {
   var hasRelativeFilters: Bool {
     (filters + filterGroups.flatMap(\.filters)).contains(where: \.today)
   }
+  var calendarRefreshKey: [String] {
+    [
+      String(workspaceGeneration), table ?? "", viewTimeZone, String(viewDayStartMinutes),
+      String(hasRelativeFilters),
+    ]
+  }
   func refreshCalendar(now: Date = Date()) throws {
     calendarDay =
-      hasRelativeFilters ? try calendarContext(timeZone: viewTimeZone, now: now).today : ""
+      hasRelativeFilters
+      ? try calendarContext(timeZone: viewTimeZone, now: now, dayStartMinutes: viewDayStartMinutes)
+        .today : ""
   }
   func runCalendarRefresh() async {
     guard hasRelativeFilters else { return }
-    let generation = workspaceGeneration
+    let key = calendarRefreshKey
     do {
-      while !Task.isCancelled, generation == workspaceGeneration {
+      while !Task.isCancelled, key == calendarRefreshKey {
         try refreshCalendar()
-        let day = try calendarContext(timeZone: viewTimeZone)
+        let day = try calendarContext(timeZone: viewTimeZone, dayStartMinutes: viewDayStartMinutes)
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         guard let end = formatter.date(from: day.end) else { return }
@@ -328,7 +337,7 @@ final class WorkspaceModel {
   var queryKey: [String] {
     [table ?? "", search, String(trash), appliedView?.id ?? "", String(viewGeneration)]
       + [
-        viewTimeZone, calendarDay,
+        viewTimeZone, String(viewDayStartMinutes), calendarDay,
         String(describing: try? filterGroups.map { try $0.core(fields: viewFields) }),
       ]
       + sortRules.flatMap { [$0.column, $0.direction.rawValue, $0.mode?.rawValue ?? ""] }
@@ -353,6 +362,7 @@ final class WorkspaceModel {
     viewActions = []
     viewLayout = nil
     viewTimeZone = TimeZone.current.identifier
+    viewDayStartMinutes = 0
     calendarDay = ""
     rows = []
     canLoadMore = false
@@ -379,6 +389,7 @@ final class WorkspaceModel {
   func applyWorkflowOptions(
     sorts: [CoreSort], filters: [WorkspaceFilter], groups: [WorkspaceFilterGroup],
     actions: [CoreRowAction], layout: [CoreViewLayoutItem]?, timeZone: String,
+    dayStartMinutes: Int = 0,
     context: WorkspaceEditingContext?
   ) throws {
     _ = try requireViewContext(context)
@@ -386,8 +397,11 @@ final class WorkspaceModel {
       _ = try filter.coreFilter(field: viewFields.first { $0.id == filter.column })
     }
     for group in groups { _ = try group.core(fields: viewFields) }
+    guard (0..<1440).contains(dayStartMinutes) else {
+      throw WorkspaceError(message: "Choose a valid day start time.", violations: [])
+    }
     if (filters + groups.flatMap(\.filters)).contains(where: \.today) {
-      _ = try calendarContext(timeZone: timeZone)
+      _ = try calendarContext(timeZone: timeZone, dayStartMinutes: dayStartMinutes)
     }
     sortRules = sorts
     self.filters = filters
@@ -395,6 +409,8 @@ final class WorkspaceModel {
     viewActions = actions
     viewLayout = layout
     viewTimeZone = timeZone
+    viewDayStartMinutes = dayStartMinutes
+    try refreshCalendar()
   }
 
   var editingContext: WorkspaceEditingContext? {
@@ -508,6 +524,10 @@ final class WorkspaceModel {
       definition.timeZone = viewTimeZone
       definition.version = 2
     }
+    if viewDayStartMinutes != 0 || definition.dayStartMinutes != nil {
+      definition.dayStartMinutes = viewDayStartMinutes
+      definition.version = 2
+    }
     if currentFilters != (definition.filters ?? []) { definition.filters = currentFilters }
     if sortRules != (definition.sort ?? []) { definition.sort = sortRules }
     if search != (definition.search ?? "") { definition.search = search }
@@ -570,6 +590,7 @@ final class WorkspaceModel {
       viewActions = definition.actions ?? []
       viewLayout = definition.layout
       viewTimeZone = definition.timeZone ?? TimeZone.current.identifier
+      viewDayStartMinutes = definition.dayStartMinutes ?? 0
       filters = (definition.filters ?? []).map { filter in
         WorkspaceFilter(filter, field: fields.first { $0.id == filter.column })
       }
@@ -583,6 +604,7 @@ final class WorkspaceModel {
       viewActions = []
       viewLayout = nil
       viewTimeZone = TimeZone.current.identifier
+      viewDayStartMinutes = 0
     }
     viewGeneration += 1
   }
@@ -948,7 +970,8 @@ final class WorkspaceModel {
         filters: definition.filters, sort: definition.sort,
         limit: 100, offset: more ? rows.count : 0, trash: trash, search: search,
         groups: definition.groups,
-        calendar: hasRelativeFilters ? try calendarContext(timeZone: viewTimeZone) : nil)
+        calendar: hasRelativeFilters
+          ? try calendarContext(timeZone: viewTimeZone, dayStartMinutes: viewDayStartMinutes) : nil)
       let result = try await client.rows(view: view)
       let status = isReplica ? try await client.status() : nil
       let undo = try await client.undoStatus()

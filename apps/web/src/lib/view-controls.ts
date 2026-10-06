@@ -1,6 +1,12 @@
 import type { Filter, SavedViewDefinition, Sort, View } from 'life-ui-core/client';
 import { calendarContext } from './calendar-context';
 
+export function parseDayStart(time: string): number {
+	if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Choose a valid day start time.');
+	const [hour, minute] = time.split(':').map(Number);
+	return hour * 60 + minute;
+}
+
 export function editSort(sorts: Sort[], index: number, patch: Partial<Sort>): Sort[] {
 	return sorts.map((sort, i) => (i === index ? { ...sort, ...patch } : { ...sort }));
 }
@@ -45,6 +51,8 @@ export function queryDefinition(
 		sort,
 		search,
 		trash,
-		...(relative ? { calendar: calendarContext(definition.timeZone!, now) } : {})
+		...(relative
+			? { calendar: calendarContext(definition.timeZone!, now, definition.dayStartMinutes) }
+			: {})
 	};
 }
