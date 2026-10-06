@@ -37,6 +37,14 @@ private func exportedObject(_ file: RecordExportFile) throws -> [String: Any] {
 }
 
 struct RecordExportTests {
+  @Test func bundledProductionResourceSupportsDefaultSerializer() async throws {
+    let snapshot = exportTestSnapshot()
+    let bundled = try await RecordExportSerializer().serialize(snapshot, format: .json)
+    let fixture = try await exportTestSerializer().serialize(snapshot, format: .json)
+    #expect(bundled.files.first?.data == fixture.files.first?.data)
+    #expect(bundled.rowCount == 2)
+  }
+
   // Catches synthesized encodeIfPresent dropping unknown status instead of null.
   @Test func unknownStatusIsExplicitNullAndRawRowsAreUnchanged() async throws {
     let artifact = try await exportTestSerializer().serialize(exportTestSnapshot(), format: .json)

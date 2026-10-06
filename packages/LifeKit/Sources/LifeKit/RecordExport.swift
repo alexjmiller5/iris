@@ -150,3 +150,39 @@ struct RecordExportSerializer: Sendable {
     }
   }
 }
+
+// Swift String equality normalizes Unicode; catalog metadata must retain exact bytes.
+func recordExportCatalogsMatch(_ lhs: WorkspaceCatalog?, _ rhs: WorkspaceCatalog?) -> Bool {
+  switch (lhs, rhs) {
+  case (nil, nil): return true
+  case (let lhs?, let rhs?):
+    return recordExportValuesMatch(
+      .array(lhs.tables.map(CoreJSONValue.object)), .array(rhs.tables.map(CoreJSONValue.object)))
+      && recordExportValuesMatch(
+        .array(lhs.properties.map(CoreJSONValue.object)),
+        .array(rhs.properties.map(CoreJSONValue.object)))
+      && recordExportValuesMatch(
+        .array(lhs.rules.map(CoreJSONValue.object)), .array(rhs.rules.map(CoreJSONValue.object)))
+  default: return false
+  }
+}
+
+private func recordExportValuesMatch(_ lhs: CoreJSONValue, _ rhs: CoreJSONValue) -> Bool {
+  switch (lhs, rhs) {
+  case (.null, .null): return true
+  case (.bool(let lhs), .bool(let rhs)): return lhs == rhs
+  case (.number(let lhs), .number(let rhs)): return lhs.bitPattern == rhs.bitPattern
+  case (.string(let lhs), .string(let rhs)): return lhs.utf8.elementsEqual(rhs.utf8)
+  case (.array(let lhs), .array(let rhs)):
+    return lhs.elementsEqual(rhs, by: recordExportValuesMatch)
+  case (.object(let lhs), .object(let rhs)):
+    return lhs.count == rhs.count
+      && lhs.allSatisfy { key, value in
+        guard let index = rhs.index(forKey: key), key.utf8.elementsEqual(rhs[index].key.utf8) else {
+          return false
+        }
+        return recordExportValuesMatch(value, rhs[index].value)
+      }
+  default: return false
+  }
+}

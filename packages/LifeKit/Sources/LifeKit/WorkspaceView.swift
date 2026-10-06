@@ -6,6 +6,7 @@ public struct WorkspaceView: View {
   @State private var model = WorkspaceModel()
   @State private var importing = false
   @State private var settings = false
+  @State private var recordExport: RecordExportTarget?
   @State private var options = false
   @State private var filterColumn: String?
   @State private var savedViews = false
@@ -209,6 +210,9 @@ public struct WorkspaceView: View {
       .sheet(isPresented: $showingStatus) { WorkspaceStatusSheet(model: model) }
     #endif
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
+    .sheet(item: $recordExport) { target in
+      RecordExportView(snapshot: target.snapshot)
+    }
     .sheet(isPresented: $options, onDismiss: { filterColumn = nil }) {
       WorkspaceOptionsView(model: model, filterColumn: filterColumn)
     }
@@ -325,7 +329,24 @@ public struct WorkspaceView: View {
     model.client != nil && !openingDestination && editor == nil && online == nil && quickFind == nil
       && pendingSearchEditor == nil && pendingDuplicateEditor == nil
       && pendingReferenceEditor == nil && rejectionInbox == nil && pendingRejection == nil
-      && !settings && !options && !savedViews && !importing
+      && !settings && !options && !savedViews && !importing && recordExport == nil
+  }
+
+  private var canExportLoadedRows: Bool {
+    canFind && !showingGraph && !showingStatus && model.canExportLoadedRows
+  }
+
+  private var exportLoadedRowsAction: some View {
+    Button {
+      guard canExportLoadedRows else { return }
+      do {
+        // Freeze persisted values before presentation or any asynchronous preparation.
+        recordExport = RecordExportTarget(snapshot: try model.captureLoadedRowsForExport(at: Date()))
+      } catch { model.error = error.localizedDescription }
+    } label: {
+      Label("Export loaded rows", systemImage: "square.and.arrow.up")
+    }
+    .disabled(!canExportLoadedRows).accessibilityIdentifier("export-loaded-rows")
   }
 
   private func recordNavigationSucceeded(_ destination: NativeDestination) {
@@ -744,7 +765,10 @@ public struct WorkspaceView: View {
           .buttonStyle(.borderless)
           .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 4, trailing: 16))
         }
-        if model.canLoadMore { Button("Load more") { Task { await model.reload(more: true) } } }
+        if model.canLoadMore {
+          Button("Load more") { Task { await model.reload(more: true) } }
+            .disabled(model.loading)
+        }
         if model.loading { ProgressView().frame(maxWidth: .infinity) }
       }
       #if os(iOS)
@@ -968,6 +992,7 @@ public struct WorkspaceView: View {
         } label: {
           Label("Hub connection", systemImage: "gearshape")
         }.disabled(editor != nil)
+        exportLoadedRowsAction
         Button(action: showRejections) { Label("Issues", systemImage: "exclamationmark.bubble") }
           .disabled(!canFind).accessibilityIdentifier("workspace-issues")
         Divider()
@@ -1143,11 +1168,17 @@ public struct WorkspaceView: View {
               }
               .disabled(model.syncing).accessibilityIdentifier("sync-now")
             }
-            Button {
-              settings = true
+            Menu {
+              Button {
+                settings = true
+              } label: {
+                Label("Hub connection", systemImage: "gearshape")
+              }.disabled(!canFind)
+              exportLoadedRowsAction
             } label: {
-              Label("Hub connection", systemImage: "gearshape")
-            }.disabled(!canFind)
+              Label("Workspace actions", systemImage: "ellipsis").labelStyle(.iconOnly)
+            }
+            .accessibilityIdentifier("workspace-menu")
             Button {
               model.trash.toggle()
             } label: {
@@ -1168,6 +1199,11 @@ public struct WorkspaceView: View {
       }
       .disabled(openingDestination)
   }
+}
+
+private struct RecordExportTarget: Identifiable {
+  let id = UUID()
+  let snapshot: RecordExportSnapshot
 }
 
 private struct EditorTarget: Identifiable {

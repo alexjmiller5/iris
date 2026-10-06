@@ -157,6 +157,7 @@ struct RecordExportView: View {
             dismiss()
           }
           .keyboardShortcut(.cancelAction).disabled(saving)
+          .accessibilityIdentifier("record-export-done")
         }
       }
     }
