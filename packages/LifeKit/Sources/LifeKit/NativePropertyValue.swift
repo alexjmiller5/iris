@@ -30,7 +30,7 @@ struct NativePropertyValue: View {
     }
   }
 
-  static func text(type: String, value: String, locale: Locale = .current) -> String {
+  nonisolated static func text(type: String, value: String, locale: Locale = .current) -> String {
     guard !value.isEmpty else { return "Not set" }
     if ["ref", "multi_ref"].contains(type) { return "Unavailable" }
     if let kind = NativeDateKind(rawValue: type),

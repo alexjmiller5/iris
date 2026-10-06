@@ -10,13 +10,22 @@ struct WorkspaceOptionsView: View {
   @State private var filters: [WorkspaceFilter]
   @State private var error: String?
 
-  init(model: WorkspaceModel) {
+  init(model: WorkspaceModel, filterColumn: String? = nil) {
     self.model = model
     context = model.editingContext
     fields = model.properties.map(CatalogField.init)
     _sortColumn = State(initialValue: model.sortColumn)
     _ascending = State(initialValue: model.sortAscending)
-    _filters = State(initialValue: model.filters)
+    var filters = model.filters
+    if let filterColumn, !filters.contains(where: { $0.column == filterColumn }),
+      let field = fields.first(where: { $0.id == filterColumn })
+    {
+      filters.append(
+        WorkspaceFilter(
+          column: field.id,
+          operation: WorkspaceFilter.operations(for: field.type)[0]))
+    }
+    _filters = State(initialValue: filters)
   }
 
   var body: some View {

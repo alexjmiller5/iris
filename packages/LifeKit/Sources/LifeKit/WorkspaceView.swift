@@ -7,6 +7,7 @@ public struct WorkspaceView: View {
   @State private var importing = false
   @State private var settings = false
   @State private var options = false
+  @State private var filterColumn: String?
   @State private var savedViews = false
   @State private var showingGraph = false
   @State private var showingStatus = false
@@ -98,8 +99,8 @@ public struct WorkspaceView: View {
                   }
                   .disabled(model.syncing).accessibilityIdentifier("sync-now")
                 }
-                Button("Hub connection") { settings = true }.disabled(openingDestination)
-                Button("Close workspace") { Task { await model.close() } }
+                Button("Hub connection") { settings = true }.disabled(!canFind)
+                Button("Close workspace") { Task { await model.close() } }.disabled(!canFind)
               }.padding().frame(maxWidth: .infinity, alignment: .leading)
               .background(.bar)
             }
@@ -204,7 +205,9 @@ public struct WorkspaceView: View {
       .sheet(isPresented: $showingStatus) { WorkspaceStatusSheet(model: model) }
     #endif
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
-    .sheet(isPresented: $options) { WorkspaceOptionsView(model: model) }
+    .sheet(isPresented: $options, onDismiss: { filterColumn = nil }) {
+      WorkspaceOptionsView(model: model, filterColumn: filterColumn)
+    }
     .sheet(isPresented: $savedViews) {
       SavedViewsView(model: model, onChoose: recordNavigationSucceeded)
     }
@@ -671,7 +674,7 @@ public struct WorkspaceView: View {
   private var recordList: some View {
     List {
       recordNotices
-      if model.rows.isEmpty && !model.loading {
+      if displayedRows.isEmpty && !model.loading {
         ContentUnavailableView(
           model.trash ? "Trash is empty" : "No records", systemImage: "tray",
           description: Text(
@@ -782,44 +785,82 @@ public struct WorkspaceView: View {
     .disabled(!canFind)
   }
 
+  private var macRecordColumns: [NativeGridColumn] {
+    var columns = NativeGridColumn.columns(
+      properties: model.properties, selected: model.visibleRecordColumns,
+      widths: model.appliedView?.definition?.widths ?? [:]
+    )
+    .filter { $0.id != model.titleProperty?.id }
+    // A refreshed catalog may remove a property while its draft is open. Keep
+    // that editor reachable; the writer still validates against the fresh catalog.
+    if let target = editor, let id = target.inlineField,
+      id != model.titleProperty?.id, !columns.contains(where: { $0.id == id }),
+      let field = target.preparedEditor?.draft.fields.first(where: { $0.id == id })
+    {
+      columns.append(NativeGridColumn(field: field, width: 280))
+    }
+    return columns
+  }
+
   @ViewBuilder private var recordContent: some View {
     #if os(macOS)
-      if #available(macOS 14.4, *) {
-        VStack(alignment: .leading, spacing: 0) {
-          // Size to the notices, scrolling only beyond 180 points.
-          ScrollView { macRecordNotices }
-            .scrollBounceBehavior(.basedOnSize)
-            .frame(maxHeight: 180)
-            .fixedSize(horizontal: false, vertical: true)
-          MacRecordTable(
-            rows: model.rows,
-            columns: NativeGridColumn.columns(
-              properties: model.properties, selected: model.visibleRecordColumns,
-              widths: model.appliedView?.definition?.widths ?? [:]),
-            onOpen: openRecord
-          )
-          .id(model.queryKey + [String(model.workspaceGeneration)])
-          .overlay {
-            if model.rows.isEmpty && !model.loading {
-              ContentUnavailableView(
-                model.trash ? "Trash is empty" : "No records", systemImage: "tray",
-                description: Text("Create a record or try a different search or filter."))
-            }
+      VStack(alignment: .leading, spacing: 0) {
+        // Size to the notices, scrolling only beyond 180 points.
+        ScrollView { macRecordNotices }
+          .scrollBounceBehavior(.basedOnSize)
+          .frame(maxHeight: 180)
+          .fixedSize(horizontal: false, vertical: true)
+        MacRecordTable(
+          rows: displayedRows,
+          columns: macRecordColumns,
+          titleField: model.titleProperty,
+          editingRow: editor?.inlineField != nil
+            ? editor?.row?["id"]?.text.data(using: .utf8) : nil,
+          editingColumn: editor?.inlineField, editorID: editor?.id,
+          actionsEnabled: canFind, onOpen: openRecord,
+          onEdit: { row, column in
+            guard let table = model.table else { return }
+            openDestination(
+              NativeDestination(table: table, rowID: row.id),
+              preservingQuery: true, inlineField: column)
+          },
+          onSort: { column, ascending in
+            guard canFind else { return }
+            do {
+              try model.applyViewOptions(
+                sortColumn: column, ascending: ascending,
+                filters: model.filters, context: model.editingContext)
+            } catch { model.error = error.localizedDescription }
+          },
+          onFilter: { column in
+            guard canFind else { return }
+            filterColumn = column
+            options = true
           }
-          HStack {
-            Text(
-              model.rows.count == 1 ? "1 record loaded" : "\(model.rows.count) records loaded"
-            ).font(.caption).foregroundStyle(.secondary)
-            Spacer()
-            if model.loading { ProgressView().controlSize(.small) }
-            if model.canLoadMore {
-              Button("Load more") { Task { await model.reload(more: true) } }
-                .disabled(model.loading)
-            }
-          }.padding(12)
+        ) {
+          if let target = editor, target.inlineField != nil {
+            recordEditor(target)
+          }
         }
-      } else {
-        recordList
+        .id(model.queryKey + [String(model.workspaceGeneration)])
+        .overlay {
+          if displayedRows.isEmpty && !model.loading {
+            ContentUnavailableView(
+              model.trash ? "Trash is empty" : "No records", systemImage: "tray",
+              description: Text("Create a record or try a different search or filter."))
+          }
+        }
+        HStack {
+          Text(
+            model.rows.count == 1 ? "1 record loaded" : "\(model.rows.count) records loaded"
+          ).font(.caption).foregroundStyle(.secondary)
+          Spacer()
+          if model.loading { ProgressView().controlSize(.small) }
+          if model.canLoadMore {
+            Button("Load more") { Task { await model.reload(more: true) } }
+              .disabled(model.loading)
+          }
+        }.padding(12)
       }
     #else
       recordList
@@ -1045,7 +1086,7 @@ public struct WorkspaceView: View {
               settings = true
             } label: {
               Label("Hub connection", systemImage: "gearshape")
-            }
+            }.disabled(!canFind)
             Button {
               model.trash.toggle()
             } label: {
@@ -1059,7 +1100,7 @@ public struct WorkspaceView: View {
               } label: {
                 Label("New record", systemImage: "plus")
               }
-              .accessibilityIdentifier("new-record")
+              .disabled(!canFind).accessibilityIdentifier("new-record")
             }
           }
         #endif
@@ -1098,7 +1139,6 @@ private struct RecordEditor: View {
   @State private var preparedCopy: RecordEditorModel?
   @State private var confirmDuplicate = false
   @State private var emptyColumns: Set<Data>
-  @State private var propertyHelp: CatalogField?
   @FocusState private var focusedField: String?
 
   init(
@@ -1147,7 +1187,7 @@ private struct RecordEditor: View {
       if inlineField == nil { NavigationStack { editorContent } } else { editorContent }
     }
     #if os(macOS)
-      .frame(minWidth: 520, minHeight: 560)
+      .frame(minWidth: inlineField == nil ? 520 : nil, minHeight: inlineField == nil ? 560 : nil)
     #endif
   }
 
@@ -1187,6 +1227,7 @@ private struct RecordEditor: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inline-record-editor")
+        .onAppear { focusedField = inlineField }
       } else {
         Form {
           if linkWaiting {
@@ -1386,9 +1427,6 @@ private struct RecordEditor: View {
 
   private var editorContent: some View {
     editorFields
-      .popover(item: $propertyHelp) { field in
-        Text(field.help).padding().presentationCompactAdaptation(.popover)
-      }
       .onChange(of: editor.recovery == nil) { _, ready in
         if ready {
           emptyColumns = NativeEditorFields.emptyColumns(
@@ -1573,13 +1611,7 @@ private struct RecordEditor: View {
               .accessibilityLabel("Required")
           }
           if !field.description.isEmpty || field.property["pattern"]?.text.nonempty != nil {
-            Button {
-              propertyHelp = field
-            } label: {
-              Image(systemName: "info.circle")
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("About \(field.label)")
+            PropertyHelpButton(field: field)
           }
         }
       }
@@ -1705,6 +1737,27 @@ private struct RecordEditor: View {
         }
       } catch { actionFailure = error.localizedDescription }
       saving = false
+    }
+  }
+}
+
+struct PropertyHelpButton: View {
+  let field: CatalogField
+  @State private var presented = false
+
+  var body: some View {
+    Button {
+      presented = true
+    } label: {
+      Image(systemName: "info.circle")
+    }
+    .buttonStyle(.borderless)
+    .accessibilityLabel("About \(field.label)")
+    .popover(isPresented: $presented) {
+      Text(field.help)
+        .frame(idealWidth: 280, maxWidth: 320, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding().presentationCompactAdaptation(.popover)
     }
   }
 }

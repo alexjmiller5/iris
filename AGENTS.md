@@ -291,8 +291,14 @@ The macOS table uses byte-exact wrapper identities and opens records through the
 same fresh-row navigation as the list. Saved columns affect presentation only; an explicit empty list
 still leaves the record-opening column. Keep notices and recovery actions bounded
 and scrollable so they cannot consume the grid. Native column resizing is temporary;
-persisted layout comes from the saved-view definition. macOS before 14.4 uses the
-same record list as iOS.
+persisted layout comes from the saved-view definition. The AppKit grid supports
+macOS 14 onward. Double-click edits the clicked property in the shared inline
+editor; Return edits the selected row's title. The explicit open action and row
+menu retain the full editor. Column header menus sort or seed a property filter.
+Keep active drafts and their action controls mounted through catalog/row refreshes;
+measure editor height before retiling the row. Disable workspace replacement and
+new-record actions while an inline editor is active. Property help popovers belong
+to their individual buttons.
 Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never

@@ -595,11 +595,13 @@ External files with table invariants remain read-only without verified sync cove
 Missing references must be included in the replica before editing them.
 Online browsing is explicit and read-only. Native table search and
 cross-table Find both use the shared local FTS5 index.
-The web grid supports inline keyboard editing. On macOS 14.4 and later, a native
-table shows catalog columns and saved column layouts; open a record by its title,
-double-click, or the context menu to edit its full contents. Earlier macOS versions
-and iOS retain the record list. iOS properties support inline editing with an
-optional full record pop-up.
+The web grid supports inline keyboard editing. On macOS 14 and later, double-click
+a table cell to edit that property in place, or press Return to edit the selected
+row's title. The open button and row context menu show the full record editor;
+expanding an inline edit keeps its draft. Click a column heading for ascending or
+descending sort or a filter for that property. iOS properties support inline
+editing with an optional full record pop-up. Property information appears beside
+its info button.
 The web sidebar includes device-local recent destinations and a collapsible
 System tables section. See [sidebar navigation](docs/sidebar-recents.md) for
 storage and availability behavior. Native Find opens with Cmd+K on the Mac, and
