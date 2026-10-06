@@ -43,13 +43,15 @@ try{
  await page.goto(url);
  await page.getByRole('button',{name:'Try sample workspace',exact:true}).click();
  await page.getByRole('button',{name:'A place to start',exact:true}).click();
- await page.getByRole('button',{name:'Body source',exact:true}).click();
+ await page.getByRole('button', {name:'Body options',exact:true}).click();
+  await page.getByRole('menuitem', {name:'Body source',exact:true}).click();
  await page.getByRole('textbox',{name:'Body',exact:true}).fill('Automatically saved offline');
  await expect(page.getByRole('status',{name:'Body save status',exact:true})).toHaveText('Body saved on this device');
  await page.reload();
  await page.getByRole('button',{name:'Try sample workspace',exact:true}).click();
  await page.getByRole('button',{name:'A place to start',exact:true}).click();
- await page.getByRole('button',{name:'Body source',exact:true}).click();
+ await page.getByRole('button', {name:'Body options',exact:true}).click();
+  await page.getByRole('menuitem', {name:'Body source',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Body',exact:true})).toHaveValue('Automatically saved offline');
  await page.evaluate(() => { (window as any).holdWrites = true; });
  await page.getByRole('textbox',{name:'Body',exact:true}).fill('First in flight');
@@ -71,7 +73,8 @@ try{
  await page.reload();
  await page.getByRole('button',{name:'Try sample workspace',exact:true}).click();
  await page.getByRole('button',{name:'A place to start',exact:true}).click();
- await page.getByRole('button',{name:'Body source',exact:true}).click();
+ await page.getByRole('button', {name:'Body options',exact:true}).click();
+  await page.getByRole('menuitem', {name:'Body source',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Body',exact:true})).toHaveValue('Typed after save started');
  await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('A place to start');
  // A second real database client updates the same record after the editor opened.
@@ -112,7 +115,8 @@ try{
    try{await other.request('open',{demo:true});const [row]=await other.request('rows',{view:{table:'notes',filters:[{column:'title',op:'eq',value:'A place to start'}],limit:1}});return row.appendix;}finally{other.close();}
  });}
  await expect.poll(appendix).toBe('Keep the appendix');
- await page.getByRole('button',{name:'Body source',exact:true}).click();
+ await page.getByRole('button', {name:'Body options',exact:true}).click();
+  await page.getByRole('menuitem', {name:'Body source',exact:true}).click();
  await page.getByRole('textbox',{name:'Body',exact:true}).fill('Body saved after catalog changed');
  await expect(page.getByRole('status',{name:'Body save status',exact:true})).toHaveText('Body saved on this device');
  await expect(page.getByRole('complementary',{name:'Record editor',exact:true}).locator('.eyebrow')).toContainText('Saved');

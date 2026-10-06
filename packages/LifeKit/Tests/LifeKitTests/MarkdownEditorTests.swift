@@ -84,7 +84,11 @@ struct MarkdownEditorTests {
     _ = try await view.callAsyncJavaScript(edit, arguments: [:], in: nil, contentWorld: .page)
     #expect(try await host.snapshot().value.contains("Synthetic edit"))
     _ = try await view.callAsyncJavaScript(
-      "document.querySelector('button[aria-label=Undo]').click();", arguments: [:], in: nil,
+      """
+      document.querySelector('button[aria-label="Body options"]').click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      document.querySelector('button[aria-label=Undo]').click();
+      """, arguments: [:], in: nil,
       contentWorld: .page)
     #expect(
       try await host.snapshot().value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -100,6 +104,8 @@ struct MarkdownEditorTests {
       for (let i = 0; i < 200; i++) {
         const input = document.querySelector('[contenteditable="true"]');
         if (input) {
+          document.querySelector('button[aria-label="Description options"]').click();
+          await new Promise(resolve => setTimeout(resolve, 0));
           document.querySelector('button[aria-label=Undo]').click();
           return true;
         }
@@ -151,7 +157,9 @@ struct MarkdownEditorTests {
     view.configuration.userContentController.removeScriptMessageHandler(forName: "editor")
     _ = try await view.callAsyncJavaScript(
       """
-      [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Source').click();
+      document.querySelector('button[aria-label="Body options"]').click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      document.querySelector('button[aria-label="Body source"]').click();
       await new Promise(resolve => setTimeout(resolve, 0));
       """, arguments: [:], in: nil, contentWorld: .page)
     for (value, lock) in [("Copied final!", false), ("Kept final!", true)] {
@@ -185,7 +193,9 @@ struct MarkdownEditorTests {
     let replacement = "# Final source\n\n**Typed** 'quote' \\ path\n"
     _ = try await view.callAsyncJavaScript(
       """
-      const source = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Source');
+      document.querySelector('button[aria-label="Body options"]').click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const source = document.querySelector('button[aria-label="Body source"]');
       source.click();
       await new Promise(resolve => setTimeout(resolve, 0));
       const input = document.querySelector('textarea');

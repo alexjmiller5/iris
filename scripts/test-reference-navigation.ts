@@ -270,7 +270,8 @@ try {
 		await page.getByRole('button', { name: 'Save record', exact: true }).click();
 		await expect(page.getByRole('button', { name: 'Save record', exact: true })).toBeEnabled();
 		await page.evaluate(() => { (window as any).holdWrites = true; });
-		await editor.getByRole('button', { name: 'Body source', exact: true }).click();
+		await editor.getByRole('button', {name:'Body options',exact:true}).click();
+  await editor.getByRole('menuitem', {name:'Body source',exact:true}).click();
 		await editor.getByRole('textbox', { name: 'Body', exact: true }).fill('Body waiting for its receipt');
 		await page.waitForFunction(() => (window as any).heldWrites.length > 0);
 		await expect(open()).toBeDisabled();

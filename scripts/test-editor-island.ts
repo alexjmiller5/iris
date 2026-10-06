@@ -19,10 +19,15 @@ try {
 	await page.setViewportSize({width:390,height:844});
 	await page.goto(url);
 	await expect.poll(() => page.evaluate(() => (window as any).events)).toEqual([{type: 'ready'}]);
+	async function mode(mode: 'source' | 'write') {
+		if (await page.locator('textarea[aria-label="Body"]').isVisible() === (mode === 'source')) return;
+		await page.getByRole('button', {name:'Body options',exact:true}).click();
+		await page.getByRole('menuitem', {name:`Body ${mode}`,exact:true}).click();
+	}
 	const value = '# Native draft\n\n<mention-page url="https://example.com/kept"/>\n';
 	await page.evaluate(value => (window as any).lifeEditor.setDocument({id:'draft-1',value,label:'Body',readOnly:false}), value);
 	await expect(page.getByRole('heading', {name:'Native draft'})).toBeVisible();
-	await page.getByRole('button', {name:'Body source', exact:true}).click();
+	await mode('source');
 	await expect(page.getByRole('textbox', {name:'Body',exact:true})).toHaveValue(value);
 	expect(await page.getByRole('textbox', {name:'Body',exact:true}).evaluate(node => parseFloat(getComputedStyle(node).fontSize)), 'Source focus must not trigger iOS input zoom').toBeGreaterThanOrEqual(16);
 	await expect.poll(() => page.evaluate(() => (window as any).events)).toEqual([{type:'ready'}]);
@@ -31,7 +36,7 @@ try {
 	const snapshot = await page.evaluate(() => (window as any).lifeEditor.getDocument());
 	expect(snapshot).toEqual({id:'draft-1',value:'Edited locally',label:'Body',readOnly:false});
 	await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'draft-2',value:'Second record',label:'Body',readOnly:true}));
-	await page.getByRole('button', {name:'Body source',exact:true}).click();
+	await mode('source');
 	await expect(page.getByRole('textbox', {name:'Body',exact:true})).toBeDisabled();
 	await expect(page.getByRole('textbox', {name:'Body',exact:true})).toHaveValue('Second record');
 	const rejected = await page.evaluate(() => { try { (window as any).lifeEditor.setDocument({id:'bad'}); return false; } catch { return true; } });
@@ -39,10 +44,30 @@ try {
 	await expect(page.getByRole('textbox', {name:'Body',exact:true})).toHaveValue('Second record');
 	await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'draft-3',value:'Final',label:'Body',readOnly:false}));
 	await expect(page.getByRole('textbox',{name:'Body',exact:true})).toBeEditable();
+	await expect(page.getByRole('toolbar',{name:'Body formatting',exact:true})).toBeHidden();
+	await expect(page.locator('.markdown-editor button:visible')).toHaveCount(1);
 	await page.getByRole('textbox',{name:'Body',exact:true}).press('End');
 	await page.getByRole('textbox',{name:'Body',exact:true}).pressSequentially('!');
 	const finalKeystroke = await page.evaluate(() => (window as any).lifeEditor.getDocument());
 	expect(finalKeystroke).toEqual({id:'draft-3',value:'Final!\n',label:'Body',readOnly:false});
+	await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'shortcuts',value:'',label:'Body',readOnly:false}));
+	await page.getByRole('textbox',{name:'Body',exact:true}).pressSequentially('# A typed heading');
+	await expect(page.getByRole('heading',{name:'A typed heading',level:1})).toBeVisible();
+	await page.getByRole('textbox',{name:'Body',exact:true}).press('Enter');
+	await page.getByRole('textbox',{name:'Body',exact:true}).pressSequentially('- A typed bullet');
+	await expect(page.locator('.ProseMirror ul li')).toHaveText('A typed bullet');
+	const shortcutSnapshot = await page.evaluate(() => (window as any).lifeEditor.getDocument());
+	expect(shortcutSnapshot.value).toBe('# A typed heading\n\n* A typed bullet\n');
+	await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'slash-position',value:'',label:'Body',readOnly:false}));
+	await page.getByRole('textbox',{name:'Body',exact:true}).press('/');
+	const blocks=page.getByRole('menu',{name:'Insert block',exact:true});
+	await expect(blocks).toBeVisible();
+	const paragraph=await page.locator('.ProseMirror p').boundingBox();
+	const blockBounds=await blocks.boundingBox();
+	expect(blockBounds!.y, 'Slash choices should sit beside the empty line').toBeLessThanOrEqual(paragraph!.y+paragraph!.height+12);
+	await page.keyboard.press('Escape');
+	await expect(blocks).toBeHidden();
+	await expect(page.getByRole('textbox',{name:'Body',exact:true})).toBeFocused();
 	const blocked = await page.evaluate(async () => { try { await fetch('https://example.com/forbidden'); return false; } catch { return true; } });
 	expect(blocked).toBe(true);
 	console.log('PASS: native editor bundle, exact host source, typed change identity, readonly, malformed input and network isolation');

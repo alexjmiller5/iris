@@ -151,6 +151,7 @@ final class RejectionInboxUITests: XCTestCase {
     let body = app.buttons["field-body"]
     reveal(body, in: app)
     tap(body)
+    tap(app.webViews.buttons["Body options"])
     tap(app.webViews.descendants(matching: .any)["Body source"])
     expectValue(app.webViews.textViews["Body"], expected)
     tap(app.navigationBars["Body"].buttons["finish-markdown"])

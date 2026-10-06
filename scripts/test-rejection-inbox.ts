@@ -281,7 +281,8 @@ try {
   await expect(
     page.getByRole("textbox", { name: "Title", exact: true }),
   ).toHaveValue(String(localRow.title));
-  await page.getByRole("button", { name: "Body source", exact: true }).click();
+  await page.getByRole('button', {name:'Body options',exact:true}).click();
+  await page.getByRole('menuitem', {name:'Body source',exact:true}).click();
   await expect(
     page.getByRole("textbox", { name: "Body", exact: true }),
   ).toHaveValue("Rejected body");
