@@ -84,6 +84,7 @@ try {
     await expect(page.getByLabel('Rule property', { exact: true })).toHaveValue('quantity');
     await page.getByLabel('Rule condition', { exact: true }).selectOption('eq');
     await page.getByLabel('Rule value', { exact: true }).fill('42');
+    await page.getByLabel('Rule value', { exact: true }).press('Tab');
     await expect(page.locator('.record-link')).toHaveCount(3);
     await page.getByLabel('Rule property', { exact: true }).selectOption('done');
     await expect(page.getByLabel('Rule property', { exact: true })).toHaveValue('done');
@@ -108,14 +109,39 @@ try {
     await page.getByLabel('Button label', { exact: true }).press('Tab');
     await expect(related.locator('option[value="fixture-record"]')).toHaveCount(0);
     await expect(page.getByLabel('Search Related', {exact:true})).toHaveValue('Second');
-    console.log('PASS: row actions load dynamic select/multi-select and retain reference search choices');
+    await page.getByLabel('View name', {exact:true}).fill('Action choices');
+    await page.getByRole('button', {name:'Save as',exact:true}).click();
+    const actionView = await views.inputValue();
+    expect(actionView).not.toBe('');
+    await page.evaluate(async id => {
+      // A second client updates the same synthetic saved row through the supported API.
+      const { WorkspaceDatabase } = await import('/src/lib/database.ts');
+      const other = new WorkspaceDatabase();
+      try {
+        await other.request('open', {demo:false});
+        const saved = (await other.request('listViews', {table:'widgets'})).views.find(view => view.id === id)!;
+        await other.request('saveView', {
+          id, table:'widgets', name:'Changed elsewhere', expectedUpdatedAt:saved.updated_at!,
+          definition:{...saved.definition!, actions:saved.definition!.actions!.map(action => ({
+            ...action, values:{title:'Unexpected external action'}
+          }))}
+        });
+      } finally { other.close(); }
+    }, actionView);
+    await expect(views.locator('option', {hasText:'Changed elsewhere'})).toHaveCount(1);
+    await page.getByRole('button', {name:'Apply choices',exact:true}).first().click();
+    await expect(page.getByText('Saved view changed. Reload it before running this action.', {exact:true})).toBeVisible();
+    await expect(page.locator('.record-link', {hasText:'Unexpected external action'})).toHaveCount(0);
+    console.log('PASS: row actions load dynamic choices, retain reference searches and reject changed saved actions');
   }
 } catch (error) {
   console.error(await page.locator("body").innerText());
   throw error;
 } finally {
-  await page.clock.resume();
-  await page.clock.setSystemTime(new Date());
+  if (mode === 'all' || mode === 'rollover') {
+    await page.clock.resume();
+    await page.clock.setSystemTime(new Date());
+  }
   await page.goto(url);
   await browser.close();
   server.stop(true); db.db.close(); auth.db.close();
