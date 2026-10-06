@@ -32,9 +32,83 @@ struct SavedViewsTests {
             version: 1, columns: ["status", "title"],
             sort: [CoreSort(column: "title", direction: .desc)], search: "viewfixture",
             widths: ["title": 300])))
+      _ = try await client.saveView(
+        CoreSaveViewArgs(
+          table: "notes", name: "Daily queue",
+          definition: CoreSavedViewDefinition(
+            version: 2, columns: ["title", "status"],
+            filters: [CoreFilter(column: "updated_at", op: .lte, relative: .today)],
+            sort: [
+              CoreSort(column: "status", direction: .desc, mode: .options),
+              CoreSort(column: "title", direction: .asc),
+            ], search: "viewfixture",
+            groups: [
+              CoreFilterGroup(
+                match: "any",
+                filters: [
+                  CoreFilter(column: "status", op: .eq, value: .string("Draft")),
+                  CoreFilter(column: "status", op: .eq, value: .string("Other")),
+                ])
+            ],
+            timeZone: "America/New_York",
+            actions: [
+              CoreRowAction(
+                id: "review", label: "Mark reviewed", values: ["status": .string("Ready")])
+            ],
+            layout: [
+              CoreViewLayoutItem(kind: "column", id: "title"),
+              CoreViewLayoutItem(kind: "action", id: "review"),
+              CoreViewLayoutItem(kind: "column", id: "status"),
+            ])))
       await model.close()
     }
   #endif
+
+  @Test func groupedViewsAndActionsKeepTheirMeaningOnNative() async throws {
+    let model = WorkspaceModel()
+    await model.open(demo: true)
+    let context = try #require(model.editingContext)
+    _ = try await context.workspace.write(
+      table: "notes", patch: ["title": .string("Action fixture"), "status": .string("Draft")])
+    let definition = CoreSavedViewDefinition(
+      version: 2,
+      filters: [CoreFilter(column: "title", op: .eq, value: .string("Action fixture"))],
+      sort: [
+        CoreSort(column: "status", direction: .desc, mode: .options),
+        CoreSort(column: "title", direction: .asc),
+      ],
+      groups: [
+        CoreFilterGroup(
+          match: "any",
+          filters: [
+            CoreFilter(column: "status", op: .eq, value: .string("Draft")),
+            CoreFilter(column: "status", op: .eq, value: .string("Missing")),
+          ])
+      ],
+      timeZone: "America/New_York",
+      actions: [CoreRowAction(id: "review", label: "Review", values: ["status": .string("Ready")])])
+    let saved = try await context.workspace.saveView(
+      CoreSaveViewArgs(table: "notes", name: "Actions", definition: definition))
+    try model.applySavedView(saved, context: context)
+    await model.reload()
+    let row = try #require(model.rows.first)
+    #expect(model.rows.count == 1)
+    model.sortAscending = true
+    #expect(try model.currentViewDefinition().sort?.first?.mode == .options)
+    #expect(try model.currentViewDefinition().sort?.count == 2)
+    model.sortAscending = false
+    try await model.runRowAction("review", row: row, context: context)
+    #expect(model.rows.isEmpty)
+    #expect(model.undoAction != nil)
+    await #expect(throws: (any Error).self) {
+      try await model.runRowAction("review", row: row, context: context)
+    }
+    #expect(
+      try await context.workspace.rows(table: "notes").contains {
+        $0.record["status"] == .string("Ready") && $0.id == row.id
+      })
+    await model.close()
+  }
 
   @Test func receiptCannotReplaceLaterQueryChangesOrAReplacedWorkspace() async throws {
     for transition in ["query", "replace", "closing", "tableRoundTrip"] {

@@ -1,5 +1,7 @@
+import { createRequire } from 'node:module';
+const webDependency = createRequire(new URL('../apps/web/package.json', import.meta.url)).resolve;
 import { expect, test } from 'bun:test';
-import { get } from 'svelte/store';
+const { get } = await import(webDependency('svelte/store')) as typeof import('svelte/store');
 import type * as HistoryReview from '../apps/web/src/lib/governance/history-review';
 const { createHistoryReview } = await import(
   process.env.LIFE_UI_TEST_HISTORY_REVIEW ?? '../apps/web/src/lib/governance/history-review'

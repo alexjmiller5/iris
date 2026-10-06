@@ -29,6 +29,25 @@ final class RecordEditorModel {
     }
   }
 
+  func openMarkdownLink(
+    _ href: String, isCurrent: () -> Bool,
+    open: (String) async throws -> Bool
+  ) async throws -> Bool {
+    guard isCurrent() else { throw CancellationError() }
+    defer { resumeMarkdownEditors() }
+    try await collectMarkdownEditors(lock: true)
+    guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
+    try await flushMarkdown()
+    guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
+    guard !dirty, !needsReview else {
+      throw WorkspaceError(
+        message:
+          "Save the other record changes before opening this link. Your draft has been kept.",
+        violations: [])
+    }
+    return try await open(href)
+  }
+
   func resumeMarkdownEditors() {
     for editor in markdownEditors.values { editor.session.resumeEditing?() }
   }

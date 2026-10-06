@@ -2,8 +2,9 @@
 	import { onDestroy, tick } from 'svelte';
 	import { Virtualizer } from 'virtua/svelte';
 	import { IconPlus, IconCopy, IconTrash, IconRestore } from '@tabler/icons-svelte';
-	import type { Property, Row } from 'life-ui-core/client';
+	import type { Property, Row, RowAction, ViewLayoutItem } from 'life-ui-core/client';
 	import FieldEditor from './FieldEditor.svelte';
+	import type { RetainedFileResolver } from './retained-files';
 	import {
 		createCellEditor,
 		moveCell,
@@ -30,9 +31,19 @@
 		edit = $bindable(null),
 		options = {},
 		referenceOptions = () => [],
-		onsearch = () => {}
+		onsearch = () => {},
+		resolveFile,
+		onopenlink,
+		actions = [],
+		actionLayout = undefined,
+		canRunAction = false,
+		onaction = async () => {}
 	}: {
 		rows: Row[];
+		actions?: RowAction[];
+		actionLayout?: ViewLayoutItem[];
+		canRunAction?: boolean;
+		onaction?: (actionId: string, row: Row) => Promise<void>;
 		properties: Property[];
 		widths: Record<string, number>;
 		busy: boolean;
@@ -51,6 +62,8 @@
 		options?: Record<string, string[]>;
 		referenceOptions?(p: Property): { id: string; label: string }[];
 		onsearch?(p: Property, query: string): void;
+		resolveFile?: RetainedFileResolver;
+		onopenlink?(href: string): Promise<boolean>;
 	} = $props();
 	let root: HTMLDivElement, virtualizer: Virtualizer<Row>;
 	let scrollRef: HTMLDivElement | undefined = $state();
@@ -70,7 +83,22 @@
 	$effect(() => {
 		if (!edit && cellState.edit && cellState.phase !== 'saving') controller.discard();
 	});
-	const columns = $derived(properties.map((p) => p.col));
+	const gridItems = $derived.by(() => {
+		const candidates = [
+			...properties.map((p) => ({ kind: 'column' as const, id: p.col })),
+			...actions.map((a) => ({ kind: 'action' as const, id: a.id }))
+		];
+		const ordered = (actionLayout ?? []).filter((i) =>
+			candidates.some((c) => c.kind === i.kind && c.id === i.id)
+		);
+		return [
+			...ordered,
+			...candidates.filter((c) => !ordered.some((i) => c.kind === i.kind && c.id === i.id))
+		];
+	});
+	const columns = $derived(
+		gridItems.filter((item) => item.kind === 'column').map((item) => item.id)
+	);
 	$effect(() => {
 		if (
 			cursor &&
@@ -79,26 +107,32 @@
 		)
 			cursor = moveCell(rows, columns, cursor, 0, 0);
 	});
-	const layout = $derived(
-		properties
-			.map(
-				(p, i) =>
-					`${Number.isFinite(widths[p.col]) ? Math.min(800, Math.max(96, widths[p.col])) : i === 0 ? 280 : 180}px`
-			)
-			.join(' ')
-	);
-	const totalWidth = $derived(
-		properties.reduce(
-			(sum, p, i) =>
-				sum +
-				(Number.isFinite(widths[p.col])
-					? Math.min(800, Math.max(96, widths[p.col]))
-					: i === 0
-						? 280
-						: 180),
-			0
-		)
-	);
+	const itemWidth = (item: ViewLayoutItem) =>
+		item.kind === 'action'
+			? 180
+			: Number.isFinite(widths[item.id])
+				? Math.min(800, Math.max(96, widths[item.id]))
+				: item.id === properties[0]?.col && !actionLayout
+					? 280
+					: 180;
+	const layout = $derived(gridItems.map((i) => `${itemWidth(i)}px`).join(' '));
+	const totalWidth = $derived(gridItems.reduce((sum, i) => sum + itemWidth(i), 0));
+	let runningAction = $state(false);
+	async function runAction(id: string, row: Row) {
+		if (busy || runningAction || !canRunAction) return;
+		runningAction = true;
+		try {
+			const saved = await commit();
+			if (saved && alive) {
+				const target =
+					typeof saved === 'object' && String(saved.id) === String(row.id) ? saved : row;
+				await onaction(id, target);
+			}
+		} finally {
+			runningAction = false;
+		}
+	}
+
 	const activeIndex = $derived(
 		rows.findIndex((row) => String(row.id) === (edit?.cell.rowId ?? cursor?.rowId))
 	);
@@ -250,6 +284,8 @@
 			{property}
 			value={draft.raw}
 			onchange={controller.change}
+			{resolveFile}
+			{onopenlink}
 			disabled={busy || cellState.phase === 'saving' || !canEdit(property)}
 			options={options[property.col]}
 			references={referenceOptions(property)}
@@ -277,13 +313,17 @@
 			role="grid"
 			aria-label="Records"
 			aria-rowcount={rows.length + 1}
-			aria-colcount={properties.length}
+			aria-colcount={gridItems.length}
 			style:width={`${totalWidth}px`}
 		>
 			<thead
 				><tr style:grid-template-columns={layout}
-					>{#each properties as p, index}<th role="columnheader" class:pinned={index === 0}
-							>{index === 0 ? 'Record' : label(p)}</th
+					>{#each gridItems as item, index}<th role="columnheader" class:pinned={index === 0}
+							>{item.kind === 'action'
+								? actions.find((a) => a.id === item.id)?.label
+								: item.id === properties[0]?.col && !actionLayout
+									? 'Record'
+									: label(properties.find((p) => p.col === item.id)!)}</th
 						>{/each}</tr
 				></thead
 			>
@@ -305,53 +345,65 @@
 				})}
 			>
 				{#snippet children(row)}
-					{#each properties as property, columnIndex (property.col)}
-						{@const cell = { rowId: String(row.id), column: property.col }}
-						{@const active = edit?.cell.rowId === cell.rowId && edit.cell.column === cell.column}
-						<td
-							role="gridcell"
-							data-row={cell.rowId}
-							data-column={cell.column}
-							aria-label={`${label(property)}: ${format(property, row[property.col])}`}
-							aria-readonly={!canEdit(property)}
-							tabindex={cursor
-								? cursor.rowId === cell.rowId && cursor.column === cell.column
-									? 0
-									: -1
-								: rows[0] === row && columnIndex === 0
-									? 0
-									: -1}
-							class:pinned={columnIndex === 0}
-							class:active
-							class:cursor={cursor?.rowId === cell.rowId && cursor.column === cell.column}
-							onclick={(event) => {
-								if (
-									!(event.target as HTMLElement).closest(
-										'button,input,textarea,select,[contenteditable]'
+					{#each gridItems as item, columnIndex (`${item.kind}:${item.id}`)}
+						{#if item.kind === 'action'}
+							{@const action = actions.find((a) => a.id === item.id)!}
+							<td role="gridcell" class:pinned={columnIndex === 0}
+								><button
+									type="button"
+									aria-label={action.label}
+									disabled={busy || runningAction || !canRunAction || cellState.phase === 'saving'}
+									onclick={() => runAction(action.id, row)}>{action.label}</button
+								></td
+							>
+						{:else}
+							{@const property = properties.find((p) => p.col === item.id)!}
+							{@const cell = { rowId: String(row.id), column: property.col }}
+							{@const active = edit?.cell.rowId === cell.rowId && edit.cell.column === cell.column}
+							<td
+								role="gridcell"
+								data-row={cell.rowId}
+								data-column={cell.column}
+								aria-label={`${label(property)}: ${format(property, row[property.col])}`}
+								aria-readonly={!canEdit(property)}
+								tabindex={cursor
+									? cursor.rowId === cell.rowId && cursor.column === cell.column
+										? 0
+										: -1
+									: rows[0] === row && property.col === columns[0]
+										? 0
+										: -1}
+								class:pinned={columnIndex === 0}
+								class:active
+								class:cursor={cursor?.rowId === cell.rowId && cursor.column === cell.column}
+								onclick={(event) => {
+									if (
+										!(event.target as HTMLElement).closest(
+											'button,input,textarea,select,[contenteditable]'
+										)
 									)
-								)
-									void choose(cell);
-							}}
-							ondblclick={(event) => {
-								if (
-									!(event.target as HTMLElement).closest(
-										'button,input,textarea,select,[contenteditable]'
+										void choose(cell);
+								}}
+								ondblclick={(event) => {
+									if (
+										!(event.target as HTMLElement).closest(
+											'button,input,textarea,select,[contenteditable]'
+										)
 									)
-								)
-									void begin(cell);
-							}}
-							onkeydown={(event) => keyboard(event, cell)}
-						>
-							{#if active && edit}{@render editor(property, edit)}
-							{:else if columnIndex === 0}<button
-									class="record-link"
-									tabindex="-1"
-									onclick={() => open(cell.rowId)}
-									>{format(property, row[property.col]) || cell.rowId}</button
-								>
-							{:else}<span class="cell-value">{format(property, row[property.col])}</span>{/if}
-						</td>
-					{/each}
+										void begin(cell);
+								}}
+								onkeydown={(event) => keyboard(event, cell)}
+							>
+								{#if active && edit}{@render editor(property, edit)}
+								{:else if property.col === properties[0]?.col}<button
+										class="record-link"
+										tabindex="-1"
+										onclick={() => open(cell.rowId)}
+										>{format(property, row[property.col]) || cell.rowId}</button
+									>
+								{:else}<span class="cell-value">{format(property, row[property.col])}</span>{/if}
+							</td>
+						{/if}{/each}
 				{/snippet}
 			</Virtualizer>
 		</table>

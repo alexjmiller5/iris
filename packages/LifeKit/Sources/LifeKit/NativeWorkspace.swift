@@ -80,6 +80,25 @@ public final class NativeWorkspace {
     let transport: HubTransport?
     let continuation: CheckedContinuation<JSONValue, Error>
     let control: SyncControl?
+    let readAdmission: ReadAdmission?
+    let referenceRead: Bool
+  }
+  /// onCancel can run off the main actor. Admission and cancellation share one
+  /// decision; cancellation never changes an operation already admitted.
+  private final class ReadAdmission: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    private var admitted = false
+
+    var isCancelled: Bool { lock.withLock { cancelled } }
+    func cancel() { lock.withLock { if !admitted { cancelled = true } } }
+    func admit() -> Bool {
+      lock.withLock {
+        guard !cancelled else { return false }
+        admitted = true
+        return true
+      }
+    }
   }
   @MainActor private final class SyncControl {
     let timeout: Duration
@@ -223,13 +242,18 @@ public final class NativeWorkspace {
   }
 
   public func catalog() async throws -> WorkspaceCatalog {
-    try await WorkspaceCatalog(decode(CoreRequests.Catalog(CoreEmptyArgs())))
+    try await WorkspaceCatalog(
+      decode(CoreRequests.Catalog(CoreEmptyArgs()), cancellableRead: true))
   }
   public func writeability(table: String) async throws -> CoreWriteability {
     try await decode(CoreRequests.Writeability(CoreWriteabilityArgs(table: table)))
   }
   public func rows(view: CoreView) async throws -> [WorkspaceRow] {
-    try await decode(CoreRequests.Rows(view))
+    try await decode(CoreRequests.Rows(view), cancellableRead: true)
+  }
+  /// Reads used only to fill passive reference labels in a displayed row.
+  func referenceRows(view: CoreView) async throws -> [WorkspaceRow] {
+    try await decode(CoreRequests.Rows(view), cancellableRead: true, referenceRead: true)
   }
   public func rows(table: String, search: String = "", trash: Bool = false, offset: Int = 0)
     async throws -> [WorkspaceRow]
@@ -247,6 +271,10 @@ public final class NativeWorkspace {
   }
   public func referencedBy(_ args: CoreReferencedByArgs) async throws -> CoreReferencedByPage {
     try await decode(CoreRequests.ReferencedBy(args))
+  }
+
+  public func resolveSourceLink(_ url: String) async throws -> CoreSourceLinkResult {
+    try await decode(CoreRequests.ResolveSourceLink(CoreSourceLinkArgs(url: url)))
   }
   public func search(_ args: CoreSearchArgs) async throws -> [CoreSearchHit] {
     try await decode(CoreRequests.Search(args))
@@ -274,6 +302,9 @@ public final class NativeWorkspace {
   }
   public func status() async throws -> WorkspaceSyncStatus {
     try await decode(CoreRequests.Status(CoreEmptyArgs()))
+  }
+  public func runRowAction(_ args: CoreRunRowActionArgs) async throws -> WorkspaceRecord {
+    try await decode(CoreRequests.RunRowAction(args))
   }
   public func undoStatus() async throws -> CoreUndoStatus {
     try await decode(CoreRequests.UndoStatus(CoreEmptyArgs()))
@@ -367,28 +398,51 @@ public final class NativeWorkspace {
   public func close() async throws { _ = try await call("close") }
 
   private func decode<R: CoreRequest>(
-    _ request: R, transport: HubTransport? = nil, control: SyncControl? = nil
+    _ request: R, transport: HubTransport? = nil, control: SyncControl? = nil,
+    cancellableRead: Bool = false, referenceRead: Bool = false
   ) async throws
     -> R.Response
   {
     let arguments = String(decoding: try JSONEncoder().encode(request.arguments), as: UTF8.self)
     let value = try await call(
-      R.method, arguments: arguments, transport: transport, control: control)
+      R.method, arguments: arguments, transport: transport, control: control,
+      cancellableRead: cancellableRead, referenceRead: referenceRead)
     return try JSONDecoder().decode(R.Response.self, from: JSONEncoder().encode(value))
   }
   private func call(
     _ method: String, arguments: String = "{}", transport: HubTransport? = nil,
-    control: SyncControl? = nil
+    control: SyncControl? = nil, cancellableRead: Bool = false, referenceRead: Bool = false
   ) async throws -> JSONValue {
     guard !closed else { throw WorkspaceError(message: "Workspace is closed.", violations: []) }
-    return try await withCheckedThrowingContinuation { continuation in
-      nextID += 1
-      requests.append(
-        .request(
-          Request(
-            id: nextID, method: method, arguments: arguments, transport: transport,
-            continuation: continuation, control: control)))
-      startNext()
+    let readAdmission = cancellableRead ? ReadAdmission() : nil
+    return try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { continuation in
+        guard readAdmission?.isCancelled != true else {
+          continuation.resume(throwing: CancellationError())
+          return
+        }
+        nextID += 1
+        var insertion = requests.endIndex
+        if !referenceRead, transport == nil, method != "sync", method != "close" {
+          // Local foreground work may pass only trailing passive-label reads.
+          // Foreground FIFO, transport, sync, close and HTTP resumptions stay ordered.
+          while insertion > requests.startIndex {
+            guard case .request(let queued) = requests[insertion - 1], queued.referenceRead else {
+              break
+            }
+            insertion -= 1
+          }
+        }
+        requests.insert(
+          .request(
+            Request(
+              id: nextID, method: method, arguments: arguments, transport: transport,
+              continuation: continuation, control: control, readAdmission: readAdmission,
+              referenceRead: referenceRead)), at: insertion)
+        startNext()
+      }
+    } onCancel: {
+      readAdmission?.cancel()
     }
   }
   fileprivate func startNext() {
@@ -427,6 +481,12 @@ public final class NativeWorkspace {
     guard case .request(let request) = requests[index] else { return }
     requests.remove(at: index)
     active = request
+    // Keep cancelled placeholders until their normal file turn: removing every
+    // request from a waiting instance could strand its reserved gate ownership.
+    if request.readAdmission?.admit() == false {
+      complete(.failure(CancellationError()))
+      return
+    }
     if closed {
       complete(.failure(WorkspaceError(message: "Workspace is closed.", violations: [])))
       return

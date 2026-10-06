@@ -132,6 +132,10 @@ public struct WorkspaceView: View {
       await model.services.poll()
     }
     .task(id: model.queryKey) { await model.reload() }
+    .task(id: model.calendarRefreshKey + [String(scenePhase == .active)]) {
+      guard scenePhase == .active else { return }
+      await model.runCalendarRefresh()
+    }
     .task(id: "\(model.workspaceGeneration)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
       await model.recents?.refresh()
@@ -676,56 +680,61 @@ public struct WorkspaceView: View {
 
   private var recordList: some View {
     ScrollViewReader { scroll in
+      let title = model.titleProperty
+      let fields = model.orderedRecordFields(model.viewFields).filter { field in
+        field.id == title?.id
+          || (model.visibleRecordColumns?.contains(field.id)
+            ?? !["id", "created_at", "updated_at", "deleted_at", "hub_at"].contains(field.id))
+      }
+      let items = NativeGridItem.items(
+        columns: fields.map { NativeGridColumn(field: $0, width: 180) },
+        actions: model.viewActions, layout: model.viewLayout)
       List {
         recordNotices
         if displayedRows.isEmpty && !model.loading {
           ContentUnavailableView(
             model.trash ? "Trash is empty" : "No records", systemImage: "tray",
             description: Text(
-              model.search.isEmpty && model.filters.isEmpty
+              model.search.isEmpty && model.filters.isEmpty && model.filterGroups.isEmpty
                 ? "Create a record to get started." : "Try a different search or filter."))
         }
         ForEach(displayedRows, id: \.byteExactID) { row in
           VStack(alignment: .leading, spacing: 2) {
-            HStack {
-              if let title = model.titleProperty, model.canWrite && !model.trash {
-                propertyButton(title, row: row, title: true)
-              } else {
-                Text(row.label).font(.headline).lineLimit(2)
-              }
-              Spacer(minLength: 4)
-              Button {
-                openRecord(row)
-              } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                  .frame(minWidth: 44, minHeight: 44)
-              }
-              .accessibilityLabel(row.label + ", Open record")
-              .accessibilityIdentifier("open-record-\(row.id)")
-              .disabled(!canFind)
-            }
             if let target = editor, target.inlineField != nil,
               target.row?["id"]?.text.utf8.elementsEqual(row.id.utf8) == true
             {
+              recordHeader(row, title: title)
               recordEditor(target).id(target.id)
             } else {
-              let fields = model.orderedRecordFields(model.properties.map(CatalogField.init))
-                .filter { field in
-                  !["id", "created_at", "updated_at", "deleted_at", "hub_at"].contains(field.id)
-                    && field.id != model.titleProperty?.id
-                    && (model.visibleRecordColumns?.contains(field.id) ?? true)
-                }
+              if title == nil { recordHeader(row, title: nil) }
               let empty = NativeEditorFields.emptyColumns(
-                fields: fields,
-                values: row.record.mapValues(\.text))
-              ForEach(fields.filter { !empty.contains(Data($0.id.utf8)) }) { field in
-                propertyButton(field, row: row)
-              }
-              if fields.contains(where: { empty.contains(Data($0.id.utf8)) }) {
-                DisclosureGroup {
-                  ForEach(fields.filter { empty.contains(Data($0.id.utf8)) }) { field in
+                fields: fields, values: row.record.mapValues(\.text))
+              ForEach(
+                items.filter { item in
+                  item.action != nil || item.column?.id == title?.id
+                    || item.column.map { !empty.contains(Data($0.id.utf8)) } == true
+                }
+              ) { item in
+                if let action = item.action {
+                  Button(action.label) { runRowAction(action.id, row) }
+                    .buttonStyle(.bordered)
+                    .disabled(!canFind || !model.canRunRowAction)
+                    .accessibilityIdentifier("row-action-" + action.id)
+                    .frame(minHeight: 44)
+                } else if let field = item.column?.field {
+                  if field.id == title?.id {
+                    recordHeader(row, title: title)
+                  } else {
                     propertyButton(field, row: row)
                   }
+                }
+              }
+              let emptyFields = fields.filter {
+                $0.id != title?.id && empty.contains(Data($0.id.utf8))
+              }
+              if !emptyFields.isEmpty {
+                DisclosureGroup {
+                  ForEach(emptyFields) { field in propertyButton(field, row: row) }
                 } label: {
                   Text("Empty properties").frame(minHeight: 44)
                 }.font(.caption).foregroundStyle(.secondary)
@@ -743,14 +752,31 @@ public struct WorkspaceView: View {
         .onReceive(
           NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)
         ) { _ in
-          guard let target = editor, target.inlineField != nil,
-            let id = target.row?["id"]?.text
+          guard let target = editor, target.inlineField != nil, let id = target.row?["id"]?.text
           else { return }
-          // WebKit reveals its caret, but the containing list also needs to reveal
-          // the cell's native Save and Open record actions above the keyboard.
           scroll.scrollTo(Data(id.utf8), anchor: .bottom)
         }
       #endif
+    }
+  }
+
+  private func recordHeader(_ row: WorkspaceRow, title: CatalogField?) -> some View {
+    HStack {
+      if let title, model.canWrite && !model.trash {
+        propertyButton(title, row: row, title: true)
+      } else {
+        Text(row.label).font(.headline).lineLimit(2)
+      }
+      Spacer(minLength: 4)
+      Button {
+        openRecord(row)
+      } label: {
+        Image(systemName: "arrow.up.left.and.arrow.down.right")
+          .frame(minWidth: 44, minHeight: 44)
+      }
+      .accessibilityLabel(row.label + ", Open record")
+      .accessibilityIdentifier("open-record-\(row.id)")
+      .disabled(!canFind)
     }
   }
 
@@ -804,8 +830,9 @@ public struct WorkspaceView: View {
 
   private var macRecordColumns: [NativeGridColumn] {
     var columns = NativeGridColumn.columns(
-      properties: model.properties, selected: model.visibleRecordColumns,
-      widths: model.appliedView?.definition?.widths ?? [:]
+      properties: model.visibleRecordColumns == nil
+        ? model.properties : model.viewFields.map(\.property),
+      selected: model.visibleRecordColumns, widths: model.appliedView?.definition?.widths ?? [:]
     )
     .filter { $0.id != model.titleProperty?.id }
     // A refreshed catalog may remove a property while its draft is open. Keep
@@ -817,6 +844,21 @@ public struct WorkspaceView: View {
       columns.append(NativeGridColumn(field: field, width: 280))
     }
     return columns
+  }
+
+  private func runRowAction(_ id: String, _ row: WorkspaceRow) {
+    guard canFind, model.canRunRowAction else { return }
+    let workspace = model.client
+    let generation = model.workspaceGeneration
+    let query = model.queryKey
+    let view = model.appliedView
+    Task {
+      guard model.client === workspace, model.workspaceGeneration == generation,
+        model.queryKey == query, model.appliedView?.byteExactID == view?.byteExactID,
+        model.appliedView?.updatedAt == view?.updatedAt
+      else { return }
+      await model.runRowActionReportingFailure(id, row: row)
+    }
   }
 
   @ViewBuilder private var recordContent: some View {
@@ -853,7 +895,9 @@ public struct WorkspaceView: View {
             guard canFind else { return }
             filterColumn = column
             options = true
-          }, workspace: model.client, transport: model.imageTransport
+          }, workspace: model.client, transport: model.imageTransport,
+          actions: model.viewActions, layout: model.viewLayout,
+          canRunAction: model.canRunRowAction, onAction: runRowAction
         ) {
           if let target = editor, target.inlineField != nil {
             recordEditor(target)
@@ -1147,6 +1191,7 @@ private struct RecordEditor: View {
   let onDuplicate: (RecordEditorModel) -> Void
   let isCurrent: @MainActor () -> Bool
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.openURL) private var openURL
   @State private var editor: RecordEditorModel
   @State private var inlineMarkdown: InlineMarkdownEditor?
   @State private var referenceNavigation: ReferenceNavigationModel?
@@ -1230,6 +1275,7 @@ private struct RecordEditor: View {
         VStack(alignment: .leading, spacing: 8) {
           if let inlineMarkdown {
             InlineMarkdownField(editor: inlineMarkdown)
+              .onAppear { configureMarkdownActions(inlineMarkdown) }
             ForEach(editor.violations.filter { $0.col == field.id }, id: \.rule) { violation in
               Text(violation.message).font(.caption).foregroundStyle(.red)
             }
@@ -1673,7 +1719,9 @@ private struct RecordEditor: View {
       if field.type == "markdown" {
         fieldLabel(field).font(.subheadline).foregroundStyle(.secondary)
         if editor.recovery == nil {
-          InlineMarkdownField(editor: editor.markdownEditor(for: field), height: 320)
+          let markdown = editor.markdownEditor(for: field)
+          InlineMarkdownField(editor: markdown, height: 320)
+            .onAppear { configureMarkdownActions(markdown) }
             .accessibilityIdentifier("field-\(field.id)")
           Text(editor.status).font(.caption).foregroundStyle(.secondary)
             .accessibilityIdentifier("markdown-save-status")
@@ -1770,6 +1818,54 @@ private struct RecordEditor: View {
         try await collectMarkdown(lock: true)
         _ = await referenceNavigation?.open(table: table, id: id)
       } catch { actionFailure = error.localizedDescription }
+    }
+  }
+
+  private func configureMarkdownActions(_ holder: InlineMarkdownEditor) {
+    guard holder.session.isActive else { return }
+    let model = model
+    let source = editor
+    let navigation = referenceNavigation
+    let context = context
+    let presentationIsCurrent = isCurrent
+    let generation = model.workspaceGeneration
+    let busy = $saving
+    let openURL = openURL
+    let current = { [weak model] in
+      presentationIsCurrent() && model?.workspaceGeneration == generation
+        && context?.workspace === model?.client && context?.table == model?.table
+    }
+    holder.configureFileActions(
+      resolveFile: { [weak model] key in
+        guard let model, current() else { throw CancellationError() }
+        return try await model.retainedFile(key, context: context)
+      }, isCurrent: current)
+    holder.session.resolveFile = { [weak model] key in
+      guard let model, current() else { throw CancellationError() }
+      return try await model.retainedFile(key, context: context, maximumBytes: 8 * 1024 * 1024)
+    }
+    holder.session.openExternal = { url in
+      guard current() else { return }
+      openURL(url)
+    }
+    holder.session.openLink = { [weak source, weak navigation] href in
+      guard let source, let context, current(), !busy.wrappedValue, !source.saving else {
+        return false
+      }
+      busy.wrappedValue = true
+      defer { busy.wrappedValue = false }
+      return try await source.openMarkdownLink(href, isCurrent: current) { url in
+        let result = try await context.workspace.resolveSourceLink(url)
+        guard current(), !Task.isCancelled, let destination = result.destination else {
+          return false
+        }
+        let opened = await navigation?.open(table: destination.table, id: destination.row)
+        if let error = navigation?.error {
+          navigation?.cancel()
+          throw WorkspaceError(message: error, violations: [])
+        }
+        return opened != nil
+      }
     }
   }
 
@@ -1998,3 +2094,18 @@ private struct FieldInput: View {
 }
 
 #Preview { WorkspaceView(demo: true) }
+
+// The row-button boundary owns presentation of operation failures.
+extension WorkspaceModel {
+  func runRowActionReportingFailure(_ id: String, row: WorkspaceRow) async {
+    let context = editingContext
+    let generation = workspaceGeneration
+    let query = queryKey
+    do { try await runRowAction(id, row: row, context: context) } catch {
+      guard context?.workspace === client, generation == workspaceGeneration,
+        queryKey == query, !Task.isCancelled
+      else { return }
+      self.error = error.localizedDescription
+    }
+  }
+}

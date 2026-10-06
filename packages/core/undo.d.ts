@@ -6,6 +6,7 @@ import type { Row } from './validate.ts';
  * session mutations and status reads through COMMIT and receipt publication. */
 export declare function createWriteSession(db: SqlDriver, origin: string): {
     write: (args: WriteArgs) => Row | Promise<Row>;
+    runRowAction: (args: import("./contract.generated.ts").RunRowActionArgs) => Row | Promise<Row>;
     undo: (args: UndoArgs) => Row | Promise<Row>;
     undoStatus: (args: import("./contract.generated.ts").EmptyArgs) => import("./contract.generated.ts").UndoStatus | Promise<import("./contract.generated.ts").UndoStatus>;
     otherMutation: <A, T>(input: A, operation: (args: A) => Promise<T>) => Promise<T>;

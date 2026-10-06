@@ -67,6 +67,21 @@ struct WorkspaceQueryTests {
       ).value == .string("chosen-id"))
   }
 
+  @Test func foregroundCalendarChangeInvalidatesTheQueryAndTodaySurvivesImport() throws {
+    let model = WorkspaceModel()
+    model.viewTimeZone = "America/New_York"
+    let field = CatalogField(property: ["col": .string("created_at"), "type": .string("datetime")])
+    let source = CoreFilter(column: "created_at", op: .lte, relative: .today)
+    let filter = WorkspaceFilter(source, field: field)
+    #expect(try filter.coreFilter(field: field) == source)
+    model.filters = [filter]
+    try model.refreshCalendar(now: ISO8601DateFormatter().date(from: "2026-03-09T03:59:59Z")!)
+    let before = model.queryKey
+    try model.refreshCalendar(now: ISO8601DateFormatter().date(from: "2026-03-09T04:00:00Z")!)
+    #expect(model.calendarDay == "2026-03-09")
+    #expect(model.queryKey != before)
+  }
+
   @Test func optionsFromAClosedEditorCannotChangeAnotherTable() async throws {
     let model = WorkspaceModel()
     await model.open(demo: true)

@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "4e276d615a2b88e8dc6a0a1946e2de99c41ac2479dd8961f792ad32c4edb67d8";
+export declare const CORE_CONTRACT_HASH = "3490987a509818b5309efb68e864a83c7b57acbad3285c711e341fa9f7c3c369";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -8,11 +8,13 @@ export type SortDirection = "asc" | "desc";
 export type Sort = {
     column: string;
     direction: SortDirection;
+    mode?: SortMode;
 };
 export type Filter = {
     column: string;
     op: FilterOp;
     value?: FilterValue;
+    relative?: FilterRelative;
 };
 export type View = {
     table: string;
@@ -23,6 +25,8 @@ export type View = {
     offset?: Count;
     trash?: boolean;
     search?: string;
+    groups?: FilterGroup[];
+    calendar?: CalendarContext;
 };
 export type OptionDef = {
     v: string;
@@ -201,6 +205,11 @@ export type SavedViewDefinition = {
     search?: string;
     trash?: boolean;
     widths?: Record<string, number>;
+    groups?: FilterGroup[];
+    timeZone?: string;
+    dayStartMinutes?: number;
+    actions?: RowAction[];
+    layout?: ViewLayoutItem[];
 };
 export type SavedViewRecord = {
     id: string;
@@ -368,6 +377,8 @@ export type HubCapabilities = {
     replica_sync: boolean;
     subscriptions: "durable-pull-v1" | null;
     files: "opaque-key-v1";
+    conditional_patch?: "revision-v1";
+    subscription_features?: "scalar-lifecycle-v1";
 };
 export type HubSession = {
     name: string;
@@ -377,6 +388,43 @@ export type HubSession = {
 export type ScopedReplicaUnsupported = {
     error: "scoped_replica_unsupported";
     message: string;
+};
+export type SortMode = "value" | "options";
+export type FilterRelative = "today";
+export type FilterGroup = {
+    match: "all" | "any";
+    filters: Filter[];
+};
+export type CalendarContext = {
+    today: string;
+    start: string;
+    end: string;
+};
+export type RowAction = {
+    id: string;
+    label: string;
+    values: Row;
+};
+export type ViewLayoutItem = {
+    kind: "column" | "action";
+    id: string;
+};
+export type RunRowActionArgs = {
+    viewId: string;
+    actionId: string;
+    rowId: string;
+    expectedUpdatedAt: string;
+    expectedViewUpdatedAt: string;
+};
+export type SourceLinkArgs = {
+    url: string;
+};
+export type SourceRecordDestination = {
+    table: string;
+    row: string;
+};
+export type SourceLinkResult = {
+    destination?: SourceRecordDestination;
 };
 export interface CoreOperations {
     catalog: {
@@ -482,6 +530,14 @@ export interface CoreOperations {
     rejections: {
         args: RejectionsArgs;
         result: RejectionsPage;
+    };
+    runRowAction: {
+        args: RunRowActionArgs;
+        result: Row;
+    };
+    resolveSourceLink: {
+        args: SourceLinkArgs;
+        result: SourceLinkResult;
     };
 }
 export type CoreMethod = keyof CoreOperations;

@@ -32,3 +32,22 @@ struct NativeGridRow: Identifiable {
     return rows.first { $0.byteExactID == id }
   }
 }
+
+struct NativeGridItem: Identifiable {
+  let column: NativeGridColumn?
+  let action: CoreRowAction?
+  var id: Data { Data(((action == nil ? "column:" : "action:") + (action?.id ?? column!.id)).utf8) }
+  var label: String { action?.label ?? column!.label }
+  var width: Double { column?.width ?? 180 }
+  static func items(
+    columns: [NativeGridColumn], actions: [CoreRowAction], layout: [CoreViewLayoutItem]?
+  ) -> [Self] {
+    let candidates =
+      columns.map { Self(column: $0, action: nil) } + actions.map { Self(column: nil, action: $0) }
+    let ordered = (layout ?? []).compactMap { item in
+      candidates.first { candidate in candidate.id == Data((item.kind + ":" + item.id).utf8) }
+    }
+    var seen = Set<Data>()
+    return (ordered + candidates).filter { seen.insert($0.id).inserted }
+  }
+}

@@ -18,7 +18,30 @@
     let onFilter: (String) -> Void
     var workspace: NativeWorkspace? = nil
     var transport: HubTransport? = nil
+    var actions: [CoreRowAction] = []
+    var layout: [CoreViewLayoutItem]?
+    var canRunAction = false
+    var onAction: (String, WorkspaceRow) -> Void = { _, _ in }
     @ViewBuilder let editor: () -> Editor
+
+    private var gridItems: [NativeGridItem] {
+      let title =
+        titleField ?? CatalogField(property: ["col": .string("id"), "label": .string("Record")])
+      return NativeGridItem.items(
+        columns: [NativeGridColumn(field: title, width: 240)]
+          + columns.filter { Data($0.id.utf8) != Data(title.id.utf8) },
+        actions: actions, layout: layout)
+    }
+
+    private func isTitle(_ item: NativeGridItem) -> Bool {
+      item.column.map { Data($0.id.utf8) == Data((titleField?.id ?? "id").utf8) } ?? false
+    }
+
+    private func identifier(_ item: NativeGridItem) -> String {
+      if isTitle(item) { return "record" }
+      if let action = item.action { return "action:" + action.id }
+      return "property:" + item.column!.id
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -40,7 +63,9 @@
       table.doubleAction = #selector(Coordinator.editSelectedCell(_:))
       table.editSelection = { [weak coordinator = context.coordinator, weak table] in
         guard let coordinator, let table else { return }
-        coordinator.edit(row: table.selectedRow, column: max(0, table.selectedColumn))
+        guard let title = coordinator.items.firstIndex(where: { coordinator.parent.isTitle($0) })
+        else { return }
+        coordinator.edit(row: table.selectedRow, column: title)
       }
       table.setAccessibilityIdentifier("record-grid")
       context.coordinator.table = table
@@ -66,10 +91,12 @@
       let coordinator = context.coordinator
       let previous = coordinator.parent
       coordinator.parent = self
+      coordinator.items = gridItems
+      let items = coordinator.items
       table.selectionHighlightStyle = editorID == nil ? .regular : .none
       if previous.editorID != editorID { coordinator.editorHeight = 28 }
       table.menu?.items.first?.isEnabled = actionsEnabled
-      let identifiers = ["record"] + columns.map { "property:" + $0.id }
+      let identifiers = items.map(identifier)
       let columnsChanged = table.tableColumns.map { $0.identifier.rawValue } != identifiers
       let rowsChanged = previous.rows.map(\.byteExactID) != rows.map(\.byteExactID)
       let contentChanged =
@@ -78,6 +105,7 @@
         || previous.editorID != editorID || previous.actionsEnabled != actionsEnabled
         || previous.columns.map { $0.field.property } != columns.map { $0.field.property }
         || previous.titleField?.property != titleField?.property
+        || previous.actions != actions || previous.canRunAction != canRunAction
       guard columnsChanged || rowsChanged || contentChanged else { return }
       let selected =
         previous.rows.indices.contains(table.selectedRow)
@@ -90,16 +118,16 @@
         for column in table.tableColumns { table.removeTableColumn(column) }
         for (index, id) in identifiers.enumerated() {
           let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
-          column.title = index == 0 ? titleField?.label ?? "Record" : columns[index - 1].label
-          column.minWidth = index == 0 ? 180 : 96
+          column.title = items[index].label
+          column.minWidth = isTitle(items[index]) ? 180 : 96
           column.maxWidth = 800
-          column.width = index == 0 ? 240 : columns[index - 1].width
+          column.width = items[index].width
           table.addTableColumn(column)
         }
         table.dataSource = coordinator
       }
       for (index, column) in table.tableColumns.enumerated() {
-        column.title = index == 0 ? titleField?.label ?? "Record" : columns[index - 1].label
+        column.title = items[index].label
       }
       if columnsChanged || rowsChanged {
         table.reloadData()
@@ -132,7 +160,11 @@
       var parent: MacRecordTable
       weak var table: NSTableView?
       var editorHeight: CGFloat = 28
-      init(_ parent: MacRecordTable) { self.parent = parent }
+      var items: [NativeGridItem]
+      init(_ parent: MacRecordTable) {
+        self.parent = parent
+        items = parent.gridItems
+      }
       func numberOfRows(in tableView: NSTableView) -> Int { parent.rows.count }
       func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         parent.rows.indices.contains(row) && parent.rows[row].byteExactID == parent.editingRow
@@ -175,10 +207,13 @@
       }
 
       fileprivate func cell(row: Int, column: Int) -> MacRecordCell<Editor> {
-        let field = column == 0 ? parent.titleField : parent.columns[column - 1].field
+        let columnItem = items[column]
+        let title = parent.isTitle(columnItem)
+        let field = title ? parent.titleField : columnItem.column?.field
         let item = parent.rows[row]
         return MacRecordCell(
-          row: item, field: field, isTitle: column == 0,
+          row: item, field: field, isTitle: title,
+          action: columnItem.action, canRunAction: parent.canRunAction, onAction: parent.onAction,
           editing: item.byteExactID == parent.editingRow && field?.id == parent.editingColumn,
           editorID: parent.editorID, actionsEnabled: parent.actionsEnabled,
           onOpen: parent.onOpen, workspace: parent.workspace, transport: parent.transport,
@@ -195,9 +230,9 @@
 
       func edit(row: Int, column: Int) {
         guard parent.actionsEnabled, parent.rows.indices.contains(row),
-          column >= 0, column <= parent.columns.count
+          items.indices.contains(column), items[column].action == nil
         else { return }
-        let field = column == 0 ? parent.titleField : parent.columns[column - 1].field
+        let field = parent.isTitle(items[column]) ? parent.titleField : items[column].column?.field
         if let field {
           parent.onEdit(parent.rows[row], field.id)
         } else {
@@ -213,8 +248,8 @@
       }
 
       func columnMenu(_ column: Int) -> NSMenu? {
-        guard column >= 0, column <= parent.columns.count else { return nil }
-        let field = column == 0 ? parent.titleField : parent.columns[column - 1].field
+        guard items.indices.contains(column), items[column].action == nil else { return nil }
+        let field = parent.isTitle(items[column]) ? parent.titleField : items[column].column?.field
         guard let field else { return nil }
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -241,6 +276,9 @@
     let row: WorkspaceRow
     let field: CatalogField?
     let isTitle: Bool
+    let action: CoreRowAction?
+    let canRunAction: Bool
+    let onAction: (String, WorkspaceRow) -> Void
     let editing: Bool
     let editorID: UUID?
     let actionsEnabled: Bool
@@ -260,6 +298,11 @@
             } action: {
               onHeight($0)
             }
+        } else if let action {
+          Button(action.label) { onAction(action.id, row) }
+            .buttonStyle(.borderless)
+            .disabled(!actionsEnabled || !canRunAction)
+            .accessibilityIdentifier("row-action-" + action.id)
         } else {
           HStack(spacing: 6) {
             Group {

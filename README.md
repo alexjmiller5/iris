@@ -4,6 +4,14 @@ A local-first Svelte web client and native SwiftUI apps for catalogued
 life-data databases. The three clients consume the same TypeScript validation,
 query, write and sync implementation. No PWA or analytics.
 
+Markdown documents display retained PNG, JPEG, GIF, WebP, AVIF and BMP images
+through the connected hub. Other retained attachments have an explicit download
+action on the web and a native Quick Look preview. Image previews accept files up
+to 8 MiB and display a static thumbnail; original downloads allow 128 MiB.
+Missing files can be retried. Viewing preserves the original Markdown, and remote
+images do not load automatically. Imported Notion links can open their local
+record when a whole-record import mapping exists; the original link stays available.
+
 ## Using the web workspace
 
 Open the app, then choose **Open my workspace** or **Try sample workspace**.
@@ -420,6 +428,23 @@ simulator, and set `TEST_RUNNER_LIFE_UI_TEST_MARKDOWN_NAV_CATALOG=1` for the
 hold sync HTTP. Seed the app-host fixture before running the UI test. Measurements
 include XCTest polling and interaction overhead, and do not replace phone acceptance.
 
+`NativeReadCancellationTests` and `WorkspaceReadCancellationTests` check
+queued-read cancellation, preserved visible state and reconciliation after committed
+edits. Passive reference labels yield to queued local foreground work without
+interrupting an active database operation or crossing transport/close barriers.
+For an opt-in synthetic measurement with a large catalog and 70, 100 or 300
+pending reference labels, run in an otherwise idle build window:
+
+```sh
+LIFE_UI_REFERENCE_ADMISSION=1 swift test --package-path packages/LifeKit \
+  --scratch-path "$HOME/Library/Developer/life-ui-swift" \
+  --filter ReferenceAdmissionPerformanceTests
+```
+
+The harness records destination resolution, visible row publication and local
+save completion separately. It uses an in-memory fixture and measures native
+model/core work; it does not establish phone frame timing or touch responsiveness.
+
 Launch an Apple app with
 `--demo` for the temporary preview; app-hosted tests use fixture mode as well.
 Unsigned builds are development artifacts, not signed releases or phone installs.
@@ -787,3 +812,20 @@ Run the real OPFS Undo checks against a reserved fixture origin:
 ```sh
 LIFE_UI_TEST_URL=http://life-ui-markdown.localhost:5198/workspace?review bun scripts/test-session-undo.ts /path/to/life-data
 ```
+
+Saved views can combine individual filters with all/any rule groups, compare date
+fields to Today in a chosen timezone and day boundary, and preserve multiple
+ordered sorts. The default boundary is midnight; choosing 03:00 keeps early-morning
+records in the previous task day. A missing clock time advances to the next valid
+instant, and a repeated clock time uses its first occurrence.
+Option order follows the catalog. View options also define labeled buttons with
+literal property values and their position among visible columns. Save the view
+before using its actions; local edits retain the normal undo and sync behavior.
+
+The workflow browser regression uses a reserved disposable origin and synthetic
+hub state: `LIFE_UI_TEST_URL=<reserved-url> bun scripts/test-workflow-views.ts <life-data-checkout>`.
+It checks grouped conditions, configured day-boundary/foreground refresh, actions
+and reopen. `scripts/test-view-options.ts` also covers policy persistence, typed
+filter changes, live action choices and stale displayed-view rejection.
+The native `WorkflowViewsUITests` uses `SavedViewsTests.prepareSavedViewsUIFixture`
+on the exact disposable simulator selected by `LIFE_UI_TEST_SAVED_VIEWS_SIMULATOR`.

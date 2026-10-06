@@ -1,4 +1,5 @@
 import Observation
+import QuickLook
 import SwiftUI
 import WebKit
 
@@ -8,6 +9,34 @@ import WebKit
   let fieldID: String
   let session: MarkdownEditorSession
   var usingSource = false
+  var previewURL: URL?
+  @ObservationIgnored private var previewFile: RetainedFile?
+
+  func configureFileActions(
+    resolveFile: @escaping (String) async throws -> RetainedFile,
+    isCurrent: @escaping () -> Bool
+  ) {
+    guard session.isActive else { return }
+    session.openFile = { [weak self] key in
+      guard let self, session.isActive, isCurrent(), !Task.isCancelled else { return }
+      let documentID = session.document.id
+      let file = try await resolveFile(key)
+      guard session.isActive, session.document.id == documentID, isCurrent(), !Task.isCancelled
+      else {
+        file.dispose()
+        return
+      }
+      dismissPreview()
+      previewFile = file
+      previewURL = file.url
+    }
+  }
+
+  func dismissPreview() {
+    previewFile?.dispose()
+    previewFile = nil
+    previewURL = nil
+  }
   @ObservationIgnored let coordinator: MarkdownWebView.Coordinator
   @ObservationIgnored let webView: WKWebView
 
@@ -32,7 +61,10 @@ import WebKit
     }
   }
 
-  func stop() { coordinator.stop(webView) }
+  func stop() {
+    dismissPreview()
+    coordinator.stop(webView)
+  }
 }
 
 struct InlineMarkdownField: View {
@@ -70,6 +102,10 @@ struct InlineMarkdownField: View {
           }
         }
       }.frame(height: height)
+    }
+    .quickLookPreview($editor.previewURL)
+    .onChange(of: editor.previewURL) { _, url in
+      if url == nil { editor.dismissPreview() }
     }
   }
 }

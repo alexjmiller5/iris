@@ -101,7 +101,11 @@ final class WorkspaceModel {
         sortRules = []
       } else {
         sortRules =
-          [CoreSort(column: newValue, direction: sortRules.first?.direction ?? .asc)]
+          [
+            CoreSort(
+              column: newValue, direction: sortRules.first?.direction ?? .asc,
+              mode: newValue == sortRules.first?.column ? sortRules.first?.mode : nil)
+          ]
           + sortRules.dropFirst().filter { $0.column != newValue }
       }
     }
@@ -111,6 +115,81 @@ final class WorkspaceModel {
     set { if !sortRules.isEmpty { sortRules[0].direction = newValue ? .asc : .desc } }
   }
   var filters: [WorkspaceFilter] = []
+  var filterGroups: [WorkspaceFilterGroup] = []
+  var viewActions: [CoreRowAction] = []
+  var viewLayout: [CoreViewLayoutItem]?
+  var viewTimeZone = TimeZone.current.identifier
+  var viewDayStartMinutes = 0
+  private(set) var calendarDay = ""
+  var viewFields: [CatalogField] {
+    properties.map(CatalogField.init)
+      + ["id", "created_at", "updated_at", "deleted_at", "hub_at"].filter { id in
+        !properties.contains { $0["col"]?.text == id }
+      }.map { id in
+        CatalogField(property: [
+          "col": .string(id), "type": .string(id == "id" ? "text" : "datetime"),
+        ])
+      }
+  }
+  var hasRelativeFilters: Bool {
+    (filters + filterGroups.flatMap(\.filters)).contains(where: \.today)
+  }
+  var calendarRefreshKey: [String] {
+    [
+      String(workspaceGeneration), table ?? "", viewTimeZone, String(viewDayStartMinutes),
+      String(hasRelativeFilters),
+    ]
+  }
+  func refreshCalendar(now: Date = Date()) throws {
+    calendarDay =
+      hasRelativeFilters
+      ? try calendarContext(timeZone: viewTimeZone, now: now, dayStartMinutes: viewDayStartMinutes)
+        .today : ""
+  }
+  func runCalendarRefresh() async {
+    guard hasRelativeFilters else { return }
+    let key = calendarRefreshKey
+    do {
+      while !Task.isCancelled, key == calendarRefreshKey {
+        try refreshCalendar()
+        let day = try calendarContext(timeZone: viewTimeZone, dayStartMinutes: viewDayStartMinutes)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let end = formatter.date(from: day.end) else { return }
+        try await Task.sleep(for: .seconds(max(0.01, end.timeIntervalSinceNow)))
+      }
+    } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+  }
+  var canRunRowAction: Bool {
+    client != nil && !loading && !writingRecord && !undoing && !savingView && appliedView != nil
+      && !viewModified && !trash && writeability?.writable == true
+  }
+  func runRowAction(_ actionID: String, row: WorkspaceRow, context: WorkspaceEditingContext?)
+    async throws
+  {
+    let context = try requireViewContext(context)
+    guard canRunRowAction, let view = appliedView, let viewRevision = view.updatedAt,
+      let revision = row.record["updated_at"]?.text
+    else {
+      throw WorkspaceError(
+        message: "Save or reopen this view before running its actions.", violations: [])
+    }
+    let generation = workspaceGeneration
+    let query = queryKey
+    let selectedView = viewGeneration
+    writingRecord = true
+    defer { if generation == workspaceGeneration { writingRecord = false } }
+    _ = try await context.workspace.runRowAction(
+      CoreRunRowActionArgs(
+        viewId: view.id, actionId: actionID, rowId: row.id, expectedUpdatedAt: revision,
+        expectedViewUpdatedAt: viewRevision))
+    guard client === context.workspace, generation == workspaceGeneration else { return }
+    recordLocalChange()
+    if selectedView == viewGeneration {
+      await reloadAfterCommit(workspace: context.workspace, generation: generation, query: query)
+    }
+  }
+
   private(set) var savedViews: [CoreSavedViewRecord] = []
   private(set) var appliedView: CoreSavedViewRecord?
   private(set) var savedViewsUnavailable: String?
@@ -153,6 +232,7 @@ final class WorkspaceModel {
         violations: [])
     }
     let generation = workspaceGeneration
+    let query = queryKey
     undoing = true
     defer { if generation == workspaceGeneration { undoing = false } }
     do {
@@ -167,7 +247,7 @@ final class WorkspaceModel {
       }
       undoAction = nil
       recordLocalChange()
-      await reload()
+      await reloadAfterCommit(workspace: context.workspace, generation: generation, query: query)
       guard context.workspace === client, generation == workspaceGeneration, context.table == table
       else {
         throw WorkspaceError(
@@ -192,6 +272,24 @@ final class WorkspaceModel {
   private var groupsURL: URL?
   var imageTransport: HubTransport? { transport }
   private var transport: HubTransport?
+
+  func retainedFile(
+    _ key: String, context: WorkspaceEditingContext?, maximumBytes: Int = 128 * 1024 * 1024
+  ) async throws -> RetainedFile {
+    guard let context, context.workspace === client, let transport else {
+      throw WorkspaceError(message: "Connect to your hub to open this file.", violations: [])
+    }
+    let generation = workspaceGeneration
+    let file = try await transport.retainedFile(key: key, maximumBytes: maximumBytes)
+    guard generation == workspaceGeneration, context.workspace === client,
+      self.transport?.endpoint == transport.endpoint
+    else {
+      file.dispose()
+      throw WorkspaceError(
+        message: "The workspace connection changed. Reopen the file.", violations: [])
+    }
+    return file
+  }
   private var revision = 0
   private var scopedURL: URL?
   private let resolveLocalURL: @MainActor () throws -> URL
@@ -247,8 +345,12 @@ final class WorkspaceModel {
 
   var queryKey: [String] {
     [table ?? "", search, String(trash), appliedView?.id ?? "", String(viewGeneration)]
-      + sortRules.flatMap { [$0.column, $0.direction.rawValue] }
-      + filters.flatMap { [$0.column, $0.operation.rawValue, $0.value] }
+      + [
+        viewTimeZone, String(viewDayStartMinutes), calendarDay,
+        String(describing: try? filterGroups.map { try $0.core(fields: viewFields) }),
+      ]
+      + sortRules.flatMap { [$0.column, $0.direction.rawValue, $0.mode?.rawValue ?? ""] }
+      + filters.flatMap { [$0.column, $0.operation.rawValue, $0.value, String($0.today)] }
   }
 
   private func resetView() {
@@ -266,6 +368,12 @@ final class WorkspaceModel {
     sortColumn = ""
     sortAscending = true
     filters = []
+    filterGroups = []
+    viewActions = []
+    viewLayout = nil
+    viewTimeZone = TimeZone.current.identifier
+    viewDayStartMinutes = 0
+    calendarDay = ""
     rows = []
     canLoadMore = false
     loading = false
@@ -288,6 +396,33 @@ final class WorkspaceModel {
     self.filters = filters
   }
 
+  func applyWorkflowOptions(
+    sorts: [CoreSort], filters: [WorkspaceFilter], groups: [WorkspaceFilterGroup],
+    actions: [CoreRowAction], layout: [CoreViewLayoutItem]?, timeZone: String,
+    dayStartMinutes: Int = 0,
+    context: WorkspaceEditingContext?
+  ) throws {
+    _ = try requireViewContext(context)
+    for filter in filters {
+      _ = try filter.coreFilter(field: viewFields.first { $0.id == filter.column })
+    }
+    for group in groups { _ = try group.core(fields: viewFields) }
+    guard (0..<1440).contains(dayStartMinutes) else {
+      throw WorkspaceError(message: "Choose a valid day start time.", violations: [])
+    }
+    if (filters + groups.flatMap(\.filters)).contains(where: \.today) {
+      _ = try calendarContext(timeZone: timeZone, dayStartMinutes: dayStartMinutes)
+    }
+    sortRules = sorts
+    self.filters = filters
+    filterGroups = groups
+    viewActions = actions
+    viewLayout = layout
+    viewTimeZone = timeZone
+    viewDayStartMinutes = dayStartMinutes
+    try refreshCalendar()
+  }
+
   var editingContext: WorkspaceEditingContext? {
     guard let client, let table else { return nil }
     return WorkspaceEditingContext(workspace: client, table: table, draftStore: draftStore)
@@ -304,6 +439,9 @@ final class WorkspaceModel {
     catalog = resolved.catalog
     return WorkspaceEditingContext(
       workspace: workspace, table: resolved.destination.table, draftStore: draftStore)
+  }
+  var displayColumn: String {
+    tables.first { $0["id"]?.text == table }?["display"]?.text.nonempty ?? "id"
   }
   var tables: [WorkspaceRecord] { catalog?.tables ?? [] }
   var properties: [WorkspaceRecord] {
@@ -419,14 +557,42 @@ final class WorkspaceModel {
     visibleRecordColumns = columns
   }
 
+  var defaultViewLayout: [CoreViewLayoutItem] {
+    let columns = visibleRecordColumns ?? properties.compactMap { $0["col"]?.text }
+    return (columns.isEmpty ? ["id"] : columns).map { CoreViewLayoutItem(kind: "column", id: $0) }
+      + viewActions.map { CoreViewLayoutItem(kind: "action", id: $0.id) }
+  }
+
   func currentViewDefinition() throws -> CoreSavedViewDefinition {
     var definition = appliedView?.definition ?? CoreSavedViewDefinition(version: 1)
-    let fields = properties.map(CatalogField.init)
+    let fields = viewFields
     let currentFilters = try filters.map { filter in
       try filter.coreFilter(field: fields.first { $0.id == filter.column })
     }
+    let groups = try filterGroups.map { try $0.core(fields: fields) }
+    if groups != (definition.groups ?? []) {
+      definition.groups = groups
+      definition.version = 2
+    }
+    if viewActions != (definition.actions ?? []) {
+      definition.actions = viewActions
+      definition.version = 2
+    }
+    if viewLayout != definition.layout {
+      definition.layout = viewLayout
+      definition.version = 2
+    }
+    if hasRelativeFilters || definition.timeZone != nil {
+      definition.timeZone = viewTimeZone
+      definition.version = 2
+    }
+    if viewDayStartMinutes != 0 || definition.dayStartMinutes != nil {
+      definition.dayStartMinutes = viewDayStartMinutes
+      definition.version = 2
+    }
     if currentFilters != (definition.filters ?? []) { definition.filters = currentFilters }
     if sortRules != (definition.sort ?? []) { definition.sort = sortRules }
+    if sortRules.contains(where: { $0.mode != nil }) { definition.version = 2 }
     if search != (definition.search ?? "") { definition.search = search }
     if trash != (definition.trash ?? false) { definition.trash = trash }
     // Core requires a nonempty projection. The title remains visible even when
@@ -487,7 +653,12 @@ final class WorkspaceModel {
       search = definition.search ?? ""
       trash = definition.trash ?? false
       sortRules = definition.sort ?? []
-      let fields = properties.map(CatalogField.init)
+      let fields = viewFields
+      filterGroups = (definition.groups ?? []).map { WorkspaceFilterGroup($0, fields: fields) }
+      viewActions = definition.actions ?? []
+      viewLayout = definition.layout
+      viewTimeZone = definition.timeZone ?? TimeZone.current.identifier
+      viewDayStartMinutes = definition.dayStartMinutes ?? 0
       filters = (definition.filters ?? []).map { filter in
         WorkspaceFilter(filter, field: fields.first { $0.id == filter.column })
       }
@@ -498,6 +669,11 @@ final class WorkspaceModel {
       trash = false
       sortRules = []
       filters = []
+      filterGroups = []
+      viewActions = []
+      viewLayout = nil
+      viewTimeZone = TimeZone.current.identifier
+      viewDayStartMinutes = 0
     }
     viewGeneration += 1
   }
@@ -535,7 +711,7 @@ final class WorkspaceModel {
       $0.name == $1.name
         ? $0.byteExactID.lexicographicallyPrecedes($1.byteExactID) : $0.name < $1.name
     }
-    await reload()
+    await reloadAfterCommit(workspace: context.workspace, generation: workspace, query: queryKey)
   }
 
   func deleteSavedView(_ saved: CoreSavedViewRecord, context: WorkspaceEditingContext?) async throws
@@ -560,7 +736,7 @@ final class WorkspaceModel {
     recordLocalChange()
     savedViews.removeAll { $0.byteExactID == saved.byteExactID }
     if appliedView?.byteExactID == saved.byteExactID { try applySavedView(nil, context: context) }
-    await reload()
+    await reloadAfterCommit(workspace: context.workspace, generation: workspace, query: queryKey)
   }
 
   func requireNavigationReady(workspace: NativeWorkspace, generation: Int) throws {
@@ -854,28 +1030,40 @@ final class WorkspaceModel {
     let request = revision
     let query = queryKey
     loading = true
-    error = nil
+    defer {
+      if request == revision, self.client === client, query == queryKey { loading = false }
+    }
     await refreshWriteability()
     do {
+      try Task.checkCancellation()
       let definition = try currentViewDefinition()
       let view = CoreView(
         table: table,
         filters: definition.filters, sort: definition.sort,
-        limit: 100, offset: more ? rows.count : 0, trash: trash, search: search)
+        limit: 100, offset: more ? rows.count : 0, trash: trash, search: search,
+        groups: definition.groups,
+        calendar: hasRelativeFilters
+          ? try calendarContext(timeZone: viewTimeZone, dayStartMinutes: viewDayStartMinutes) : nil)
       let result = try await client.rows(view: view)
+      try Task.checkCancellation()
       let status = isReplica ? try await client.status() : nil
       let undo = try await client.undoStatus()
+      try Task.checkCancellation()
       guard request == revision, self.client === client, query == queryKey else { return }
+      error = nil
       syncStatus = status
       undoAction = undo.action
       rows = more ? rows + result : result
       canLoadMore = result.count == 100
+    } catch is CancellationError {
+      // A superseded read does not invalidate the last visible data or error.
     } catch {
-      guard request == revision, self.client === client, query == queryKey else { return }
+      guard !Task.isCancelled, request == revision, self.client === client, query == queryKey else {
+        return
+      }
       self.error = error.localizedDescription
       if !more { rows = [] }
     }
-    loading = false
   }
 
   @discardableResult
@@ -894,13 +1082,25 @@ final class WorkspaceModel {
         message: "Wait for the current record operation to finish.", violations: [])
     }
     let generation = workspaceGeneration
+    let query = queryKey
     writingRecord = true
     defer { if generation == workspaceGeneration { writingRecord = false } }
     let receipt = try await context.workspace.write(
       table: context.table, patch: patch, expectedUpdatedAt: original?["updated_at"]?.text)
-    if context.workspace === client { recordLocalChange() }
-    await reload()
+    if context.workspace === self.client, generation == workspaceGeneration { recordLocalChange() }
+    await reloadAfterCommit(workspace: context.workspace, generation: generation, query: query)
     return receipt
+  }
+
+  /// A committed operation owns its awaited refresh even when its initiating view leaves.
+  private func reloadAfterCommit(workspace: NativeWorkspace, generation: Int, query: [String]) async
+  {
+    await Task { @MainActor in
+      guard client === workspace, workspaceGeneration == generation, queryKey == query else {
+        return
+      }
+      await reload()
+    }.value
   }
 
   private func prepareDrafts(path: String?) throws {
@@ -1126,38 +1326,50 @@ final class WorkspaceModel {
     // Keep the last advisory while offline work continues. The core writer
     // rechecks live metadata/coverage atomically for every actual save.
     error = nil
+    let receipt: Result<WorkspaceSyncResult, Error>
     do {
-      let result = try await client.sync(
-        using: transport, maxRows: downloadPreferences.maxRows, tables: downloadPreferences.tables,
-        onProgress: { [weak self] progress in
-          guard let self, client === self.client, generation == self.workspaceGeneration else {
-            return
-          }
-          self.syncProgress = progress
-        })
-      guard client === self.client, generation == workspaceGeneration else { return }
-      let updatedCatalog = try await client.catalog()
-      guard client === self.client, generation == workspaceGeneration else { return }
-      syncResult = result
-      catalog = updatedCatalog
-      if !tables.contains(where: { $0["id"]?.text == table }) {
-        table =
-          tables.first(where: { $0["readOnly"] == .bool(false) })?["id"]?.text
-          ?? tables.first?["id"]?.text
-      }
-      await reload()
-      completed = true
+      receipt = .success(
+        try await client.sync(
+          using: transport, maxRows: downloadPreferences.maxRows,
+          tables: downloadPreferences.tables,
+          onProgress: { [weak self] progress in
+            guard let self, client === self.client, generation == self.workspaceGeneration else {
+              return
+            }
+            self.syncProgress = progress
+          }))
     } catch {
-      // Keep the replica and queued edits available offline after a failed request.
-      guard client === self.client, generation == workspaceGeneration else { return }
-      let cachedCatalog = try? await client.catalog()
-      guard client === self.client, generation == workspaceGeneration else { return }
-      catalog = cachedCatalog
-      if table == nil { table = tables.first?["id"]?.text }
-      await reload()
-      guard client === self.client, generation == workspaceGeneration else { return }
-      self.error = syncCancelledByUser ? nil : error.localizedDescription
+      receipt = .failure(error)
     }
+    // The admitted sync owns reconciliation. Scene cancellation only stops its loop.
+    completed = await Task { @MainActor in
+      do {
+        let result = try receipt.get()
+        guard client === self.client, generation == workspaceGeneration else { return false }
+        let updatedCatalog = try await client.catalog()
+        guard client === self.client, generation == workspaceGeneration else { return false }
+        syncResult = result
+        catalog = updatedCatalog
+        if !tables.contains(where: { $0["id"]?.text == table }) {
+          table =
+            tables.first(where: { $0["readOnly"] == .bool(false) })?["id"]?.text
+            ?? tables.first?["id"]?.text
+        }
+        await reload()
+        return true
+      } catch {
+        // Keep the replica and queued edits available offline after a failed request.
+        guard client === self.client, generation == workspaceGeneration else { return false }
+        let cachedCatalog = try? await client.catalog()
+        guard client === self.client, generation == workspaceGeneration else { return false }
+        if let cachedCatalog { catalog = cachedCatalog }
+        if table == nil { table = tables.first?["id"]?.text }
+        await reload()
+        guard client === self.client, generation == workspaceGeneration else { return false }
+        self.error = syncCancelledByUser ? nil : error.localizedDescription
+      }
+      return false
+    }.value
   }
 
   func cancelSync() {
