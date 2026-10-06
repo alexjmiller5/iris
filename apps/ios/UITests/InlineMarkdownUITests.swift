@@ -15,6 +15,14 @@ final class InlineMarkdownUITests: XCTestCase {
     XCTAssertFalse(app.navigationBars["Record"].exists)
     rich.tap()
     rich.typeText("# Mobile heading\n\n- Mobile item")
+    let editor = app.descendants(matching: .any)["inline-record-editor"]
+    let saved = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in (editor.value as? String) == "Saved on this device" },
+      object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 10), .completed)
+    XCTAssertFalse(
+      app.buttons["undo-saved-change"].exists,
+      "Autosave must not insert a row above the active editor and move its actions")
     let expand = app.buttons["inline-open-record"]
     for _ in 0..<5 where !expand.isHittable { app.swipeUp() }
     XCTAssertTrue(expand.isHittable)

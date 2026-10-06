@@ -398,7 +398,7 @@ public struct WorkspaceView: View {
             } ?? false
           editor = EditorTarget(
             row: row.record, context: context, preparedEditor: prepared,
-            inlineField: editable ? inlineField : nil)
+            inlineField: editable ? inlineField : nil, inlineUndo: model.undoAction)
         }
         model.error = nil
         recordNavigationSucceeded(recent)
@@ -621,7 +621,9 @@ public struct WorkspaceView: View {
           .accessibilityIdentifier("editing-availability")
       }
     #endif
-    if let action = model.undoAction {
+    // Autosave may create an Undo receipt while a finger is targeting a cell
+    // action. Keep this notice stable until the inline presentation closes.
+    if let action = editor?.inlineField == nil ? model.undoAction : editor?.inlineUndo {
       Button {
         let context = model.editingContext
         Task {
@@ -1117,6 +1119,7 @@ private struct EditorTarget: Identifiable {
   var recovered: StoredEditorDraft? = nil
   var preparedEditor: RecordEditorModel? = nil
   var inlineField: String? = nil
+  var inlineUndo: CoreUndoAction? = nil
 }
 
 private struct RecordEditor: View {
@@ -1251,6 +1254,7 @@ private struct RecordEditor: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inline-record-editor")
+        .accessibilityValue(editor.status)
         .onAppear { focusedField = inlineField }
         .onChange(of: scenePhase) { _, phase in
           guard phase == .inactive, inlineMarkdown != nil, !saving else { return }

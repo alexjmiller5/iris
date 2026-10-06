@@ -42,7 +42,10 @@
       window.contentView = host
       window.makeKeyAndOrderFront(nil)
       defer { window.close() }
-      for _ in 0..<500 where !session.ready { try await Task.sleep(for: .milliseconds(20)) }
+      for _ in 0..<500
+      where !session.ready || !descendants(host).contains(where: { $0 is WKWebView }) {
+        try await Task.sleep(for: .milliseconds(20))
+      }
       try #require(session.ready)
       let view = try #require(descendants(host).compactMap { $0 as? WKWebView }.first)
       view.configuration.userContentController.removeScriptMessageHandler(forName: "editor")
