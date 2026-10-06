@@ -6,12 +6,17 @@ import JavaScriptCore
 @MainActor
 public final class SQLiteBridge {
   private let database: DatabaseQueue
+  private var prepared = false
 
   var isInsideTransaction: Bool {
     database.unsafeRead { $0.isInsideTransaction }
   }
 
-  public init(path: String) throws {
+  public convenience init(path: String) throws {
+    try self.init(path: path, deferredPreparation: false)
+  }
+
+  init(path: String, deferredPreparation: Bool) throws {
     var configuration = Configuration()
     configuration.allowsUnsafeTransactions = true
     configuration.prepareDatabase { db in
@@ -20,7 +25,14 @@ public final class SQLiteBridge {
       try db.execute(sql: "PRAGMA legacy_alter_table = OFF")
     }
     database = try DatabaseQueue(path: path, configuration: configuration)
+    if !deferredPreparation { try prepareForRequests() }
+  }
+
+  // NativeWorkspace admits this write through the same file gate as normal work.
+  func prepareForRequests() throws {
+    guard !prepared else { return }
     try database.write { db in try Self.repairLegacyTimestampRenames(db) }
+    prepared = true
   }
 
   /// Recover only the exact timestamp trigger damaged by a previously logged
@@ -75,6 +87,12 @@ public final class SQLiteBridge {
   }
 
   public func close() throws { try database.close() }
+
+  func rollbackUnfinishedTransaction() throws {
+    try database.writeWithoutTransaction { db in
+      if db.isInsideTransaction { try db.rollback() }
+    }
+  }
 
   /// Install only in a trusted core context, never a web page or user script.
   public func install(in context: JSContext) throws {

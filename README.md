@@ -252,7 +252,11 @@ Drafts are kept as private, atomic files in Application Support, isolated by the
 database location, record and editor. App-owned databases use paths relative to
 their app state so container relocation during an update preserves recovery;
 external databases use canonical absolute paths. Separate windows keep separate
-recovery drafts, including new records. **Resume draft** restores unsaved fields
+recovery drafts, including new records. Windows using the same database coordinate
+complete local operations, so one window opening or saving cannot interrupt
+another window’s transaction. Network waits release this local coordination.
+Open regular files or symbolic links; hard-linked databases are refused because
+SQLite journals cannot safely follow multiple filenames. **Resume draft** restores unsaved fields
 after relaunch; **Discard draft** removes them explicitly. Recovery stays attached
 to the exact stored record, even when two record IDs look identical. A stale recovered
 revision cannot overwrite a newer row. An interrupted write with no confirmed

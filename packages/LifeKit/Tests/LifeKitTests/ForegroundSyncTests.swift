@@ -44,6 +44,97 @@ struct ForegroundSyncTests {
     try await read.value
     try await workspace.close()
   }
+  @Test func anotherWindowReadsAndSavesWhileTheSameFileSyncWaitsForHTTP() async throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let path = folder.appendingPathComponent("workspace.sqlite").path
+    let first = try NativeWorkspace(path: path)
+    try await first.createSample()
+    let second = try NativeWorkspace(path: path)
+    let started = HeldSyncTransport.nextStart()
+    let hub = try transport()
+    let sync = Task { try await first.sync(using: hub) }
+    defer { HeldSyncTransport.release() }
+    #expect(await started.wait())
+    let completed = TestSignal()
+    let local = Task {
+      defer { completed.signal() }
+      let row = try #require(try await second.rows(table: "notes").first)
+      _ = try await second.write(
+        table: "notes",
+        patch: [
+          "id": .string(row.id), "title": .string("Saved while another window syncs"),
+        ])
+      #expect(
+        try await second.rows(table: "notes").contains {
+          $0.id == row.id && $0.label == "Saved while another window syncs"
+        })
+    }
+    #expect(
+      await completed.wait(), "A different window must complete local work before HTTP release")
+    #expect(HeldSyncTransport.isWaiting)
+    HeldSyncTransport.release()
+    _ = await sync.result
+    try await local.value
+    try await first.close()
+    try await second.close()
+  }
+
+  @Test(arguments: ["http", "yield"])
+  func callbackFailureRollsBackAndReleasesOtherWindows(boundary: String) async throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let path = folder.appendingPathComponent("workspace.sqlite").path
+    let runtime = try LifeCoreRuntime()
+    let first = try NativeWorkspace(path: path, runtime: runtime)
+    try await first.createSample()
+    let second = try NativeWorkspace(path: path)
+    let registration =
+      boundary == "http" ? "__lifePost('/schema/pull', '{}', callback)" : "__lifeYield(callback)"
+    runtime.context.evaluateScript(
+      """
+      LifeNative.request = function(id, method, args) {
+        globalThis.callbackRequestID = id;
+        const callback = () => {
+          LifeSql.begin();
+          LifeSql.run("UPDATE notes SET title='Uncommitted callback'");
+          throw new Error('Synthetic callback failure');
+        };
+        \(registration);
+      };
+      """)
+    let completed = TestSignal()
+    let hub = try transport()
+    let started = boundary == "http" ? HeldSyncTransport.nextStart() : nil
+    let request = Task {
+      defer { completed.signal() }
+      if boundary == "http" {
+        _ = try await first.sync(using: hub)
+      } else {
+        _ = try await first.catalog()
+      }
+    }
+    if let started {
+      #expect(await started.wait())
+      HeldSyncTransport.release()
+    }
+    let finished = await completed.wait()
+    #expect(finished, "A synchronous callback failure must reject its request")
+    if !finished {
+      runtime.context.exception = nil
+      runtime.context.evaluateScript(
+        #"try { LifeSql.rollback(); } catch {} __lifeFinish(callbackRequestID, '{"error":"Test cleanup"}');"#
+      )
+    }
+    await #expect(throws: Error.self) { try await request.value }
+    let rows = try await second.rows(table: "notes")
+    #expect(!rows.isEmpty && rows.allSatisfy { $0.label != "Uncommitted callback" })
+    try await first.close()
+    try await second.close()
+  }
+
   @Test func modelPublishesProgressAndClearsItAfterCancellation() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
