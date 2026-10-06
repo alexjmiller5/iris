@@ -215,19 +215,21 @@ struct ArchivedHTMLViewTests {
   func externalSchemeDOMAttemptsAreNeverAdmitted(destination: String) async throws {
     let html = "<a id=\"external\" href=\"\(destination)\">External fixture</a>"
     let action = "document.getElementById('external').click();"
+    let renderer = try await ArchivedHTMLRenderer.make()
+    defer { renderer.close() }
     let control = ArchiveProbeView()
     defer { control.close() }
     try await control.load(html)
-    // The permissive child proves the DOM action reaches native admission, but
-    // this terminal test interceptor cancels it. Never launch Mail or another app.
-    let interception = ArchiveNavigationProbe(forwarding: nil)
+    // Exercise the production default-denial branch using a real action from a
+    // permissive child. The terminal probe still cancels an allow mutant before
+    // WebKit receives it, so this can never launch Mail or another external app.
+    let interception = ArchiveNavigationProbe(forwarding: renderer)
     control.view.navigationDelegate = interception
     _ = try await control.read(action)
     try #require(await interception.waitForAttempt(destination))
+    #expect(interception.proposedPolicies[destination] == .cancel)
     control.close()
 
-    let renderer = try await ArchivedHTMLRenderer.make()
-    defer { renderer.close() }
     let probe = ArchiveNavigationProbe(forwarding: renderer.webView.navigationDelegate)
     renderer.webView.navigationDelegate = probe
     let file = try await verifiedHTML(html)
@@ -348,6 +350,7 @@ struct ArchivedHTMLViewTests {
   var allowedExternalNavigation = false
   // Proposed renderer decisions, before the test's terminal safety override.
   var allowedURLs: [String] = []
+  var proposedPolicies: [String: WKNavigationActionPolicy] = [:]
   private let attempts = AsyncStream<String>.makeStream()
   init(forwarding: (any WKNavigationDelegate)?) { self.forwarding = forwarding }
   func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
@@ -356,6 +359,7 @@ struct ArchivedHTMLViewTests {
     if let url = action.request.url?.absoluteString { attempts.continuation.yield(url) }
     guard let forwarding else { decisionHandler(.cancel); return }
     forwarding.webView?(webView, decidePolicyFor: action, decisionHandler: { policy in
+      if let url = action.request.url?.absoluteString { self.proposedPolicies[url] = policy }
       if policy == .allow, let url = action.request.url?.absoluteString { self.allowedURLs.append(url) }
       if policy == .allow, ["http", "https"].contains(action.request.url?.scheme ?? "") {
         self.allowedExternalNavigation = true
