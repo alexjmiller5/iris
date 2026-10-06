@@ -98,6 +98,12 @@ receipt must not commit the obsolete refresh. A request already submitted to the
 OS cannot be guaranteed to be recalled if the refresh becomes obsolete while
 awaiting its receipt. Successful current OS scheduling advances the local
 delivery checkpoint, not shared read state.
+Another window can disable alerts or finish delivering an event while these
+operations await the OS. Recheck the current preference and exact delivered IDs
+before scheduling, then merge successful receipts into fresh state. Preserve
+other windows' preferences and delivery IDs, and never lower a newer baseline.
+Skipping an already delivered event must still allow later eligible events in
+the same batch.
 
 ## Minimal application and signing integration
 

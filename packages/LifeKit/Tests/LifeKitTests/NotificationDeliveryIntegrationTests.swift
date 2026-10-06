@@ -5,6 +5,46 @@ import Testing
 
 // Keep these in the existing serialized suite because ServiceFixture owns shared synthetic state.
 extension HubServicesTests {
+  @Test func anotherWindowCanDisableAlertsDuringSystemPermissionLookup() async throws {
+    let hub = try ServiceFixture.transport()
+    let workspace = try NativeWorkspace(path: ":memory:")
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let center = SyntheticNotificationCenter()
+    let alerts = NotificationAlerts(
+      directory: directory, delivery: SystemNotificationDelivery(center: center))
+    let refreshingWindow = HubServicesModel(alerts: alerts)
+    refreshingWindow.configure(workspace: workspace, transport: hub)
+    await refreshingWindow.enableAlerts()
+
+    let otherWindow = HubServicesModel(
+      alerts: NotificationAlerts(
+        directory: directory, delivery: SystemNotificationDelivery(center: center)))
+    otherWindow.configure(workspace: workspace, transport: hub)
+    #expect(otherWindow.alertsEnabled)
+    let generation = refreshingWindow.generation
+    var toggledDuringLookup = false
+    center.onStatus = {
+      #expect(refreshingWindow.refreshing)
+      #expect(!otherWindow.refreshing)
+      otherWindow.disableAlerts()
+      #expect(!otherWindow.alertsEnabled)
+      toggledDuringLookup = true
+    }
+    ServiceFixture.state.appendEvent()
+    await refreshingWindow.refresh()
+
+    #expect(toggledDuringLookup)
+    #expect(refreshingWindow.generation == generation)
+    #expect(refreshingWindow.alertError == nil)
+    #expect(center.requests.isEmpty)
+    #expect(try !alerts.state(endpoint: hub.endpoint).enabled)
+    #expect(try alerts.state(endpoint: hub.endpoint).deliveredIDs.isEmpty)
+    #expect(refreshingWindow.unreadCount == 206)
+    #expect(refreshingWindow.feed?.notifications.last?.readAt == nil)
+    try await workspace.close()
+  }
+
   @Test func registeredPushPollingReconcilesInboxAndReadStateWithoutLocalBanners() async throws {
     let hub = try ServiceFixture.transport()
     let workspace = try NativeWorkspace(path: ":memory:")

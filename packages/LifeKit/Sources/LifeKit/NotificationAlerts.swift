@@ -60,20 +60,27 @@ struct NotificationAlertState: Codable {
           notification, identifier: "life-ui." + digest(endpoint) + "." + digest(notification.id),
           shouldPresent: {
             guard isCurrent() else { throw CancellationError() }
-            return !isPushRegistered(endpoint)
+            let current = try state(endpoint: endpoint)
+            return current.enabled && !isPushRegistered(endpoint)
+              && !current.deliveredIDs.contains { Data($0.utf8) == Data(notification.id.utf8) }
           })
         try Task.checkCancellation()
         guard isCurrent() else { throw CancellationError() }
-        guard scheduled else { break }
-        next.deliveredIDs.append(notification.id)
-        delivered.insert(Data(notification.id.utf8))
+        guard scheduled else { continue }
+        // Another window may have changed preferences or delivered IDs during either await.
+        next = try state(endpoint: endpoint)
+        delivered = Set(next.deliveredIDs.map { Data($0.utf8) })
+        if delivered.insert(Data(notification.id.utf8)).inserted {
+          next.deliveredIDs.append(notification.id)
+        }
         // Preserve successful IDs across retries if a later delivery fails.
         try save(next, endpoint: endpoint)
       }
     }
     try Task.checkCancellation()
     guard isCurrent() else { throw CancellationError() }
-    next.baseline = presentation.baseline
+    next = try state(endpoint: endpoint)
+    next.baseline = max(next.baseline ?? presentation.baseline, presentation.baseline)
     try save(next, endpoint: endpoint)
   }
   private func digest(_ value: String) -> String {

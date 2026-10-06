@@ -5,6 +5,71 @@ import UserNotifications
 @testable import LifeKit
 
 @MainActor struct NotificationSchedulingTests {
+  @Test func concurrentlyDeliveredExactIDDoesNotConsumeLaterByteDistinctEvent() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let center = SyntheticNotificationCenter()
+    let alerts = NotificationAlerts(
+      directory: directory, delivery: SystemNotificationDelivery(center: center))
+    let other = NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery())
+    let endpoint = "https://notifications.invalid"
+    #expect(try await alerts.enable(endpoint: endpoint))
+    var first = event
+    first.id = "\u{e9}"
+    var later = event
+    later.id = "e\u{301}"
+    later.seq = 9
+    later.title = "Later byte-distinct event"
+    center.onStatus = {
+      center.onStatus = nil
+      do {
+        try await other.apply(.init(notifications: [first], baseline: 8), endpoint: endpoint)
+      } catch { Issue.record(error) }
+    }
+    try await alerts.apply(.init(notifications: [first, later], baseline: 9), endpoint: endpoint)
+    #expect(center.requests.count == 1)
+    #expect(center.requests.first?.content.title == later.title)
+    let retained = try alerts.state(endpoint: endpoint)
+    #expect(retained.enabled)
+    #expect(retained.baseline == 9)
+    #expect(
+      retained.deliveredIDs.map { Data($0.utf8) } == [Data(first.id.utf8), Data(later.id.utf8)])
+  }
+
+  @Test(arguments: [false, true], [false, true])
+  func concurrentDisableAndNewerBaselineSurviveSuspendedDelivery(duringReceipt: Bool, sameID: Bool)
+    async throws
+  {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let center = SyntheticNotificationCenter()
+    let alerts = NotificationAlerts(
+      directory: directory, delivery: SystemNotificationDelivery(center: center))
+    let other = NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery())
+    let endpoint = "https://notifications.invalid"
+    #expect(try await alerts.enable(endpoint: endpoint))
+    let disable: @MainActor () async -> Void = {
+      do {
+        var newer = event
+        newer.id = sameID ? event.id : "another-window-event"
+        newer.seq = 10
+        try await other.apply(.init(notifications: [newer], baseline: 10), endpoint: endpoint)
+        try other.disable(endpoint: endpoint)
+      } catch { Issue.record(error) }
+    }
+    if duringReceipt { center.onAdd = disable } else { center.onStatus = disable }
+    try await alerts.apply(.init(notifications: [event], baseline: 8), endpoint: endpoint)
+    let retained = try alerts.state(endpoint: endpoint)
+    #expect(!retained.enabled)
+    #expect(retained.baseline == 10)
+    let expectedIDs =
+      sameID
+      ? [event.id]
+      : (duringReceipt ? ["another-window-event", event.id] : ["another-window-event"])
+    #expect(retained.deliveredIDs == expectedIDs)
+    #expect(center.requests.count == (duringReceipt ? 1 : 0))
+  }
+
   @Test(arguments: [false, true])
   func registeredPushSuppressesPollingBannerAndStillAdvancesInboxBaseline(
     registersDuringPermissionLookup: Bool
@@ -158,8 +223,8 @@ import UserNotifications
 
 @MainActor final class SyntheticNotificationCenter: NotificationCenterClient {
   var status: UNAuthorizationStatus = .authorized
-  var onStatus: (() -> Void)?
-  var onAdd: (() -> Void)?
+  var onStatus: (@MainActor () async -> Void)?
+  var onAdd: (@MainActor () async -> Void)?
   var requests: [UNNotificationRequest] = []
   var authorizationOptions: [UNAuthorizationOptions] = []
   var failScheduling = false
@@ -169,12 +234,12 @@ import UserNotifications
     return true
   }
   func authorizationStatus() async -> UNAuthorizationStatus {
-    onStatus?()
+    await onStatus?()
     return status
   }
   func add(_ request: UNNotificationRequest) async throws {
     if failScheduling { throw URLError(.cannotConnectToHost) }
     requests.append(request)
-    onAdd?()
+    await onAdd?()
   }
 }
