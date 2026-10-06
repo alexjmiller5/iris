@@ -18,7 +18,7 @@ struct PageCapturePresentationTests {
     #expect(model.unavailableReason != nil)
     #expect(model.error == nil)
     #expect(model.attempt.canDownload(.png))
-    #expect(model.attempt.sourceURL.absoluteString == "https://example.test/article")
+    #expect(model.attempt.sourceURL?.absoluteString == "https://example.test/article")
   }
 
   // Catches stale A publishing a file/error or clearing B's busy flag after cancellation.

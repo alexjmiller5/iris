@@ -10,7 +10,8 @@ enum PageCaptureError: Error, Equatable, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .invalidMetadata: "Capture metadata is missing or invalid."
-    case .previewUnavailable: "This artifact exceeds the viewing limit. The retained capture is unchanged."
+    case .previewUnavailable:
+      "This artifact exceeds the viewing limit. The retained capture is unchanged."
     case .artifactUnavailable: "This attempt has no retained artifact."
     case .integrityMismatch: "The downloaded artifact does not match its capture metadata."
     }
@@ -49,11 +50,14 @@ struct PageCapture: Sendable {
         else { throw PageCaptureError.invalidMetadata }
         if clause == "\(count) resource requests could not be saved", index == 0 {
           resources = count
-        } else if clause == (count == 1 ? "1 section was still loading" : "\(count) sections were still loading"),
+        } else if clause
+          == (count == 1 ? "1 section was still loading" : "\(count) sections were still loading"),
           index == clauses.count - 1
         {
           sections = count
-        } else { throw PageCaptureError.invalidMetadata }
+        } else {
+          throw PageCaptureError.invalidMetadata
+        }
       }
       self.message = message
       missingResources = resources
@@ -70,7 +74,8 @@ struct PageCapture: Sendable {
   let sourceTable: String
   let sourceRowID: String
   let sourceColumn: String
-  let sourceURL: URL
+  /// Optional external-navigation action; originalURL remains historical source text.
+  let sourceURL: URL?
   let originalURL: String
   let observedSourceRevision: String
   let attemptedAt: String
@@ -105,15 +110,20 @@ struct PageCapture: Sendable {
     sourceRowID = try text("source_row_id")
     sourceColumn = try text("source_column")
     originalURL = try text("source_url")
-    guard !originalURL.contains(where: { $0.isWhitespace || $0 == "\\" }),
-      let parts = URLComponents(string: originalURL),
-      ["https", "http"].contains(parts.scheme?.lowercased() ?? ""),
-      parts.host?.isEmpty == false, parts.user == nil, parts.password == nil,
-      let url = parts.url
-    else { throw PageCaptureError.invalidMetadata }
-    sourceURL = url
+    // Reuse host website-link policy, with the external viewer's credential refusal.
+    // An unavailable Open original action must never discard an unsupported attempt.
+    if !originalURL.contains(where: { $0.isWhitespace || $0 == "\\" }),
+      let url = NativeFieldLink.destination(type: "url", value: originalURL),
+      url.user == nil, url.password == nil
+    {
+      sourceURL = url
+    } else {
+      sourceURL = nil
+    }
     observedSourceRevision = try text("observed_source_revision")
-    guard (try? JSONDecoder().decode(WorkspaceRecord.self, from: Data(observedSourceRevision.utf8))) != nil
+    guard
+      (try? JSONDecoder().decode(WorkspaceRecord.self, from: Data(observedSourceRevision.utf8)))
+        != nil
     else { throw PageCaptureError.invalidMetadata }
     attemptedAt = try timestamp("attempted_at")
     guard let outcome = Status(rawValue: try text("status")) else {
@@ -124,7 +134,9 @@ struct PageCapture: Sendable {
     case .succeeded, .partial:
       capturedAt = try timestamp("captured_at")
       if outcome == .partial {
-        guard record["failure_code"] == .string("partial") else { throw PageCaptureError.invalidMetadata }
+        guard record["failure_code"] == .string("partial") else {
+          throw PageCaptureError.invalidMetadata
+        }
         let detail = try text("failure_detail")
         warning = try Warning(detail)
         failureCode = "partial"
@@ -133,7 +145,9 @@ struct PageCapture: Sendable {
         guard record["failure_code"] == .null, record["failure_detail"] == .null else {
           throw PageCaptureError.invalidMetadata
         }
-        warning = nil; failureCode = nil; failureDetail = nil
+        warning = nil
+        failureCode = nil
+        failureDetail = nil
       }
       var files: [Kind: Artifact] = [:]
       for kind in Kind.allCases {
@@ -155,7 +169,9 @@ struct PageCapture: Sendable {
       guard record["captured_at"] == .null else { throw PageCaptureError.invalidMetadata }
       for kind in Kind.allCases {
         for field in ["key", "mime", "bytes", "sha256"] {
-          guard record[kind.rawValue + "_" + field] == .null else { throw PageCaptureError.invalidMetadata }
+          guard record[kind.rawValue + "_" + field] == .null else {
+            throw PageCaptureError.invalidMetadata
+          }
         }
       }
       failureCode = try text("failure_code")
@@ -164,7 +180,9 @@ struct PageCapture: Sendable {
       case .string(let detail): failureDetail = detail
       default: throw PageCaptureError.invalidMetadata
       }
-      capturedAt = nil; artifacts = [:]; warning = nil
+      capturedAt = nil
+      artifacts = [:]
+      warning = nil
     }
   }
 
