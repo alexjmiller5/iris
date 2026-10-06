@@ -72,6 +72,8 @@ public final class NativeWorkspace {
   private var suspended: [Int: Request] = [:]
   private var nextID = 0
   private var closed = false
+  private var referenceReadPending = false
+  private var referenceWaiters: [(UUID, CheckedContinuation<Void, Error>)] = []
 
   private struct Request {
     let id: Int
@@ -253,7 +255,44 @@ public final class NativeWorkspace {
   }
   /// Reads used only to fill passive reference labels in a displayed row.
   func referenceRows(view: CoreView) async throws -> [WorkspaceRow] {
-    try await decode(CoreRequests.Rows(view), cancellableRead: true, referenceRead: true)
+    try Task.checkCancellation()
+    try await acquireReferenceRead()
+    defer { releaseReferenceRead() }
+    try Task.checkCancellation()
+    return try await decode(CoreRequests.Rows(view), cancellableRead: true, referenceRead: true)
+  }
+  /// Keep presentation fan-out outside the database queue. A transport or HTTP
+  /// resumption barrier can then have at most one passive read ahead of it.
+  private func acquireReferenceRead() async throws {
+    if !referenceReadPending {
+      referenceReadPending = true
+      return
+    }
+    let id = UUID()
+    try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation {
+        (continuation: CheckedContinuation<Void, Error>) in
+        guard !Task.isCancelled else {
+          continuation.resume(throwing: CancellationError())
+          return
+        }
+        referenceWaiters.append((id, continuation))
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in
+        guard let self, let index = self.referenceWaiters.firstIndex(where: { $0.0 == id }) else {
+          return
+        }
+        self.referenceWaiters.remove(at: index).1.resume(throwing: CancellationError())
+      }
+    }
+  }
+  private func releaseReferenceRead() {
+    if referenceWaiters.isEmpty {
+      referenceReadPending = false
+    } else {
+      referenceWaiters.removeFirst().1.resume()
+    }
   }
   public func rows(table: String, search: String = "", trash: Bool = false, offset: Int = 0)
     async throws -> [WorkspaceRow]
