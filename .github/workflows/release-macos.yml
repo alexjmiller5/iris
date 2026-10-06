@@ -247,7 +247,7 @@ jobs:
             desc "Local-first browser for catalogued databases"
             homepage "https://github.com/$GITHUB_REPOSITORY"
 
-            depends_on macos: ">= :sonoma"
+            depends_on macos: :sonoma
             app "$APP.app"
           end
           EOF

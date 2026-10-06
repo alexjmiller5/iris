@@ -158,6 +158,8 @@ for (const fixture of cases)
       if ("update" in fixture && fixture.update) {
         expect(contents).toContain(`version "${fixture.version}"`);
         expect(contents).toContain(`sha256 "${sha}"`);
+        // Ruby accepts the old comparison string, but Homebrew requires a symbol.
+        expect(contents).toMatch(/^\s*depends_on macos: :sonoma\s*$/m);
         expect(calls).toContain("-C tap push");
       } else {
         expect(contents).toBe(fixture.existing);
