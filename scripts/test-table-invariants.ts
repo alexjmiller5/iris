@@ -325,9 +325,10 @@ try {
     );
 
     await cdp.evaluate(`window.holdPermissionTable='history'`);
-    const table = (name: string) =>
-      named("button", name, element('nav[aria-label="Tables"]'));
-    await cdp.click(table("history"));
+    const table = (name: string, group = "Tables") =>
+      named("button", name, element(`nav[aria-label="${group}"]`));
+    await cdp.click(text("System tables"));
+    await cdp.click(table("history", "System tables"));
     await cdp.until("window.heldPermissions.length>0");
     await cdp.click(table("widgets"));
     await enabled("New record", true);
