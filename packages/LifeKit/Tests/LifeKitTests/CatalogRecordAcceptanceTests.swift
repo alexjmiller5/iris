@@ -5,7 +5,7 @@ import Testing
 @testable import LifeKit
 
 /// Uses the real JSC writer and SQLite, not a manufactured validation error.
-@MainActor
+@Suite(.serialized) @MainActor
 struct CatalogRecordAcceptanceTests {
   @Test func rejectedRuleKeepsDraftAndStoredRevisionUntilCorrection() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -15,7 +15,10 @@ struct CatalogRecordAcceptanceTests {
     let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     try Self.seed(runtime)
-    try #require(try await workspace.writeability(table: "record_examples").writable)
+    try await Self.establishCoverage(workspace, runtime: runtime)
+    let writeability = try await workspace.writeability(table: "record_examples")
+    try #require(
+      writeability.writable, Comment(rawValue: writeability.reason?.message ?? "Not writable"))
     let properties = try await workspace.catalog().properties.filter {
       $0["tbl"] == .string("record_examples")
     }
@@ -101,8 +104,39 @@ struct CatalogRecordAcceptanceTests {
     try #require(
       !(try await workspace.catalog().tables.contains { $0["id"] == .string("record_examples") }))
     try Self.seed(runtime)
-    try #require(try await workspace.writeability(table: "record_examples").writable)
+    try await Self.establishCoverage(workspace, runtime: runtime)
+    let writeability = try await workspace.writeability(table: "record_examples")
+    try #require(
+      writeability.writable, Comment(rawValue: writeability.reason?.message ?? "Not writable"))
     try await workspace.close()
+  }
+
+  // The real core must issue its coverage certificates through a complete sync.
+  // Do not manufacture _core_coverage rows or bypass the invariant write gate.
+  private static func establishCoverage(_ workspace: NativeWorkspace, runtime: LifeCoreRuntime)
+    async throws
+  {
+    let snapshot = runtime.context.evaluateScript(
+      #"""
+      JSON.stringify({
+        schema: LifeSql.all('SELECT applied_at,ddl FROM _schema_log ORDER BY id'),
+        tables: Object.fromEntries(LifeSql.all("SELECT name FROM sqlite_master WHERE type='table'")
+          .filter(r => !r.name.startsWith('_') && !r.name.startsWith('sqlite_'))
+          .map(r => [r.name, LifeSql.all('SELECT * FROM "'+r.name.replaceAll('"','""')+'" ORDER BY id')]))
+      })
+      """#)
+    try #require(runtime.context.exception == nil)
+    let bytes = Data(try #require(snapshot?.toString()).utf8)
+    let source = try JSONDecoder().decode(CatalogAcceptanceHub.Snapshot.self, from: bytes)
+    CatalogAcceptanceHub.install(source)
+    defer { CatalogAcceptanceHub.clear() }
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [CatalogAcceptanceHub.self]
+    let hub = try HubTransport(
+      endpoint: "https://catalog-acceptance.invalid", token: "fixture-scoped-token",
+      configuration: configuration)
+    let result = try await workspace.sync(using: hub)
+    try #require(result.skipped.isEmpty && result.rejected.isEmpty)
   }
 
   private static func history(_ runtime: LifeCoreRuntime) throws -> String {
@@ -137,5 +171,80 @@ struct CatalogRecordAcceptanceTests {
     try #require(
       runtime.context.exception == nil,
       Comment(rawValue: runtime.context.exception?.toString() ?? "Fixture SQL failed"))
+  }
+}
+
+// Isolated, in-process transport of the synthetic snapshot, following HubSyncTests.
+// Only the hub is a fixture: schema import, coverage, rule evaluation and writes use core.
+private final class CatalogAcceptanceHub: URLProtocol, @unchecked Sendable {
+  struct Snapshot: Decodable, Sendable {
+    let schema: [WorkspaceRecord]
+    let tables: [String: [WorkspaceRecord]]
+  }
+  private static let lock = NSLock()
+  nonisolated(unsafe) private static var source: Snapshot?
+  static func install(_ snapshot: Snapshot) { lock.withLock { source = snapshot } }
+  static func clear() { lock.withLock { source = nil } }
+  override class func canInit(with request: URLRequest) -> Bool {
+    request.url?.host == "catalog-acceptance.invalid"
+  }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+  override func stopLoading() {}
+  override func startLoading() {
+    do {
+      guard let source = Self.lock.withLock({ Self.source }),
+        request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-scoped-token",
+        request.httpMethod == "POST"
+      else { throw URLError(.badServerResponse) }
+      var bytes = request.httpBody ?? Data()
+      if let stream = request.httpBodyStream {
+        stream.open()
+        defer { stream.close() }
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+          let count = stream.read(&buffer, maxLength: buffer.count)
+          if count <= 0 { break }
+          bytes.append(contentsOf: buffer[..<count])
+        }
+      }
+      let body = try JSONDecoder().decode(WorkspaceRecord.self, from: bytes)
+      let data: JSONValue
+      switch request.url?.path {
+      case "/v1/schema/pull":
+        data = .object(["entries": .array(source.schema.map(JSONValue.object))])
+      case "/v1/stats":
+        data = .object(["tables": .object(source.tables.mapValues { .number(Double($0.count)) })])
+      case "/v1/cursor":
+        data = .object([
+          "max_hub_at": .string(""),
+          "tables": .object(source.tables.mapValues { _ in .string("") }),
+        ])
+      case "/v1/rows/pull":
+        let rows = source.tables[body["table"]?.text ?? ""] ?? []
+        let limit = Int(body["limit"]?.text ?? "1000") ?? 1000
+        let page = Array(
+          rows.filter {
+            body["after"] == nil || ($0["id"]?.text ?? "") > (body["after"]?.text ?? "")
+          }.prefix(limit))
+        data = .object([
+          "rows": .array(page.map(JSONValue.object)),
+          "next_cursor": page.count == limit ? (page.last?["id"] ?? .null) : .null,
+        ])
+      case "/v1/rows/push":
+        guard case .array(let rows) = body["rows"] else { throw URLError(.badServerResponse) }
+        data = .object(["upserted": .number(Double(rows.count)), "rejected": .array([])])
+      default: throw URLError(.badURL)
+      }
+      let formatter = DateFormatter()
+      formatter.locale = Locale(identifier: "en_US_POSIX")
+      formatter.timeZone = TimeZone(secondsFromGMT: 0)
+      formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss z"
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+        headerFields: ["Content-Type": "application/json", "Date": formatter.string(from: Date())])!
+      client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+      client?.urlProtocol(self, didLoad: try JSONEncoder().encode(data))
+      client?.urlProtocolDidFinishLoading(self)
+    } catch { client?.urlProtocol(self, didFailWithError: error) }
   }
 }
