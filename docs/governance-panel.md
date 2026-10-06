@@ -38,11 +38,11 @@ cached display content and invalidates late page/preview responses.
 `contract.ts` re-exports the canonical generated Life Data wire types; `api.ts`
 uses generated argument and result types for every method. The generic read
 envelope remains only for local presentation helpers. The bundle is generated from
-Life Data `f0ed465d230c96dd63c2610691274034c34c79e9`, contract hash
-`323ba793aeb8962d9555f48d80ccf486bf1010116f1f1b89d8c33f9491c26d12`.
-This is the generated DTO source prerequisite, separate from the proposed transport
-routes/capability in its `docs/governance-transport-contract.md`. It adds no advertised
-governance HTTP API or CoreOperations. The foundation's inverse
+Life Data `cd9af7a9398e95844d85c7e6dc8052c9e91c49c4`, contract hash
+`e935ee9223797c2910128fcaef91cce70acfeb0baa329dc848074f45b9bf4ff3`.
+It includes nine canonical governance operations, which remain unavailable without
+an injected service adapter. Bundling these operations does not activate the host
+or verify the configured live service capability. The foundation's inverse
 planner requires trusted complete ordered typed evidence; clients must not supply
 untrusted evidence to manufacture an authorized preview.
 
@@ -62,8 +62,8 @@ alone is insufficient. Do not derive journal identity from the URL or a credenti
 hash. The required canonical source for this integration is Life Data
 `cd9af7a9398e95844d85c7e6dc8052c9e91c49c4`, contract hash
 `e935ee9223797c2910128fcaef91cce70acfeb0baa329dc848074f45b9bf4ff3`.
-It includes required `GovernanceCapability.deploymentId` and `sessionId` fields;
-the earlier DTO-only source described above is insufficient. This is a source
+It includes required `GovernanceCapability.deploymentId` and `sessionId` fields.
+This is a source
 prerequisite, not a deployment receipt. Until the configured live capability and
 identity are verified, API and journal injection remain null.
 
