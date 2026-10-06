@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 
 @testable import LifeKit
@@ -32,13 +33,24 @@ struct AutomaticSyncTests {
     defer { try? FileManager.default.removeItem(at: directory) }
     let loop = Task { await model.runAutomaticSync(debounce: .milliseconds(200)) }
     await Task.yield()
+    // Saving schedules catch-up before awaiting reload. Leave at that boundary,
+    // rather than assuming reload finishes within the debounce on a busy runner.
+    _ = withObservationTracking {
+      model.loading
+    } onChange: {
+      loop.cancel()
+    }
     try await save(model, title: "Saved before leaving")
+    #expect(loop.isCancelled, "Foreground exit must happen when the saved row starts reloading")
     loop.cancel()
     await loop.value
     try await Task.sleep(for: .milliseconds(250))
     #expect(AutoSyncHub.rounds == 0)
+    #expect(try await model.client?.status().pendingUiEdits == 1)
     let resumed = Task { await model.runAutomaticSync(debounce: .milliseconds(20)) }
     try await waitUntil { AutoSyncHub.rounds == 1 && !model.syncing }
+    #expect(AutoSyncHub.uploadedTitles == ["Saved before leaving"])
+    #expect(try await model.client?.status().pendingUiEdits == 0)
     resumed.cancel()
     await resumed.value
     await model.close()
