@@ -13,6 +13,7 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      - run: bun scripts/test-opfs-reopen.ts --verify-patch
       - run: bun run check:contract
       - name: Verify generated native resources
         run: |
