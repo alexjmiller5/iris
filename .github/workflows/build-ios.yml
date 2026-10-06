@@ -30,6 +30,18 @@ jobs:
         run: brew install xcodegen age
       - name: Generate project
         run: xcodegen generate --spec apps/ios/project.yml
+      - name: Stamp identifiable build
+        shell: python
+        run: |
+          import os, pathlib, plistlib, re
+          run = os.environ['GITHUB_RUN_NUMBER']
+          attempt = os.environ['GITHUB_RUN_ATTEMPT']
+          if not all(re.fullmatch(r'[1-9][0-9]*', value) for value in (run, attempt)):
+              raise SystemExit('Invalid build identity')
+          path = pathlib.Path('apps/ios/App/Info.plist')
+          info = plistlib.loads(path.read_bytes())
+          info['CFBundleVersion'] = f'{run}.{attempt}'
+          path.write_bytes(plistlib.dumps(info))
       - uses: 1Password/install-cli-action@v4
       # Existing Apple Signing exception supplies iOS signing material only.
       - uses: 1password/load-secrets-action@v2
@@ -45,6 +57,18 @@ jobs:
         run: |
           test -n "$IOS_DEVICE_ID" || { echo 'Set IOS_DEVICE_ID in the project ENV item.' >&2; exit 1; }
           python3 scripts/sign-ios.py --project apps/ios/LifeUI.xcodeproj --scheme LifeUI --output "$RUNNER_TEMP/ios-output"
+      - name: Verify exported build identity
+        shell: python
+        run: |
+          import os, pathlib, plistlib, re, zipfile
+          with zipfile.ZipFile(pathlib.Path(os.environ['RUNNER_TEMP']) / 'ios-output/App.ipa') as archive:
+              paths = [p for p in archive.namelist() if re.fullmatch(r'Payload/[^/]+\.app/Info\.plist', p)]
+              if len(paths) != 1:
+                  raise SystemExit('Expected one app in the exported IPA')
+              info = plistlib.loads(archive.read(paths[0]))
+          expected = f"{os.environ['GITHUB_RUN_NUMBER']}.{os.environ['GITHUB_RUN_ATTEMPT']}"
+          if info.get('CFBundleVersion') != expected:
+              raise SystemExit('Exported build identity does not match this workflow run')
       - name: Encrypt verified IPA
         env:
           ARTIFACT_RECIPIENT: ${{ inputs.artifact_recipient }}

@@ -32,7 +32,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - run: bun test scripts/release-macos.test.ts scripts/ios-ci.test.ts
+      - run: bun test scripts/release-macos.test.ts scripts/ios-ci.test.ts scripts/ios-ota.test.ts
       - run: python3 scripts/macos_signing_test.py
       - run: python3 scripts/sign_ios_test.py
       - run: brew install xcodegen just

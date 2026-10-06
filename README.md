@@ -411,6 +411,15 @@ XCTest screenshots show the saved record while sync remains held. Stop the fixtu
 when finished. Local navigation and inline saves run while sync awaits HTTP;
 database transactions still retain complete ownership until they finish.
 
+`LargeMarkdownNavigationUIFixtureTests` and `LargeMarkdownNavigationUITests`
+exercise a 454-record synthetic Markdown table, scrolling and table changes.
+Use `TEST_RUNNER_LIFE_UI_TEST_MARKDOWN_NAV_SIMULATOR` for its exact disposable
+simulator, and set `TEST_RUNNER_LIFE_UI_TEST_MARKDOWN_NAV_CATALOG=1` for the
+85-table catalog with populated relation and JSON properties. The optional
+`TEST_RUNNER_LIFE_UI_TEST_MARKDOWN_NAV_HUB` uses the same loopback fixture to
+hold sync HTTP. Seed the app-host fixture before running the UI test. Measurements
+include XCTest polling and interaction overhead, and do not replace phone acceptance.
+
 Launch an Apple app with
 `--demo` for the temporary preview; app-hosted tests use fixture mode as well.
 Unsigned builds are development artifacts, not signed releases or phone installs.
@@ -715,8 +724,11 @@ never upload plaintext IPA/profile files or signing keys. Keep the temporary age
 identity locally, then delete it after successful decryption and verification.
 After verifying the downloaded app signature, profile and checksum, install the
 IPA on its enrolled phone or use `scripts/ota-install.sh <private-ipa-path>` through
-the separately authorized installer. An archive/export success is not proof of
-phone installation.
+the separately authorized installer. Each CI dispatch and retry gets a distinct
+build number and versioned OTA page. **Workspace status > App version** shows the
+installed version and build for acceptance checks. Install over the existing app
+to retain its local workspace and pending edits. An archive/export success is not
+proof of phone installation.
 
 ### Mac releases
 

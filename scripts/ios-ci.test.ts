@@ -1,10 +1,47 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const file = '.github/workflows/build-ios.yml';
 const workflow = () => Bun.YAML.parse(readFileSync(file, 'utf8')) as any;
 
 describe('iOS distribution workflow boundary', () => {
+  test('exported builds identify each dispatch and retry without changing the release version', () => {
+    const steps = workflow().jobs.build.steps;
+    const stamp = steps.findIndex((s: any) => s.name === 'Stamp identifiable build');
+    expect(stamp).toBeGreaterThan(steps.findIndex((s: any) => s.name === 'Generate project'));
+    expect(stamp).toBeLessThan(steps.findIndex((s: any) => s.run?.includes('scripts/sign-ios.py')));
+    const root = mkdtempSync(join(tmpdir(), 'life-ui-build-identity-'));
+    try {
+      mkdirSync(join(root, 'apps/ios/App'), { recursive: true });
+      const info = join(root, 'apps/ios/App/Info.plist');
+      const seed = Bun.spawnSync(['python3', '-c', 'import plistlib,sys; plistlib.dump({"CFBundleVersion":"1","CFBundleShortVersionString":"1.0","CFBundleIdentifier":"com.example.fixture"},open(sys.argv[1],"wb"))', info]);
+      expect(seed.exitCode).toBe(0);
+      for (const [run, attempt] of [['71', '1'], ['71', '2'], ['72', '1']]) {
+        const result = Bun.spawnSync(['python3', '-c', steps[stamp].run], { cwd: root, env: { ...process.env, GITHUB_RUN_NUMBER: run, GITHUB_RUN_ATTEMPT: attempt, GITHUB_SHA: 'a'.repeat(40) } });
+        expect(result.exitCode).toBe(0);
+        const read = Bun.spawnSync(['python3', '-c', 'import json,plistlib,sys; print(json.dumps(plistlib.load(open(sys.argv[1],"rb"))))', info]);
+        const value = JSON.parse(read.stdout.toString());
+        expect(value.CFBundleVersion).toBe(`${run}.${attempt}`);
+        expect(value.CFBundleShortVersionString).toBe('1.0');
+        expect(value.CFBundleIdentifier).toBe('com.example.fixture');
+      }
+      const before = readFileSync(info);
+      const invalid = Bun.spawnSync(['python3', '-c', steps[stamp].run], { cwd: root, env: { ...process.env, GITHUB_RUN_NUMBER: 'bad', GITHUB_RUN_ATTEMPT: '1' } });
+      expect(invalid.exitCode).not.toBe(0);
+      expect(readFileSync(info)).toEqual(before);
+      const verify = steps.findIndex((s: any) => s.name === 'Verify exported build identity');
+      expect(verify).toBeGreaterThan(steps.findIndex((s: any) => s.run?.includes('scripts/sign-ios.py')));
+      expect(verify).toBeLessThan(steps.findIndex((s: any) => s.run?.includes('age --encrypt')));
+      mkdirSync(join(root, 'ios-output'));
+      const pack = Bun.spawnSync(['python3', '-c', 'import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],"w"); z.write(sys.argv[2],"Payload/Fixture.app/Info.plist"); z.close()', join(root, 'ios-output/App.ipa'), info]);
+      expect(pack.exitCode).toBe(0);
+      const verifyRun = (run: string) => Bun.spawnSync(['python3', '-c', steps[verify].run], { env: { ...process.env, RUNNER_TEMP: root, GITHUB_RUN_NUMBER: run, GITHUB_RUN_ATTEMPT: '1' } });
+      expect(verifyRun('72').exitCode).toBe(0);
+      expect(verifyRun('73').exitCode).not.toBe(0);
+    } finally { rmSync(root, { recursive: true }); }
+  });
   test('requires an explicit manual dispatch and recipient', () => {
     expect(existsSync(file)).toBe(true);
     const w = workflow();

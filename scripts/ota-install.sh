@@ -33,22 +33,25 @@ info=$(unzip -Z1 "$ipa" | grep -E '^Payload/[^/]+\.app/Info\.plist$' | head -1)
 unzip -p "$ipa" "$info" > "$dir/Info.plist"
 bundle=$(plutil -extract CFBundleIdentifier raw -o - "$dir/Info.plist")
 version=$(plutil -extract CFBundleShortVersionString raw -o - "$dir/Info.plist")
+build=$(plutil -extract CFBundleVersion raw -o - "$dir/Info.plist")
+[[ "$build" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || { echo "unsupported bundle build number" >&2; exit 1; }
+mv "$dir/app.ipa" "$dir/app-$build.ipa"
 title=$(plutil -extract CFBundleDisplayName raw -o - "$dir/Info.plist" 2>/dev/null \
   || plutil -extract CFBundleName raw -o - "$dir/Info.plist")
 title=$(printf '%s' "$title" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
 rm "$dir/Info.plist"
 
-cat > "$dir/manifest.plist" <<PLIST
+cat > "$dir/manifest-$build.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>items</key><array><dict>
   <key>assets</key><array><dict>
     <key>kind</key><string>software-package</string>
-    <key>url</key><string>$base/app.ipa</string>
+    <key>url</key><string>$base/app-$build.ipa</string>
   </dict></array>
   <key>metadata</key><dict>
     <key>bundle-identifier</key><string>$bundle</string>
-    <key>bundle-version</key><string>$version</string>
+    <key>bundle-version</key><string>$build</string>
     <key>kind</key><string>software</string>
     <key>title</key><string>$title</string>
   </dict>
@@ -58,10 +61,11 @@ cat > "$dir/index.html" <<HTML
 <!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Install $title</title>
 <body style="font:20px -apple-system;padding:48px 24px;text-align:center">
-<h2>$title $version</h2>
-<p><a style="display:inline-block;padding:16px 28px;border-radius:14px;background:#0a84ff;color:#fff;text-decoration:none" href="itms-services://?action=download-manifest&amp;url=$base/manifest.plist">Install</a></p>
+<h2>$title $version ($build)</h2>
+<p><a style="display:inline-block;padding:16px 28px;border-radius:14px;background:#0a84ff;color:#fff;text-decoration:none" href="itms-services://?action=download-manifest&amp;url=$base/manifest-$build.plist">Install</a></p>
 </body>
 HTML
+cp "$dir/index.html" "$dir/install-$build.html"
 
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
 (cd "$dir" && exec python3 -m http.server "$port" --bind 127.0.0.1) >/dev/null 2>&1 &
@@ -71,12 +75,12 @@ serve_pid=$!
 
 ready=""
 for _ in $(seq 1 30); do
-  if [ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$base/manifest.plist" || true)" = "200" ]; then ready=1; break; fi
+  if [ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$base/manifest-$build.plist" || true)" = "200" ]; then ready=1; break; fi
   sleep 1
 done
 [ -n "$ready" ] || { echo "the install page never came up at $base/ (tailscale serve failed?)" >&2; exit 1; }
 
-echo "install page: $base/"
-echo "open it in Safari on the phone (tailnet connected) and tap Install - $title $version"
+echo "install page: $base/install-$build.html"
+echo "open it in Safari on the phone (tailnet connected) and tap Install - $title $version ($build)"
 echo "serving for ${ttl}s; Ctrl-C stops it"
 sleep "$ttl"
