@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "98bd9b7229d436cc2bbfac9f2507bf66ba998985b366ffbbe713b58dfab98cb9";
+export declare const CORE_CONTRACT_HASH = "3490987a509818b5309efb68e864a83c7b57acbad3285c711e341fa9f7c3c369";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -414,6 +414,7 @@ export type RunRowActionArgs = {
     actionId: string;
     rowId: string;
     expectedUpdatedAt: string;
+    expectedViewUpdatedAt: string;
 };
 export type SourceLinkArgs = {
     url: string;

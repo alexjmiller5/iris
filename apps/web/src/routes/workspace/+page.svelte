@@ -8,6 +8,8 @@
 	import RejectedEdits from '$lib/RejectedEdits.svelte';
 	import type { RejectionSnapshot } from '$lib/rejection-inbox';
 	import RecordGrid from '$lib/RecordGrid.svelte';
+	import ExportPanel from '$lib/export/ExportPanel.svelte';
+	import type { ExportSnapshot } from '$lib/export/serialize';
 	import {
 		cellPatch,
 		recordPatch,
@@ -387,11 +389,17 @@
 	let optionValues = $state<Record<string, string[]>>({});
 	let names = $state<Record<string, string>>({});
 	let rowsRequest = 0;
+	let exportSnapshot = $state.raw<ExportSnapshot | null>(null);
+	let exportContext = $state('');
+	let exportRefreshes = $state(0);
 	const referenceRequests: Record<string, number> = {};
 	let filterColumn = $state(''),
 		filterOp = $state<Filter['op']>('eq'),
 		filterValue = $state(''),
 		filters = $state<Filter[]>([]);
+	const currentExportContext = $derived(
+		JSON.stringify([table, search, trash, filters, sortClauses, offset])
+	);
 	const filterLabels: Record<Filter['op'], string> = {
 		eq: 'is',
 		ne: 'is not',
@@ -951,9 +959,15 @@
 	});
 
 	async function loadRows() {
+		exportSnapshot = null;
 		if (!database || !table) return;
 		const workspace = database;
 		const request = ++rowsRequest;
+		const capturedContext = currentExportContext;
+		const capturedTable = table;
+		const capturedProperties = structuredClone(
+			$state.snapshot(catalog.properties.filter((p) => p.tbl === table))
+		);
 		const found: Row[] = await workspace.request('rows', {
 			view: {
 				...queryDefinition(table, viewDefinition()),
@@ -963,6 +977,31 @@
 		});
 		if (database !== workspace || request !== rowsRequest) return;
 		rows = found;
+		exportContext = capturedContext;
+		exportSnapshot = {
+			table: capturedTable,
+			properties: capturedProperties,
+			rows: structuredClone(found),
+			scope: 'loaded',
+			completeness: {
+				rows: 'unknown',
+				// This rows request omits a projection, independently of visible grid columns.
+				columns: 'full',
+				reasons: [
+					'Only the current local page is included; filters, pagination and sync may omit records.',
+					'Catalog and sync status are acquired separately from rows. Attached bytes are not included.'
+				]
+			},
+			acquisition: {
+				source: 'local-replica',
+				capturedAt: new Date().toISOString(),
+				freshness: 'unknown',
+				lastSync,
+				skippedTables: [...skipped],
+				pendingUiEdits: pendingEdits,
+				rejectedEdits: rejectedCount
+			}
+		};
 		names = {};
 		const labels: Record<string, string> = {};
 		// ponytail: at most 200 visible references per page; batch SQL when larger grids need it.
@@ -988,23 +1027,32 @@
 		if (database === workspace && request === rowsRequest) names = labels;
 	}
 	async function refresh() {
+		exportSnapshot = null;
 		if (!database) return;
-		const workspace = database;
-		const state = await workspace.request('snapshot');
-		if (database !== workspace) return;
-		catalog = state.catalog;
-		lastSync = state.lastSync ?? null;
-		pendingEdits = state.status.pendingUiEdits;
-		undoAction = state.undo;
-		rejected = state.rejected;
-		rejectedCount = state.status.rejected;
-		skipped = state.skipped ?? [];
-		if (!table && catalog.tables.length)
-			table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
-		await Promise.all([loadRows(), loadViews(), loadWriteability()]);
-		if (database === workspace) refreshRecentLabels();
+		// An older rows reply cannot restore an export while catalog/status refreshes.
+		rowsRequest++;
+		exportRefreshes++;
+		try {
+			const workspace = database;
+			const state = await workspace.request('snapshot');
+			if (database !== workspace) return;
+			catalog = state.catalog;
+			lastSync = state.lastSync ?? null;
+			pendingEdits = state.status.pendingUiEdits;
+			undoAction = state.undo;
+			rejected = state.rejected;
+			rejectedCount = state.status.rejected;
+			skipped = state.skipped ?? [];
+			if (!table && catalog.tables.length)
+				table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
+			await Promise.all([loadRows(), loadViews(), loadWriteability()]);
+			if (database === workspace) refreshRecentLabels();
+		} finally {
+			exportRefreshes--;
+		}
 	}
 	function resetView() {
+		exportSnapshot = null;
 		undoPaused = false;
 		gridDraft = null;
 		gridContext++;
@@ -1978,6 +2026,13 @@
 									loadRows().catch((e) => (error = message(e)));
 								}}><IconTrash size={16} />{trash ? 'All records' : 'Trash'}</button
 							>
+							<ExportPanel
+								snapshot={exportSnapshot}
+								disabled={busy ||
+									navigationLoading ||
+									exportRefreshes > 0 ||
+									exportContext !== currentExportContext}
+							/>
 						</div>
 						<ViewControls
 							properties={viewProperties}
