@@ -19,6 +19,8 @@ final class ArchivedHTMLRenderer: NSObject, WKNavigationDelegate, WKUIDelegate {
     configuration.defaultWebpagePreferences.allowsContentJavaScript = false
     configuration.userContentController = WKUserContentController()
     webView = WKWebView(frame: .zero, configuration: configuration)
+    // Native preview loading is separate from navigation-delegate admission.
+    webView.allowsLinkPreview = false
     super.init()
     webView.navigationDelegate = self
     webView.uiDelegate = self
@@ -61,7 +63,7 @@ final class ArchivedHTMLRenderer: NSObject, WKNavigationDelegate, WKUIDelegate {
     // in-memory data document, never a file directory or a network base URL.
     let policy = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'"
     let child = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"" + policy + "\">" + html
-    let childURL = "data:text/html;base64," + Data(child.utf8).base64EncodedString()
+    let childURL = "data:text/html;charset=utf-8;base64," + Data(child.utf8).base64EncodedString()
     let wrapper = """
       <!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; frame-src data:; form-action 'none'; base-uri 'none'">
       <style>html,body,iframe{margin:0;border:0;width:100%;height:100%}</style>

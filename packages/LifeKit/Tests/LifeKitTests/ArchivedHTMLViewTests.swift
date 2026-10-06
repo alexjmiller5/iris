@@ -9,6 +9,31 @@ import WebKit
 @Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_CAPTURE_HTML"] == "1"))
 @MainActor
 struct ArchivedHTMLViewTests {
+  @Test func nativeLinkPreviewsAreDisabledBeforeLoadingAnArchive() async throws {
+    let renderer = try await ArchivedHTMLRenderer.make()
+    defer { renderer.close() }
+    // Configuration regression only. Real long-press/force-click acceptance is
+    // separate: a DOM click does not exercise native preview presentation.
+    #expect(!renderer.webView.allowsLinkPreview)
+  }
+
+  @Test(arguments: ["", "<meta charset=\"windows-1252\">"])
+  func utf8TextSurvivesConflictingArchiveEncodingMetadata(meta: String) async throws {
+    let text = "Café 日本語 🧭 e\u{301}"
+    let renderer = try await ArchivedHTMLRenderer.make()
+    defer { renderer.close() }
+    let probe = ArchiveNavigationProbe(forwarding: renderer.webView.navigationDelegate)
+    renderer.webView.navigationDelegate = probe
+    let file = try await verifiedHTML(meta + "<p id=\"unicode\">" + text + "</p>")
+    defer { file.dispose() }
+    try await renderer.load(file)
+    let child = try #require(probe.child)
+    let actual = try await renderer.webView.callAsyncJavaScript(
+      "return document.getElementById('unicode').textContent", arguments: [:], in: child,
+      contentWorld: .defaultClient) as? String
+    #expect(actual.map { Array($0.utf8) } == Array(text.utf8))
+  }
+
   @Test func childScriptsAndNetworkHaveRealControlsThenStayInert() async throws {
     let sink = try ArchiveNetworkSink()
     defer { sink.close() }
