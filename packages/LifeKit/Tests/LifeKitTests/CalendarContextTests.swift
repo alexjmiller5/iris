@@ -40,6 +40,10 @@ struct CalendarContextTests {
   @Test func timezoneChangesGapAndRepeatedBoundaryUseTheSamePolicy() throws {
     let samples = [
       (
+        "America/Sao_Paulo", "2018-11-04T03:00:00Z", 30, "2018-11-04", "2018-11-04T03:00:00.000Z",
+        "2018-11-05T02:30:00.000Z"
+      ),
+      (
         "America/Goose_Bay", "2009-11-01T03:05:00Z", 0, "2009-11-01", "2009-11-01T03:00:00.000Z",
         "2009-11-02T04:00:00.000Z"
       ),

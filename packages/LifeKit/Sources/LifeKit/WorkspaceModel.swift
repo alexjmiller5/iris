@@ -168,7 +168,8 @@ final class WorkspaceModel {
     async throws
   {
     let context = try requireViewContext(context)
-    guard canRunRowAction, let view = appliedView, let revision = row.record["updated_at"]?.text
+    guard canRunRowAction, let view = appliedView, let viewRevision = view.updatedAt,
+      let revision = row.record["updated_at"]?.text
     else {
       throw WorkspaceError(
         message: "Save or reopen this view before running its actions.", violations: [])
@@ -179,7 +180,8 @@ final class WorkspaceModel {
     defer { if generation == workspaceGeneration { writingRecord = false } }
     _ = try await context.workspace.runRowAction(
       CoreRunRowActionArgs(
-        viewId: view.id, actionId: actionID, rowId: row.id, expectedUpdatedAt: revision))
+        viewId: view.id, actionId: actionID, rowId: row.id, expectedUpdatedAt: revision,
+        expectedViewUpdatedAt: viewRevision))
     guard client === context.workspace, generation == workspaceGeneration else { return }
     recordLocalChange()
     if selectedView == viewGeneration { await reload() }
