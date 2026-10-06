@@ -6,6 +6,93 @@ import WebKit
 
 @MainActor
 struct MarkdownEditorTests {
+  @Test func recordRetainsIndependentMarkdownFieldsUntilTheRecordCloses() throws {
+    let properties: [WorkspaceRecord] = ["body", "summary"].map {
+      ["col": .string($0), "type": .string("markdown")]
+    }
+    let model = RecordEditorModel(
+      properties: properties, original: nil, table: "notes", store: nil
+    ) { patch, _ in patch }
+    defer { model.endInlineMarkdown() }
+    let body = model.markdownEditor(for: CatalogField(property: properties[0]))
+    body.usingSource = true
+    body.session.editSource("First field final input")
+    let summary = model.markdownEditor(for: CatalogField(property: properties[1]))
+    summary.usingSource = true
+    summary.session.editSource("Second field final input")
+    #expect(model.markdownEditor(for: CatalogField(property: properties[0])) === body)
+    body.session.editSource("Later first input")
+    #expect(model.draft.values["body"] == "Later first input")
+    #expect(model.draft.values["summary"] == "Second field final input")
+  }
+
+  @Test func recordCollectsEveryLiveBodyAndUnlocksAllAfterPartialFailure() async throws {
+    let properties: [WorkspaceRecord] = ["body", "summary"].map {
+      ["col": .string($0), "type": .string("markdown")]
+    }
+    let model = RecordEditorModel(
+      properties: properties, original: nil, table: "notes", store: nil
+    ) { patch, _ in patch }
+    defer { model.endInlineMarkdown() }
+    let body = model.markdownEditor(for: CatalogField(property: properties[0]))
+    let summary = model.markdownEditor(for: CatalogField(property: properties[1]))
+    body.session.markReady()
+    summary.session.markReady()
+    var unlocked: [String] = []
+    body.session.resumeEditing = { unlocked.append("body") }
+    summary.session.resumeEditing = { unlocked.append("summary") }
+    body.session.snapshot = { lock in
+      #expect(lock)
+      return MarkdownDocument(
+        id: body.session.document.id, value: "Withheld body input",
+        label: "body", readOnly: false)
+    }
+    summary.session.snapshot = { _ in throw CancellationError() }
+    await #expect(throws: CancellationError.self) {
+      try await model.collectMarkdownEditors(lock: true)
+    }
+    #expect(model.draft.values["body"] == "Withheld body input")
+    #expect(Set(unlocked) == ["body", "summary"])
+    #expect(summary.usingSource)
+    summary.session.editSource("Recovered summary")
+    try await model.collectMarkdownEditors(lock: true)
+    try await model.saveAll()
+    #expect(model.draft.original?["body"]?.text == "Withheld body input")
+    #expect(model.draft.original?["summary"]?.text == "Recovered summary")
+  }
+
+  @Test func recordCloseRejectsLateChangesFromEveryRetainedMarkdownEditor() throws {
+    let fields = ["body", "summary"].map {
+      CatalogField(property: ["col": .string($0), "type": .string("markdown")])
+    }
+    let model = RecordEditorModel(
+      properties: fields.map(\.property), original: nil, table: "notes", store: nil
+    ) { patch, _ in patch }
+    defer { model.endInlineMarkdown() }
+    let retained = fields.map { model.markdownEditor(for: $0) }
+    for editor in retained { editor.session.editSource("Kept \(editor.fieldID)") }
+
+    // The closing sheet can retain its views while animating or awaiting a write.
+    // Explicit close must invalidate both hosts even while these references live.
+    model.endInlineMarkdown()
+    for (field, editor) in zip(fields, retained) {
+      #expect(
+        !editor.session.receive([
+          "type": "change", "id": editor.session.document.id, "value": "Late rich input",
+        ]))
+      editor.session.editSource("Late source input")
+      #expect(model.draft.values[field.id] == "Kept \(field.id)")
+      #expect(editor.session.snapshot == nil)
+      #expect(editor.session.resumeEditing == nil)
+      // A disappearing Form may request its field again during dismissal.
+      // That must not allocate a fresh, active WebKit host in the closing sheet.
+      let closing = model.markdownEditor(for: field)
+      #expect(closing === editor)
+      closing.session.editSource("Input after the closing Form redraws")
+      #expect(model.draft.values[field.id] == "Kept \(field.id)")
+    }
+  }
+
   @Test func switchingDocumentsRejectsOldCallbacksAndReadOnlyChanges() throws {
     let session = MarkdownEditorSession(value: "# Original", label: "Body")
     var changes: [String] = []
@@ -84,7 +171,11 @@ struct MarkdownEditorTests {
     _ = try await view.callAsyncJavaScript(edit, arguments: [:], in: nil, contentWorld: .page)
     #expect(try await host.snapshot().value.contains("Synthetic edit"))
     _ = try await view.callAsyncJavaScript(
-      "document.querySelector('button[aria-label=Undo]').click();", arguments: [:], in: nil,
+      """
+      document.querySelector('button[aria-label="Body options"]').click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      document.querySelector('button[aria-label=Undo]').click();
+      """, arguments: [:], in: nil,
       contentWorld: .page)
     #expect(
       try await host.snapshot().value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -100,6 +191,8 @@ struct MarkdownEditorTests {
       for (let i = 0; i < 200; i++) {
         const input = document.querySelector('[contenteditable="true"]');
         if (input) {
+          document.querySelector('button[aria-label="Description options"]').click();
+          await new Promise(resolve => setTimeout(resolve, 0));
           document.querySelector('button[aria-label=Undo]').click();
           return true;
         }
@@ -151,7 +244,9 @@ struct MarkdownEditorTests {
     view.configuration.userContentController.removeScriptMessageHandler(forName: "editor")
     _ = try await view.callAsyncJavaScript(
       """
-      [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Source').click();
+      document.querySelector('button[aria-label="Body options"]').click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      document.querySelector('button[aria-label="Body source"]').click();
       await new Promise(resolve => setTimeout(resolve, 0));
       """, arguments: [:], in: nil, contentWorld: .page)
     for (value, lock) in [("Copied final!", false), ("Kept final!", true)] {
@@ -185,7 +280,9 @@ struct MarkdownEditorTests {
     let replacement = "# Final source\n\n**Typed** 'quote' \\ path\n"
     _ = try await view.callAsyncJavaScript(
       """
-      const source = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Source');
+      document.querySelector('button[aria-label="Body options"]').click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const source = document.querySelector('button[aria-label="Body source"]');
       source.click();
       await new Promise(resolve => setTimeout(resolve, 0));
       const input = document.querySelector('textarea');

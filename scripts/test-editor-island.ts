@@ -19,10 +19,45 @@ try {
 	await page.setViewportSize({width:390,height:844});
 	await page.goto(url);
 	await expect.poll(() => page.evaluate(() => (window as any).events)).toEqual([{type: 'ready'}]);
+	for (const colorScheme of ['light', 'dark'] as const) {
+		await page.emulateMedia({colorScheme});
+		for (const height of [240, 320]) {
+			await page.setViewportSize({width:320,height});
+			await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'surface',value:'A short note',label:'Body',readOnly:false}));
+			const surface = await page.locator('.markdown-editor').evaluate(editor => {
+				const style = getComputedStyle(editor);
+				return {background:getComputedStyle(document.body).backgroundColor, paper:style.backgroundColor, border:style.borderWidth};
+			});
+			expect(surface.background, 'The native viewport must continue the writing surface below short content').toBe(surface.paper);
+			expect(surface.border, 'The native host supplies the surrounding surface').toBe('0px');
+			const editorBounds = await page.locator('.ProseMirror').boundingBox();
+			expect(editorBounds!.height, 'The entire native viewport should accept writing').toBeGreaterThanOrEqual(height);
+			await page.getByRole('button',{name:'Body options',exact:true}).click();
+			const popup = await page.getByRole('menu',{name:'Body options',exact:true}).boundingBox();
+			expect(popup!.y).toBeGreaterThanOrEqual(0);
+			expect(popup!.y + popup!.height).toBeLessThanOrEqual(height);
+			expect(popup!.x).toBeGreaterThanOrEqual(0);
+			expect(popup!.x + popup!.width).toBeLessThanOrEqual(320);
+			await page.keyboard.press('Escape');
+		}
+	}
+	await page.emulateMedia({colorScheme:'light'});
+	await page.setViewportSize({width:390,height:844});
+	async function mode(mode: 'source' | 'write') {
+		if (await page.locator('textarea[aria-label="Body"]').isVisible() === (mode === 'source')) return;
+		const trigger = page.getByRole('button', {name:'Body options',exact:true});
+		const triggerBounds = await trigger.boundingBox();
+		expect(triggerBounds!.width, 'Mobile options must have a comfortable touch target').toBeGreaterThanOrEqual(44);
+		expect(triggerBounds!.height).toBeGreaterThanOrEqual(44);
+		await trigger.click();
+		const actionBounds = await page.getByRole('menuitem', {name:`Body ${mode}`,exact:true}).boundingBox();
+		expect(actionBounds!.height, 'Mobile menu rows must have a comfortable touch target').toBeGreaterThanOrEqual(44);
+		await page.getByRole('menuitem', {name:`Body ${mode}`,exact:true}).click();
+	}
 	const value = '# Native draft\n\n<mention-page url="https://example.com/kept"/>\n';
 	await page.evaluate(value => (window as any).lifeEditor.setDocument({id:'draft-1',value,label:'Body',readOnly:false}), value);
 	await expect(page.getByRole('heading', {name:'Native draft'})).toBeVisible();
-	await page.getByRole('button', {name:'Body source', exact:true}).click();
+	await mode('source');
 	await expect(page.getByRole('textbox', {name:'Body',exact:true})).toHaveValue(value);
 	expect(await page.getByRole('textbox', {name:'Body',exact:true}).evaluate(node => parseFloat(getComputedStyle(node).fontSize)), 'Source focus must not trigger iOS input zoom').toBeGreaterThanOrEqual(16);
 	await expect.poll(() => page.evaluate(() => (window as any).events)).toEqual([{type:'ready'}]);
@@ -31,7 +66,7 @@ try {
 	const snapshot = await page.evaluate(() => (window as any).lifeEditor.getDocument());
 	expect(snapshot).toEqual({id:'draft-1',value:'Edited locally',label:'Body',readOnly:false});
 	await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'draft-2',value:'Second record',label:'Body',readOnly:true}));
-	await page.getByRole('button', {name:'Body source',exact:true}).click();
+	await mode('source');
 	await expect(page.getByRole('textbox', {name:'Body',exact:true})).toBeDisabled();
 	await expect(page.getByRole('textbox', {name:'Body',exact:true})).toHaveValue('Second record');
 	const rejected = await page.evaluate(() => { try { (window as any).lifeEditor.setDocument({id:'bad'}); return false; } catch { return true; } });
@@ -39,10 +74,95 @@ try {
 	await expect(page.getByRole('textbox', {name:'Body',exact:true})).toHaveValue('Second record');
 	await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'draft-3',value:'Final',label:'Body',readOnly:false}));
 	await expect(page.getByRole('textbox',{name:'Body',exact:true})).toBeEditable();
+	await expect(page.getByRole('toolbar',{name:'Body formatting',exact:true})).toBeHidden();
+	await expect(page.locator('.markdown-editor button:visible')).toHaveCount(1);
 	await page.getByRole('textbox',{name:'Body',exact:true}).press('End');
 	await page.getByRole('textbox',{name:'Body',exact:true}).pressSequentially('!');
 	const finalKeystroke = await page.evaluate(() => (window as any).lifeEditor.getDocument());
 	expect(finalKeystroke).toEqual({id:'draft-3',value:'Final!\n',label:'Body',readOnly:false});
+	await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'inline-code',value:'Use value here\n',label:'Body',readOnly:false}));
+	const body = page.getByRole('textbox',{name:'Body',exact:true});
+	await body.press('Home');
+	for (let i = 0; i < 4; i++) await body.press('ArrowRight');
+	for (let i = 0; i < 5; i++) await body.press('Shift+ArrowRight');
+	const format = page.getByRole('toolbar',{name:'Body formatting',exact:true});
+	await format.getByRole('button',{name:'Code',exact:true}).click();
+	await expect(page.locator('.ProseMirror p > code')).toHaveText('value');
+	expect(await page.evaluate(() => (window as any).lifeEditor.getDocument().value)).toBe('Use `value` here\n');
+	await format.getByRole('button',{name:'Code',exact:true}).click();
+	await expect(page.locator('.ProseMirror code')).toHaveCount(0);
+	expect(await page.evaluate(() => (window as any).lifeEditor.getDocument().value)).toBe('Use value here\n');
+	for (const [prefix, selector] of [['# ', 'h1'], ['- ', 'ul']]) {
+		await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'undo-prefix',value:'',label:'Body',readOnly:false}));
+		await body.pressSequentially(prefix);
+		await expect(page.locator(`.ProseMirror ${selector}`)).toBeVisible();
+		await body.press('Meta+z');
+		await expect(page.locator('.ProseMirror > p')).toHaveText(prefix, {useInnerText:false});
+		expect(await page.locator('.ProseMirror > p').textContent(), 'Undo must restore the complete typed prefix').toBe(prefix);
+		await body.press('Meta+z');
+		await expect(page.locator('.ProseMirror')).toHaveText('');
+		await body.press('Meta+Shift+z');
+		expect(await page.locator('.ProseMirror > p').textContent(), 'Regular history redo must still restore typing').toBe(prefix);
+		await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'menu-undo-prefix',value:'',label:'Body',readOnly:false}));
+		await body.pressSequentially(prefix);
+		await page.getByRole('button',{name:'Body options',exact:true}).click();
+		await page.getByRole('menuitem',{name:'Undo',exact:true}).click();
+		expect(await page.locator('.ProseMirror > p').textContent(), 'The overflow Undo action must also restore the prefix').toBe(prefix);
+	}
+	await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'paragraph-choice',value:'',label:'Body',readOnly:false}));
+	await body.pressSequentially('# ');
+	await expect(page.locator('.ProseMirror h1')).toBeVisible();
+	await body.press('/');
+	const textChoice = page.getByRole('menuitem',{name:'Text',exact:true});
+	await expect(textChoice).toBeFocused();
+	await textChoice.click();
+	await body.pressSequentially('A plain paragraph');
+	await expect(page.locator('.ProseMirror > p')).toHaveText('A plain paragraph');
+	await expect(page.locator('.ProseMirror h1')).toHaveCount(0);
+	expect(await page.evaluate(() => (window as any).lifeEditor.getDocument().value)).toBe('A plain paragraph\n');
+	await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'shortcuts',value:'',label:'Body',readOnly:false}));
+	await page.getByRole('textbox',{name:'Body',exact:true}).pressSequentially('# A typed heading');
+	await expect(page.getByRole('heading',{name:'A typed heading',level:1})).toBeVisible();
+	await page.getByRole('textbox',{name:'Body',exact:true}).press('Enter');
+	await page.getByRole('textbox',{name:'Body',exact:true}).pressSequentially('- A typed bullet');
+	await expect(page.locator('.ProseMirror ul li')).toHaveText('A typed bullet');
+	const shortcutSnapshot = await page.evaluate(() => (window as any).lifeEditor.getDocument());
+	expect(shortcutSnapshot.value).toBe('# A typed heading\n\n* A typed bullet\n');
+	await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'slash-position',value:'',label:'Body',readOnly:false}));
+	await page.getByRole('textbox',{name:'Body',exact:true}).press('/');
+	const blocks=page.getByRole('menu',{name:'Insert block',exact:true});
+	await expect(blocks).toBeVisible();
+	const paragraph=await page.locator('.ProseMirror p').boundingBox();
+	const blockBounds=await blocks.boundingBox();
+	expect(blockBounds!.y, 'Slash choices should sit beside the empty line').toBeLessThanOrEqual(paragraph!.y+paragraph!.height+12);
+	await page.keyboard.press('Escape');
+	await expect(blocks).toBeHidden();
+	await expect(page.getByRole('textbox',{name:'Body',exact:true})).toBeFocused();
+	// Reopening literal spaces must render the same gaps the user typed.
+	const longLine = 'A sentence long enough to wrap inside a narrow editor without losing any of its words.';
+	const spaced = `A B\n\nA  B\n\n${longLine}\n`;
+	await page.evaluate(value => (window as any).lifeEditor.setDocument({id:'spaces',value,label:'Body',readOnly:false}), spaced);
+	await expect(page.locator('.ProseMirror p')).toHaveText(['A B', 'A  B', longLine]);
+	const gaps = await page.locator('.ProseMirror p').evaluateAll(paragraphs => paragraphs.slice(0, 2).map(paragraph => {
+		const text = paragraph.firstChild!;
+		const range = document.createRange();
+		range.setStart(text, 1);
+		range.setEnd(text, text.textContent!.indexOf('B'));
+		return range.getBoundingClientRect().width;
+	}));
+	expect(gaps[1], 'Two stored spaces must occupy more room than one').toBeGreaterThan(gaps[0] * 1.8);
+	const wrapped = await page.locator('.ProseMirror p').last().evaluate(paragraph => {
+		const text = paragraph.firstChild!;
+		const range = document.createRange();
+		range.setStart(text, 0);
+		range.setEnd(text, 1);
+		const firstLine = range.getBoundingClientRect().top;
+		range.setStart(text, text.textContent!.length - 1);
+		range.setEnd(text, text.textContent!.length);
+		return range.getBoundingClientRect().top > firstLine;
+	});
+	expect(wrapped, 'Preserving spaces must still wrap long paragraphs').toBe(true);
+	expect(await page.evaluate(() => (window as any).lifeEditor.getDocument().value)).toBe(spaced);
 	const blocked = await page.evaluate(async () => { try { await fetch('https://example.com/forbidden'); return false; } catch { return true; } });
 	expect(blocked).toBe(true);
 	console.log('PASS: native editor bundle, exact host source, typed change identity, readonly, malformed input and network isolation');

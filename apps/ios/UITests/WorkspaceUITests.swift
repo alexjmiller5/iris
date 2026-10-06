@@ -140,25 +140,23 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 20))
     openRecord(app, title: "Fixture record")
-    let body = app.buttons["field-body"]
-    for _ in 0..<8 where !body.isHittable { scrollRecordFormUp(app) }
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     let sourceButton = app.webViews.descendants(matching: .any)["Body source"]
     tapWhenReady(sourceButton)
     let source = app.webViews.textViews["Body"]
     tapWhenReady(source)
     source.typeText(" Enrollment source check")
-    XCTAssertTrue(sourceButton.isHittable)
-    XCTAssertGreaterThan(sourceButton.frame.height, 0)
-    XCTAssertLessThanOrEqual(sourceButton.frame.maxX, app.frame.maxX)
-    XCTAssertGreaterThanOrEqual(sourceButton.frame.minX, app.frame.minX)
+    let options = app.webViews.descendants(matching: .any)["Body options"]
+    XCTAssertTrue(options.isHittable)
+    XCTAssertGreaterThan(options.frame.height, 0)
+    XCTAssertLessThanOrEqual(options.frame.maxX, app.frame.maxX)
+    XCTAssertGreaterThanOrEqual(options.frame.minX, app.frame.minX)
     let focused = XCTAttachment(screenshot: app.screenshot())
     focused.name = "native-enrollment-source-focus-no-zoom"
     focused.lifetime = .keepAlways
     add(focused)
-    tapWhenReady(app.buttons["finish-markdown"])
-    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
-    tapWhenReady(app.buttons["close"])
+    tapWhenReady(app.navigationBars["Record"].buttons["save-record"])
     tapWhenReady(app.buttons["workspace-menu"])
     tapWhenReady(app.buttons["Hub connection"])
     let forget = app.buttons["Forget saved connection"]
@@ -194,15 +192,15 @@ final class WorkspaceUITests: XCTestCase {
     let draftTitle = try XCTUnwrap(title.value as? String)
     XCTAssertTrue(draftTitle.contains("newer draft") && draftTitle.contains("Undo fixture"))
     let undo = app.buttons["undo-editor"]
-    for _ in 0..<6 where !undo.isHittable { app.swipeDown() }
+    revealRecordControl(undo, in: app)
     tapWhenReady(undo)
     let restore = app.buttons["trash-record"]
+    revealRecordControl(restore, in: app, down: true)
     let trashed = XCTNSPredicateExpectation(
       predicate: NSPredicate { _, _ in
         MainActor.assumeIsolated { restore.exists && restore.label == "Restore record" }
       }, object: nil)
     XCTAssertEqual(XCTWaiter.wait(for: [trashed], timeout: 5), .completed)
-    for _ in 0..<10 where !restore.isHittable { scrollRecordFormUp(app) }
     let keptDraft = XCTAttachment(screenshot: app.screenshot())
     keptDraft.name = "native-undo-tombstone-kept-draft"
     keptDraft.lifetime = .keepAlways
@@ -212,12 +210,11 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertEqual(title.value as? String, draftTitle)
     tapWhenReady(app.navigationBars["Record"].buttons["save-record"])
     openRecord(app, title: draftTitle)
-    let body = app.buttons["field-body"]
-    for _ in 0..<10 where !body.isHittable { scrollRecordFormUp(app) }
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let source = app.webViews.textViews["Body"]
-    tapWhenReady(source)
+    visibleMarkdownPoint(source, in: app).tap()
     source.typeText("Saved body for Undo")
     let saved = app.staticTexts["markdown-save-status"]
     let savedState = XCTNSPredicateExpectation(
@@ -229,7 +226,10 @@ final class WorkspaceUITests: XCTestCase {
     offered.name = "native-undo-last-saved-change"
     offered.lifetime = .keepAlways
     add(offered)
-    tapWhenReady(app.buttons["undo-markdown"])
+    revealRecordControl(undo, in: app)
+    tapWhenReady(undo)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let undone = XCTNSPredicateExpectation(
       predicate: NSPredicate { _, _ in
@@ -240,11 +240,10 @@ final class WorkspaceUITests: XCTestCase {
     screenshot.name = "native-undo-markdown"
     screenshot.lifetime = .keepAlways
     add(screenshot)
-    tapWhenReady(app.buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     openRecord(app, title: draftTitle)
-    for _ in 0..<10 where !body.isHittable { scrollRecordFormUp(app) }
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "")
   }
@@ -276,11 +275,7 @@ final class WorkspaceUITests: XCTestCase {
     title.typeText(name)
     tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
     XCTAssertTrue(app.navigationBars["New record"].waitForNonExistence(timeout: 10))
-    // Submitting dismisses the keyboard so the bottom search bar cannot cover the row.
-    let search = app.searchFields.firstMatch
-    tapWhenReady(search)
-    search.typeText(name + "\n")
-    tapWhenReady(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch)
+    openRecord(app, title: String(name), table: "notes")
     tapWhenReady(title)
     title.typeText(" dirty")
     let dirty = try XCTUnwrap(title.value as? String)
@@ -382,13 +377,14 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertFalse(app.textFields["field-title"].exists)
     tapWhenReady(app.buttons["online-markdown-body"])
     XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 10))
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     let source = app.webViews.descendants(matching: .any)["Body source"]
     tapWhenReady(source)
     let markdown = app.webViews.textViews.firstMatch
     XCTAssertTrue(markdown.waitForExistence(timeout: 5))
     XCTAssertTrue((markdown.value as? String)?.contains("From the hub") == true)
     XCTAssertFalse(markdown.isEnabled)
-    XCTAssertFalse(app.webViews.buttons["Bold"].isEnabled)
+    XCTAssertFalse(app.webViews.buttons["Bold"].exists)
     let screenshot = XCTAttachment(screenshot: app.screenshot())
     screenshot.name = "native-online-read-only-markdown"
     screenshot.lifetime = .keepAlways
@@ -442,14 +438,9 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.buttons["sync-now"])
     let notice = app.staticTexts["partial-table-notice"]
     XCTAssertTrue(notice.waitForExistence(timeout: 15))
-    let search = app.searchFields.firstMatch
-    tapWhenReady(search)
-    search.typeText("Fixture record")
-    let record = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture record"))
-      .firstMatch
-    XCTAssertTrue(
-      record.waitForExistence(timeout: 5), "Skipping must retain previously downloaded rows")
-    tapWhenReady(app.buttons["close"])
+    // Skipping must retain the downloaded record and keep it available offline.
+    openRecord(app, title: "Fixture record")
+    tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
     tapWhenReady(app.buttons["include-table-next-sync"])
     XCTAssertTrue(notice.waitForExistence(timeout: 5))
@@ -579,13 +570,14 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertLessThan(zulu.frame.minY, alpha.frame.minY)
     tapWhenReady(zulu)
     XCTAssertEqual(app.textFields["field-title"].value as? String, "Viewfixture Zulu")
-    let body = app.buttons["field-body"]
-    for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
-    tapWhenReady(body)
+    let more = app.staticTexts["More properties"]
+    revealRecordControl(more, in: app)
+    tapWhenReady(more)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(
       app.webViews.textViews["Body"].value as? String, "Hidden source for Viewfixture Zulu")
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     tapWhenReady(app.buttons["saved-views"])
     let name = app.textFields["saved-view-name"]
@@ -700,12 +692,10 @@ final class WorkspaceUITests: XCTestCase {
           "quick-find-result-notes-", "Amberfalcon note 00")
       ).firstMatch)
     XCTAssertEqual(title.value as? String, "Amberfalcon note 00")
-    let body = app.buttons["field-body"]
-    for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(app.webViews.textViews["Body"].value as? String, "Synthetic body for note 00.")
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     tapWhenReady(app.buttons["quick-find"])
     tapWhenReady(query)
@@ -731,38 +721,41 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.buttons["Resume draft"])
     XCTAssertEqual(app.textFields["field-title"].value as? String, "Recovered property to keep")
     tapWhenReady(app.buttons["Copy Title"])
-    let body = app.buttons["field-body"]
-    for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let source = app.webViews.textViews["Body"]
     XCTAssertEqual(source.value as? String, "Recovered body to keep")
+    revealRecordControl(app.buttons["Copy Body"], in: app)
+    revealRecordControl(source, in: app, down: true)
     let copied = typeMarkerThenFinalCharacter(
       source, marker: "CopyZ", previous: "Recovered body to keep")
-    app.buttons["Copy Markdown"].tap()
+    app.buttons["Copy Body"].tap()
+    revealRecordControl(source, in: app, down: true)
     let retained = typeMarkerThenFinalCharacter(source, marker: "KeepZ", previous: copied)
-    // Neither action is preceded by Done or a read after the final keystroke.
-    app.buttons["keep-markdown-draft"].tap()
-    tapWhenReady(app.navigationBars["Record"].buttons["keep-record-draft"])
+    // Neither action is preceded by Save or a source read after the final keystroke.
+    app.navigationBars["Record"].buttons["keep-record-draft"].tap()
     openRecord(app, title: "Pending recovery fixture")
     tapWhenReady(app.buttons["Open saved record"])
     XCTAssertEqual(app.textFields["field-title"].value as? String, "Pending recovery fixture")
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "Submitted body on disk")
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     // Paste the copied source into a separate new draft using the actual OS
     // clipboard, then relaunch to verify the original recovery is still there.
-    tapWhenReady(app.toolbars.buttons["close"])
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
-    tapWhenReady(body)
+    if app.buttons["Start new record"].waitForExistence(timeout: 1) {
+      tapWhenReady(app.buttons["Start new record"])
+    }
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
-    tapWhenReady(source)
-    source.press(forDuration: 1.2)
+    visibleMarkdownPoint(source, in: app).tap()
+    visibleMarkdownPoint(source, in: app).press(forDuration: 1.2)
     tapWhenReady(app.menuItems["Paste"].firstMatch)
     XCTAssertEqual(source.value as? String, copied)
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["New record"].buttons["Cancel"])
     tapWhenReady(app.buttons["Discard changes"])
     app.terminate()
@@ -771,14 +764,14 @@ final class WorkspaceUITests: XCTestCase {
     openRecord(app, title: "Pending recovery fixture")
     tapWhenReady(app.buttons["Resume draft"])
     XCTAssertEqual(app.textFields["field-title"].value as? String, "Recovered property to keep")
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, retained)
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "native-pending-recovery-exit"
     shot.lifetime = .keepAlways
     add(shot)
-    tapWhenReady(app.buttons["keep-markdown-draft"])
     tapWhenReady(app.navigationBars["Record"].buttons["keep-record-draft"])
   }
 
@@ -789,6 +782,9 @@ final class WorkspaceUITests: XCTestCase {
     openLocalWorkspace(app)
     let name = "Autosave " + UUID().uuidString.prefix(8)
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    if app.buttons["Start new record"].waitForExistence(timeout: 1) {
+      tapWhenReady(app.buttons["Start new record"])
+    }
     tapWhenReady(app.textFields["field-title"])
     app.textFields["field-title"].typeText(name)
     tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
@@ -797,12 +793,11 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(title)
     title.typeText(" pending")
     let dirtyTitle = title.value as? String
-    let body = app.buttons["field-body"]
-    for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let source = app.webViews.textViews["Body"]
-    tapWhenReady(source)
+    visibleMarkdownPoint(source, in: app).tap()
     source.typeText("Synthetic autosave final!")
     XCUIDevice.shared.press(.home)
     app.activate()
@@ -815,54 +810,73 @@ final class WorkspaceUITests: XCTestCase {
     openRecord(app, title: String(name))
     tapWhenReady(app.buttons["Resume draft"])
     XCTAssertEqual(title.value as? String, dirtyTitle)
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "Synthetic autosave final!")
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     tapWhenReady(app.buttons["Discard changes"])
     openRecord(app, title: String(name))
     XCTAssertEqual(title.value as? String, String(name))
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "Synthetic autosave final!")
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
-    tapWhenReady(app.toolbars.buttons["close"])
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    if app.buttons["Start new record"].waitForExistence(timeout: 1) {
+      tapWhenReady(app.buttons["Start new record"])
+    }
+    let uncreatedTitle = "Uncreated recovery fixture " + UUID().uuidString.prefix(8)
     tapWhenReady(title)
-    title.typeText("Uncreated recovery fixture")
-    for _ in 0..<5 where !body.isHittable { scrollRecordFormUp(app) }
-    tapWhenReady(body)
+    title.typeText(uncreatedTitle)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
-    tapWhenReady(source)
+    visibleMarkdownPoint(source, in: app).tap()
     source.typeText("Unsaved new source!")
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    // Cancel collects the live document without creating the row. Keeping the
+    // editor open leaves its journal available after the process is terminated.
+    tapWhenReady(app.navigationBars["New record"].buttons["Cancel"])
+    let discard = app.sheets["Discard unsaved changes?"]
+    XCTAssertTrue(discard.waitForExistence(timeout: 5))
+    if app.buttons["Keep editing"].exists {
+      tapWhenReady(app.buttons["Keep editing"])
+    } else {
+      // iOS presents this confirmation as a popover with no Cancel action.
+      let outside = CGPoint(x: app.frame.minX + 8, y: discard.frame.midY)
+      XCTAssertFalse(discard.frame.contains(outside))
+      app.coordinate(withNormalizedOffset: .zero).withOffset(
+        CGVector(dx: outside.x, dy: outside.y)
+      ).tap()
+    }
+    XCTAssertTrue(discard.waitForNonExistence(timeout: 5))
+    XCTAssertTrue(app.navigationBars["New record"].exists)
     app.terminate()
     app.launch()
     openLocalWorkspace(app)
     tapWhenReady(
       app.buttons.matching(identifier: "resume-unsaved-draft").matching(
-        NSPredicate(format: "label CONTAINS %@", "Uncreated recovery fixture")
+        NSPredicate(format: "label CONTAINS %@", uncreatedTitle)
       ).firstMatch)
     tapWhenReady(app.buttons["Resume draft"])
     XCTAssertTrue(app.navigationBars["New record"].waitForExistence(timeout: 5))
-    XCTAssertEqual(title.value as? String, "Uncreated recovery fixture")
-    tapWhenReady(body)
+    XCTAssertEqual(title.value as? String, uncreatedTitle)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "Unsaved new source!")
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "native-autosave-recovery"
     shot.lifetime = .keepAlways
     add(shot)
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["New record"].buttons["Cancel"])
     tapWhenReady(app.buttons["Discard changes"])
     XCTAssertFalse(
       app.buttons.matching(
         NSPredicate(
           format: "label BEGINSWITH %@",
-          "Uncreated recovery fixture")
+          uncreatedTitle)
       ).firstMatch.exists)
   }
 
@@ -877,14 +891,9 @@ final class WorkspaceUITests: XCTestCase {
     let title = app.textFields["field-title"]
     tapWhenReady(title)
     title.typeText("Editor lifecycle fixture")
-    let body = app.buttons["field-body"]
-    for _ in 0..<5 where !body.isHittable {
-      _ = dismissKeyboardTutorial()
-      scrollRecordFormUp(app)
-    }
-    tapWhenReady(body)
+    revealMarkdown(app)
     let editor = app.webViews.textViews["Body"]
-    tapWhenReady(editor)
+    visibleMarkdownPoint(editor, in: app).tap()
     var expected = "Cycles"
     editor.typeText(expected)
     for cycle in 1...10 {
@@ -922,18 +931,19 @@ final class WorkspaceUITests: XCTestCase {
         }
         expected = typeMarkerThenFinalCharacter(
           editor, marker: String(format: "%02dv", cycle), previous: expected, refocus: false)
-        // Done must collect this final character before returning to the record.
-        tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+        // Record Save must collect this final character before closing the editor.
         tapWhenReady(
           app.navigationBars[cycle == 1 ? "New record" : "Record"].buttons["save-record"])
         let row = app.buttons.matching(
           NSPredicate(format: "label BEGINSWITH %@", "Editor lifecycle fixture")
         ).firstMatch
         tapWhenReady(row)
-        tapWhenReady(body)
+        revealMarkdown(app)
+        tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
         tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
         XCTAssertEqual(
           (editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), expected)
+        tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
         tapWhenReady(app.webViews.descendants(matching: .any)["Body write"])
       }
     }
@@ -941,7 +951,6 @@ final class WorkspaceUITests: XCTestCase {
     screenshot.name = "native-editor-ten-lifecycle-cycles"
     screenshot.lifetime = .keepAlways
     add(screenshot)
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
   }
 
@@ -951,7 +960,10 @@ final class WorkspaceUITests: XCTestCase {
     // Rotation can leave the modal window's accessibility frame invalid while
     // its editor visibly retains keyboard focus. Continue real keyboard input
     // instead of asking XCTest to synthesize an unnecessary hit-test tap.
-    if refocus || !XCUIApplication().keyboards.firstMatch.exists { tapWhenReady(editor) }
+    let app = XCUIApplication()
+    if refocus || !app.keyboards.firstMatch.exists {
+      visibleMarkdownPoint(editor, in: app).tap()
+    }
     editor.typeText(marker)
     let entered = (editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     XCTAssertEqual(entered.replacingOccurrences(of: marker, with: ""), previous)
@@ -1172,7 +1184,8 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertTrue(status.waitForExistence(timeout: 5), app.debugDescription)
     XCTAssertGreaterThan(status.frame.height, 0)
     XCTAssertGreaterThan(status.frame.width, 0)
-    XCTAssertGreaterThanOrEqual(status.frame.minY, app.navigationBars["Workspace status"].frame.maxY)
+    XCTAssertGreaterThanOrEqual(
+      status.frame.minY, app.navigationBars["Workspace status"].frame.maxY)
     XCTAssertLessThanOrEqual(status.frame.maxY, app.frame.maxY)
     tapWhenReady(app.buttons["status-done"])
     let bar = app.navigationBars["widgets"]
@@ -1241,12 +1254,8 @@ final class WorkspaceUITests: XCTestCase {
     let title = app.descendants(matching: .any)["field-title"]
     tapWhenReady(title)
     title.typeText("Synthetic UI note")
-    let body = app.buttons["field-body"]
-    for _ in 0..<5 where !body.isHittable {
-      _ = dismissPasswordPrompt()
-      scrollRecordFormUp(app)
-    }
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let source = app.webViews.textViews["Body"]
     tapWhenReady(source)
@@ -1255,33 +1264,36 @@ final class WorkspaceUITests: XCTestCase {
     sourceShot.name = "native-markdown-editor"
     sourceShot.lifetime = .keepAlways
     add(sourceShot)
-    // Done reads the live snapshot without waiting for a debounce after typing.
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    // Record Save reads the live snapshot without a debounce wait after typing.
     tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
     let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Synthetic UI note"))
       .firstMatch
     tapWhenReady(row)
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertEqual(source.value as? String, "# Markdown source\n\nA synthetic paragraph.")
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body write"])
     let rich = app.webViews.textViews["Body"]
     tapWhenReady(rich)
     rich.typeText(" Final rich keystroke.")
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
     tapWhenReady(app.navigationBars["Record"].buttons["save-record"])
     tapWhenReady(row)
-    tapWhenReady(body)
+    revealMarkdown(app)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     XCTAssertTrue(
       (source.value as? String)?.contains("Final rich keystroke.") == true, app.debugDescription)
+    tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body write"])
-    XCTAssertTrue(app.webViews.buttons["Heading 1"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.webViews.textViews["Body"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.webViews.buttons["Heading 1"].exists)
     let richShot = XCTAttachment(screenshot: app.screenshot())
     richShot.name = "native-shared-markdown-editor"
     richShot.lifetime = .keepAlways
     add(richShot)
-    tapWhenReady(app.navigationBars["Body"].buttons["finish-markdown"])
+    revealRecordControl(title, in: app, down: true)
     tapWhenReady(title)
     title.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
     title.typeText(" revised")
@@ -1309,6 +1321,83 @@ final class WorkspaceUITests: XCTestCase {
     listShot.name = "native-local-workspace"
     listShot.lifetime = .keepAlways
     add(listShot)
+  }
+
+  private func revealMarkdown(_ app: XCUIApplication) {
+    let body = app.descendants(matching: .any).matching(identifier: "field-body").firstMatch
+    revealRecordControl(body, in: app)
+    let options = app.webViews.descendants(matching: .any)["Body options"]
+    XCTAssertTrue(options.waitForExistence(timeout: 10))
+    revealRecordControl(options, in: app)
+    XCTAssertFalse(app.navigationBars["Body"].exists, "Content edits within the record")
+  }
+
+  private func revealRecordControl(
+    _ element: XCUIElement, in app: XCUIApplication, down: Bool = false,
+    file: StaticString = #filePath, line: UInt = #line
+  ) {
+    func visibleArea() -> CGRect {
+      recordVisibleArea(app)
+    }
+    func visible() -> Bool {
+      guard element.exists, element.isHittable, element.frame.height > 0 else { return false }
+      return visibleArea().contains(CGPoint(x: element.frame.midX, y: element.frame.midY))
+    }
+    for _ in 0..<14 {
+      _ = dismissPasswordPrompt()
+      _ = dismissKeyboardTutorial()
+      if visible() { break }
+      let area = visibleArea()
+      let moveDown =
+        element.exists && element.frame.height > 0 ? element.frame.midY < area.minY : down
+      let distance = min(180, area.height / 2)
+      let start = CGPoint(x: area.maxX - 12, y: moveDown ? area.minY + 25 : area.maxY - 25)
+      let end = CGPoint(x: start.x, y: start.y + (moveDown ? distance : -distance))
+      let origin = app.coordinate(withNormalizedOffset: .zero)
+      origin.withOffset(CGVector(dx: start.x, dy: start.y)).press(
+        forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: end.x, dy: end.y)),
+        withVelocity: .slow, thenHoldForDuration: 0.2)
+    }
+    XCTAssertTrue(visible(), app.debugDescription, file: file, line: line)
+  }
+
+  private func recordVisibleArea(_ app: XCUIApplication) -> CGRect {
+    let form = app.collectionViews["record-form"]
+    var area = form.frame.intersection(app.frame)
+    let navigation =
+      app.navigationBars["Record"].exists
+      ? app.navigationBars["Record"] : app.navigationBars["New record"]
+    let top = max(area.minY, navigation.frame.maxY)
+    let keyboard = app.keyboards.firstMatch
+    var bottom = area.maxY - 34
+    if keyboard.exists {
+      bottom = min(bottom, keyboard.frame.minY - 52)
+      // WKWebView's Previous/Next/Done accessory is above the keys and
+      // predictions. A drag starting there cannot scroll the record Form.
+      let accessory = app.toolbars.containing(.button, identifier: "Done").firstMatch
+      if accessory.exists { bottom = min(bottom, accessory.frame.minY - 10) }
+    }
+    area.origin.y = top
+    area.size.height = max(0, bottom - top)
+    return area
+  }
+
+  private func visibleMarkdownPoint(
+    _ editor: XCUIElement, in app: XCUIApplication,
+    file: StaticString = #filePath, line: UInt = #line
+  ) -> XCUICoordinate {
+    XCTAssertTrue(editor.waitForExistence(timeout: 10), file: file, line: line)
+    let web = app.webViews.containing(.textView, identifier: editor.label).firstMatch
+    func intersection() -> CGRect {
+      editor.frame.intersection(web.frame).intersection(recordVisibleArea(app))
+    }
+    if intersection().isEmpty { revealRecordControl(editor, in: app, file: file, line: line) }
+    let area = intersection()
+    XCTAssertFalse(area.isEmpty, app.debugDescription, file: file, line: line)
+    // WK's AX frame can extend under the keyboard even when isHittable is true.
+    // Use the portion a person can actually see, rather than its offscreen center.
+    return app.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: area.midX, dy: area.midY))
   }
 
   private func connectUsingFixtureToken(_ app: XCUIApplication) {
@@ -1353,15 +1442,29 @@ final class WorkspaceUITests: XCTestCase {
     element.tap()
   }
 
-  private func openRecord(_ app: XCUIApplication, title: String) {
-    let search = app.searchFields.firstMatch
-    if search.value as? String != title {
-      tapWhenReady(search)
-      let clear = search.buttons["Clear text"]
-      if clear.exists { clear.tap() }
-      search.typeText(title)
+  private func openRecord(_ app: XCUIApplication, title: String, table: String? = nil) {
+    let visibleRecord = app.buttons.matching(
+      NSPredicate(format: "label == %@", title + ", Open record")
+    ).firstMatch
+    if visibleRecord.exists && visibleRecord.isHittable {
+      tapWhenReady(visibleRecord)
+    } else {
+      // Table search can be collapsed. Quick Find has an explicit toolbar action
+      // and resolves a fresh record without depending on a hidden SearchField.
+      tapWhenReady(app.buttons["quick-find"])
+      let query = app.textFields["quick-find-query"]
+      tapWhenReady(query)
+      query.typeText(title)
+      tapWhenReady(
+        app.buttons.matching(
+          NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+            table.map { "quick-find-result-\($0)-" } ?? "quick-find-result-", title)
+        ).firstMatch)
     }
-    tapWhenReady(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch)
+    let heading = app.staticTexts["record-heading"]
+    XCTAssertTrue(heading.waitForExistence(timeout: 5))
+    XCTAssertEqual(heading.label, title, "Open the requested saved record")
   }
 
   private func openLocalWorkspace(_ app: XCUIApplication) {

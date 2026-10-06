@@ -58,14 +58,13 @@ final class IncomingReferencesUITests: XCTestCase {
     tap(composed)
     let title = app.textFields["field-title"]
     expectValue(title, "Incoming composed")
-    let body = app.buttons["field-body"]
-    reveal(body, in: app)
-    tap(body)
+    let options = app.webViews.descendants(matching: .any)["Body options"]
+    reveal(options, in: app)
+    tap(options)
     tap(app.webViews.descendants(matching: .any)["Body source"])
     expectValue(app.webViews.textViews["Body"], "Composed full body")
-    tap(app.navigationBars["Body"].buttons["finish-markdown"])
     tap(app.navigationBars["Record"].buttons["Cancel"])
-    openRecord(app, title: "Target notebook")
+    openTargetRecord(app)
     reveal(group, in: app)
     tap(group)
     reveal(more, in: app)
@@ -76,7 +75,7 @@ final class IncomingReferencesUITests: XCTestCase {
     expectValue(title, "Incoming decomposed")
   }
 
-  func testIncomingNavigationCancelAndMarkdownReturnKeepTheDraftAndPanelUsable() throws {
+  func testIncomingNavigationCancelAndEmbeddedMarkdownKeepTheDraftAndPanelUsable() throws {
     let app = try openTarget()
     defer { app.terminate() }
     let title = app.textFields["field-title"]
@@ -94,34 +93,45 @@ final class IncomingReferencesUITests: XCTestCase {
     tap(app.alerts.buttons["Keep editing"])
     reveal(title, in: app, down: true)
     expectValue(title, draft)
-    let body = app.buttons["field-body"]
-    reveal(body, in: app)
-    tap(body)
+    let options = app.webViews.descendants(matching: .any)["Body options"]
+    reveal(options, in: app)
+    tap(options)
     tap(app.webViews.descendants(matching: .any)["Body source"])
     let sourceText = app.webViews.textViews["Body"]
     tap(sourceText)
     sourceText.typeText(" final keystroke")
     let bodyDraft = try XCTUnwrap(sourceText.value as? String)
     XCTAssertTrue(bodyDraft.contains("final keystroke"))
-    tap(app.navigationBars["Body"].buttons["finish-markdown"])
+    let saved = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated {
+          app.staticTexts["markdown-save-status"].label == "Saved on this device"
+        }
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 10), .completed)
+    reveal(title, in: app, down: true)
     expectValue(title, draft)
-    // Load a previously unopened group after returning. Retained rows alone would
-    // conceal a disposed model that can no longer make requests.
+    // Reappearing with a fresh panel model must reload an already expanded group.
+    reveal(group, in: app)
+    reveal(source, in: app)
+    XCTAssertEqual(source.label, "Open Incoming 00")
+    // Scroll from Content to a previously unopened group. Retained rows alone
+    // would conceal a disposed model that can no longer make requests.
     let unvisited = app.buttons["notes · Topic"]
     reveal(unvisited, in: app)
     tap(unvisited)
     let anotherSource = app.buttons["Open Incoming 01"]
     reveal(anotherSource, in: app)
-    capture(app, "native-incoming-draft-after-markdown-return")
+    capture(app, "native-incoming-draft-after-embedded-markdown")
     tap(anotherSource)
     tap(app.alerts.buttons["Discard changes and open"])
     expectValue(title, "Incoming 01")
     XCTAssertEqual(app.navigationBars.matching(identifier: "Record").count, 1)
     tap(app.navigationBars["Record"].buttons["Cancel"])
-    openRecord(app, title: "Target notebook")
+    openTargetRecord(app)
     expectValue(title, "Target notebook")
-    reveal(body, in: app)
-    tap(body)
+    reveal(options, in: app)
+    tap(options)
     tap(app.webViews.descendants(matching: .any)["Body source"])
     expectValue(sourceText, bodyDraft)
   }
@@ -136,18 +146,25 @@ final class IncomingReferencesUITests: XCTestCase {
     let app = XCUIApplication()
     app.launch()
     tap(app.buttons["open-local"])
-    openRecord(app, title: "Target notebook")
+    openTargetRecord(app)
     return app
   }
 
-  private func openRecord(_ app: XCUIApplication, title: String) {
-    let search = app.searchFields.firstMatch
-    tap(search)
-    let clear = search.buttons["Clear text"]
-    if clear.exists { clear.tap() }
-    search.typeText(title)
-    tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch)
+  private func openTargetRecord(_ app: XCUIApplication) {
+    let title = "Target notebook"
+    let record = app.buttons["open-record-incoming-target"]
+    if record.exists && record.isHittable {
+      XCTAssertEqual(record.label, title + ", Open record")
+      tap(record)
+    } else {
+      tap(app.buttons["quick-find"])
+      let query = app.textFields["quick-find-query"]
+      tap(query)
+      query.typeText(title)
+      tap(app.buttons["quick-find-result-notes-incoming-target"])
+    }
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
+    XCTAssertEqual(app.staticTexts["record-heading"].label, title)
   }
 
   private func reveal(
@@ -159,7 +176,12 @@ final class IncomingReferencesUITests: XCTestCase {
       var area = form.frame.intersection(app.frame)
       let top = max(area.minY, app.navigationBars["Record"].frame.maxY)
       let keyboard = app.keyboards.firstMatch
-      let bottom = min(area.maxY - 34, keyboard.exists ? keyboard.frame.minY - 52 : area.maxY)
+      var bottom = area.maxY - 34
+      if keyboard.exists {
+        bottom = min(bottom, keyboard.frame.minY - 52)
+        let accessory = app.toolbars.containing(.button, identifier: "Done").firstMatch
+        if accessory.exists { bottom = min(bottom, accessory.frame.minY - 10) }
+      }
       area.origin.y = top
       area.size.height = max(0, bottom - top)
       return area

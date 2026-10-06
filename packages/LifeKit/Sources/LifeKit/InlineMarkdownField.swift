@@ -1,0 +1,91 @@
+import Observation
+import SwiftUI
+import WebKit
+
+/// The prepared record owns the live WebKit document, including input whose
+/// change notification has not arrived yet. Table view recycling is not a close.
+@Observable @MainActor final class InlineMarkdownEditor {
+  let fieldID: String
+  let session: MarkdownEditorSession
+  var usingSource = false
+  @ObservationIgnored let coordinator: MarkdownWebView.Coordinator
+  @ObservationIgnored let webView: WKWebView
+
+  init(field: CatalogField, value: String, onChange: @escaping (String) -> Void) {
+    fieldID = field.id
+    let session = MarkdownEditorSession(value: value, label: field.label)
+    session.onChange = onChange
+    self.session = session
+    let coordinator = MarkdownWebView.Coordinator(session: session)
+    self.coordinator = coordinator
+    webView = coordinator.makeView()
+  }
+
+  isolated deinit { coordinator.stop(webView) }
+
+  func collect(lock: Bool) async throws {
+    guard session.ready, !usingSource else { return }
+    do { try await session.collectSnapshot(lock: lock) } catch {
+      session.fail("The editor is unavailable. Your last received source is below.")
+      usingSource = true
+      throw error
+    }
+  }
+
+  func stop() { coordinator.stop(webView) }
+}
+
+struct InlineMarkdownField: View {
+  @Bindable var editor: InlineMarkdownEditor
+  var height: CGFloat = 240
+  private var session: MarkdownEditorSession { editor.session }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      if let failure = session.failure {
+        Text(failure).font(.caption).foregroundStyle(.secondary)
+      }
+      ZStack {
+        RetainedMarkdownWebView(editor: editor)
+          .opacity(session.ready && !editor.usingSource ? 1 : 0)
+          .allowsHitTesting(session.ready && !editor.usingSource)
+          .accessibilityHidden(!session.ready || editor.usingSource)
+        if editor.usingSource || session.failure != nil {
+          TextEditor(
+            text: Binding(
+              get: { session.document.value },
+              set: {
+                editor.usingSource = true
+                session.editSource($0)
+              }
+            )
+          )
+          .font(.system(.body, design: .monospaced))
+          .accessibilityLabel("\(session.document.label) Markdown source")
+          .accessibilityIdentifier("inline-markdown-source")
+        } else if !session.ready {
+          VStack(spacing: 8) {
+            ProgressView("Loading editor…")
+            Button("Use source editor") { editor.usingSource = true }
+          }
+        }
+      }.frame(height: height)
+    }
+  }
+}
+
+private struct RetainedMarkdownWebView {
+  let editor: InlineMarkdownEditor
+}
+
+#if os(macOS)
+  extension RetainedMarkdownWebView: NSViewRepresentable {
+    func makeNSView(context: Context) -> WKWebView { editor.webView }
+    func updateNSView(_ view: WKWebView, context: Context) { editor.coordinator.render() }
+  }
+#else
+  extension RetainedMarkdownWebView: UIViewRepresentable {
+    func makeUIView(context: Context) -> WKWebView { editor.webView }
+    func updateUIView(_ view: WKWebView, context: Context) { editor.coordinator.render() }
+  }
+#endif

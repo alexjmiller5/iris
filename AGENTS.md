@@ -28,7 +28,7 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
 - `apps/web/vite.editor.config.ts`: self-contained Markdown editor island using
   the same Milkdown component as the web client. `lifeEditor.setDocument` accepts
   a draft ID, source, label and read-only state; `getDocument` returns the live
-  snapshot. Native hosts reject stale IDs and collect the snapshot before Done.
+  snapshot. Native hosts reject stale IDs and collect all live snapshots before record actions.
   Keep Markdown as storage, preserve untouched source, and render imported HTML
   inert. The island has no network, SQL or credential access.
 - `scripts`: build and fixture test operations. No credentials or data exports.
@@ -144,7 +144,13 @@ layout removes the projection; it never removes record values or resets widths.
 Mobile property editing and the full record pop-up share RecordEditorModel and its
 recovery journal. Resolve a fresh full row and field editability before inline
 editing; immutable/derived fields and recovery use the full presentation. Expand
-transfers the existing model, never a reconstructed draft. Keep the active row
+transfers the existing model, never a reconstructed draft. Full records embed visible
+Markdown bodies below their properties. Retain one WebKit holder per exact field
+ID through form recycling; collect all holders before save, close, Undo or record
+handoff. Terminal close retains stopped holders through sheet dismissal; inline
+expansion transfers the live holders with their record model. Explicit
+Undo/recovery transitions refresh sessions; ordinary draft
+updates must never replace undelivered WebKit input. Keep the active row
 visible during background refresh and prevent context-changing actions until close.
 Empty-property grouping never hides zero, false, required creation fields or
 validation errors, and stays stable while the editor's values change.
@@ -282,8 +288,10 @@ Incoming row deduplication and SwiftUI row identity use `byteExactID` (UTF-8
 bytes), since Swift String equality merges some distinct SQLite record IDs.
 Keep the original String ID for requests and navigation.
 Native saved-record editors mount incoming references as a separate child section.
-Dispose and recreate its model when a lazy Form removes and restores that child;
-never reuse a disposed instance or attach the panel identity to the editor.
+Disposal invalidates pending reads without changing rendered section state during
+Form layout or sheet dismissal. Reappearance replaces the disposed model, and
+expanded groups reload against that replacement. Never attach panel identity to
+the editor or reuse a disposed instance.
 Group rows use the existing guarded reference navigation and disable opening while
 an editor write is pending. Keep accessibility identifiers off an enclosing
 DisclosureGroup: SwiftUI can propagate them over individual child controls.
@@ -299,6 +307,13 @@ Keep active drafts and their action controls mounted through catalog/row refresh
 measure editor height before retiling the row. Disable workspace replacement and
 new-record actions while an inline editor is active. Property help popovers belong
 to their individual buttons.
+Markdown previews parse a bounded prefix off the main actor and never rewrite
+source. Only the active cell mounts a rich editor. Its prepared record model owns
+the live WebKit view across table recycling; dismantling a cell is not an editor
+close. Collect a locking snapshot before save, expand, cancel or keep-draft, and
+release the host only when the authoritative draft presentation closes. A locking
+snapshot wins over delayed intermediate change notifications; nonlocking background
+reads still preserve later received changes.
 Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never

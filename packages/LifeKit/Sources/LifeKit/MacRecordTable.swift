@@ -16,6 +16,8 @@
     let onEdit: (WorkspaceRow, String) -> Void
     let onSort: (String, Bool) -> Void
     let onFilter: (String) -> Void
+    var workspace: NativeWorkspace? = nil
+    var transport: HubTransport? = nil
     @ViewBuilder let editor: () -> Editor
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -64,6 +66,7 @@
       let coordinator = context.coordinator
       let previous = coordinator.parent
       coordinator.parent = self
+      table.selectionHighlightStyle = editorID == nil ? .regular : .none
       if previous.editorID != editorID { coordinator.editorHeight = 28 }
       table.menu?.items.first?.isEnabled = actionsEnabled
       let identifiers = ["record"] + columns.map { "property:" + $0.id }
@@ -116,6 +119,13 @@
         }
       }
       table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: rows.indices))
+      if editorID != nil, previous.editorID != editorID,
+        let column = table.tableColumns.firstIndex(where: {
+          $0.identifier.rawValue == "property:" + (editingColumn ?? "")
+        })
+      {
+        table.scrollColumnToVisible(column)
+      }
     }
 
     @MainActor final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
@@ -171,7 +181,7 @@
           row: item, field: field, isTitle: column == 0,
           editing: item.byteExactID == parent.editingRow && field?.id == parent.editingColumn,
           editorID: parent.editorID, actionsEnabled: parent.actionsEnabled,
-          onOpen: parent.onOpen,
+          onOpen: parent.onOpen, workspace: parent.workspace, transport: parent.transport,
           onHeight: { [weak self, id = parent.editorID] height in
             self?.resizeEditor(height, id: id)
           }, editor: parent.editor())
@@ -235,6 +245,8 @@
     let editorID: UUID?
     let actionsEnabled: Bool
     let onOpen: (WorkspaceRow) -> Void
+    let workspace: NativeWorkspace?
+    let transport: HubTransport?
     let onHeight: (CGFloat) -> Void
     let editor: Editor
 
@@ -250,8 +262,15 @@
             }
         } else {
           HStack(spacing: 6) {
-            Text(isTitle ? row.label : field?.formValue(row.record[field?.id ?? ""]) ?? "")
-              .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            Group {
+              if isTitle {
+                Text(row.label)
+              } else if let field {
+                NativePropertyValue(
+                  field: field, value: field.formValue(row.record[field.id]),
+                  workspace: workspace, transport: transport, imageSize: 20)
+              }
+            }.lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
             if isTitle {
               Button {
                 onOpen(row)
@@ -264,7 +283,9 @@
             }
           }
         }
-      }.frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .padding(.top, editing ? 0 : 6)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
   }
 

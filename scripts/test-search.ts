@@ -16,7 +16,8 @@ try {
  await page.getByRole('button',{name:'Try sample workspace',exact:true}).click();
  await page.getByRole('button',{name:'New record',exact:true}).click();
  await page.getByRole('textbox',{name:'Title',exact:true}).fill('Space journal');
- await page.getByRole('button',{name:'Body source',exact:true}).click();
+ await page.getByRole('button', {name:'Body options',exact:true}).click();
+  await page.getByRole('menuitem', {name:'Body source',exact:true}).click();
  await page.getByRole('textbox',{name:'Body',exact:true}).fill('# Astronomía\n\nA telescope observes nebulas.');
  await page.getByRole('button',{name:'Save record',exact:true}).click();
  await expect(page.getByRole('button',{name:'Space journal',exact:true})).toBeVisible();

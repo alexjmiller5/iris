@@ -75,7 +75,7 @@ final class MarkdownEditorSession {
     }
     // A nonlocking background read may return after a newer IPC change. Keep
     // that later native draft instead of replacing it with the older snapshot.
-    if revision == changeRevision || captured.value == document.value {
+    if lock || revision == changeRevision || captured.value == document.value {
       try acceptSnapshot(captured)
     }
   }

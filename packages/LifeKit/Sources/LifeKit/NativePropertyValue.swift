@@ -24,6 +24,8 @@ struct NativePropertyValue: View {
       } else if ["ref", "multi_ref"].contains(field.type) {
         ReferenceValue(field: field, value: value, workspace: workspace)
           .id(Self.referenceID(field: field, value: value, workspace: workspace))
+      } else if field.type == "markdown" && !value.isEmpty {
+        NativeMarkdownPreview(value: value)
       } else {
         Text(Self.text(type: field.type, value: value))
       }
@@ -32,6 +34,7 @@ struct NativePropertyValue: View {
 
   nonisolated static func text(type: String, value: String, locale: Locale = .current) -> String {
     guard !value.isEmpty else { return "Not set" }
+    if type == "markdown" { return String(NativeMarkdownPreview.render(value).characters) }
     if ["ref", "multi_ref"].contains(type) { return "Unavailable" }
     if let kind = NativeDateKind(rawValue: type),
       let date = NativeDateValue.parse(value, kind: kind)

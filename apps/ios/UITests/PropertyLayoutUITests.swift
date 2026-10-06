@@ -29,12 +29,23 @@ final class PropertyLayoutUITests: XCTestCase {
     app.buttons["All records"].tap()
     app.buttons["saved-views"].tap()
     app.buttons["Body first"].tap()
+    app.buttons["saved-views"].tap()
+    app.buttons["view-properties"].tap()
+    XCTAssertTrue(body.waitForExistence(timeout: 5))
+    XCTAssertLessThan(body.frame.minY, status.frame.minY, "The saved column order must persist")
+    app.buttons["apply-property-layout"].tap()
+    app.navigationBars["Saved views"].buttons["Done"].tap()
     app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
       .firstMatch.tap()
     XCTAssertTrue(app.textFields["field-title"].waitForExistence(timeout: 5))
+    let content = app.descendants(matching: .any).matching(identifier: "field-body").firstMatch
+    XCTAssertTrue(content.waitForExistence(timeout: 5))
     XCTAssertLessThan(
-      app.textFields["field-title"].frame.minY, app.buttons["field-body"].frame.minY)
-    XCTAssertLessThan(app.buttons["field-body"].frame.minY, app.buttons["field-status"].frame.minY)
+      app.textFields["field-title"].frame.minY, app.buttons["field-status"].frame.minY)
+    XCTAssertLessThan(
+      app.buttons["field-status"].frame.minY, content.frame.minY,
+      "The full record places editable Content below its properties")
+    XCTAssertTrue(app.webViews.textViews["Body"].waitForExistence(timeout: 10))
     let screenshot = XCTAttachment(screenshot: app.screenshot())
     screenshot.name = "reordered-properties-title-pinned"
     screenshot.lifetime = .keepAlways
