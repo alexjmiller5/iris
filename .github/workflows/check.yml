@@ -20,6 +20,7 @@ jobs:
           bun run bundle:graph
           bun run bundle:editor
           bun run bundle:native
+          bun run bundle:export --check
           git diff --exit-code -- packages/LifeKit/Sources/LifeKit/Resources/graph.html packages/LifeKit/Sources/LifeKit/Resources/editor.html packages/LifeKit/Sources/LifeKit/Resources/life-core.js
       - run: bun run test
       - name: Governance presentation boundaries
