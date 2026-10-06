@@ -43,6 +43,19 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   original-link action. Cancel or close disposes requests and file resources.
 - `scripts`: build and fixture test operations. No credentials or data exports.
 
+Loaded-row export shares the TypeScript serializer in `apps/web/src/lib/export`
+with the offline native `record-export.js` resource (`bun run bundle:export`).
+Native serialization runs in a dedicated JavaScriptCore context off MainActor.
+`WorkspaceModel.captureLoadedRowsForExport(at:)` synchronously copies committed
+loaded rows after successful reads for the current workspace, exact query and
+catalog. Capture never flushes drafts or reads the database again. Preserve exact
+supported values, IDs and raw Markdown; loaded coverage and freshness stay unknown.
+Keep retryable paging-prefix validity separate from the latest successful export
+request stamp; full refreshes invalidate the prefix before awaiting work. Native
+workspace menus open the system destination picker, with CSV metadata saved
+separately from the same capture. Exports contain no attachment bytes and provide
+no restore operation.
+
 The supported service dependency is the life-data hub API with independently
 minted client credentials. Never bind its D1/R2 or borrow infrastructure tokens.
 Life UI owns its Worker, Access application, vault and deployment credentials
