@@ -37,7 +37,7 @@ cached display content and invalidates late page/preview responses.
 
 `contract.ts` is the explicitly permitted provisional type-only copy of the Life Data
 contract. Root must replace it with generated imports after regenerating from
-Life Data foundation `66e337967f4a0f62e7e010241a2268a1816dff9a` (DTO prerequisite
+Life Data foundation `d5908d0f95817f3ba4699a80e548534702d10a87` (DTO prerequisite
 `3e96010cf0c46ea07285180e6c1ba573a77d5fd7`, contract hash
 `63c9b511a3baf6682adff6b6f820b71d2a08d5416ff7b0a7069fc431de4e7d19`).
 That foundation adds no advertised governance HTTP API or CoreOperations. Its inverse
