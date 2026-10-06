@@ -14,6 +14,7 @@ final class InlineMarkdownUITests: XCTestCase {
     XCTAssertTrue(rich.waitForExistence(timeout: 10))
     XCTAssertFalse(app.navigationBars["Record"].exists)
     rich.tap()
+    rich.typeKey("a", modifierFlags: .command)
     rich.typeText("# Mobile heading\n\n- Mobile item")
     let editor = app.descendants(matching: .any)["inline-record-editor"]
     let saved = XCTNSPredicateExpectation(
@@ -43,7 +44,8 @@ final class InlineMarkdownUITests: XCTestCase {
     let source = app.webViews.textViews["Body"]
     XCTAssertTrue(source.waitForExistence(timeout: 5))
     let value = source.value as? String ?? ""
-    XCTAssertTrue(value.contains("Mobile heading"))
-    XCTAssertTrue(value.contains("Mobile item"))
+    XCTAssertTrue(value.contains("# Mobile heading"))
+    XCTAssertTrue(value.contains("- Mobile item") || value.contains("* Mobile item"))
+    XCTAssertFalse(value.contains("A place to start"))
   }
 }

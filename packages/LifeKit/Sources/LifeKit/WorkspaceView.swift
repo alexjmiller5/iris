@@ -675,69 +675,81 @@ public struct WorkspaceView: View {
   }
 
   private var recordList: some View {
-    List {
-      recordNotices
-      if displayedRows.isEmpty && !model.loading {
-        ContentUnavailableView(
-          model.trash ? "Trash is empty" : "No records", systemImage: "tray",
-          description: Text(
-            model.search.isEmpty && model.filters.isEmpty
-              ? "Create a record to get started." : "Try a different search or filter."))
-      }
-      ForEach(displayedRows, id: \.byteExactID) { row in
-        VStack(alignment: .leading, spacing: 2) {
-          HStack {
-            if let title = model.titleProperty, model.canWrite && !model.trash {
-              propertyButton(title, row: row, title: true)
-            } else {
-              Text(row.label).font(.headline).lineLimit(2)
-            }
-            Spacer(minLength: 4)
-            Button {
-              openRecord(row)
-            } label: {
-              Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .frame(minWidth: 44, minHeight: 44)
-            }
-            .accessibilityLabel(row.label + ", Open record")
-            .accessibilityIdentifier("open-record-\(row.id)")
-            .disabled(!canFind)
-          }
-          if let target = editor, target.inlineField != nil,
-            target.row?["id"]?.text.utf8.elementsEqual(row.id.utf8) == true
-          {
-            recordEditor(target).id(target.id)
-          } else {
-            let fields = model.orderedRecordFields(model.properties.map(CatalogField.init))
-              .filter { field in
-                !["id", "created_at", "updated_at", "deleted_at", "hub_at"].contains(field.id)
-                  && field.id != model.titleProperty?.id
-                  && (model.visibleRecordColumns?.contains(field.id) ?? true)
-              }
-            let empty = NativeEditorFields.emptyColumns(
-              fields: fields,
-              values: row.record.mapValues(\.text))
-            ForEach(fields.filter { !empty.contains(Data($0.id.utf8)) }) { field in
-              propertyButton(field, row: row)
-            }
-            if fields.contains(where: { empty.contains(Data($0.id.utf8)) }) {
-              DisclosureGroup("Empty properties") {
-                ForEach(fields.filter { empty.contains(Data($0.id.utf8)) }) { field in
-                  propertyButton(field, row: row)
-                }
-              }.font(.caption).foregroundStyle(.secondary)
-            }
-          }
+    ScrollViewReader { scroll in
+      List {
+        recordNotices
+        if displayedRows.isEmpty && !model.loading {
+          ContentUnavailableView(
+            model.trash ? "Trash is empty" : "No records", systemImage: "tray",
+            description: Text(
+              model.search.isEmpty && model.filters.isEmpty
+                ? "Create a record to get started." : "Try a different search or filter."))
         }
-        .buttonStyle(.borderless)
-        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 4, trailing: 16))
+        ForEach(displayedRows, id: \.byteExactID) { row in
+          VStack(alignment: .leading, spacing: 2) {
+            HStack {
+              if let title = model.titleProperty, model.canWrite && !model.trash {
+                propertyButton(title, row: row, title: true)
+              } else {
+                Text(row.label).font(.headline).lineLimit(2)
+              }
+              Spacer(minLength: 4)
+              Button {
+                openRecord(row)
+              } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                  .frame(minWidth: 44, minHeight: 44)
+              }
+              .accessibilityLabel(row.label + ", Open record")
+              .accessibilityIdentifier("open-record-\(row.id)")
+              .disabled(!canFind)
+            }
+            if let target = editor, target.inlineField != nil,
+              target.row?["id"]?.text.utf8.elementsEqual(row.id.utf8) == true
+            {
+              recordEditor(target).id(target.id)
+            } else {
+              let fields = model.orderedRecordFields(model.properties.map(CatalogField.init))
+                .filter { field in
+                  !["id", "created_at", "updated_at", "deleted_at", "hub_at"].contains(field.id)
+                    && field.id != model.titleProperty?.id
+                    && (model.visibleRecordColumns?.contains(field.id) ?? true)
+                }
+              let empty = NativeEditorFields.emptyColumns(
+                fields: fields,
+                values: row.record.mapValues(\.text))
+              ForEach(fields.filter { !empty.contains(Data($0.id.utf8)) }) { field in
+                propertyButton(field, row: row)
+              }
+              if fields.contains(where: { empty.contains(Data($0.id.utf8)) }) {
+                DisclosureGroup("Empty properties") {
+                  ForEach(fields.filter { empty.contains(Data($0.id.utf8)) }) { field in
+                    propertyButton(field, row: row)
+                  }
+                }.font(.caption).foregroundStyle(.secondary)
+              }
+            }
+          }
+          .buttonStyle(.borderless)
+          .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 4, trailing: 16))
+        }
+        if model.canLoadMore { Button("Load more") { Task { await model.reload(more: true) } } }
+        if model.loading { ProgressView().frame(maxWidth: .infinity) }
       }
-      if model.canLoadMore { Button("Load more") { Task { await model.reload(more: true) } } }
-      if model.loading { ProgressView().frame(maxWidth: .infinity) }
+      #if os(iOS)
+        .contentMargins(.top, 0, for: .scrollContent)
+        .onReceive(
+          NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)
+        ) { _ in
+          guard let target = editor, target.inlineField != nil,
+            let id = target.row?["id"]?.text
+          else { return }
+          // WebKit reveals its caret, but the containing list also needs to reveal
+          // the cell's native Save and Open record actions above the keyboard.
+          scroll.scrollTo(Data(id.utf8), anchor: .bottom)
+        }
+      #endif
     }
-    #if os(iOS)
-      .contentMargins(.top, 0, for: .scrollContent)
-    #endif
   }
 
   private var displayedRows: [WorkspaceRow] {
