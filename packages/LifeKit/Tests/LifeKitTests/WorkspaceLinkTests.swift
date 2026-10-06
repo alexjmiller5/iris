@@ -1,10 +1,34 @@
 import Foundation
+import JavaScriptCore
 import Testing
 
 @testable import LifeKit
 
 @MainActor
 struct WorkspaceLinkTests {
+  @Test func sourceLinkUsesPreservedMappingAndNativeDestinationGuards() async throws {
+    let runtime = try LifeCoreRuntime()
+    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await workspace.createSample()
+    let target = try #require(try await workspace.rows(table: "notes").first)
+    runtime.context.setObject(target.id, forKeyedSubscript: "fixtureTarget" as NSString)
+    runtime.context.evaluateScript(
+      #"""
+      LifeSql.run("CREATE TABLE provenance (id TEXT PRIMARY KEY,from_kind TEXT,from_ref TEXT,to_kind TEXT,to_ref TEXT,rel TEXT,field TEXT,deleted_at TEXT)");
+      LifeSql.run("INSERT INTO provenance(id,from_kind,from_ref,to_kind,to_ref,rel) VALUES ('edge','notion','11111111222233334444555555555555','notes',?,'imported_from')", [fixtureTarget]);
+      """#)
+    #expect(runtime.context.exception == nil)
+    let result = try await workspace.resolveSourceLink(
+      "https://app.notion.com/p/Imported-11111111222233334444555555555555")
+    let mapped = try #require(result.destination)
+    #expect(mapped.table == "notes" && mapped.row == target.id)
+    let destination = try await NativeDestinationResolver(workspace: workspace).resolve(
+      NativeDestination(table: mapped.table, rowID: mapped.row), isCurrent: { true })
+    #expect(destination.row?.id == target.id)
+    #expect(
+      try await workspace.resolveSourceLink("https://example.com/reference").destination == nil)
+    try await workspace.close()
+  }
   private func directory() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

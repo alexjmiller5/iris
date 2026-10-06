@@ -4,9 +4,12 @@
 	import { editRevision } from '$lib/record-revision';
 	import { reconcileUndo } from '$lib/record-undo';
 	import FieldEditor from '$lib/FieldEditor.svelte';
+	import { createRetainedFileResolver } from '$lib/retained-files';
 	import RejectedEdits from '$lib/RejectedEdits.svelte';
 	import type { RejectionSnapshot } from '$lib/rejection-inbox';
 	import RecordGrid from '$lib/RecordGrid.svelte';
+	import ExportPanel from '$lib/export/ExportPanel.svelte';
+	import type { ExportSnapshot } from '$lib/export/serialize';
 	import {
 		cellPatch,
 		recordPatch,
@@ -67,6 +70,11 @@
 	} from '$lib/command-palette';
 	import ColumnSettings from '$lib/ColumnSettings.svelte';
 	import SavedViews from '$lib/SavedViews.svelte';
+	import ViewControls from '$lib/ViewControls.svelte';
+	import { queryDefinition } from '$lib/view-controls';
+	import { calendarContext } from '$lib/calendar-context';
+	import { untrack } from 'svelte';
+	import type { FilterGroup, RowAction, ViewLayoutItem } from 'life-ui-core/client';
 	import SidebarTables from '$lib/SidebarTables.svelte';
 	import SidebarRecents from '$lib/SidebarRecents.svelte';
 	import {
@@ -160,6 +168,9 @@
 		connection: { endpoint: string; token: string };
 	} | null>(null);
 	let connectedHub = $state<{ endpoint: string; token: string } | null>(null);
+	const resolveRetainedFile = $derived(
+		connectedHub ? createRetainedFileResolver(connectedHub) : undefined
+	);
 	let findVisible = $state(false);
 	let findVersion = 0;
 	let findNavigation = $state<NavigationState>({ destinations: [], loading: false, error: '' });
@@ -366,6 +377,11 @@
 	let viewVersion = 0,
 		viewsRequest = 0;
 	let importedSort = $state<Sort[] | null>(null);
+	let filterGroups = $state<FilterGroup[]>([]),
+		actions = $state<RowAction[]>([]),
+		actionLayout = $state<ViewLayoutItem[] | undefined>(),
+		timeZone = $state('UTC'),
+		dayStartMinutes = $state(0);
 	const sortClauses = $derived(
 		importedSort ?? [{ column: sort, direction: descending ? ('desc' as const) : ('asc' as const) }]
 	);
@@ -374,11 +390,17 @@
 	let optionValues = $state<Record<string, string[]>>({});
 	let names = $state<Record<string, string>>({});
 	let rowsRequest = 0;
+	let exportSnapshot = $state.raw<ExportSnapshot | null>(null);
+	let exportContext = $state('');
+	let exportRefreshes = $state(0);
 	const referenceRequests: Record<string, number> = {};
 	let filterColumn = $state(''),
 		filterOp = $state<Filter['op']>('eq'),
 		filterValue = $state(''),
 		filters = $state<Filter[]>([]);
+	const currentExportContext = $derived(
+		JSON.stringify([table, search, trash, filters, sortClauses, offset])
+	);
 	const filterLabels: Record<Filter['op'], string> = {
 		eq: 'is',
 		ne: 'is not',
@@ -391,7 +413,7 @@
 		lte: 'at most'
 	};
 	const describeFilter = (filter: Filter) =>
-		`${properties.find((p) => p.col === filter.column)?.label || filter.column} ${filterLabels[filter.op]}${filter.value === undefined ? '' : ` ${filter.value}`}`;
+		`${properties.find((p) => p.col === filter.column)?.label || filter.column} ${filterLabels[filter.op]}${filter.relative === 'today' ? ' Today' : filter.value === undefined ? '' : ` ${filter.value}`}`;
 	const system = new Set(['id', 'created_at', 'updated_at', 'deleted_at', 'hub_at']);
 	const properties = $derived(
 		catalog.properties
@@ -616,6 +638,15 @@
 		)
 			return;
 		columns = next;
+		if (actionLayout) {
+			const ids = [display ?? 'id', ...next];
+			actionLayout = [
+				...actionLayout.filter((i) => i.kind === 'action' || ids.includes(i.id)),
+				...ids
+					.filter((id) => !actionLayout?.some((i) => i.kind === 'column' && i.id === id))
+					.map((id) => ({ kind: 'column' as const, id }))
+			];
+		}
 		widths = sizes;
 		void loadRows().catch((e) => (error = message(e)));
 	}
@@ -728,6 +759,85 @@
 			return [] as string[];
 		}
 	};
+	let actionOptions = $state<Record<string, string[]>>({});
+	let actionReferences = $state<Record<string, { id: string; label: string }[]>>({});
+	let actionReferenceRequests: Record<string, number> = {};
+	let actionReferenceSearch: Record<string, string> = {};
+	let actionReferenceSequence = 0;
+	$effect(() => {
+		const workspace = database,
+			target = table,
+			definitions = $state.snapshot(actions);
+		const properties = viewProperties;
+		let active = true;
+		untrack(() => {
+			actionOptions = {};
+			actionReferences = {};
+			for (const p of properties.filter((p) =>
+				definitions.some((a) => Object.hasOwn(a.values, p.col))
+			)) {
+				if (['select', 'multi_select'].includes(p.type ?? '')) {
+					void workspace
+						?.request('options', { table: target, column: p.col })
+						.then((values) => {
+							if (active) actionOptions[p.col] = values;
+						})
+						.catch((e) => {
+							if (active) error = message(e);
+						});
+				}
+				if (['ref', 'multi_ref'].includes(p.type ?? ''))
+					for (const a of definitions.filter((a) => Object.hasOwn(a.values, p.col)))
+						void loadActionReferences(
+							a,
+							p,
+							actionReferenceSearch[JSON.stringify([a.id, p.col])] ?? ''
+						);
+			}
+		});
+		return () => {
+			active = false;
+			actionReferenceRequests = {};
+		};
+	});
+	async function loadActionReferences(action: RowAction, p: Property, query = '') {
+		const workspace = database,
+			version = viewVersion;
+		if (!workspace || !p.ref_table) return;
+		const key = JSON.stringify([action.id, p.col]);
+		actionReferenceSearch[key] = query;
+		const request = ++actionReferenceSequence;
+		actionReferenceRequests[key] = request;
+		const current = () =>
+			workspace === database && version === viewVersion && actionReferenceRequests[key] === request;
+		try {
+			const found = await workspace.request('rows', {
+				view: { table: p.ref_table, search: query, limit: 50 }
+			});
+			const raw = rawValue(action.values[p.col]);
+			const selected = p.type === 'multi_ref' ? list(raw) : [raw];
+			for (const id of selected.filter(Boolean)) {
+				if (!current()) return;
+				if (!found.some((row) => row.id === id))
+					found.push(
+						...(await workspace.request('rows', {
+							view: {
+								table: p.ref_table,
+								filters: [{ column: 'id', op: 'eq', value: id }],
+								limit: 1
+							}
+						}))
+					);
+			}
+			if (current())
+				actionReferences[key] = found.map((row) => ({
+					id: String(row.id),
+					label: refTitle(p, row)
+				}));
+		} catch (e) {
+			if (current()) error = message(e);
+		}
+	}
 	async function loadOptions(p: Property) {
 		const workspace = database,
 			version = editorVersion,
@@ -851,23 +961,130 @@
 			if (current()) error = message(e);
 		}
 	}
+	async function runSavedAction(actionId: string, row: Row) {
+		if (
+			!database ||
+			busy ||
+			navigationLoading ||
+			!chosenView ||
+			!chosenView.updated_at ||
+			viewModified ||
+			blocked ||
+			readOnly ||
+			trash ||
+			!discard()
+		)
+			return;
+		const workspace = database,
+			version = viewVersion;
+		busy = true;
+		writing = true;
+		error = '';
+		try {
+			await workspace.request('runRowAction', {
+				viewId: chosenView.id,
+				actionId,
+				rowId: String(row.id),
+				expectedUpdatedAt: editRevision(row),
+				expectedViewUpdatedAt: chosenView.updated_at
+			});
+			if (database !== workspace || viewVersion !== version) return;
+			selected = null;
+			editing = false;
+			gridDraft = null;
+			draft = {};
+			savedDraft = '';
+			await loadRows();
+			notice = 'Action saved on this device';
+		} catch (e) {
+			if (database === workspace && viewVersion === version) error = message(e);
+		} finally {
+			if (database === workspace) {
+				busy = false;
+				writing = false;
+			}
+		}
+	}
+	$effect(() => {
+		const workspace = database,
+			zone = timeZone,
+			boundary = dayStartMinutes;
+		const relative = [...filters, ...filterGroups.flatMap((g) => g.filters)].some(
+			(f) => f.relative === 'today'
+		);
+		if (!workspace || !relative) return;
+		let timer: ReturnType<typeof setTimeout>, previous: string;
+		try {
+			previous = calendarContext(zone, new Date(), boundary).today;
+		} catch (e) {
+			error = message(e);
+			return;
+		}
+		const refresh = () => {
+			clearTimeout(timer);
+			const next = calendarContext(zone, new Date(), boundary);
+			if (next.today !== previous) {
+				previous = next.today;
+				untrack(() => void loadRows().catch((e) => (error = message(e))));
+			}
+			timer = setTimeout(refresh, Math.max(1, Date.parse(next.end) - Date.now() + 1));
+		};
+		refresh();
+		window.addEventListener('focus', refresh);
+		window.addEventListener('pageshow', refresh);
+		document.addEventListener('visibilitychange', refresh);
+		return () => {
+			clearTimeout(timer);
+			window.removeEventListener('focus', refresh);
+			window.removeEventListener('pageshow', refresh);
+			document.removeEventListener('visibilitychange', refresh);
+		};
+	});
+
 	async function loadRows() {
+		exportSnapshot = null;
 		if (!database || !table) return;
 		const workspace = database;
 		const request = ++rowsRequest;
+		const capturedContext = currentExportContext;
+		const capturedTable = table;
+		const capturedProperties = structuredClone(
+			$state.snapshot(catalog.properties.filter((p) => p.tbl === table))
+		);
 		const found: Row[] = await workspace.request('rows', {
 			view: {
-				table,
-				search,
-				trash,
-				filters: $state.snapshot(filters),
-				sort: $state.snapshot(sortClauses),
+				...queryDefinition(table, viewDefinition()),
 				limit: 50,
 				offset
 			}
 		});
 		if (database !== workspace || request !== rowsRequest) return;
 		rows = found;
+		exportContext = capturedContext;
+		exportSnapshot = {
+			table: capturedTable,
+			properties: capturedProperties,
+			rows: structuredClone(found),
+			scope: 'loaded',
+			completeness: {
+				rows: 'unknown',
+				// This rows request omits a projection, independently of visible grid columns.
+				columns: 'full',
+				reasons: [
+					'Only the current local page is included; filters, pagination and sync may omit records.',
+					'Catalog and sync status are acquired separately from rows. Attached bytes are not included.'
+				]
+			},
+			acquisition: {
+				source: 'local-replica',
+				capturedAt: new Date().toISOString(),
+				freshness: 'unknown',
+				lastSync,
+				skippedTables: [...skipped],
+				pendingUiEdits: pendingEdits,
+				rejectedEdits: rejectedCount
+			}
+		};
 		names = {};
 		const labels: Record<string, string> = {};
 		// ponytail: at most 200 visible references per page; batch SQL when larger grids need it.
@@ -893,23 +1110,32 @@
 		if (database === workspace && request === rowsRequest) names = labels;
 	}
 	async function refresh() {
+		exportSnapshot = null;
 		if (!database) return;
-		const workspace = database;
-		const state = await workspace.request('snapshot');
-		if (database !== workspace) return;
-		catalog = state.catalog;
-		lastSync = state.lastSync ?? null;
-		pendingEdits = state.status.pendingUiEdits;
-		undoAction = state.undo;
-		rejected = state.rejected;
-		rejectedCount = state.status.rejected;
-		skipped = state.skipped ?? [];
-		if (!table && catalog.tables.length)
-			table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
-		await Promise.all([loadRows(), loadViews(), loadWriteability()]);
-		if (database === workspace) refreshRecentLabels();
+		// An older rows reply cannot restore an export while catalog/status refreshes.
+		rowsRequest++;
+		exportRefreshes++;
+		try {
+			const workspace = database;
+			const state = await workspace.request('snapshot');
+			if (database !== workspace) return;
+			catalog = state.catalog;
+			lastSync = state.lastSync ?? null;
+			pendingEdits = state.status.pendingUiEdits;
+			undoAction = state.undo;
+			rejected = state.rejected;
+			rejectedCount = state.status.rejected;
+			skipped = state.skipped ?? [];
+			if (!table && catalog.tables.length)
+				table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
+			await Promise.all([loadRows(), loadViews(), loadWriteability()]);
+			if (database === workspace) refreshRecentLabels();
+		} finally {
+			exportRefreshes--;
+		}
 	}
 	function resetView() {
+		exportSnapshot = null;
 		undoPaused = false;
 		gridDraft = null;
 		gridContext++;
@@ -935,11 +1161,17 @@
 		columns = null;
 		widths = {};
 		importedSort = null;
+		filterGroups = [];
+		actions = [];
+		actionLayout = undefined;
+		timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		dayStartMinutes = 0;
 		chosenView = null;
 		viewBaseline = '';
 		savedViews = [];
 		viewsUnavailable = null;
 		viewVersion++;
+		actionReferenceSearch = {};
 		viewsRequest++;
 		filters = [];
 		filterColumn = '';
@@ -1029,7 +1261,14 @@
 
 	function viewDefinition(): SavedViewDefinition {
 		return $state.snapshot({
-			version: 1,
+			version: 2,
+			groups: filterGroups,
+			timeZone,
+			...(dayStartMinutes !== 0 || chosenView?.definition?.dayStartMinutes !== undefined
+				? { dayStartMinutes }
+				: {}),
+			actions,
+			...(actionLayout ? { layout: actionLayout } : {}),
 			columns: [...new Set([display ?? 'id', ...visibleColumns])],
 			filters,
 			sort: sortClauses,
@@ -1071,6 +1310,7 @@
 		gridContext++;
 		editorVersion++;
 		viewVersion++;
+		actionReferenceSearch = {};
 		editing = false;
 		selected = null;
 		draft = {};
@@ -1080,6 +1320,11 @@
 		columns = definition?.columns?.filter((col) => col !== (display ?? 'id')) ?? null;
 		widths = { ...definition?.widths };
 		filters = definition?.filters?.map((filter) => ({ ...filter })) ?? [];
+		filterGroups = $state.snapshot(definition?.groups ?? []);
+		actions = $state.snapshot(definition?.actions ?? []);
+		actionLayout = definition?.layout ? $state.snapshot(definition.layout) : undefined;
+		timeZone = definition?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+		dayStartMinutes = definition?.dayStartMinutes ?? 0;
 		search = definition?.search ?? '';
 		trash = definition?.trash ?? false;
 		importedSort = definition?.sort?.map((clause) => ({ ...clause })) ?? null;
@@ -1506,12 +1751,13 @@
 	}
 	async function openDestination(
 		destination: Destination,
-		sourceIsCurrent: () => boolean
+		sourceIsCurrent: () => boolean,
+		reservedRequest?: number
 	): Promise<boolean> {
 		if (!database || busy || writing || bodySaving) return false;
 		const workspace = database,
 			sourceEditor = editorVersion,
-			request = ++recordOpenVersion;
+			request = reservedRequest ?? ++recordOpenVersion;
 		const current = () =>
 			database === workspace &&
 			editorVersion === sourceEditor &&
@@ -1552,6 +1798,33 @@
 			recordHeading?.focus();
 		}
 		return true;
+	}
+	async function openSourceLink(url: string): Promise<boolean> {
+		if (!database || busy || writing || bodySaving)
+			throw Error('Wait for the current save, then open the link again.');
+		const workspace = database,
+			version = editorVersion,
+			request = ++recordOpenVersion;
+		const current = () =>
+			database === workspace &&
+			editorVersion === version &&
+			recordOpenVersion === request &&
+			(editing || !!gridDraft) &&
+			!findVisible;
+		try {
+			const { destination } = await workspace.request('resolveSourceLink', { url });
+			if (!current()) throw new DOMException('Navigation superseded', 'AbortError');
+			if (!destination) return false;
+			// Web Markdown publishes each transaction synchronously. The shared
+			// destination guard checks that live draft immediately before discard;
+			// opening a link never commits an inline cell or replaces its source.
+			const opened = await openDestination({ ...destination, view: null }, current, request);
+			if (!opened) throw new DOMException('Navigation canceled', 'AbortError');
+			return opened;
+		} catch (reason) {
+			if (!current()) throw new DOMException('Navigation superseded', 'AbortError');
+			throw reason;
+		}
 	}
 	async function openRelatedRecord(
 		target: { table: string; id: string },
@@ -1861,27 +2134,42 @@
 									loadRows().catch((e) => (error = message(e)));
 								}}><IconTrash size={16} />{trash ? 'All records' : 'Trash'}</button
 							>
-							<select
-								aria-label="Sort by"
-								bind:value={sort}
-								onchange={() => {
-									importedSort = null;
-									find();
-								}}
-								><option value="id">Sort by ID</option
-								>{#each viewProperties.filter((p) => p.col !== 'id') as p}<option value={p.col}
-										>Sort by {label(p)}</option
-									>{/each}</select
-							>
-							<button
-								class="secondary"
-								onclick={() => {
-									descending = !descending;
-									importedSort = null;
-									find();
-								}}>{descending ? 'Descending' : 'Ascending'}</button
-							>
+							<ExportPanel
+								snapshot={exportSnapshot}
+								disabled={busy ||
+									navigationLoading ||
+									exportRefreshes > 0 ||
+									exportContext !== currentExportContext}
+							/>
 						</div>
+						<ViewControls
+							properties={viewProperties}
+							sorts={sortClauses}
+							{filters}
+							groups={filterGroups}
+							{actions}
+							layout={actionLayout}
+							{timeZone}
+							{dayStartMinutes}
+							{actionOptions}
+							{actionReferences}
+							onactionsearch={loadActionReferences}
+							columns={[display ?? 'id', ...visibleColumns]}
+							disabled={busy || navigationLoading}
+							onchange={(patch) => {
+								if (!closeRecord()) return;
+								if (patch.sorts) importedSort = patch.sorts;
+								if (patch.groups) filterGroups = patch.groups;
+								if (patch.filters) filters = patch.filters;
+								if (patch.actions) actions = patch.actions;
+								if (patch.layout) actionLayout = patch.layout;
+								if (patch.timeZone !== undefined) timeZone = patch.timeZone;
+								if (patch.dayStartMinutes !== undefined) dayStartMinutes = patch.dayStartMinutes;
+								offset = 0;
+								loadRows().catch((e) => (error = message(e)));
+							}}
+						/>
+
 						<form
 							class="filters"
 							onsubmit={(e) => {
@@ -1955,6 +2243,15 @@
 						{#key gridContext}
 							<RecordGrid
 								{rows}
+								{actions}
+								{actionLayout}
+								canRunAction={!!chosenView &&
+									!viewModified &&
+									!blocked &&
+									!readOnly &&
+									!trash &&
+									!navigationLoading}
+								onaction={runSavedAction}
 								properties={gridColumns}
 								{widths}
 								busy={busy || gridActionOpening !== null}
@@ -1966,6 +2263,8 @@
 								canEdit={(p) => !navigationLoading && canEditCell(p)}
 								onbegin={beginCell}
 								oncommit={commitCell}
+								resolveFile={resolveRetainedFile}
+								onopenlink={openSourceLink}
 								onopen={(id) =>
 									openRecord({ table, id }, () => !findVisible, true).catch((e) => {
 										error = message(e);
@@ -2077,6 +2376,8 @@
 									<FieldEditor
 										id={`field-${p.col}`}
 										property={p}
+										resolveFile={resolveRetainedFile}
+										onopenlink={openSourceLink}
 										bind:value={draft[p.col]}
 										onchange={() => {
 											if (!selected) explicitCreation = new Set([...explicitCreation, p.col]);
@@ -2596,9 +2897,6 @@
 		}
 		.pagination {
 			flex-wrap: wrap;
-		}
-		.toolbar select {
-			max-width: 170px;
 		}
 	}
 </style>

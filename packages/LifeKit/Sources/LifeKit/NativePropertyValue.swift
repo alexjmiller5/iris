@@ -102,7 +102,7 @@ struct NativePropertyValue: View {
             return
           }
           let label = await NativePropertyValue.referenceLabels(field: field, value: value) {
-            try await workspace.rows(view: $0)
+            try await workspace.referenceRows(view: $0)
           }
           guard request == ticket, !Task.isCancelled else { return }
           resolved = label

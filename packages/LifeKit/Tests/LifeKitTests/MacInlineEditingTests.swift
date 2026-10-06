@@ -7,6 +7,37 @@
 
   @Suite(.serialized) @MainActor
   struct MacInlineEditingTests {
+    @Test func actionColumnsKeepPropertyEditingAndHeaderTargets() {
+      let title = CatalogField(property: ["col": .string("title")])
+      let status = CatalogField(property: ["col": .string("status")])
+      let row = WorkspaceRow(record: ["id": .string("row")], label: "Row")
+      var edited: [String] = []
+      var opened = false
+      let grid = MacRecordTable(
+        rows: [row], columns: [NativeGridColumn(field: status, width: 180)],
+        titleField: title, editingRow: nil, editingColumn: nil, editorID: nil,
+        actionsEnabled: true, onOpen: { _ in opened = true },
+        onEdit: { _, column in edited.append(column) }, onSort: { _, _ in }, onFilter: { _ in },
+        actions: [
+          CoreRowAction(id: "review", label: "Review", values: ["status": .string("Ready")])
+        ],
+        layout: [
+          CoreViewLayoutItem(kind: "column", id: "status"),
+          CoreViewLayoutItem(kind: "action", id: "review"),
+          CoreViewLayoutItem(kind: "column", id: "title"),
+        ], canRunAction: true
+      ) { EmptyView() }
+      let coordinator = grid.makeCoordinator()
+      coordinator.edit(row: 0, column: 0)
+      coordinator.edit(row: 0, column: 1)
+      coordinator.edit(row: 0, column: 2)
+      #expect(edited == ["status", "title"])
+      #expect(!opened)
+      #expect(coordinator.columnMenu(0)?.items.first?.representedObject as? String == "status")
+      #expect(coordinator.columnMenu(1) == nil)
+      #expect(coordinator.columnMenu(2)?.items.first?.representedObject as? String == "title")
+    }
+
     @Test func returnEditsTheSelectedTitleWithoutOpeningASheet() async throws {
       let model = WorkspaceModel(credentialStore: MemoryHubCredentials(nil))
       await model.open(demo: true)
