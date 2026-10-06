@@ -101,3 +101,11 @@ test('crossing the first midnight keeps its day label when a fold returns to the
 		end: '2009-11-02T04:00:00.000Z'
 	});
 });
+
+test('a boundary inside a skipped midnight resolves to the first valid civil instant', () => {
+	expect(calendarContext('America/Sao_Paulo', new Date('2018-11-04T03:00:00Z'), 30)).toEqual({
+		today: '2018-11-04',
+		start: '2018-11-04T03:00:00.000Z',
+		end: '2018-11-05T02:30:00.000Z'
+	});
+});

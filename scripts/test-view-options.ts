@@ -44,7 +44,6 @@ try {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Storage.clearDataForOrigin', { origin: new URL(url).origin, storageTypes: 'all' });
   await cdp.detach();
-  await page.clock.install({ time: new Date('2026-06-02T06:59:50Z') });
   await page.goto(url);
   await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
   await page.getByText('Connect to a hub', { exact: true }).click();
@@ -55,9 +54,11 @@ try {
   await page.getByRole('navigation', { name: 'Tables' }).getByRole('button', { name: 'widgets', exact: true }).click();
   const views = page.getByRole('combobox', { name: 'View', exact: true });
   if (mode === 'all' || mode === 'rollover') {
+    await page.clock.install({ time: new Date('2026-06-02T06:59:50Z') });
+    await page.clock.pauseAt(new Date('2026-06-02T06:59:50Z'));
     await views.selectOption('late-day');
     await expect(page.locator('.record-link')).toHaveText(['Fixture record']);
-    await page.getByText('Filter groups (0)', { exact: true }).click();
+    await page.locator('summary').filter({ hasText: /^Filter groups/ }).click();
     await expect(page.getByLabel('Day starts at', { exact: true })).toHaveValue('03:00');
     await page.clock.runFor(11000);
     await expect(page.locator('.record-link')).toHaveText(['Fixture record', 'Second record']);
@@ -101,12 +102,21 @@ try {
     await page.getByLabel('Add value to action 1').selectOption('related');
     await page.getByLabel('Search Related', { exact: true }).fill('Second');
     await expect(page.locator('select[id^="action-"][id$="-related"] option[value="second-record"]')).toHaveCount(1);
-    console.log('PASS: row actions load dynamic select/multi-select and reference choices');
+    const related = page.locator('select[id^="action-"][id$="-related"]');
+    await related.selectOption('second-record');
+    await page.getByLabel('Button label', { exact: true }).fill('Apply choices');
+    await page.getByLabel('Button label', { exact: true }).press('Tab');
+    await expect(related.locator('option[value="fixture-record"]')).toHaveCount(0);
+    await expect(page.getByLabel('Search Related', {exact:true})).toHaveValue('Second');
+    console.log('PASS: row actions load dynamic select/multi-select and retain reference search choices');
   }
+} catch (error) {
+  console.error(await page.locator("body").innerText());
+  throw error;
 } finally {
   await page.clock.resume();
   await page.clock.setSystemTime(new Date());
-  await page.goto(new URL('/', url).href);
+  await page.goto(url);
   await browser.close();
   server.stop(true); db.db.close(); auth.db.close();
 }

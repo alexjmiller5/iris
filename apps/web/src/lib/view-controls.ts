@@ -10,6 +10,10 @@ export function parseDayStart(time: string): number {
 export function editSort(sorts: Sort[], index: number, patch: Partial<Sort>): Sort[] {
 	return sorts.map((sort, i) => (i === index ? { ...sort, ...patch } : { ...sort }));
 }
+export function initialFilterValue(type: string): string {
+	return ['number', 'int'].includes(type) ? '0' : type === 'bool' ? 'false' : '';
+}
+
 export function parseFilter(
 	column: string,
 	op: Filter['op'],

@@ -21,6 +21,9 @@
 		timeZone,
 		dayStartMinutes = 0,
 		columns,
+		actionOptions = {},
+		actionReferences = {},
+		onactionsearch,
 		disabled = false,
 		onchange
 	}: {
@@ -33,6 +36,9 @@
 		timeZone: string;
 		dayStartMinutes?: number;
 		columns: string[];
+		actionOptions?: Record<string, string[]>;
+		actionReferences?: Record<string, { id: string; label: string }[]>;
+		onactionsearch?: (action: RowAction, property: Property, query: string) => void;
 		disabled?: boolean;
 		onchange: (patch: {
 			sorts?: Sort[];
@@ -241,6 +247,9 @@
 							id={`action-${a.id}-${col}`}
 							property={p}
 							value={rawValue(value)}
+							options={actionOptions[p.col] ?? []}
+							references={actionReferences[JSON.stringify([a.id, p.col])] ?? []}
+							onsearch={(query) => onactionsearch?.(a, p, query)}
 							onchange={(raw) => actionValue(index, p, raw)}
 						/>{:else}<p role="alert">Unavailable property: {col}</p>{/if}
 					<button

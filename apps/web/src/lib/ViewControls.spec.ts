@@ -30,3 +30,21 @@ test.each([0, 180, 1439])(
 		}
 	}
 );
+
+test('action fields receive dynamic choices without depending on record editor state', () => {
+	const html = render(ViewControls, {
+		props: {
+			properties: [
+				{ tbl: 'items', col: 'status', type: 'select', options_sql: "SELECT 'Dynamic'" }
+			],
+			sorts: [],
+			groups: [],
+			actions: [{ id: 'finish', label: 'Finish', values: { status: null } }],
+			columns: ['status'],
+			timeZone: 'UTC',
+			actionOptions: { status: ['Dynamic'] },
+			onchange: () => {}
+		}
+	}).body;
+	expect(html).toContain('value="Dynamic"');
+});

@@ -1,5 +1,11 @@
 import { expect, test } from 'vitest';
-import { editSort, parseDayStart, parseFilter, queryDefinition } from './view-controls';
+import {
+	initialFilterValue,
+	editSort,
+	parseDayStart,
+	parseFilter,
+	queryDefinition
+} from './view-controls';
 
 test('day-start controls preserve midnight, minute precision and reject incomplete input', () => {
 	expect(parseDayStart('00:00')).toBe(0);
@@ -71,4 +77,19 @@ test('the selected view policy changes query bounds without changing saved value
 	).toBe('2026-06-02');
 	expect(JSON.stringify(definition)).toBe(original);
 	expect(queryDefinition('items', { ...definition, filters: [] })).not.toHaveProperty('calendar');
+});
+
+test('switching from an unvalued rule to numeric or boolean comparisons produces editable typed values', () => {
+	for (const [type, value] of [
+		['int', 0],
+		['number', 0],
+		['bool', false]
+	] as const) {
+		expect(parseFilter('changed', 'eq', initialFilterValue(type), type, false)).toEqual({
+			column: 'changed',
+			op: 'eq',
+			value
+		});
+	}
+	expect(() => parseFilter('changed', 'eq', '', 'number', false)).toThrow();
 });

@@ -380,7 +380,8 @@
 	let filterGroups = $state<FilterGroup[]>([]),
 		actions = $state<RowAction[]>([]),
 		actionLayout = $state<ViewLayoutItem[] | undefined>(),
-		timeZone = $state('UTC');
+		timeZone = $state('UTC'),
+		dayStartMinutes = $state(0);
 	const sortClauses = $derived(
 		importedSort ?? [{ column: sort, direction: descending ? ('desc' as const) : ('asc' as const) }]
 	);
@@ -758,6 +759,85 @@
 			return [] as string[];
 		}
 	};
+	let actionOptions = $state<Record<string, string[]>>({});
+	let actionReferences = $state<Record<string, { id: string; label: string }[]>>({});
+	let actionReferenceRequests: Record<string, number> = {};
+	let actionReferenceSearch: Record<string, string> = {};
+	let actionReferenceSequence = 0;
+	$effect(() => {
+		const workspace = database,
+			target = table,
+			definitions = $state.snapshot(actions);
+		const properties = viewProperties;
+		let active = true;
+		untrack(() => {
+			actionOptions = {};
+			actionReferences = {};
+			for (const p of properties.filter((p) =>
+				definitions.some((a) => Object.hasOwn(a.values, p.col))
+			)) {
+				if (['select', 'multi_select'].includes(p.type ?? '')) {
+					void workspace
+						?.request('options', { table: target, column: p.col })
+						.then((values) => {
+							if (active) actionOptions[p.col] = values;
+						})
+						.catch((e) => {
+							if (active) error = message(e);
+						});
+				}
+				if (['ref', 'multi_ref'].includes(p.type ?? ''))
+					for (const a of definitions.filter((a) => Object.hasOwn(a.values, p.col)))
+						void loadActionReferences(
+							a,
+							p,
+							actionReferenceSearch[JSON.stringify([a.id, p.col])] ?? ''
+						);
+			}
+		});
+		return () => {
+			active = false;
+			actionReferenceRequests = {};
+		};
+	});
+	async function loadActionReferences(action: RowAction, p: Property, query = '') {
+		const workspace = database,
+			version = viewVersion;
+		if (!workspace || !p.ref_table) return;
+		const key = JSON.stringify([action.id, p.col]);
+		actionReferenceSearch[key] = query;
+		const request = ++actionReferenceSequence;
+		actionReferenceRequests[key] = request;
+		const current = () =>
+			workspace === database && version === viewVersion && actionReferenceRequests[key] === request;
+		try {
+			const found = await workspace.request('rows', {
+				view: { table: p.ref_table, search: query, limit: 50 }
+			});
+			const raw = rawValue(action.values[p.col]);
+			const selected = p.type === 'multi_ref' ? list(raw) : [raw];
+			for (const id of selected.filter(Boolean)) {
+				if (!current()) return;
+				if (!found.some((row) => row.id === id))
+					found.push(
+						...(await workspace.request('rows', {
+							view: {
+								table: p.ref_table,
+								filters: [{ column: 'id', op: 'eq', value: id }],
+								limit: 1
+							}
+						}))
+					);
+			}
+			if (current())
+				actionReferences[key] = found.map((row) => ({
+					id: String(row.id),
+					label: refTitle(p, row)
+				}));
+		} catch (e) {
+			if (current()) error = message(e);
+		}
+	}
 	async function loadOptions(p: Property) {
 		const workspace = database,
 			version = editorVersion,
@@ -887,6 +967,7 @@
 			busy ||
 			navigationLoading ||
 			!chosenView ||
+			!chosenView.updated_at ||
 			viewModified ||
 			blocked ||
 			readOnly ||
@@ -904,7 +985,8 @@
 				viewId: chosenView.id,
 				actionId,
 				rowId: String(row.id),
-				expectedUpdatedAt: editRevision(row)
+				expectedUpdatedAt: editRevision(row),
+				expectedViewUpdatedAt: chosenView.updated_at
 			});
 			if (database !== workspace || viewVersion !== version) return;
 			selected = null;
@@ -925,21 +1007,22 @@
 	}
 	$effect(() => {
 		const workspace = database,
-			zone = timeZone;
+			zone = timeZone,
+			boundary = dayStartMinutes;
 		const relative = [...filters, ...filterGroups.flatMap((g) => g.filters)].some(
 			(f) => f.relative === 'today'
 		);
 		if (!workspace || !relative) return;
 		let timer: ReturnType<typeof setTimeout>, previous: string;
 		try {
-			previous = calendarContext(zone).today;
+			previous = calendarContext(zone, new Date(), boundary).today;
 		} catch (e) {
 			error = message(e);
 			return;
 		}
 		const refresh = () => {
 			clearTimeout(timer);
-			const next = calendarContext(zone);
+			const next = calendarContext(zone, new Date(), boundary);
 			if (next.today !== previous) {
 				previous = next.today;
 				untrack(() => void loadRows().catch((e) => (error = message(e))));
@@ -1082,11 +1165,13 @@
 		actions = [];
 		actionLayout = undefined;
 		timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		dayStartMinutes = 0;
 		chosenView = null;
 		viewBaseline = '';
 		savedViews = [];
 		viewsUnavailable = null;
 		viewVersion++;
+		actionReferenceSearch = {};
 		viewsRequest++;
 		filters = [];
 		filterColumn = '';
@@ -1179,6 +1264,9 @@
 			version: 2,
 			groups: filterGroups,
 			timeZone,
+			...(dayStartMinutes !== 0 || chosenView?.definition?.dayStartMinutes !== undefined
+				? { dayStartMinutes }
+				: {}),
 			actions,
 			...(actionLayout ? { layout: actionLayout } : {}),
 			columns: [...new Set([display ?? 'id', ...visibleColumns])],
@@ -1222,6 +1310,7 @@
 		gridContext++;
 		editorVersion++;
 		viewVersion++;
+		actionReferenceSearch = {};
 		editing = false;
 		selected = null;
 		draft = {};
@@ -1235,6 +1324,7 @@
 		actions = $state.snapshot(definition?.actions ?? []);
 		actionLayout = definition?.layout ? $state.snapshot(definition.layout) : undefined;
 		timeZone = definition?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+		dayStartMinutes = definition?.dayStartMinutes ?? 0;
 		search = definition?.search ?? '';
 		trash = definition?.trash ?? false;
 		importedSort = definition?.sort?.map((clause) => ({ ...clause })) ?? null;
@@ -2042,6 +2132,10 @@
 							{actions}
 							layout={actionLayout}
 							{timeZone}
+							{dayStartMinutes}
+							{actionOptions}
+							{actionReferences}
+							onactionsearch={loadActionReferences}
 							columns={[display ?? 'id', ...visibleColumns]}
 							disabled={busy || navigationLoading}
 							onchange={(patch) => {
@@ -2052,6 +2146,7 @@
 								if (patch.actions) actions = patch.actions;
 								if (patch.layout) actionLayout = patch.layout;
 								if (patch.timeZone !== undefined) timeZone = patch.timeZone;
+								if (patch.dayStartMinutes !== undefined) dayStartMinutes = patch.dayStartMinutes;
 								offset = 0;
 								loadRows().catch((e) => (error = message(e)));
 							}}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Filter, Property } from 'life-ui-core/client';
-	import { parseFilter } from './view-controls';
+	import { initialFilterValue, parseFilter } from './view-controls';
 	let {
 		filter,
 		properties,
@@ -28,7 +28,9 @@
 	function change(
 		column = filter.column,
 		op = filter.op,
-		text = String(filter.value ?? ''),
+		text = String(
+			filter.value ?? (['empty', 'not_empty'].includes(filter.op) ? initialFilterValue(type) : '')
+		),
 		today = filter.relative === 'today'
 	) {
 		try {
@@ -52,7 +54,13 @@
 	<select
 		aria-label="Rule property"
 		value={filter.column}
-		onchange={(e) => change(e.currentTarget.value, 'eq', '', false)}
+		onchange={(e) =>
+			change(
+				e.currentTarget.value,
+				'eq',
+				initialFilterValue(properties.find((p) => p.col === e.currentTarget.value)?.type ?? 'text'),
+				false
+			)}
 		>{#each properties as p}<option value={p.col}>{p.label || p.col}</option>{/each}</select
 	>
 	<select
