@@ -107,14 +107,20 @@ try {
     const click = (name: string) => cdp.click(button(name));
     const value = (column: string, expected: string) =>
       cdp.until(`(${field(column)})?.value===${js(expected)}`);
-    const open = async () => {
-      await click("Open my workspace");
-      await cdp.click(text("Connect to a hub"));
-      await cdp.click(text("Use a device token"));
+    const connect = async () => {
+      for (const name of ["Connect to a hub", "Use a device token"]) {
+        await cdp.until(`!!(${text(name)})`);
+        if (!(await cdp.evaluate(`(${text(name)}).closest('details').open`)))
+          await cdp.click(text(name));
+      }
       const input = (label: string) =>
         `(()=>{const label=${named("label", label)};return label?.control??label?.querySelector('input');})()`;
       await cdp.fill(input("Hub address"), server.url.href.replace(/\/$/, ""));
       await cdp.fill(input("Device token"), "fixture");
+    };
+    const open = async () => {
+      await click("Open my workspace");
+      await connect();
     };
     const sync = async () => {
       await click("Sync now");
@@ -303,6 +309,9 @@ try {
       detail: "Saved after interrupted refresh",
     });
     await click("Close record");
+    // Reload intentionally forgets session credentials. Prove the offline save
+    // first, then reconnect through the supported controls for recovery sync.
+    await connect();
     failPull = false;
     await sync();
     await enabled("New record", true);
@@ -337,11 +346,7 @@ try {
     db.db
       .query("INSERT INTO _schema_log(applied_at,ddl) VALUES (?,?)")
       .run(new Date().toISOString(), ddl);
-    await cdp.click(text("Connect to a hub"));
-    await cdp.click(text("Use a device token"));
-    const input = (label: string) => `(${named("label", label)})?.control`;
-    await cdp.fill(input("Hub address"), server.url.href.replace(/\/$/, ""));
-    await cdp.fill(input("Device token"), "fixture");
+    await connect();
     await sync();
     await enabled("New record", false);
     await bodyHas("Unsupported trigger");
