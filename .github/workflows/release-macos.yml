@@ -19,14 +19,14 @@ env:
   PROFILE_ID: ${{ vars.MACOS_PROVISIONING_PROFILE_ID }}
 
 jobs:
-  release:
+  submit:
     runs-on: macos-latest
     timeout-minutes: 60
     outputs:
-      sha256: ${{ steps.package.outputs.sha256 }}
-      version: ${{ steps.inputs.outputs.version }}
-    permissions:
-      contents: write
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+      archive_sha256: ${{ steps.submission.outputs.archive_sha256 }}
+      receipt_sha256: ${{ steps.submission.outputs.receipt_sha256 }}
+      submission_id: ${{ steps.submission.outputs.submission_id }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -84,8 +84,7 @@ jobs:
           ASC_KEY_ID: op://Apple Signing/App Store Connect API Key/key_id
           ASC_ISSUER_ID: op://Apple Signing/App Store Connect API Key/issuer_id
 
-      - name: Sign, notarize and package
-        id: package
+      - name: Sign and verify app
         shell: bash
         run: |
           set -euo pipefail
@@ -107,6 +106,7 @@ jobs:
           [[ "$IDENTITY_SHA" =~ ^[A-Fa-f0-9]{40}$ ]]
           TEAM_ID=$(printf '%s' "$IDENTITY" | sed -nE 's/.*\(([A-Z0-9]{10})\)$/\1/p')
           [[ "$TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]
+          printf 'TEAM_ID=%s\nIDENTITY_SHA=%s\n' "$TEAM_ID" "$IDENTITY_SHA" >> "$GITHUB_ENV"
           # Read the app-owned profile by its stable API ID. This lane never
           # creates profiles/certificates or requests cloud signing permissions.
           bun - <<'JS'
@@ -156,17 +156,51 @@ jobs:
           ENTITLEMENTS="$RUNNER_TEMP/life-ui-entitlements.plist"
           codesign -d --entitlements - --xml "build/$APP.app" > "$ENTITLEMENTS"
           bash scripts/test-macos-keychain.sh "build/$APP.app" "$IDENTITY_SHA" "$ENTITLEMENTS"
+      - name: Submit signed archive
+        id: submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/life-ui-notary.p8"' EXIT
           ditto -c -k --keepParent "build/$APP.app" "build/$APP-notarize.zip"
           printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-notary.p8"
+          # Upload once. Waiting belongs to the independently retryable release job.
           xcrun notarytool submit "build/$APP-notarize.zip" \
             --key "$RUNNER_TEMP/life-ui-notary.p8" --key-id "$ASC_KEY_ID" \
-            --issuer "$ASC_ISSUER_ID" --wait --timeout 30m
-          xcrun stapler staple "build/$APP.app"
-          xcrun stapler validate "build/$APP.app"
-          spctl --assess --type execute --verbose=2 "build/$APP.app"
-          ditto -c -k --keepParent "build/$APP.app" "build/$APP-$GITHUB_REF_NAME.zip"
-          (cd build && shasum -a 256 "$APP-$GITHUB_REF_NAME.zip" > SHA256SUMS)
-          echo "sha256=$(awk '{print $1}' build/SHA256SUMS)" >> "$GITHUB_OUTPUT"
+            --issuer "$ASC_ISSUER_ID" --no-wait --output-format json > "$RUNNER_TEMP/submission.json"
+          python3 - <<'PYTHON'
+          import hashlib,json,os,re
+          from pathlib import Path
+          env=os.environ
+          submission=json.loads((Path(env['RUNNER_TEMP'])/'submission.json').read_text())['id']
+          if not re.fullmatch(r'[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',submission):
+              raise ValueError('Invalid Apple submission UUID')
+          archive_sha=hashlib.sha256(Path(f"build/{env['APP']}-notarize.zip").read_bytes()).hexdigest()
+          receipt={'schemaVersion':1,'repository':env['GITHUB_REPOSITORY'],'runId':env['GITHUB_RUN_ID'],
+                   'runNumber':env['GITHUB_RUN_NUMBER'],'sourceSha':env['GITHUB_SHA'],'tag':env['GITHUB_REF_NAME'],
+                   'version':env['RELEASE_VERSION'],'archiveSha256':archive_sha,'submissionId':submission,
+                   'teamId':env['TEAM_ID'],'certificateSha1':env['IDENTITY_SHA']}
+          raw=(json.dumps(receipt,sort_keys=True)+'\n').encode()
+          Path('build/notarization-receipt.json').write_bytes(raw)
+          with open(env['GITHUB_OUTPUT'],'a') as out:
+              out.write(f"archive_sha256={archive_sha}\nsubmission_id={submission}\nreceipt_sha256={hashlib.sha256(raw).hexdigest()}\n")
+          PYTHON
+
+      # A successful submit job must have a durable archive AND its submission ID.
+      # Only these two files are retained: never runner temp, P12, keychain or
+      # loose profiles. The app's embedded distribution profile stays in its ZIP.
+      - name: Preserve signed submission
+        id: artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-submission-${{ github.run_id }}
+          path: |
+            build/LifeUI-notarize.zip
+            build/notarization-receipt.json
+          retention-days: 3
+          if-no-files-found: error
+          compression-level: 0
 
       - name: Delete temporary signing material
         if: always()
@@ -176,10 +210,190 @@ jobs:
             security delete-keychain "$RUNNER_TEMP/life-ui-release.keychain-db"
           fi
 
+  # Retry only this job after a notary timeout: its successful predecessor's
+  # artifact ID survives the run attempt. Expired/missing artifacts fail closed;
+  # never rebuild/resubmit as a fallback. Rerun-all is not a recovery operation.
+  release:
+    needs: submit
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    outputs:
+      sha256: ${{ steps.package.outputs.sha256 }}
+      version: ${{ steps.receipt.outputs.version }}
+    env:
+      EXPECTED_ARTIFACT_ID: ${{ needs.submit.outputs.artifact_id }}
+      EXPECTED_ARCHIVE_SHA256: ${{ needs.submit.outputs.archive_sha256 }}
+      EXPECTED_RECEIPT_SHA256: ${{ needs.submit.outputs.receipt_sha256 }}
+      EXPECTED_SUBMISSION_ID: ${{ needs.submit.outputs.submission_id }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require saved artifact identity
+        shell: bash
+        run: |
+          [[ "$EXPECTED_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'Missing saved artifact ID; do not rebuild or resubmit.' >&2; exit 1;
+          }
+      - uses: actions/download-artifact@v5
+        with:
+          artifact-ids: ${{ needs.submit.outputs.artifact_id }}
+          path: saved
+      - name: Validate saved submission
+        id: receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import hashlib,json,os,re
+          from pathlib import Path
+          env=os.environ
+          raw=Path('saved/notarization-receipt.json').read_bytes()
+          if hashlib.sha256(raw).hexdigest()!=env['EXPECTED_RECEIPT_SHA256']:
+              raise ValueError('Saved receipt digest mismatch')
+          receipt=json.loads(raw)
+          expected={'schemaVersion':1,'repository':env['GITHUB_REPOSITORY'],'runId':env['GITHUB_RUN_ID'],
+                    'runNumber':env['GITHUB_RUN_NUMBER'],'sourceSha':env['GITHUB_SHA'],'tag':env['GITHUB_REF_NAME'],
+                    'version':env['GITHUB_REF_NAME'].removeprefix('v'),
+                    'archiveSha256':env['EXPECTED_ARCHIVE_SHA256'],'submissionId':env['EXPECTED_SUBMISSION_ID']}
+          if any(receipt.get(k)!=v for k,v in expected.items()):
+              raise ValueError('Saved submission provenance mismatch')
+          if not re.fullmatch(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)',receipt['tag']):
+              raise ValueError('Invalid release tag')
+          if not re.fullmatch(r'[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',receipt['submissionId']):
+              raise ValueError('Invalid saved submission UUID')
+          if not re.fullmatch(r'[A-Z0-9]{10}',receipt['teamId']) or not re.fullmatch(r'[A-Fa-f0-9]{40}',receipt['certificateSha1']):
+              raise ValueError('Invalid saved signing identity')
+          archive=Path(f"saved/{env['APP']}-notarize.zip")
+          if hashlib.sha256(archive.read_bytes()).hexdigest()!=receipt['archiveSha256']:
+              raise ValueError('Saved submitted ZIP digest mismatch')
+          with open(env['GITHUB_ENV'],'a') as out:
+              for name,value in {'SUBMISSION_ID':receipt['submissionId'],'SUBMITTED_SHA256':receipt['archiveSha256'],
+                                 'RELEASE_VERSION':receipt['version'],'SIGNING_TEAM':receipt['teamId'],
+                                 'SIGNING_CERTIFICATE':receipt['certificateSha1']}.items():
+                  out.write(f'{name}={value}\n')
+          with open(env['GITHUB_OUTPUT'],'a') as out:
+              out.write(f"version={receipt['version']}\n")
+          PYTHON
+
+      - uses: 1Password/install-cli-action@v4
+      - uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          ASC_KEY_P8_BASE64: op://Apple Signing/App Store Connect API Key/p8_base64
+          ASC_KEY_ID: op://Apple Signing/App Store Connect API Key/key_id
+          ASC_ISSUER_ID: op://Apple Signing/App Store Connect API Key/issuer_id
+      - name: Wait for existing notarization
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/life-ui-notary.p8"' EXIT
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-notary.p8"
+          xcrun notarytool wait "$SUBMISSION_ID" \
+            --key "$RUNNER_TEMP/life-ui-notary.p8" --key-id "$ASC_KEY_ID" \
+            --issuer "$ASC_ISSUER_ID" --timeout 30m --output-format json > "$RUNNER_TEMP/notary-status.json"
+          python3 - <<'PYTHON'
+          import json,os
+          from pathlib import Path
+          status=json.loads((Path(os.environ['RUNNER_TEMP'])/'notary-status.json').read_text())
+          if status.get('id')!=os.environ['SUBMISSION_ID'] or status.get('status')!='Accepted':
+              raise ValueError('Expected Accepted status for the saved submission')
+          PYTHON
+          xcrun notarytool log "$SUBMISSION_ID" \
+            --key "$RUNNER_TEMP/life-ui-notary.p8" --key-id "$ASC_KEY_ID" \
+            --issuer "$ASC_ISSUER_ID" "$RUNNER_TEMP/notary-log.json"
+          python3 - <<'PYTHON'
+          import json,os
+          from pathlib import Path
+          log=json.loads((Path(os.environ['RUNNER_TEMP'])/'notary-log.json').read_text())
+          if (log.get('jobId')!=os.environ['SUBMISSION_ID'] or log.get('sha256')!=os.environ['SUBMITTED_SHA256']
+                  or log.get('status')!='Accepted' or log.get('statusCode')!=0):
+              raise ValueError('Notary log does not accept this exact submitted ZIP')
+          print('Accepted diagnostic log matches the saved submission and ZIP SHA256')
+          PYTHON
+
+      - name: Package accepted app
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          ditto -x -k "saved/$APP-notarize.zip" build
+          python3 - <<'PYTHON'
+          import os,plistlib
+          from pathlib import Path
+          info=plistlib.loads(Path(f"build/{os.environ['APP']}.app/Contents/Info.plist").read_bytes())
+          if info.get('CFBundleShortVersionString')!=os.environ['RELEASE_VERSION'] or info.get('CFBundleVersion')!=os.environ['GITHUB_RUN_NUMBER']:
+              raise ValueError('Saved app version/build mismatch')
+          PYTHON
+          lipo "build/$APP.app/Contents/MacOS/$APP" -verify_arch arm64
+          lipo "build/$APP.app/Contents/MacOS/$APP" -verify_arch x86_64
+          python3 scripts/verify-macos-signing.py "build/$APP.app" "$SIGNING_TEAM" "$SIGNING_CERTIFICATE"
+          xcrun stapler staple "build/$APP.app"
+          xcrun stapler validate "build/$APP.app"
+          codesign --verify --deep --strict "build/$APP.app"
+          spctl --assess --type execute --verbose=2 "build/$APP.app"
+          ditto -c -k --keepParent "build/$APP.app" "build/$APP-$GITHUB_REF_NAME.zip"
+          (cd build && shasum -a 256 "$APP-$GITHUB_REF_NAME.zip" > SHA256SUMS)
+          echo "sha256=$(awk '{print $1}' build/SHA256SUMS)" >> "$GITHUB_OUTPUT"
+
+      - name: Delete temporary notary material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/life-ui-notary.p8"
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          # An existing or ambiguous release requires readback/review, not adoption.
+          # Require an actual HTTP 404; auth/network/server errors are not absence.
+          PREFLIGHT_EXIT=0
+          gh api --include --method GET "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+            > "$RUNNER_TEMP/release-preflight.http" 2>/dev/null || PREFLIGHT_EXIT=$?
+          export PREFLIGHT_EXIT
+          python3 - <<'PYTHON'
+          import json,os,re
+          from pathlib import Path
+          headers,separator,body=(Path(os.environ['RUNNER_TEMP'])/'release-preflight.http').read_text().partition('\n\n')
+          status=re.fullmatch(r'HTTP/\S+ (\d{3})(?: .*)?',headers.split('\n')[0])
+          if not status or status[1]!='404' or os.environ['PREFLIGHT_EXIT']!='1' or not separator:
+              raise ValueError('Release exists or lookup failed; stop for exact readback/review')
+          data=json.loads(body)
+          if not isinstance(data,dict) or data.get('message')!='Not Found' or data.get('status','404') not in ('404',404):
+              raise ValueError('Invalid release absence response')
+          PYTHON
+          # REST tag lookup only covers published releases. Check the exact tag
+          # for a draft too; null is absence, missing data or errors are not.
+          PREFLIGHT_EXIT=0
+          gh api graphql --include \
+            -f query='query($owner:String!,$name:String!,$tag:String!){repository(owner:$owner,name:$name){release(tagName:$tag){id isDraft}}}' \
+            -f owner="${GITHUB_REPOSITORY%/*}" -f name="${GITHUB_REPOSITORY#*/}" -f tag="$GITHUB_REF_NAME" \
+            > "$RUNNER_TEMP/draft-preflight.http" 2>/dev/null || PREFLIGHT_EXIT=$?
+          export PREFLIGHT_EXIT
+          python3 - <<'PYTHON'
+          import json,os,re
+          from pathlib import Path
+          headers,separator,body=(Path(os.environ['RUNNER_TEMP'])/'draft-preflight.http').read_text().partition('\n\n')
+          status=re.fullmatch(r'HTTP/\S+ (\d{3})(?: .*)?',headers.split('\n')[0])
+          if not status or status[1]!='200' or os.environ['PREFLIGHT_EXIT']!='0' or not separator:
+              raise ValueError('Draft lookup failed; stop for exact readback/review')
+          data=json.loads(body)
+          if not isinstance(data,dict) or data.get('errors') or not isinstance(data.get('data'),dict):
+              raise ValueError('Invalid draft lookup response')
+          repository=data['data'].get('repository')
+          if not isinstance(repository,dict) or 'release' not in repository or repository['release'] is not None:
+              raise ValueError('Release exists or draft absence is unproven; stop for readback/review')
+          PYTHON
+          # This is not race-free. The unchanged gh command may internally clean
+          # up its new draft on error; a failed call still stops the workflow.
           gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
             "build/$APP-$GITHUB_REF_NAME.zip" build/SHA256SUMS
 
