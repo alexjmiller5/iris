@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "816ff5ed0ebeeccd324b1741e464693b5d5da8caa76c6b844a03e0045e31a169";
+export declare const CORE_CONTRACT_HASH = "e935ee9223797c2910128fcaef91cce70acfeb0baa329dc848074f45b9bf4ff3";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -643,6 +643,8 @@ export type GovernanceCapability = {
     principal: Actor;
     authority: GovernanceAuthority;
     limits: GovernanceLimits;
+    deploymentId: string;
+    sessionId: string;
 };
 export interface CoreOperations {
     catalog: {
