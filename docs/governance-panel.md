@@ -104,7 +104,13 @@ journal injection enables approval. The synthetic fixture has no live API adapte
 Current tests do not prove service authority, preview inertness, atomic proposal/receipt
 storage or end-to-end idempotency. Real service integration must additionally verify
 those guarantees, stale approval, actor separation, tombstones/required-field/invariant
-conflicts and purge across every retained copy. The minimal conditional HTTP patch
-prerequisite remains main `5e785bcf96d9ecfc37d00bb33515969f6bd876cc` plus
-`9121ef66df4dcc3a72c63f87d400a8e9555c17f9`; merge/deployment is unverified.
-There is no deployment or credential provisioning in this slice.
+conflicts and purge across every retained copy. The conditional HTTP patch prerequisite
+is released through Life Data PR11 at main
+`12bcc915dcef7a5d0184c714cc79ddfdd5cfdf8d`. The service owner verified deploy
+`37480040525` and authenticated session advertisement of `conditional_patch: revision-v1`.
+The conformance fixture still pins the original minimal source slice, main
+`5e785bcf96d9ecfc37d00bb33515969f6bd876cc` plus
+`9121ef66df4dcc3a72c63f87d400a8e9555c17f9`. Released conditional patch does not provide
+governance preview/proposals, authenticated actor history or idempotent approval receipts.
+The DTO/planner foundation remains a separate prerequisite. There is no deployment or
+credential provisioning in this UI slice.
