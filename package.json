@@ -9,7 +9,8 @@
   ],
   "scripts": {
     "dev": "bun run --cwd apps/web dev",
-    "test": "bun test scripts/enrollment-binding.test.ts scripts/test-origin.test.ts scripts/contract.test.ts scripts/release-macos.test.ts && bun run --cwd apps/web test",
+    "test": "bun test scripts/enrollment-binding.test.ts scripts/test-origin.test.ts scripts/contract.test.ts scripts/release-macos.test.ts && bun run test:export && bun run --cwd apps/web test",
+    "test:export": "bun test scripts/record-export.test.ts scripts/bundle-record-export.test.ts",
     "check": "bun run check:contract && bun run check:bridge && bun run --cwd apps/web check",
     "build": "bun run --cwd apps/web build",
     "bundle:core": "bun scripts/bundle-core.ts",
@@ -17,7 +18,8 @@
     "bundle:graph": "bun run --cwd apps/web bundle:graph",
     "check:contract": "bun scripts/check-contract.ts",
     "check:bridge": "bun x --no-install tsc --ignoreConfig --strict --types bun --noEmit --target ES2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions --resolveJsonModule --skipLibCheck scripts/native-core.ts scripts/contract.test.ts scripts/check-contract.ts scripts/bundle-core.ts",
-    "bundle:editor": "bun run --cwd apps/web bundle:editor"
+    "bundle:editor": "bun run --cwd apps/web bundle:editor",
+    "bundle:export": "bun scripts/bundle-record-export.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

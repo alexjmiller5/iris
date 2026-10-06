@@ -42,6 +42,52 @@ final class WorkspaceModel {
   private(set) var linkBinding: NativeWorkspaceBinding?
   private(set) var linkError: String?
   private var linkIdentityStore: NativeLinkIdentityStore?
+  private struct LoadedRowsContext: Equatable {
+    let workspace: Int
+    let query: [Data]
+    let catalog: Int
+  }
+  private struct LoadedExportContext: Equatable {
+    let rows: LoadedRowsContext
+    let request: Int
+  }
+  private var exportCatalogRevision = 0
+  private var loadedRowsContext: LoadedRowsContext?
+  private var loadedExportContext: LoadedExportContext?
+  private var currentRowsContext: LoadedRowsContext {
+    LoadedRowsContext(
+      workspace: workspaceGeneration, query: queryKey.map { Data($0.utf8) },
+      catalog: exportCatalogRevision)
+  }
+  private var currentExportContext: LoadedExportContext {
+    LoadedExportContext(rows: currentRowsContext, request: revision)
+  }
+  var canExportLoadedRows: Bool {
+    client != nil && catalog != nil && !loading && !writingRecord && !undoing && !savingView
+      && loadedExportContext == currentExportContext
+  }
+
+  func captureLoadedRowsForExport(at capturedAt: Date) throws -> RecordExportSnapshot {
+    guard canExportLoadedRows, let table else {
+      throw WorkspaceError(
+        message: "Wait for the current table operation to finish before exporting.", violations: [])
+    }
+    return RecordExportSnapshot(
+      table: table, properties: properties, rows: rows.map(\.record), scope: .loaded,
+      completeness: .init(
+        rows: .unknown, columns: .full,
+        reasons: [
+          "Only the loaded local rows are included; filters, pagination and sync may omit records.",
+          "Catalog and sync status are acquired separately from rows. Attached bytes are not included.",
+        ]),
+      acquisition: .init(
+        source: .localReplica,
+        capturedAt: capturedAt.ISO8601Format(.init(includingFractionalSeconds: true)),
+        freshness: .unknown, lastSync: syncStatus?.lastSuccessfulSync,
+        skippedTables: syncStatus?.skippedTables ?? [], pendingUiEdits: syncStatus?.pendingUiEdits,
+        rejectedEdits: syncStatus?.rejected))
+  }
+
   var canCopyLink: Bool {
     client != nil && !loading && !writingRecord && !undoing && !savingView
       && (linkBinding != nil || linkIdentityStore != nil)
@@ -86,7 +132,11 @@ final class WorkspaceModel {
       throw error
     }
   }
-  var catalog: WorkspaceCatalog?
+  var catalog: WorkspaceCatalog? {
+    didSet {
+      if !recordExportCatalogsMatch(oldValue, catalog) { exportCatalogRevision += 1 }
+    }
+  }
   var table: String? {
     didSet { if oldValue != table { resetView() } }
   }
@@ -1021,6 +1071,13 @@ final class WorkspaceModel {
   }
 
   func reload(more: Bool = false) async {
+    // A retained prefix is usable only while its successful read context is current.
+    // A stale or in-flight prefix requires an ordinary first-page replacement.
+    let append = more && !loading && !writingRecord && !undoing && !savingView
+      && loadedRowsContext == currentRowsContext
+    // A failed next page may retry its valid prefix. A full refresh (including
+    // post-write reconciliation) invalidates that prefix before awaiting anything.
+    if !append { loadedRowsContext = nil }
     revision += 1
     guard let client, let table else {
       rows = []
@@ -1029,6 +1086,7 @@ final class WorkspaceModel {
     }
     let request = revision
     let query = queryKey
+    let exportContext = currentExportContext
     loading = true
     defer {
       if request == revision, self.client === client, query == queryKey { loading = false }
@@ -1040,7 +1098,7 @@ final class WorkspaceModel {
       let view = CoreView(
         table: table,
         filters: definition.filters, sort: definition.sort,
-        limit: 100, offset: more ? rows.count : 0, trash: trash, search: search,
+        limit: 100, offset: append ? rows.count : 0, trash: trash, search: search,
         groups: definition.groups,
         calendar: hasRelativeFilters
           ? try calendarContext(timeZone: viewTimeZone, dayStartMinutes: viewDayStartMinutes) : nil)
@@ -1053,8 +1111,14 @@ final class WorkspaceModel {
       error = nil
       syncStatus = status
       undoAction = undo.action
-      rows = more ? rows + result : result
+      rows = append ? rows + result : result
       canLoadMore = result.count == 100
+      // Catalog/status are separate reads. Export only a successfully loaded context
+      // whose catalog and exact query stayed current throughout this request.
+      if exportContext == currentExportContext {
+        loadedRowsContext = exportContext.rows
+        loadedExportContext = exportContext
+      }
     } catch is CancellationError {
       // A superseded read does not invalidate the last visible data or error.
     } catch {
@@ -1062,7 +1126,7 @@ final class WorkspaceModel {
         return
       }
       self.error = error.localizedDescription
-      if !more { rows = [] }
+      if !append { rows = [] }
     }
   }
 

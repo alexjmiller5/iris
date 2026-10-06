@@ -43,6 +43,19 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   original-link action. Cancel or close disposes requests and file resources.
 - `scripts`: build and fixture test operations. No credentials or data exports.
 
+Loaded-row export shares the TypeScript serializer in `apps/web/src/lib/export`
+with the offline native `record-export.js` resource (`bun run bundle:export`).
+Native serialization runs in a dedicated JavaScriptCore context off MainActor.
+`WorkspaceModel.captureLoadedRowsForExport(at:)` synchronously copies committed
+loaded rows after successful reads for the current workspace, exact query and
+catalog. Capture never flushes drafts or reads the database again. Preserve exact
+supported values, IDs and raw Markdown; loaded coverage and freshness stay unknown.
+Keep retryable paging-prefix validity separate from the latest successful export
+request stamp; full refreshes invalidate the prefix before awaiting work. Native
+workspace menus open the system destination picker, with CSV metadata saved
+separately from the same capture. Exports contain no attachment bytes and provide
+no restore operation.
+
 The supported service dependency is the life-data hub API with independently
 minted client credentials. Never bind its D1/R2 or borrow infrastructure tokens.
 Life UI owns its Worker, Access application, vault and deployment credentials
@@ -274,10 +287,20 @@ file share request admission, including initial schema repair; independent
 files and memory databases keep separate admission. Foreground local operations
 may pass only a trailing run of passive reference-label reads, preserving order
 among foreground operations. Sync, close, transport-bearing requests and
-transport continuations remain ordering barriers. Canceled queued
+transport continuations remain ordering barriers. Passive label callers wait
+outside the database queue, with at most one submitted
+reference read per workspace. This prevents a service or sync barrier from trapping
+foreground navigation behind a whole label backlog. Canceling an unsubmitted label
+releases its waiter; an admitted label keeps its transaction ownership. Canceled queued
 catalog/row reads release their reserved file turn without entering SQLite;
 an admitted request always finishes its transaction and callback. Resolve symbolic links before
 opening and refuse hard-linked database files so journals have one identity.
+Native workspace diagnostics are bounded in-memory timing records, copied only by
+explicit user action. Use fixed operation enums, process-local IDs, durations,
+counts and byte totals; never record SQL, arguments, table names, errors, URLs,
+credentials or content. Snapshotting must not enqueue database work or observe
+per-statement updates in SwiftUI. Network suspension remains distinct from local
+execution, and post-request DTO decoding attaches to the same retained receipt.
 Native requests retain SQLite ownership
 across every transaction and local await. HTTP outside a transaction suspends
 its request owner so complete foreground requests can run; the HTTP continuation

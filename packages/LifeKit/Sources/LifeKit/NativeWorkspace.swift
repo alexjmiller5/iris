@@ -72,6 +72,11 @@ public final class NativeWorkspace {
   private var suspended: [Int: Request] = [:]
   private var nextID = 0
   private var closed = false
+  private let diagnostics = NativeWorkspaceDiagnostics()
+  private var referenceReadPending = false
+  private var referenceWaiters: [(UUID, CheckedContinuation<Void, Error>)] = [] {
+    didSet { diagnostics.setPassiveGateWaiterCount(referenceWaiters.count) }
+  }
 
   private struct Request {
     let id: Int
@@ -82,6 +87,7 @@ public final class NativeWorkspace {
     let control: SyncControl?
     let readAdmission: ReadAdmission?
     let referenceRead: Bool
+    let diagnosticID: NativeWorkspaceDiagnostics.RequestID?
   }
   /// onCancel can run off the main actor. Admission and cancellation share one
   /// decision; cancellation never changes an operation already admitted.
@@ -147,14 +153,23 @@ public final class NativeWorkspace {
     database = opened.database
     fileGate = opened.gate
     try database.install(in: runtime.context)
+    database.onExecution = { [weak self] milliseconds in
+      guard let self else { return }
+      self.diagnostics.addMetrics(
+        .init(sqlMilliseconds: milliseconds, sqlCount: 1), to: self.active?.diagnosticID)
+    }
     let finish: @convention(block) (Int, String) -> Void = { [weak self] id, json in
       self?.finish(id: id, json: json)
     }
     let yield: @convention(block) (JSValue) -> Void = { [weak self] callback in
-      guard let owner = self?.active?.id else { return }
+      guard let request = self?.active else { return }
+      let started = ContinuousClock.now
       Task { @MainActor [weak self] in
         await Task.yield()
-        self?.invokeCallback(callback, owner: owner, arguments: [])
+        self?.diagnostics.addMetrics(
+          .init(yieldGapMilliseconds: Self.elapsedMilliseconds(since: started)),
+          to: request.diagnosticID)
+        self?.invokeCallback(callback, owner: request.id, arguments: [])
       }
     }
     let post: @convention(block) (String, String, JSValue) -> Void = {
@@ -242,8 +257,19 @@ public final class NativeWorkspace {
   }
 
   public func catalog() async throws -> WorkspaceCatalog {
-    try await WorkspaceCatalog(
-      decode(CoreRequests.Catalog(CoreEmptyArgs()), cancellableRead: true))
+    var id: NativeWorkspaceDiagnostics.RequestID?
+    let catalog = try await decode(
+      CoreRequests.Catalog(CoreEmptyArgs()), cancellableRead: true, onDiagnosticID: { id = $0 })
+    let started = ContinuousClock.now
+    defer {
+      diagnostics.addMetrics(
+        .init(decodeMilliseconds: Self.elapsedMilliseconds(since: started)), to: id)
+    }
+    return try WorkspaceCatalog(catalog)
+  }
+  /// Explicit capture only. Never submits a database request, even while navigation waits.
+  func diagnosticReport(version: String, build: String) throws -> String {
+    try diagnostics.snapshotJSON(version: version, build: build)
   }
   public func writeability(table: String) async throws -> CoreWriteability {
     try await decode(CoreRequests.Writeability(CoreWriteabilityArgs(table: table)))
@@ -253,7 +279,44 @@ public final class NativeWorkspace {
   }
   /// Reads used only to fill passive reference labels in a displayed row.
   func referenceRows(view: CoreView) async throws -> [WorkspaceRow] {
-    try await decode(CoreRequests.Rows(view), cancellableRead: true, referenceRead: true)
+    try Task.checkCancellation()
+    try await acquireReferenceRead()
+    defer { releaseReferenceRead() }
+    try Task.checkCancellation()
+    return try await decode(CoreRequests.Rows(view), cancellableRead: true, referenceRead: true)
+  }
+  /// Keep presentation fan-out outside the database queue. A transport or HTTP
+  /// resumption barrier can then have at most one passive read ahead of it.
+  private func acquireReferenceRead() async throws {
+    if !referenceReadPending {
+      referenceReadPending = true
+      return
+    }
+    let id = UUID()
+    try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation {
+        (continuation: CheckedContinuation<Void, Error>) in
+        guard !Task.isCancelled else {
+          continuation.resume(throwing: CancellationError())
+          return
+        }
+        referenceWaiters.append((id, continuation))
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in
+        guard let self, let index = self.referenceWaiters.firstIndex(where: { $0.0 == id }) else {
+          return
+        }
+        self.referenceWaiters.remove(at: index).1.resume(throwing: CancellationError())
+      }
+    }
+  }
+  private func releaseReferenceRead() {
+    if referenceWaiters.isEmpty {
+      referenceReadPending = false
+    } else {
+      referenceWaiters.removeFirst().1.resume()
+    }
   }
   public func rows(table: String, search: String = "", trash: Bool = false, offset: Int = 0)
     async throws -> [WorkspaceRow]
@@ -399,19 +462,31 @@ public final class NativeWorkspace {
 
   private func decode<R: CoreRequest>(
     _ request: R, transport: HubTransport? = nil, control: SyncControl? = nil,
-    cancellableRead: Bool = false, referenceRead: Bool = false
+    cancellableRead: Bool = false, referenceRead: Bool = false,
+    onDiagnosticID: ((NativeWorkspaceDiagnostics.RequestID?) -> Void)? = nil
   ) async throws
     -> R.Response
   {
     let arguments = String(decoding: try JSONEncoder().encode(request.arguments), as: UTF8.self)
+    var id: NativeWorkspaceDiagnostics.RequestID?
     let value = try await call(
       R.method, arguments: arguments, transport: transport, control: control,
-      cancellableRead: cancellableRead, referenceRead: referenceRead)
+      cancellableRead: cancellableRead, referenceRead: referenceRead,
+      onDiagnosticID: {
+        id = $0
+        onDiagnosticID?($0)
+      })
+    let started = ContinuousClock.now
+    defer {
+      diagnostics.addMetrics(
+        .init(decodeMilliseconds: Self.elapsedMilliseconds(since: started)), to: id)
+    }
     return try JSONDecoder().decode(R.Response.self, from: JSONEncoder().encode(value))
   }
   private func call(
     _ method: String, arguments: String = "{}", transport: HubTransport? = nil,
-    control: SyncControl? = nil, cancellableRead: Bool = false, referenceRead: Bool = false
+    control: SyncControl? = nil, cancellableRead: Bool = false, referenceRead: Bool = false,
+    onDiagnosticID: ((NativeWorkspaceDiagnostics.RequestID?) -> Void)? = nil
   ) async throws -> JSONValue {
     guard !closed else { throw WorkspaceError(message: "Workspace is closed.", violations: []) }
     let readAdmission = cancellableRead ? ReadAdmission() : nil
@@ -422,6 +497,10 @@ public final class NativeWorkspace {
           return
         }
         nextID += 1
+        let diagnosticID = NativeWorkspaceDiagnostics.Method(rawValue: method).flatMap {
+          diagnostics.enqueue(method: $0, isForeground: !referenceRead)
+        }
+        onDiagnosticID?(diagnosticID)
         var insertion = requests.endIndex
         if !referenceRead, transport == nil, method != "sync", method != "close" {
           // Local foreground work may pass only trailing passive-label reads.
@@ -438,7 +517,7 @@ public final class NativeWorkspace {
             Request(
               id: nextID, method: method, arguments: arguments, transport: transport,
               continuation: continuation, control: control, readAdmission: readAdmission,
-              referenceRead: referenceRead)), at: insertion)
+              referenceRead: referenceRead, diagnosticID: diagnosticID)), at: insertion)
         startNext()
       }
     } onCancel: {
@@ -475,12 +554,14 @@ public final class NativeWorkspace {
         return
       }
       active = owner
+      diagnostics.admit(owner.diagnosticID)
       invokeCallback(callback, owner: id, arguments: [response])
       return
     }
     guard case .request(let request) = requests[index] else { return }
     requests.remove(at: index)
     active = request
+    diagnostics.admit(request.diagnosticID)
     // Keep cancelled placeholders until their normal file turn: removing every
     // request from a waiting instance could strand its reserved gate ownership.
     if request.readAdmission?.admit() == false {
@@ -527,8 +608,17 @@ public final class NativeWorkspace {
   }
   private func finish(id: Int, json: String) {
     guard active?.id == id else { return }
+    let diagnosticID = active?.diagnosticID
+    let started = ContinuousClock.now
+    let data = Data(json.utf8)
+    defer {
+      diagnostics.addMetrics(
+        .init(
+          decodeMilliseconds: Self.elapsedMilliseconds(since: started), responseBytes: data.count),
+        to: diagnosticID)
+    }
     do {
-      let reply = try JSONDecoder().decode(Reply.self, from: Data(json.utf8))
+      let reply = try JSONDecoder().decode(Reply.self, from: data)
       if let error = reply.error {
         complete(.failure(WorkspaceError(message: error, violations: reply.violations ?? [])))
       } else {
@@ -553,6 +643,7 @@ public final class NativeWorkspace {
       active?.control?.deadline?.cancel()
     }
     let continuation = active?.continuation
+    diagnostics.finish(active?.diagnosticID)
     active = nil
     fileGate.release(self)
     continuation?.resume(with: outcome)
@@ -566,6 +657,7 @@ public final class NativeWorkspace {
         message: "Network request attempted inside a transaction.", violations: [])
     }
     suspended[owner.id] = owner
+    diagnostics.suspend(owner.diagnosticID)
     active = nil
     fileGate.release(self)
     // Leave the current JSC callback before starting another JS operation.
@@ -575,6 +667,7 @@ public final class NativeWorkspace {
   private func receiveTransport(owner: Int, callback: JSValue, response: String) {
     if let request = suspended[owner] {
       request.control?.network = nil
+      diagnostics.resume(request.diagnosticID)
       // Resume behind admitted foreground work, but ahead of barriers waiting
       // for this sync itself. No callback can run inside a foreground transaction.
       let barrier =
@@ -599,6 +692,10 @@ public final class NativeWorkspace {
     if active?.id == owner, let exception = runtime.context.exception {
       complete(.failure(WorkspaceError(message: exception.toString(), violations: [])))
     }
+  }
+  private static func elapsedMilliseconds(since start: ContinuousClock.Instant) -> Double {
+    let components = start.duration(to: .now).components
+    return Double(components.seconds) * 1_000 + Double(components.attoseconds) / 1e15
   }
 }
 
