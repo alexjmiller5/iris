@@ -58,13 +58,11 @@ final class IncomingReferencesUITests: XCTestCase {
     tap(composed)
     let title = app.textFields["field-title"]
     expectValue(title, "Incoming composed")
-    let body = app.buttons["field-body"]
-    reveal(body, in: app)
-    tap(body)
-    tap(app.webViews.descendants(matching: .any)["Body options"])
+    let options = app.webViews.descendants(matching: .any)["Body options"]
+    reveal(options, in: app)
+    tap(options)
     tap(app.webViews.descendants(matching: .any)["Body source"])
     expectValue(app.webViews.textViews["Body"], "Composed full body")
-    tap(app.navigationBars["Body"].buttons["finish-markdown"])
     tap(app.navigationBars["Record"].buttons["Cancel"])
     openRecord(app, title: "Target notebook")
     reveal(group, in: app)
@@ -77,7 +75,7 @@ final class IncomingReferencesUITests: XCTestCase {
     expectValue(title, "Incoming decomposed")
   }
 
-  func testIncomingNavigationCancelAndMarkdownReturnKeepTheDraftAndPanelUsable() throws {
+  func testIncomingNavigationCancelAndEmbeddedMarkdownKeepTheDraftAndPanelUsable() throws {
     let app = try openTarget()
     defer { app.terminate() }
     let title = app.textFields["field-title"]
@@ -95,26 +93,32 @@ final class IncomingReferencesUITests: XCTestCase {
     tap(app.alerts.buttons["Keep editing"])
     reveal(title, in: app, down: true)
     expectValue(title, draft)
-    let body = app.buttons["field-body"]
-    reveal(body, in: app)
-    tap(body)
-    tap(app.webViews.descendants(matching: .any)["Body options"])
+    let options = app.webViews.descendants(matching: .any)["Body options"]
+    reveal(options, in: app)
+    tap(options)
     tap(app.webViews.descendants(matching: .any)["Body source"])
     let sourceText = app.webViews.textViews["Body"]
     tap(sourceText)
     sourceText.typeText(" final keystroke")
     let bodyDraft = try XCTUnwrap(sourceText.value as? String)
     XCTAssertTrue(bodyDraft.contains("final keystroke"))
-    tap(app.navigationBars["Body"].buttons["finish-markdown"])
+    let saved = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated {
+          app.staticTexts["markdown-save-status"].label == "Saved on this device"
+        }
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 10), .completed)
+    reveal(title, in: app, down: true)
     expectValue(title, draft)
-    // Load a previously unopened group after returning. Retained rows alone would
-    // conceal a disposed model that can no longer make requests.
+    // Scroll from Content to a previously unopened group. Retained rows alone
+    // would conceal a disposed model that can no longer make requests.
     let unvisited = app.buttons["notes · Topic"]
     reveal(unvisited, in: app)
     tap(unvisited)
     let anotherSource = app.buttons["Open Incoming 01"]
     reveal(anotherSource, in: app)
-    capture(app, "native-incoming-draft-after-markdown-return")
+    capture(app, "native-incoming-draft-after-embedded-markdown")
     tap(anotherSource)
     tap(app.alerts.buttons["Discard changes and open"])
     expectValue(title, "Incoming 01")
@@ -122,9 +126,8 @@ final class IncomingReferencesUITests: XCTestCase {
     tap(app.navigationBars["Record"].buttons["Cancel"])
     openRecord(app, title: "Target notebook")
     expectValue(title, "Target notebook")
-    reveal(body, in: app)
-    tap(body)
-    tap(app.webViews.descendants(matching: .any)["Body options"])
+    reveal(options, in: app)
+    tap(options)
     tap(app.webViews.descendants(matching: .any)["Body source"])
     expectValue(sourceText, bodyDraft)
   }

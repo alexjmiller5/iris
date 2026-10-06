@@ -219,6 +219,9 @@ Markdown cells show a bounded, formatted preview. Editing expands only the activ
 cell into the rich editor; other properties keep their compact presentation.
 The prepared draft retains its live editor across background refreshes and table
 scrolling. Save, Cancel and Open record collect the final text before acting.
+The full record places visible Markdown bodies beneath the compact properties,
+ready to write without opening another page. Empty bodies stay available;
+explicitly hidden bodies remain under More properties.
 
 Image filename URLs, retained file paths and JSON arrays of image references
 show previews. Bounded raster and SVG data URLs are supported too. **Image source**
@@ -231,8 +234,9 @@ Markdown uses the same editor as web, bundled locally in WebKit. Type `# ` or
 `## ` for headings, `- ` for bullets, or `/` on an empty line for block choices.
 Formatting actions appear when text is selected; the options menu contains
 Source, Undo and Redo. Existing records autosave
-editable Markdown after a 600 ms typing pause. **Done** collects the live document
-and awaits the local write. Other property changes and new records still require
+editable Markdown after a 600 ms typing pause. **Save** collects every live body
+and awaits the local write; closing or opening a related record also collects
+the final input before checking for unsaved changes. Other property changes and new records still require
 **Save**. Later typing stays in the draft while a write is pending, and successful
 receipts advance the editor's revision without replacing those changes. A failed
 identical edit waits for a change or explicit retry. The status says **Saved on
@@ -246,7 +250,7 @@ and closing the workspace forgets it. Text-editor undo remains separate.
 An open editor's newer draft stays intact, including when Undo affects another
 record. Its autosave pauses
 until an explicit **Save**, also after a failed Undo. While paused, Markdown
-**Done** keeps the draft without saving it. Undoing a creation can put the record
+**Keep draft and close** keeps the draft without saving it. Undoing a creation can put the record
 in trash; use **Restore record**, then review and save the retained draft separately.
 The live Markdown snapshot must be safely journaled before Undo can run.
 An interrupted Undo with no confirmed result keeps the draft for the same
@@ -265,7 +269,7 @@ after relaunch; **Discard draft** removes them explicitly. Recovery stays attach
 to the exact stored record, even when two record IDs look identical. A stale recovered
 revision cannot overwrite a newer row. An interrupted write with no confirmed
 receipt retains its latest draft and requires review before saving again.
-Use **Copy Markdown** or a field's **Copy** button, then **Keep draft and close**
+Use a field's **Copy** button, then **Keep draft and close**
 to leave without saving or deleting the recovery draft. The Markdown actions
 collect the live editor source before copying or closing. Reopen the row and choose
 **Open saved record** to inspect its latest values and paste reviewed changes
@@ -572,12 +576,12 @@ Image references are retained as placeholders without loading remote images.
 
 The native editor uses the same component in a single bundled HTML resource.
 Its bridge accepts document state and emits changes with an opaque draft ID;
-Done collects a live snapshot to include the final keystroke. The island has
+Save and close collect live snapshots to include the final keystroke. The island has
 no database or credential bridge and blocks network access. The web client
 autosaves Markdown on existing records after a short typing pause, with a visible
 saving/saved state. Unrelated property drafts wait for **Save record**; new records
 also require their first explicit save. Conflicts retain the draft. Native editors
-also autosave existing Markdown bodies and flush on Done; property edits and new
+also autosave existing Markdown bodies and collect them before Save; property edits and new
 records require Save. Every save uses the shared validated write path.
 
 Browser checks for the editor use a dedicated `life-ui-markdown.localhost`

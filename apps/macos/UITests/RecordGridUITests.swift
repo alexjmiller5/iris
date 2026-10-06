@@ -138,7 +138,9 @@ final class RecordGridUITests: XCTestCase {
     let title = app.textFields["field-title"]
     XCTAssertTrue(title.waitForExistence(timeout: 5))
     XCTAssertEqual(title.value as? String, "A place to start")
-    XCTAssertTrue(app.buttons["field-body"].exists)
+    XCTAssertTrue(
+      app.sheets.descendants(matching: .any).matching(identifier: "field-body").firstMatch.exists)
+    XCTAssertTrue(app.sheets.webViews.textViews["Body"].waitForExistence(timeout: 10))
     app.buttons["Cancel"].click()
     XCTAssertTrue(grid.waitForExistence(timeout: 5))
   }

@@ -43,9 +43,12 @@ final class InlineMarkdownUITests: XCTestCase {
       (preview.value as? String ?? "").contains("# Inline heading"),
       "Table preview interprets Markdown")
     grid.buttons["Open A place to start"].click()
-    app.buttons["field-body"].click()
+    let body = app.sheets.descendants(matching: .any).matching(identifier: "field-body").firstMatch
+    XCTAssertTrue(body.waitForExistence(timeout: 5))
+    XCTAssertTrue(app.sheets.webViews.textViews["Body"].waitForExistence(timeout: 10))
     let options = app.webViews.descendants(matching: .any)["Body options"]
-    if options.waitForExistence(timeout: 2) { options.click() }
+    XCTAssertTrue(options.waitForExistence(timeout: 5))
+    options.click()
     app.webViews.descendants(matching: .any)["Body source"].click()
     let source = app.webViews.textViews["Body"]
     XCTAssertTrue(source.waitForExistence(timeout: 5))

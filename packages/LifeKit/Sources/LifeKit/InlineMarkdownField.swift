@@ -37,6 +37,7 @@ import WebKit
 
 struct InlineMarkdownField: View {
   @Bindable var editor: InlineMarkdownEditor
+  var height: CGFloat = 240
   private var session: MarkdownEditorSession { editor.session }
 
   var body: some View {
@@ -68,7 +69,7 @@ struct InlineMarkdownField: View {
             Button("Use source editor") { editor.usingSource = true }
           }
         }
-      }.frame(height: 240)
+      }.frame(height: height)
     }
   }
 }

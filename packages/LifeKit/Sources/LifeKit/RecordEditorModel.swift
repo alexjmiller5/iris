@@ -3,24 +3,49 @@ import Observation
 
 @Observable @MainActor
 final class RecordEditorModel {
-  @ObservationIgnored private var inlineMarkdown: InlineMarkdownEditor?
+  @ObservationIgnored private var markdownEditors: [Data: InlineMarkdownEditor] = [:]
 
   func markdownEditor(for field: CatalogField) -> InlineMarkdownEditor {
-    if let inlineMarkdown, inlineMarkdown.fieldID.utf8.elementsEqual(field.id.utf8) {
-      return inlineMarkdown
-    }
-    endInlineMarkdown()
+    let key = Data(field.id.utf8)
+    if let retained = markdownEditors[key] { return retained }
     let next = InlineMarkdownEditor(field: field, value: draft.values[field.id] ?? "") {
       [weak self] in
       self?.setValue($0, for: field.id)
     }
-    inlineMarkdown = next
+    markdownEditors[key] = next
     return next
   }
 
+  func collectMarkdownEditors(lock: Bool) async throws {
+    // Include retained editors outside the visible Form viewport. A later field
+    // failing to collect must leave earlier locked fields editable for recovery.
+    do {
+      for key in markdownEditors.keys.sorted(by: { $0.lexicographicallyPrecedes($1) }) {
+        try await markdownEditors[key]?.collect(lock: lock)
+      }
+    } catch {
+      resumeMarkdownEditors()
+      throw error
+    }
+  }
+
+  func resumeMarkdownEditors() {
+    for editor in markdownEditors.values { editor.session.resumeEditing?() }
+  }
+
+  func refreshMarkdownEditors() {
+    // Only call after an explicit recovery/Undo transition, never ordinary typing.
+    for editor in markdownEditors.values {
+      editor.session.begin(
+        value: draft.values[editor.fieldID] ?? "", label: editor.session.document.label,
+        readOnly: isTrashed)
+      editor.coordinator.render()
+    }
+  }
+
   func endInlineMarkdown() {
-    inlineMarkdown?.stop()
-    inlineMarkdown = nil
+    for editor in markdownEditors.values { editor.stop() }
+    markdownEditors.removeAll()
   }
 
   private(set) var draft: RecordDraft

@@ -148,14 +148,12 @@ final class RejectionInboxUITests: XCTestCase {
   }
 
   private func expectBody(_ app: XCUIApplication, _ expected: String) {
-    let body = app.buttons["field-body"]
-    reveal(body, in: app)
-    tap(body)
-    tap(app.webViews.descendants(matching: .any)["Body options"])
+    let options = app.webViews.descendants(matching: .any)["Body options"]
+    reveal(options, in: app)
+    tap(options)
     tap(app.webViews.descendants(matching: .any)["Body source"])
     expectValue(app.webViews.textViews["Body"], expected)
-    tap(app.navigationBars["Body"].buttons["finish-markdown"])
-    XCTAssertTrue(app.navigationBars["Body"].waitForNonExistence(timeout: 5))
+    XCTAssertTrue(app.navigationBars["Record"].exists)
   }
 
   private func keepAndClose(_ app: XCUIApplication) {

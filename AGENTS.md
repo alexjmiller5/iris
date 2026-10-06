@@ -28,7 +28,7 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
 - `apps/web/vite.editor.config.ts`: self-contained Markdown editor island using
   the same Milkdown component as the web client. `lifeEditor.setDocument` accepts
   a draft ID, source, label and read-only state; `getDocument` returns the live
-  snapshot. Native hosts reject stale IDs and collect the snapshot before Done.
+  snapshot. Native hosts reject stale IDs and collect all live snapshots before record actions.
   Keep Markdown as storage, preserve untouched source, and render imported HTML
   inert. The island has no network, SQL or credential access.
 - `scripts`: build and fixture test operations. No credentials or data exports.
@@ -144,7 +144,11 @@ layout removes the projection; it never removes record values or resets widths.
 Mobile property editing and the full record pop-up share RecordEditorModel and its
 recovery journal. Resolve a fresh full row and field editability before inline
 editing; immutable/derived fields and recovery use the full presentation. Expand
-transfers the existing model, never a reconstructed draft. Keep the active row
+transfers the existing model, never a reconstructed draft. Full records embed visible
+Markdown bodies below their properties. Retain one WebKit holder per exact field
+ID through form recycling; collect all holders before save, close, Undo or record
+handoff. Explicit Undo/recovery transitions refresh sessions; ordinary draft
+updates must never replace undelivered WebKit input. Keep the active row
 visible during background refresh and prevent context-changing actions until close.
 Empty-property grouping never hides zero, false, required creation fields or
 validation errors, and stays stable while the editor's values change.
