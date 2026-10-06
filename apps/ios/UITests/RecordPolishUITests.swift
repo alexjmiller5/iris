@@ -175,6 +175,95 @@ final class RecordPolishUITests: XCTestCase {
     app.buttons["Discard changes"].tap()
   }
 
+  func testCatalogRuleFailureRetainsDraftAndReadOnlyMetadata() throws {
+    continueAfterFailure = false
+    let env = ProcessInfo.processInfo.environment
+    try XCTSkipUnless(
+      env["LIFE_UI_TEST_CATALOG_SIMULATOR"] != nil
+        && env["LIFE_UI_TEST_CATALOG_SIMULATOR"] == env["SIMULATOR_UDID"],
+      "Prepare CatalogRecordAcceptanceTests on the explicitly allocated private simulator.")
+    let app = XCUIApplication()
+    app.launchArguments = ["--normal-startup"]
+    app.launch()
+    defer { app.terminate() }
+    app.buttons["open-local"].tap()
+    XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 10))
+    app.navigationBars.buttons["BackButton"].firstMatch.tap()
+    let table = app.buttons["sidebar-table-catalog_examples"]
+    XCTAssertTrue(table.waitForExistence(timeout: 5))
+    table.tap()
+    let record = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Catalog fixture"))
+      .firstMatch
+    XCTAssertTrue(record.waitForExistence(timeout: 5))
+    record.tap()
+    let title = app.textFields["field-title"]
+    XCTAssertTrue(title.waitForExistence(timeout: 5))
+    XCTAssertTrue(app.images["Required"].exists)
+    app.buttons["About Title"].tap()
+    XCTAssertTrue(
+      app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Short fixture title."))
+        .firstMatch.waitForExistence(timeout: 5))
+    // Dismiss only this owned property-help popover.
+    title.tap()
+    let state = app.buttons["field-state"]
+    state.tap()
+    let ready = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Ready for review."))
+      .firstMatch
+    XCTAssertTrue(ready.waitForExistence(timeout: 5))
+    ready.tap()
+    for text in ["Immutable fixture value", "Derived fixture value"] {
+      let value = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text))
+        .firstMatch
+      for _ in 0..<8 where !value.isHittable { app.swipeUp() }
+      XCTAssertTrue(value.isHittable, "Read-only value must be visible before asserting no editor")
+    }
+    XCTAssertFalse(app.textFields["field-locked"].exists)
+    XCTAssertFalse(app.textFields["field-computed"].exists)
+    capture(app, "catalog-read-only-metadata")
+    for _ in 0..<8 where !title.isHittable { app.swipeDown() }
+    replaceCatalogText(title, with: "Blocked")
+    let detail = app.textFields["field-detail"]
+    replaceCatalogText(detail, with: "Retained second edit")
+    let rules = app.buttons["catalog-rules"]
+    for _ in 0..<8 where !rules.isHittable { app.swipeUp() }
+    rules.tap()
+    XCTAssertTrue(app.staticTexts["Fixture title is blocked."].waitForExistence(timeout: 5))
+    app.navigationBars.buttons.element(boundBy: 0).tap()
+    app.buttons["save-record"].tap()
+    XCTAssertTrue(app.navigationBars["Record"].exists, "Rejected Save must not dismiss the editor")
+    XCTAssertTrue(
+      app.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "Fixture title is blocked.")
+      ).firstMatch.waitForExistence(timeout: 5))
+    for _ in 0..<8 where !title.isHittable { app.swipeDown() }
+    XCTAssertEqual(title.value as? String, "Blocked")
+    XCTAssertEqual(detail.value as? String, "Retained second edit")
+    capture(app, "catalog-rejected-draft")
+    replaceCatalogText(title, with: "Allowed")
+    app.buttons["save-record"].tap()
+    XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
+    let saved = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Allowed"))
+      .firstMatch
+    XCTAssertTrue(saved.waitForExistence(timeout: 5))
+    saved.tap()
+    XCTAssertTrue(title.waitForExistence(timeout: 5))
+    XCTAssertEqual(title.value as? String, "Allowed")
+    XCTAssertEqual(detail.value as? String, "Retained second edit")
+    for text in ["Immutable fixture value", "Derived fixture value"] {
+      XCTAssertTrue(
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch.exists)
+    }
+    capture(app, "catalog-corrected-readback")
+    app.navigationBars["Record"].buttons["Cancel"].tap()
+  }
+
+  private func replaceCatalogText(_ field: XCUIElement, with value: String) {
+    XCTAssertTrue(field.isHittable)
+    field.tap()
+    field.typeKey("a", modifierFlags: .command)
+    field.typeText(value)
+  }
+
   private func capture(_ app: XCUIApplication, _ name: String) {
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = name

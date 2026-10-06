@@ -1,150 +1,353 @@
-import { chromium, expect } from '@playwright/test';
-import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, workspacePage } from './test-origin';
+import { expect } from "@playwright/test";
+import { regressionHub } from "./workspace-regression-hub";
+import { disposableOrigin } from "./test-origin";
+import {
+  sourceNavigationCDP,
+  element,
+  named,
+  js,
+} from "./source-navigation-cdp";
 
-// Catches a host bypass of shared rule checks, incomplete-replica trust, and
-// partial rollback of an invalid edit through the actual Worker/OPFS boundary.
+// Actual Worker/OPFS acceptance. Requires an explicitly leased synthetic target.
+// Mutants: generic rule text, discarded failed draft, editable derived/immutable
+// controls, missing catalog descriptions, or an accepted invariant violation.
 const source = process.argv[2];
-if (!source) throw Error('Provide the life-data checkout');
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-markdown.localhost:5198/workspace?review';
+if (!source) throw Error("Provide the life-data checkout");
+const url =
+  process.env.LIFE_UI_TEST_URL ??
+  "http://life-ui-markdown.localhost:5198/workspace?review";
 const origin = disposableOrigin(url);
+if (!process.env.LIFE_UI_TEST_TARGET)
+  throw Error("Provide the owned LIFE_UI_TEST_TARGET");
 let failPull = false;
-const { server, db } = await regressionHub(source, origin, 0, {
-  wrap: worker => ({ async fetch(request: Request, env: unknown, context: unknown) {
-    if (failPull && new URL(request.url).pathname === '/v1/rows/pull')
-      return new Response('Fixture offline', {status:503,headers:{'Access-Control-Allow-Origin':origin}});
-    return worker.fetch(request,env,context);
-  }}),
+const { server, db, auth } = await regressionHub(source, origin, 0, {
+  wrap: (worker) => ({
+    async fetch(request: Request, env: unknown, context: unknown) {
+      if (failPull && new URL(request.url).pathname === "/v1/rows/pull")
+        return new Response("Fixture offline", {
+          status: 503,
+          headers: { "Access-Control-Allow-Origin": origin },
+        });
+      return worker.fetch(request, env, context);
+    },
+  }),
 });
-db.db.query('INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)')
-  .run('quantity-positive','widgets','invariant',1,'SELECT id FROM changed WHERE quantity < 0','Quantity cannot be negative.');
-db.db.exec("INSERT INTO catalog_tables(id,kind,display) VALUES ('history','system','col')");
-const provenanceDDL='CREATE TABLE provenance(id TEXT PRIMARY KEY,created_at TEXT,updated_at TEXT,deleted_at TEXT,hub_at TEXT,detail TEXT)';
-db.db.exec(provenanceDDL);
-db.db.query('INSERT INTO _schema_log(applied_at,ddl) VALUES (?,?)').run('2026-01-01T00:00:00.000Z',provenanceDDL);
-db.db.exec("INSERT INTO catalog_tables(id,kind,display) VALUES ('provenance','system','detail')");
-
-const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
-let ownedPage: import('@playwright/test').Page | undefined;
+let page: Awaited<ReturnType<typeof sourceNavigationCDP>> | undefined;
 try {
-  const page = ownedPage = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
-  if (!page) throw Error('Open the reserved review page');
-  page.setDefaultTimeout(10000);
-  await page.setViewportSize({width:1440,height:1000});
-  page.on('dialog',dialog=>dialog.accept());
-  await page.goto(new URL('/',url).href);
-  const cdp=await page.context().newCDPSession(page);
-  await cdp.send('Storage.clearDataForOrigin',{origin,storageTypes:'all'});
-  await cdp.detach();
-  await page.addInitScript(()=>{
-    const state=window as any;
-    state.holdPermissionTable='';state.heldPermissions=[];
-    state.releasePermissions=()=>{state.holdPermissionTable='';state.heldPermissions.splice(0).forEach((deliver:()=>void)=>deliver());};
+  db.db
+    .query(
+      "INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
+    )
+    .run(
+      "quantity-positive",
+      "widgets",
+      "invariant",
+      1,
+      "SELECT id FROM changed WHERE quantity < 0",
+      "Quantity cannot be negative.",
+    );
+  db.db.exec(
+    "INSERT INTO catalog_tables(id,kind,display) VALUES ('history','system','col')",
+  );
+  for (const ddl of [
+    "CREATE TABLE provenance(id TEXT PRIMARY KEY,created_at TEXT,updated_at TEXT,deleted_at TEXT,hub_at TEXT,detail TEXT)",
+    "ALTER TABLE widgets ADD COLUMN detail TEXT",
+    "ALTER TABLE widgets ADD COLUMN locked TEXT",
+    "ALTER TABLE widgets ADD COLUMN computed TEXT",
+  ]) {
+    db.db.exec(ddl);
+    db.db
+      .query("INSERT INTO _schema_log(applied_at,ddl) VALUES (?,?)")
+      .run("2026-01-01T00:00:00.000Z", ddl);
+  }
+  db.db.exec(
+    "INSERT INTO catalog_tables(id,kind,display) VALUES ('provenance','system','detail')",
+  );
+  db.db
+    .exec(`UPDATE catalog_properties SET description='Short fixture title.' WHERE id='widgets.title';
+    UPDATE catalog_properties SET options='[{"v":"Dynamic","d":"Ready for review."}]',description='Choose a fixture state.' WHERE id='widgets.status';
+    INSERT INTO catalog_properties(id,tbl,col,label,type,description,immutable,derived_by) VALUES
+      ('widgets.detail','widgets','detail','Detail','text','A second independent edit.',0,NULL),
+      ('widgets.locked','widgets','locked','Locked','text','Set once by the creator.',1,NULL),
+      ('widgets.computed','widgets','computed','Computed','text','Filled by the fixture derivation.',0,'fixture-derivation');
+    UPDATE widgets SET detail='Original detail',locked='Immutable fixture value',computed='Derived fixture value' WHERE id='fixture-record';`);
+
+  page = await sourceNavigationCDP(url);
+  const cdp = page;
+  cdp.on("Page.javascriptDialogOpening", () => {
+    void cdp.command("Page.handleJavaScriptDialog", { accept: true });
+  });
+  await cdp.command("Emulation.setDeviceMetricsOverride", {
+    width: 1440,
+    height: 1000,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await cdp.navigate(new URL("/", url).href);
+  await cdp.command("Storage.clearDataForOrigin", {
+    origin,
+    storageTypes: "all",
+  });
+  const script = await cdp.command("Page.addScriptToEvaluateOnNewDocument", {
+    source: `
+    window.holdPermissionTable='';window.heldPermissions=[];
+    window.releasePermissions=()=>{window.holdPermissionTable='';window.heldPermissions.splice(0).forEach(deliver=>deliver());};
     const Original=window.Worker;
     window.Worker=class extends Original {
-      tables=new Map<number,string>();
-      postMessage(message:any,...args:any[]){if(message.method==='writeability')this.tables.set(message.id,message.args.table);return super.postMessage(message,...args as [any]);}
-      set onmessage(handler:any){super.onmessage=event=>{const table=this.tables.get(event.data.id);this.tables.delete(event.data.id);const deliver=()=>handler.call(this,event);if(table&&table===state.holdPermissionTable)state.heldPermissions.push(deliver);else deliver();};}
-    };
+      tables=new Map();
+      postMessage(message,...args){if(message.method==='writeability')this.tables.set(message.id,message.args.table);return super.postMessage(message,...args);}
+      set onmessage(handler){super.onmessage=event=>{const table=this.tables.get(event.data.id);this.tables.delete(event.data.id);const deliver=()=>handler.call(this,event);if(table&&table===window.holdPermissionTable)window.heldPermissions.push(deliver);else deliver();};}
+    };`,
   });
-  await page.goto(url);
-  const open=async()=>{
-    await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
-    await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
-    await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));
-    await page.getByLabel('Device token').fill('fixture');
-  };
-  const sync=async()=>{
-    await page.getByRole('button',{name:'Sync now',exact:true}).click();
-    await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled({timeout:30000});
-  };
-  await open();await sync();
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
-  await page.getByRole('button',{name:'Fixture record',exact:true}).click();
-  await page.getByLabel('Quantity',{exact:true}).fill('-1');
-  await page.getByRole('button',{name:'Save record',exact:true}).click();
-  await expect(page.getByRole('alert')).toContainText('Quantity cannot be negative.');
-  await expect(page.getByLabel('Quantity',{exact:true})).toHaveValue('-1');
-  await expect(page.getByText('Pending edits: 0',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Close record',exact:true}).click();
-  await page.getByRole('button',{name:'Fixture record',exact:true}).click();
-  await expect(page.getByLabel('Quantity',{exact:true})).toHaveValue('42');
-  await page.getByLabel('Quantity',{exact:true}).fill('43');
-  await page.getByRole('button',{name:'Save record',exact:true}).click();
-  await expect(page.getByText('Pending edits: 1',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Close record',exact:true}).click();
-  await sync();
-  expect(db.db.query("SELECT quantity FROM widgets WHERE id='fixture-record'").get()).toEqual({quantity:43});
-  expect(db.db.query("SELECT col,old,new FROM history WHERE row_id='fixture-record'").all()).toEqual([{col:'quantity',old:'42',new:'43'}]);
-  console.log('PASS: valid table rules allow edits; invalid edits retain the draft and roll back rows, history and pending state');
+  try {
+    await cdp.navigate(url);
+    const button = (name: string) => named("button", name);
+    const text = (name: string) => named("button,summary", name);
+    const field = (column: string) => element("#field-" + column);
+    const click = (name: string) => cdp.click(button(name));
+    const value = (column: string, expected: string) =>
+      cdp.until(`(${field(column)})?.value===${js(expected)}`);
+    const open = async () => {
+      await click("Open my workspace");
+      await cdp.click(text("Connect to a hub"));
+      await cdp.click(text("Use a device token"));
+      const input = (label: string) =>
+        `(()=>{const label=${named("label", label)};return label?.control??label?.querySelector('input');})()`;
+      await cdp.fill(input("Hub address"), server.url.href.replace(/\/$/, ""));
+      await cdp.fill(input("Device token"), "fixture");
+    };
+    const sync = async () => {
+      await click("Sync now");
+      await expect
+        .poll(
+          () =>
+            cdp.evaluate(
+              `!!(${button("Sync now")}) && !(${button("Sync now")}).disabled`,
+            ),
+          { timeout: 30000 },
+        )
+        .toBe(true);
+    };
+    const enabled = (name: string, yes: boolean) =>
+      cdp.until(`!!(${button(name)}) && (${button(name)}).disabled===${!yes}`);
+    const bodyHas = (text: string) =>
+      cdp.until(`document.body.innerText.includes(${js(text)})`);
+    // Read the actual local replica through its existing request API, never a mock receipt.
+    const local = (method: string, args?: unknown) =>
+      cdp.evaluate(`(async()=>{
+      const {WorkspaceDatabase}=await import('/src/lib/database.ts');const database=new WorkspaceDatabase();
+      try{await database.request('open');return await database.request(${js(method)},${js(args ?? {})});}finally{database.close();}
+    })()`);
+    const stored = async () => {
+      const rows = await local("rows", {
+        view: {
+          table: "widgets",
+          filters: [{ column: "id", op: "eq", value: "fixture-record" }],
+        },
+      });
+      return rows[0];
+    };
+    await open();
+    await sync();
+    await enabled("New record", true);
+    await click("Fixture record");
+    await value("quantity", "42");
+    await cdp.until(
+      `document.querySelector('label[for="field-title"] .required')?.textContent==='Required'`,
+    );
+    await cdp.until(
+      `(${field("title")})?.closest('.field').innerText.includes('Short fixture title.')`,
+    );
+    await cdp.until(
+      `Array.from((${field("status")})?.options??[]).some(o=>o.textContent.includes('Ready for review.'))`,
+    );
+    for (const [col, expected, description] of [
+      ["locked", "Immutable fixture value", "Set once"],
+      ["computed", "Derived fixture value", "Filled automatically"],
+    ]) {
+      await value(col, expected);
+      await cdp.until(
+        `(${field(col)}).disabled && (${field(col)}).closest('.field').innerText.includes(${js(description)})`,
+      );
+    }
+    const before = await stored();
+    const pending = (await local("status")).pendingUiEdits;
+    const history = db.db
+      .query("SELECT * FROM history WHERE row_id='fixture-record' ORDER BY id")
+      .all();
+    await cdp.fill(field("quantity"), "-1");
+    await cdp.fill(field("detail"), "Retained second edit");
+    await click("Save record");
+    await cdp.until(
+      `Array.from(document.querySelectorAll('.failure')).some(e=>e.innerText.includes('Quantity cannot be negative.'))`,
+    );
+    await value("quantity", "-1");
+    await value("detail", "Retained second edit");
+    await enabled("Save record", true);
+    expect(await stored()).toEqual(before);
+    expect((await local("status")).pendingUiEdits).toBe(pending);
+    expect(
+      db.db
+        .query(
+          "SELECT * FROM history WHERE row_id='fixture-record' ORDER BY id",
+        )
+        .all(),
+    ).toEqual(history);
+    await click("Close record");
+    await click("Fixture record");
+    await value("quantity", "42");
+    await value("detail", "Original detail");
+    await cdp.fill(field("quantity"), "43");
+    await cdp.fill(field("detail"), "Retained second edit");
+    await click("Save record");
+    await bodyHas("Pending edits: 1");
+    await click("Close record");
+    await click("Fixture record");
+    await value("quantity", "43");
+    await value("detail", "Retained second edit");
+    await value("locked", "Immutable fixture value");
+    await value("computed", "Derived fixture value");
+    await click("Close record");
+    await sync();
+    expect(
+      db.db
+        .query(
+          "SELECT quantity,detail,locked,computed FROM widgets WHERE id='fixture-record'",
+        )
+        .get(),
+    ).toEqual({
+      quantity: 43,
+      detail: "Retained second edit",
+      locked: "Immutable fixture value",
+      computed: "Derived fixture value",
+    });
+    expect(
+      db.db
+        .query(
+          "SELECT col,old,new FROM history WHERE row_id='fixture-record' ORDER BY col",
+        )
+        .all(),
+    ).toEqual([
+      { col: "detail", old: "Original detail", new: "Retained second edit" },
+      { col: "quantity", old: "42", new: "43" },
+    ]);
+    console.log(
+      "PASS: real catalog errors retain drafts; helpers/read-only metadata and corrected readback agree",
+    );
 
-  // Unrelated large-table omissions must not prevent a self-contained rule.
-  await page.getByRole('button',{name:'Switch workspace',exact:true}).click();
-  await page.evaluate(()=>localStorage.setItem('life-ui:replica',JSON.stringify({maxRows:50000,tables:{history:false,provenance:false}})));
-  await open();await sync();
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
-  await page.getByRole('button',{name:'Fixture record',exact:true}).click();
-  await page.getByLabel('Quantity',{exact:true}).fill('44');
-  await page.getByRole('button',{name:'Save record',exact:true}).click();
-  await expect(page.getByText('Pending edits: 1',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Close record',exact:true}).click();
-  await sync();
-  expect(db.db.query("SELECT quantity FROM widgets WHERE id='fixture-record'").get()).toEqual({quantity:44});
-  console.log('PASS: self-contained rules permit editing and sync while unrelated history and provenance stay skipped');
+    // Preserve the existing incomplete-replica, dependency and stale advisory regressions.
+    await click("Switch workspace");
+    await cdp.evaluate(
+      `localStorage.setItem('life-ui:replica',JSON.stringify({maxRows:50000,tables:{history:false,provenance:false}}))`,
+    );
+    await open();
+    await sync();
+    await enabled("New record", true);
+    await click("Fixture record");
+    await cdp.fill(field("quantity"), "44");
+    await click("Save record");
+    await bodyHas("Pending edits: 1");
+    await click("Close record");
+    await sync();
+    expect(
+      db.db
+        .query("SELECT quantity FROM widgets WHERE id='fixture-record'")
+        .get(),
+    ).toEqual({ quantity: 44 });
+    console.log(
+      "PASS: self-contained rules allow writes while unrelated tables stay skipped",
+    );
 
-  db.db.query('UPDATE catalog_rules SET sql=?,updated_at=?,hub_at=NULL WHERE id=?').run(
-    'SELECT id FROM changed WHERE quantity < (SELECT count(*) FROM history)',new Date().toISOString(),'quantity-positive');
-  await sync();
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeDisabled();
-  await expect(page.getByRole('status',{name:'Editing availability'})).toContainText('history');
-  await page.getByRole('button',{name:'Fixture record',exact:true}).click();
-  await expect(page.getByLabel('Quantity',{exact:true})).toBeDisabled();
-  await page.getByRole('button',{name:'Close record',exact:true}).click();
-  await page.getByRole('button',{name:'Switch workspace',exact:true}).click();
-  await page.evaluate(()=>localStorage.setItem('life-ui:replica',JSON.stringify({maxRows:50000,tables:{provenance:false}})));
-  await open();await sync();
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
-  console.log('PASS: adding a real history dependency blocks editing until its backfill, without requiring provenance');
+    db.db
+      .query(
+        "UPDATE catalog_rules SET sql=?,updated_at=?,hub_at=NULL WHERE id=?",
+      )
+      .run(
+        "SELECT id FROM changed WHERE quantity < (SELECT count(*) FROM history)",
+        new Date().toISOString(),
+        "quantity-positive",
+      );
+    await sync();
+    await enabled("New record", false);
+    await bodyHas("history");
+    await click("Fixture record");
+    await cdp.until(`(${field("quantity")})?.disabled===true`);
+    await click("Close record");
+    await click("Switch workspace");
+    await cdp.evaluate(
+      `localStorage.setItem('life-ui:replica',JSON.stringify({maxRows:50000,tables:{provenance:false}}))`,
+    );
+    await open();
+    await sync();
+    await enabled("New record", true);
+    console.log("PASS: a real rule dependency requires backfill");
 
-  failPull=true;await sync();
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeDisabled();
-  await expect(page.getByRole('status',{name:'Editing availability'})).toContainText('incomplete');
-  failPull=false;await sync();
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
-  await page.reload();
-  await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
-  console.log('PASS: interrupted sync revokes editing until recovery, and successful coverage survives reopen');
+    failPull = true;
+    await sync();
+    await enabled("New record", false);
+    await bodyHas("incomplete");
+    failPull = false;
+    await sync();
+    await enabled("New record", true);
+    await cdp.navigate(url);
+    await click("Open my workspace");
+    await enabled("New record", true);
+    console.log(
+      "PASS: interrupted coverage revokes writes and recovery survives reopen",
+    );
 
-  await page.evaluate(()=>{(window as any).holdPermissionTable='history';});
-  await page.getByRole('navigation',{name:'Tables'}).getByRole('button',{name:'history',exact:true}).click();
-  await page.waitForFunction(()=>(window as any).heldPermissions.length>0);
-  await page.getByRole('navigation',{name:'Tables'}).getByRole('button',{name:'widgets',exact:true}).click();
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
-  await page.evaluate(()=>(window as any).releasePermissions());
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
-  await page.getByRole('button',{name:'New record',exact:true}).click();
-  await expect(page.getByLabel('Quantity',{exact:true})).toBeEnabled();
-  console.log('PASS: a delayed read-only advisory cannot lock a subsequently selected writable table');
+    await cdp.evaluate(`window.holdPermissionTable='history'`);
+    const table = (name: string) =>
+      named("button", name, element('nav[aria-label="Tables"]'));
+    await cdp.click(table("history"));
+    await cdp.until("window.heldPermissions.length>0");
+    await cdp.click(table("widgets"));
+    await enabled("New record", true);
+    await cdp.evaluate("window.releasePermissions()");
+    await enabled("New record", true);
+    await click("New record");
+    await cdp.until(`(${field("quantity")})?.disabled===false`);
+    console.log(
+      "PASS: a delayed read-only advisory cannot lock the current table",
+    );
 
-  await page.getByRole('button',{name:'Close record',exact:true}).click();
-  const ddl='CREATE TRIGGER widgets_marker AFTER UPDATE ON widgets BEGIN SELECT 1; END';
-  db.db.exec(ddl);
-  db.db.query('INSERT INTO _schema_log(applied_at,ddl) VALUES (?,?)').run(new Date().toISOString(),ddl);
-  await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
-  await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));
-  await page.getByLabel('Device token').fill('fixture');
-  await sync();
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeDisabled();
-  await expect(page.getByRole('status',{name:'Editing availability'})).toContainText('Unsupported trigger');
-  await page.getByRole('button',{name:'Fixture record',exact:true}).click();
-  await expect(page.getByLabel('Quantity',{exact:true})).toHaveValue('44');
-  await expect(page.getByLabel('Quantity',{exact:true})).toBeDisabled();
-  console.log('PASS: unsupported effects explain read-only state while records remain browsable');
+    await click("Close record");
+    const ddl =
+      "CREATE TRIGGER widgets_marker AFTER UPDATE ON widgets BEGIN SELECT 1; END";
+    db.db.exec(ddl);
+    db.db
+      .query("INSERT INTO _schema_log(applied_at,ddl) VALUES (?,?)")
+      .run(new Date().toISOString(), ddl);
+    await cdp.click(text("Connect to a hub"));
+    await cdp.click(text("Use a device token"));
+    const input = (label: string) => `(${named("label", label)})?.control`;
+    await cdp.fill(input("Hub address"), server.url.href.replace(/\/$/, ""));
+    await cdp.fill(input("Device token"), "fixture");
+    await sync();
+    await enabled("New record", false);
+    await bodyHas("Unsupported trigger");
+    await click("Fixture record");
+    await value("quantity", "44");
+    await cdp.until(`(${field("quantity")})?.disabled===true`);
+    console.log(
+      "PASS: unsupported effects stay read-only while records remain browsable",
+    );
+  } finally {
+    await cdp.evaluate("window.releasePermissions?.()").catch(() => {});
+    await cdp.command("Page.removeScriptToEvaluateOnNewDocument", {
+      identifier: script.identifier,
+    });
+  }
 } finally {
-  const page = ownedPage;
-  await page?.evaluate(()=>(window as any).releasePermissions?.()).catch(()=>{});
-  await browser.close();
+  if (page) {
+    await page.navigate(new URL("/", url).href).catch(() => {});
+    await page
+      .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
+      .catch(() => {});
+    await page.command("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    page.close();
+  }
   server.stop(true);
   db.db.close();
+  auth.db.close();
 }
