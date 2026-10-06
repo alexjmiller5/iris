@@ -4,6 +4,11 @@ import Testing
 
 @testable import LifeKit
 
+#if os(macOS)
+  import AppKit
+  import SwiftUI
+#endif
+
 /// Uses the real JSC writer and SQLite, not a manufactured validation error.
 @Suite(.serialized) @MainActor
 struct CatalogRecordAcceptanceTests {
@@ -72,6 +77,293 @@ struct CatalogRecordAcceptanceTests {
     #expect(try journal.load(table: "record_examples", recordID: "catalog-record") == nil)
     try await workspace.close()
   }
+
+  #if os(macOS)
+    // Hosted AppKit/AX actions, not XCUI or installed-app acceptance. This catches a
+    // rejected Save dismissing the editor, dropping drafts, or changing stored data.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_CATALOG_HOSTED"] == "1"))
+    func hostedCatalogRuleFailureRetainsDraftAndMetadata() async throws {
+      // Guard effects independently of test discovery/filtering.
+      guard ProcessInfo.processInfo.environment["LIFE_UI_TEST_CATALOG_HOSTED"] == "1" else {
+        return
+      }
+      try Task.checkCancellation()
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("catalog-hosted-" + UUID().uuidString, isDirectory: true)
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+      let file = directory.appendingPathComponent("catalog-acceptance.sqlite")
+      let credentials = MemoryHubCredentials(nil)
+      let model = WorkspaceModel(
+        localURL: { directory.appendingPathComponent("local.sqlite") },
+        makeTransport: { _ in
+          throw WorkspaceError(
+            message: "Hosted test must not create a live transport", violations: [])
+        }, credentialStore: credentials)
+      var seedWorkspace: NativeWorkspace?
+      var window: NSWindow?
+      // Match the bounded, cancellation-independent supervisor used by
+      // ReadAdmissionFixture. Timed-out handles remain tracked for diagnosis.
+      func cleanup() async {
+        let supervisor = Task { @MainActor in
+          if let window {
+            for sheet in window.sheets {
+              window.endSheet(sheet)
+              sheet.close()
+            }
+            for child in window.childWindows ?? [] { child.close() }
+            window.contentView = nil
+            window.close()
+          }
+          let (finished, signal) = AsyncStream<Void>.makeStream(
+            bufferingPolicy: .bufferingNewest(1))
+          var timedOut = false
+          let closing = Task { @MainActor in
+            defer {
+              signal.yield(())
+              signal.finish()
+            }
+            do {
+              await model.close()
+              try await seedWorkspace?.close()
+              try Task.checkCancellation()
+              try #require(model.client == nil, "Owned model failed to close")
+              // No suspension between this guard and deletion: a watchdog expiry
+              // must retain the directory even if close eventually completes.
+              guard !timedOut else { return }
+              try FileManager.default.removeItem(at: directory)
+            } catch {
+              Issue.record(
+                "Hosted cleanup incomplete; fixture retained at \(directory.path): \(error)")
+            }
+          }
+          Self.pendingHostedCleanup[directory.path] = closing
+          let watchdog = Task { @MainActor in
+            do { try await Task.sleep(for: .seconds(20)) } catch { return }
+            timedOut = true
+            signal.finish()
+          }
+          var iterator = finished.makeAsyncIterator()
+          let completed = await iterator.next() != nil
+          watchdog.cancel()
+          if completed {
+            await closing.value  // The completion signal is the task's final defer.
+            Self.pendingHostedCleanup.removeValue(forKey: directory.path)
+          } else {
+            closing.cancel()
+            Issue.record(
+              "Hosted cleanup exceeded 20 seconds; cleanup incomplete, task tracked and fixture retained at \(directory.path)"
+            )
+          }
+        }
+        await supervisor.value
+      }
+      do {
+        let runtime = try LifeCoreRuntime()
+        let fixture = try NativeWorkspace(path: file.path, runtime: runtime)
+        seedWorkspace = fixture
+        try await fixture.createSample()
+        try Self.seed(runtime)
+        try await Self.establishCoverage(fixture, runtime: runtime)
+        // Keep the idle seed handle until bounded teardown; opening the same file
+        // uses NativeWorkspace's existing serialized file coordination.
+        await model.open(url: file)
+        let workspace = try #require(model.client, Comment(rawValue: model.error ?? "No fixture"))
+        let original = try #require(
+          try await workspace.rows(table: "record_examples").first?.record)
+        let originalHistory = try await workspace.rows(table: "history").map(\.record)
+        let originalPending = try await workspace.status().pendingUiEdits
+
+        _ = NSApplication.shared
+        let owned = NSWindow(
+          contentRect: NSRect(x: 100, y: 100, width: 1100, height: 850),
+          styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        owned.isReleasedWhenClosed = false
+        window = owned
+        owned.contentView = NSHostingView(rootView: WorkspaceView(model: model))
+        owned.makeKeyAndOrderFront(nil)
+        let ui = CatalogHostedUI(window: owned)
+        try await ui.press(id: "sidebar-table-record_examples")
+        try await ui.press(id: "grid-open-catalog-record")
+        _ = try await ui.element(id: "field-title", role: .textField)
+        let context = try #require(model.editingContext)
+        try #require(context.table == "record_examples")
+        let journal = try #require(context.draftStore)
+        _ = try await ui.element(label: "Required")
+        try await ui.press(label: "About Title")
+        try await ui.expectText("Short fixture title.")
+        try ui.escape()
+        try await ui.choose(id: "field-state", containing: "Ready for review.")
+        try await ui.expectText("Immutable fixture value")
+        try await ui.expectText("Derived fixture value")
+        #expect(
+          !ui.elements.contains {
+            $0.accessibilityIdentifier() == "field-locked" && $0.accessibilityRole() == .textField
+          })
+        #expect(
+          !ui.elements.contains {
+            $0.accessibilityIdentifier() == "field-computed" && $0.accessibilityRole() == .textField
+          })
+        try await ui.press(id: "catalog-rules")
+        try await ui.expectText("Fixture title is blocked.")
+        try await ui.press(label: "Back")
+        try await ui.replace(id: "field-title", with: "Blocked")
+        try await ui.replace(id: "field-detail", with: "Retained second edit")
+        try await ui.press(id: "save-record")
+        try await ui.expectText("Fixture title is blocked.")
+        _ = try await ui.element(id: "save-record")
+        try await ui.expectValue(id: "field-title", "Blocked")
+        try await ui.expectValue(id: "field-detail", "Retained second edit")
+        #expect(try await workspace.rows(table: "record_examples").first?.record == original)
+        #expect(try await workspace.rows(table: "history").map(\.record) == originalHistory)
+        #expect(try await workspace.status().pendingUiEdits == originalPending)
+        let retained = try #require(
+          try journal.load(table: "record_examples", recordID: "catalog-record"))
+        #expect(retained.draft.values["title"] == "Blocked")
+        #expect(retained.draft.values["detail"] == "Retained second edit")
+        #expect(retained.draft.original == original)
+        try await ui.replace(id: "field-title", with: "Allowed")
+        try await ui.press(id: "save-record")
+        try await ui.press(label: "Open Allowed")
+        try await ui.expectValue(id: "field-title", "Allowed")
+        try await ui.expectValue(id: "field-detail", "Retained second edit")
+        let saved = try #require(try await workspace.rows(table: "record_examples").first?.record)
+        #expect(saved["title"] == .string("Allowed"))
+        #expect(saved["detail"] == .string("Retained second edit"))
+        #expect(saved["state"] == .string("Ready"))
+        #expect(saved["locked"] == original["locked"] && saved["computed"] == original["computed"])
+        #expect(saved["updated_at"] != original["updated_at"])
+        #expect(try journal.load(table: "record_examples", recordID: "catalog-record") == nil)
+        #expect(credentials.value == nil && credentials.saves == 0 && credentials.removals == 0)
+        try await ui.press(label: "Cancel")
+      } catch {
+        await cleanup()
+        throw error
+      }
+      await cleanup()
+    }
+
+    // Only populated while an owned close is running or after a reported timeout.
+    // A timeout is never presented as a released resource or a deleted fixture.
+    private static var pendingHostedCleanup: [String: Task<Void, Never>] = [:]
+
+    /// Only traverses this test's window, its sheets/children and rendered AX nodes.
+    /// A missing/unsupported control fails after five seconds; no model-action fallback.
+    @MainActor private struct CatalogHostedUI {
+      let window: NSWindow
+
+      var elements: [any NSAccessibilityProtocol] {
+        var result: [any NSAccessibilityProtocol] = []
+        var visited = Set<ObjectIdentifier>()
+        func visit(_ object: AnyObject) {
+          guard visited.insert(ObjectIdentifier(object)).inserted else { return }
+          if let view = object as? NSView, view.isHiddenOrHasHiddenAncestor { return }
+          if let window = object as? NSWindow, !window.isVisible { return }
+          if let element = object as? any NSAccessibilityProtocol {
+            if element.isAccessibilityElement(), !element.accessibilityFrame().isEmpty {
+              result.append(element)
+            }
+            for child in element.accessibilityChildren() ?? [] { visit(child as AnyObject) }
+          }
+          if let view = object as? NSView { for child in view.subviews { visit(child) } }
+          if let window = object as? NSWindow {
+            if let content = window.contentView { visit(content) }
+            for child in window.sheets + (window.childWindows ?? []) { visit(child) }
+          }
+        }
+        visit(window)
+        return result
+      }
+
+      func element(
+        id: String? = nil, label: String? = nil, containing: String? = nil,
+        role: NSAccessibility.Role? = nil
+      ) async throws -> any NSAccessibilityProtocol {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        repeat {
+          try Task.checkCancellation()
+          if let found = elements.first(where: {
+            (id == nil || $0.accessibilityIdentifier() == id)
+              && (label == nil || $0.accessibilityLabel() == label
+                || $0.accessibilityTitle() == label)
+              && (role == nil || $0.accessibilityRole() == role)
+              && (containing == nil || text($0).contains(containing!))
+          }) {
+            return found
+          }
+          try await Task.sleep(for: .milliseconds(20))
+        } while ContinuousClock.now < deadline
+        throw WorkspaceError(
+          message:
+            "Hosted control unavailable: \(id ?? label ?? containing ?? "unknown"); actual XCUI remains pending",
+          violations: [])
+      }
+
+      func text(_ element: any NSAccessibilityProtocol) -> String {
+        [
+          element.accessibilityLabel(), element.accessibilityTitle(),
+          element.accessibilityValue() as? String,
+        ].compactMap { $0 }.joined(separator: " ")
+      }
+
+      func press(
+        id: String? = nil, label: String? = nil, containing: String? = nil,
+        role: NSAccessibility.Role? = nil
+      ) async throws {
+        let control = try await element(id: id, label: label, containing: containing, role: role)
+        try #require(control.isAccessibilityEnabled(), "Hosted control is disabled")
+        try #require(control.accessibilityPerformPress(), "Rendered control refused AX press")
+      }
+
+      func choose(id: String, containing description: String) async throws {
+        // Opening an in-process popup can enter a modal tracking loop. Inspect its
+        // rendered menu and send the native control action, never a model mutation.
+        let element = try await element(id: id)
+        let popup = try #require(element as? NSPopUpButton, "Hosted picker is not an AppKit popup")
+        try #require(popup.isEnabled)
+        let menu = try #require(popup.menu)
+        let index = try #require(menu.items.firstIndex { $0.title.contains(description) })
+        try #require(menu.items[index].isEnabled)
+        popup.selectItem(at: index)
+        try #require(popup.sendAction(popup.action, to: popup.target))
+      }
+
+      func replace(id: String, with value: String) async throws {
+        let field = try await element(id: id, role: .textField)
+        try #require(field.isAccessibilityEnabled())
+        field.setAccessibilityValue(value)
+        _ = window.makeFirstResponder(nil)
+        try await expectValue(id: id, value)
+      }
+
+      func expectValue(id: String, _ value: String) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        repeat {
+          try Task.checkCancellation()
+          if elements.contains(where: {
+            $0.accessibilityIdentifier() == id && $0.accessibilityValue() as? String == value
+          }) {
+            return
+          }
+          try await Task.sleep(for: .milliseconds(20))
+        } while ContinuousClock.now < deadline
+        throw WorkspaceError(message: "Rendered \(id) did not retain \(value)", violations: [])
+      }
+
+      func expectText(_ value: String) async throws {
+        _ = try await element(containing: value)
+      }
+
+      func escape() throws {
+        let event = try #require(
+          NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+            context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
+            isARepeat: false, keyCode: 53))
+        window.sendEvent(event)
+      }
+    }
+  #endif
 
   // Explicitly run this preparation test before the allocated native UI case.
   // A Mac fixture is a NEW external file. A simulator fixture must name its exact UDID.
