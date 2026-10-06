@@ -10,7 +10,8 @@ struct IncomingReferencesIdentity: Hashable {
   let skippedTables: Set<String>
   private let exactRowID: Data
 
-  init(workspaceGeneration: Int, table: String, rowID: String,
+  init(
+    workspaceGeneration: Int, table: String, rowID: String,
     catalog: WorkspaceCatalog?, skippedTables: Set<String>
   ) {
     self.workspaceGeneration = workspaceGeneration
@@ -46,8 +47,8 @@ final class IncomingReferencesModel {
   private let readSources: (CoreReferenceSourcesArgs) async throws -> [CoreReferenceSource]
   private let readPage: (CoreReferencedByArgs) async throws -> CoreReferencedByPage
   private let isCurrent: () -> Bool
-  private var generation = 0
-  private var disposed = false
+  @ObservationIgnored private var generation = 0
+  @ObservationIgnored private(set) var isDisposed = false
 
   init(
     table: String, rowID: String,
@@ -63,7 +64,7 @@ final class IncomingReferencesModel {
   }
 
   private func current(_ version: Int) -> Bool {
-    !disposed && generation == version && isCurrent() && !Task.isCancelled
+    !isDisposed && generation == version && isCurrent() && !Task.isCancelled
   }
 
   func refresh() async {
@@ -122,9 +123,9 @@ final class IncomingReferencesModel {
   }
 
   func dispose() {
-    disposed = true
+    // Disappearance runs inside Form layout. Invalidate reads without changing
+    // the rendered section while UIKit is dismissing or recycling its rows.
+    isDisposed = true
     generation += 1
-    loading = false
-    for index in groups.indices { groups[index].loading = false }
   }
 }

@@ -147,7 +147,9 @@ editing; immutable/derived fields and recovery use the full presentation. Expand
 transfers the existing model, never a reconstructed draft. Full records embed visible
 Markdown bodies below their properties. Retain one WebKit holder per exact field
 ID through form recycling; collect all holders before save, close, Undo or record
-handoff. Explicit Undo/recovery transitions refresh sessions; ordinary draft
+handoff. Terminal close retains stopped holders through sheet dismissal; inline
+expansion transfers the live holders with their record model. Explicit
+Undo/recovery transitions refresh sessions; ordinary draft
 updates must never replace undelivered WebKit input. Keep the active row
 visible during background refresh and prevent context-changing actions until close.
 Empty-property grouping never hides zero, false, required creation fields or
@@ -286,8 +288,10 @@ Incoming row deduplication and SwiftUI row identity use `byteExactID` (UTF-8
 bytes), since Swift String equality merges some distinct SQLite record IDs.
 Keep the original String ID for requests and navigation.
 Native saved-record editors mount incoming references as a separate child section.
-Dispose and recreate its model when a lazy Form removes and restores that child;
-never reuse a disposed instance or attach the panel identity to the editor.
+Disposal invalidates pending reads without changing rendered section state during
+Form layout or sheet dismissal. Reappearance replaces the disposed model, and
+expanded groups reload against that replacement. Never attach panel identity to
+the editor or reuse a disposed instance.
 Group rows use the existing guarded reference navigation and disable opening while
 an editor write is pending. Keep accessibility identifiers off an enclosing
 DisclosureGroup: SwiftUI can propagate them over individual child controls.

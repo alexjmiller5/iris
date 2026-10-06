@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 
 @testable import LifeKit
@@ -195,6 +196,35 @@ struct IncomingReferencesModelTests {
     #expect(model.groups.first?.loaded == true && model.groups.first?.loading == false)
   }
 
+  @Test(arguments: [false, true])
+  func disposalKeepsTheClosingSectionsRenderedState(fails: Bool) async {
+    var held: CheckedContinuation<[CoreReferenceSource], any Error>?
+    let model = make(
+      sources: { _ in try await withCheckedThrowingContinuation { held = $0 } },
+      page: { _ in CoreReferencedByPage(source: source, rows: [], nextOffset: nil) })
+    let pending = Task { await model.refresh() }
+    while held == nil { await Task.yield() }
+    let changed = Flag(false)
+    withObservationTracking {
+      _ = model.loading
+      _ = model.groups
+      _ = model.error
+    } onChange: {
+      MainActor.assumeIsolated { changed.value = true }
+    }
+    model.dispose()
+    #expect(!changed.value, "Disappearance must not rebuild the Form during dismissal")
+    #expect(model.loading && model.groups.isEmpty && model.error == nil)
+    if fails {
+      held?.resume(throwing: CancellationError())
+    } else {
+      held?.resume(returning: [source])
+    }
+    await pending.value
+    #expect(!changed.value)
+    #expect(model.loading && model.groups.isEmpty && model.error == nil)
+  }
+
   @Test(arguments: ["refresh", "dispose", "context", "cancel"], [false, true])
   func staleMetadataCannotPublishAfterHostTransitions(_ transition: String, fails: Bool) async {
     var held: CheckedContinuation<[CoreReferenceSource], any Error>?
@@ -224,7 +254,8 @@ struct IncomingReferencesModelTests {
       held?.resume(returning: [source])
     }
     await pending.value
-    #expect(model.groups.isEmpty && model.error == nil && !model.loading)
+    #expect(model.groups.isEmpty && model.error == nil)
+    #expect(model.loading == (transition == "dispose"))
     if transition == "dispose" || transition == "context" {
       let before = calls
       await model.refresh()
@@ -265,7 +296,8 @@ struct IncomingReferencesModelTests {
     await pending.value
     #expect(model.groups.first?.rows.isEmpty == true)
     #expect(model.groups.first?.error == nil)
-    #expect(model.groups.first?.loaded == false && model.groups.first?.loading == false)
+    #expect(model.groups.first?.loaded == false)
+    #expect(model.groups.first?.loading == (transition == "dispose"))
     if transition == "dispose" || transition == "context" {
       await model.load(id)
       #expect(calls == 1)

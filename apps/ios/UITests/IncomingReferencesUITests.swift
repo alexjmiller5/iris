@@ -111,6 +111,10 @@ final class IncomingReferencesUITests: XCTestCase {
     XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 10), .completed)
     reveal(title, in: app, down: true)
     expectValue(title, draft)
+    // Reappearing with a fresh panel model must reload an already expanded group.
+    reveal(group, in: app)
+    reveal(source, in: app)
+    XCTAssertEqual(source.label, "Open Incoming 00")
     // Scroll from Content to a previously unopened group. Retained rows alone
     // would conceal a disposed model that can no longer make requests.
     let unvisited = app.buttons["notes · Topic"]
@@ -172,7 +176,12 @@ final class IncomingReferencesUITests: XCTestCase {
       var area = form.frame.intersection(app.frame)
       let top = max(area.minY, app.navigationBars["Record"].frame.maxY)
       let keyboard = app.keyboards.firstMatch
-      let bottom = min(area.maxY - 34, keyboard.exists ? keyboard.frame.minY - 52 : area.maxY)
+      var bottom = area.maxY - 34
+      if keyboard.exists {
+        bottom = min(bottom, keyboard.frame.minY - 52)
+        let accessory = app.toolbars.containing(.button, identifier: "Done").firstMatch
+        if accessory.exists { bottom = min(bottom, accessory.frame.minY - 10) }
+      }
       area.origin.y = top
       area.size.height = max(0, bottom - top)
       return area

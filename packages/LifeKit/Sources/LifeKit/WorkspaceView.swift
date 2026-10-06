@@ -1252,7 +1252,6 @@ private struct RecordEditor: View {
             Button("Open record") {
               withMarkdownSnapshot {
                 focusedField = nil
-                editor.endInlineMarkdown()
                 onExpand(editor)
               }
             }

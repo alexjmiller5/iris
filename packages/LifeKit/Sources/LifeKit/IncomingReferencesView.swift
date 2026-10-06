@@ -32,16 +32,13 @@ struct IncomingReferencesView: View {
       Text("Records stored on this device that link to this record.")
     }
     .task {
-      guard model == nil, let next = makeModel() else { return }
+      guard model?.isDisposed != false, let next = makeModel() else { return }
+      // Reappearance gets fresh reads, while the disappearing section keeps
+      // its previous rendered state until it is safely offscreen.
       model = next
       await next.refresh()
     }
-    .onDisappear {
-      model?.dispose()
-      // A Form can temporarily remove this child while scrolling or opening Markdown.
-      // A permanently disposed model must never be reused on its next appearance.
-      model = nil
-    }
+    .onDisappear { model?.dispose() }
   }
 }
 
@@ -80,7 +77,7 @@ private struct IncomingReferenceGroupView: View {
     } label: {
       Text("\(group.source.table) · \(group.source.label)")
     }
-    .task(id: expanded) {
+    .task(id: expanded ? ObjectIdentifier(model) : nil) {
       if expanded { await model.load(group.id) }
     }
   }

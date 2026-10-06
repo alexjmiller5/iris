@@ -84,9 +84,12 @@ struct MarkdownEditorTests {
       #expect(model.draft.values[field.id] == "Kept \(field.id)")
       #expect(editor.session.snapshot == nil)
       #expect(editor.session.resumeEditing == nil)
-      let reopened = model.markdownEditor(for: field)
-      #expect(reopened !== editor)
-      #expect(reopened.session.document.value == "Kept \(field.id)")
+      // A disappearing Form may request its field again during dismissal.
+      // That must not allocate a fresh, active WebKit host in the closing sheet.
+      let closing = model.markdownEditor(for: field)
+      #expect(closing === editor)
+      closing.session.editSource("Input after the closing Form redraws")
+      #expect(model.draft.values[field.id] == "Kept \(field.id)")
     }
   }
 

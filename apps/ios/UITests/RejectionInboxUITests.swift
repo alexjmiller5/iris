@@ -28,7 +28,7 @@ final class RejectionInboxUITests: XCTestCase {
     XCTAssertFalse(app.textFields["field-updated_at"].exists)
     expectBody(app, "Rejected save body")
     // Read-only rows expose one combined "column, value" label.
-    reveal(showing("Locked current", in: app), in: app)
+    reveal(showing("Locked current", in: app), in: app, down: true)
     XCTAssertFalse(showing("Locked rejected", in: app).exists)
     XCTAssertFalse(showing("Removed submitted value", in: app).exists)
     capture(app, "issues-current-baseline-editable-only")
@@ -174,7 +174,12 @@ final class RejectionInboxUITests: XCTestCase {
       var area = form.frame.intersection(app.frame)
       let top = max(area.minY, app.navigationBars["Record"].frame.maxY)
       let keyboard = app.keyboards.firstMatch
-      let bottom = min(area.maxY - 34, keyboard.exists ? keyboard.frame.minY - 52 : area.maxY)
+      var bottom = area.maxY - 34
+      if keyboard.exists {
+        bottom = min(bottom, keyboard.frame.minY - 52)
+        let accessory = app.toolbars.containing(.button, identifier: "Done").firstMatch
+        if accessory.exists { bottom = min(bottom, accessory.frame.minY - 10) }
+      }
       area.origin.y = top
       area.size.height = max(0, bottom - top)
       return area

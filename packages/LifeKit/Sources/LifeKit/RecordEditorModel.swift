@@ -44,8 +44,9 @@ final class RecordEditorModel {
   }
 
   func endInlineMarkdown() {
+    // SwiftUI can redraw a closing Form during its dismissal animation. Keep its
+    // stopped hosts until the record is released instead of starting new ones.
     for editor in markdownEditors.values { editor.stop() }
-    markdownEditors.removeAll()
   }
 
   private(set) var draft: RecordDraft
