@@ -19,6 +19,30 @@ try {
 	await page.setViewportSize({width:390,height:844});
 	await page.goto(url);
 	await expect.poll(() => page.evaluate(() => (window as any).events)).toEqual([{type: 'ready'}]);
+	for (const colorScheme of ['light', 'dark'] as const) {
+		await page.emulateMedia({colorScheme});
+		for (const height of [240, 320]) {
+			await page.setViewportSize({width:320,height});
+			await page.evaluate(() => (window as any).lifeEditor.setDocument({id:'surface',value:'A short note',label:'Body',readOnly:false}));
+			const surface = await page.locator('.markdown-editor').evaluate(editor => {
+				const style = getComputedStyle(editor);
+				return {background:getComputedStyle(document.body).backgroundColor, paper:style.backgroundColor, border:style.borderWidth};
+			});
+			expect(surface.background, 'The native viewport must continue the writing surface below short content').toBe(surface.paper);
+			expect(surface.border, 'The native host supplies the surrounding surface').toBe('0px');
+			const editorBounds = await page.locator('.ProseMirror').boundingBox();
+			expect(editorBounds!.height, 'The entire native viewport should accept writing').toBeGreaterThanOrEqual(height);
+			await page.getByRole('button',{name:'Body options',exact:true}).click();
+			const popup = await page.getByRole('menu',{name:'Body options',exact:true}).boundingBox();
+			expect(popup!.y).toBeGreaterThanOrEqual(0);
+			expect(popup!.y + popup!.height).toBeLessThanOrEqual(height);
+			expect(popup!.x).toBeGreaterThanOrEqual(0);
+			expect(popup!.x + popup!.width).toBeLessThanOrEqual(320);
+			await page.keyboard.press('Escape');
+		}
+	}
+	await page.emulateMedia({colorScheme:'light'});
+	await page.setViewportSize({width:390,height:844});
 	async function mode(mode: 'source' | 'write') {
 		if (await page.locator('textarea[aria-label="Body"]').isVisible() === (mode === 'source')) return;
 		const trigger = page.getByRole('button', {name:'Body options',exact:true});
