@@ -25,9 +25,10 @@ const title = () => page.getByRole("textbox", { name: "Title", exact: true });
 const close = () =>
   page.getByRole("button", { name: "Close record", exact: true }).click();
 async function body() {
-  const toggle = page.getByRole("button", { name: "Body source", exact: true });
-  if ((await toggle.getAttribute("aria-pressed")) !== "true")
-    await toggle.click();
+  if (!await page.locator('textarea[aria-label="Body"]').isVisible()) {
+    await page.getByRole("button", {name:"Body options",exact:true}).click();
+    await page.getByRole("menuitem", {name:"Body source",exact:true}).click();
+  }
   return page.getByRole("textbox", { name: "Body", exact: true });
 }
 async function rows() {
@@ -148,7 +149,8 @@ try {
   await saveGridQuantity();
   const columns=page.locator('details').filter({has:page.locator('summary').filter({hasText:/^\s*Columns\s*$/})}); await columns.locator('summary').click(); await columns.getByRole('checkbox',{name:'Show Body',exact:true}).check(); await columns.locator('summary').click();
   await beginCell('body','Body');
-  await gridGroup('Body').getByRole('button',{name:'Body source',exact:true}).click();
+  await gridGroup('Body').getByRole('button', {name:'Body options',exact:true}).click();
+  await gridGroup('Body').getByRole('menuitem', {name:'Body source',exact:true}).click();
   await gridGroup('Body').getByRole('textbox',{name:'Body',exact:true}).fill('Unsaved **cell** body');
   await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible(); await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled(); await expect(panel()).toBeVisible();
   await expect(await body()).toHaveValue('Unsaved **cell** body');

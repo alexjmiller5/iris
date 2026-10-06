@@ -474,9 +474,8 @@ try {
   await check("Markdown source preserves raw content", async () => {
     await show("Body");
     await begin("body", "Body");
-    await group("Body")
-      .getByRole("button", { name: "Body source", exact: true })
-      .click();
+    await group("Body").getByRole('button', {name:'Body options',exact:true}).click();
+  await group("Body").getByRole('menuitem', {name:'Body source',exact:true}).click();
     await group("Body")
       .getByRole("textbox", { name: /Body/ })
       .fill("# Grid body\n\nExact source.");

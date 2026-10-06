@@ -69,9 +69,10 @@ async function setQuantity(value: string) {
   await expect(save()).toBeEnabled();
 }
 async function body() {
-  const toggle = page.getByRole("button", { name: "Body source", exact: true });
-  if ((await toggle.getAttribute("aria-pressed")) !== "true")
-    await toggle.click();
+  if (!await page.locator('textarea[aria-label="Body"]').isVisible()) {
+    await page.getByRole("button", {name:"Body options",exact:true}).click();
+    await page.getByRole("menuitem", {name:"Body source",exact:true}).click();
+  }
   return page.getByRole("textbox", { name: "Body", exact: true });
 }
 async function rows() {
