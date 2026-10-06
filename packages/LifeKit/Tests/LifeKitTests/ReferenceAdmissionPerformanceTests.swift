@@ -6,6 +6,84 @@ import Testing
 /// Opt-in queue measurements using synthetic catalog/rows and the real native core.
 @Suite(.serialized) @MainActor
 struct ReferenceAdmissionPerformanceTests {
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_REFERENCE_BARRIER"] == "1"))
+  func measureNavigationWithQueuedServiceBarrier() async throws {
+    let runtime = try LifeCoreRuntime()
+    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await workspace.createSample()
+    try seed(runtime)
+    runtime.context.evaluateScript(
+      #"""
+      globalThis.barrierTrace = [];
+      globalThis.releaseBarrierOwner = null;
+      const request = LifeNative.request;
+      let first = true;
+      LifeNative.request = function(id, method, args) {
+        if (first) {
+          first = false;
+          LifeSql.begin();
+          releaseBarrierOwner = () => { LifeSql.commit(); request(id, method, args); };
+          return;
+        }
+        barrierTrace.push(method);
+        if (method === 'serviceNotifications') {
+          // Admission-only fixture: never start network or inspect personal state.
+          __lifeFinish(id, JSON.stringify({error:'Synthetic service completion'}));
+          return;
+        }
+        return request(id, method, args);
+      };
+      """#)
+    let owner = Task { try await workspace.catalog() }
+    defer { runtime.context.evaluateScript("releaseBarrierOwner?.()") }
+    try await waitUntil {
+      runtime.context.evaluateScript("releaseBarrierOwner !== null")?.toBool() == true
+    }
+    var queued = 0
+    let labels = (0..<300).map { _ in
+      Task {
+        queued += 1
+        return try await workspace.referenceRows(
+          view: CoreView(
+            table: "notes",
+            filters: [
+              CoreFilter(
+                column: "id", op: .eq,
+                value: .string("reference-note-000"))
+            ], limit: 1))
+      }
+    }
+    try await waitUntil { queued == labels.count }
+    let hub = try HubTransport(endpoint: "https://admission-fixture.invalid", token: "synthetic")
+    var serviceQueued = false
+    let service = Task {
+      serviceQueued = true
+      return try await workspace.notifications(using: hub)
+    }
+    try await waitUntil { serviceQueued }
+    let start = ContinuousClock.now
+    let navigation = Task {
+      try await NativeDestinationResolver(workspace: workspace).resolve(
+        NativeDestination(table: "topics"), isCurrent: { true })
+    }
+    await Task.yield()
+    runtime.context.evaluateScript("releaseBarrierOwner(); releaseBarrierOwner = null")
+    _ = try await owner.value
+    _ = try await navigation.value
+    let elapsed = milliseconds(start.duration(to: .now))
+    let preceding =
+      runtime.context.evaluateScript(
+        "barrierTrace.slice(0, barrierTrace.indexOf('catalog')).filter(x => x === 'rows').length"
+      )?.toInt32() ?? -1
+    print("REFERENCE_BARRIER navigation_ms=\(elapsed) preceding_passive_reads=\(preceding)")
+    for label in labels { _ = await label.result }
+    _ = await service.result
+    try await workspace.close()
+    #expect(
+      preceding < 300,
+      "A queued service must not force navigation through the entire passive backlog")
+  }
+
   @Test(.enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_REFERENCE_ADMISSION"] == "1"))
   func measureNavigationBehindCancelledReferenceLabels() async throws {
     let runtime = try LifeCoreRuntime()
