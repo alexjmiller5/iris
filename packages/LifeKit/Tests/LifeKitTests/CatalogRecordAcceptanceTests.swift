@@ -182,7 +182,12 @@ struct CatalogRecordAcceptanceTests {
         owned.contentView = NSHostingView(rootView: WorkspaceView(model: model))
         owned.makeKeyAndOrderFront(nil)
         let ui = CatalogHostedUI(window: owned)
-        try await ui.press(id: "sidebar-table-record_examples")
+        do {
+          try await ui.press(id: "sidebar-table-record_examples")
+        } catch {
+          ui.reportFirstLookupFailure(model: model, identifier: "sidebar-table-record_examples")
+          throw error
+        }
         try await ui.press(id: "grid-open-catalog-record")
         _ = try await ui.element(id: "field-title", role: .textField)
         let context = try #require(model.editingContext)
@@ -272,6 +277,122 @@ struct CatalogRecordAcceptanceTests {
         }
         visit(window)
         return result
+      }
+
+      // Failure-only diagnostics. The action traversal and its filters stay unchanged.
+      func reportFirstLookupFailure(model: WorkspaceModel, identifier: String) {
+        func short(_ value: String) -> String {
+          String(value.replacingOccurrences(of: "\n", with: " ").prefix(160))
+        }
+        print(
+          "CATALOG_HOSTED_DIAGNOSTIC model client=\(model.client != nil) catalog=\(model.catalog != nil) containsRecordExamples=\(model.catalog?.tables.contains { $0["id"] == .string("record_examples") } ?? false) table=\(short(model.table ?? "nil")) loading=\(model.loading) error=\(short(model.error ?? "nil"))"
+        )
+        print(
+          "CATALOG_HOSTED_DIAGNOSTIC window visible=\(window.isVisible) key=\(window.isKeyWindow) frame=\(window.frame) contentBounds=\(String(describing: window.contentView?.bounds))"
+        )
+
+        // Only descendants of this window, including its own sheets/popovers.
+        var windows = [window]
+        var windowIDs = Set([ObjectIdentifier(window)])
+        var windowIndex = 0
+        while windowIndex < windows.count, windows.count < 16 {
+          let current = windows[windowIndex]
+          windowIndex += 1
+          for child in (current.sheets + (current.childWindows ?? [])).prefix(16) {
+            if windows.count < 16, windowIDs.insert(ObjectIdentifier(child)).inserted {
+              windows.append(child)
+            }
+          }
+        }
+        var visited = Set<ObjectIdentifier>()
+        var protocolCount = 0
+        var elementCount = 0
+        var nonemptyCount = 0
+        var hiddenCount = 0
+        var acceptedCount = 0
+        var truncated = false
+        var samples: [String] = []
+        var matches: [String] = []
+        // SwiftUI can expose informal ObjC AX objects without protocol conformance.
+        // Inspect string/children getters when present; never invoke an action here.
+        func stringGetter(_ object: AnyObject, _ name: String) -> String? {
+          guard let object = object as? NSObject else { return nil }
+          let selector = NSSelectorFromString(name)
+          guard object.responds(to: selector) else { return nil }
+          return object.perform(selector)?.takeUnretainedValue() as? String
+        }
+        func childrenGetter(_ object: AnyObject) -> [Any] {
+          guard let object = object as? NSObject else { return [] }
+          let selector = NSSelectorFromString("accessibilityChildren")
+          guard object.responds(to: selector) else { return [] }
+          return object.perform(selector)?.takeUnretainedValue() as? [Any] ?? []
+        }
+        func visit(_ object: AnyObject, hiddenAncestor: Bool, depth: Int) {
+          if let owner = (object as? NSView)?.window,
+            !windowIDs.contains(ObjectIdentifier(owner))
+          {
+            return
+          }
+          if let other = object as? NSWindow, !windowIDs.contains(ObjectIdentifier(other)) {
+            return
+          }
+          guard depth < 24, visited.count < 512 else {
+            truncated = true
+            return
+          }
+          guard visited.insert(ObjectIdentifier(object)).inserted else { return }
+          let hidden =
+            hiddenAncestor
+            || ((object as? NSView)?.isHiddenOrHasHiddenAncestor ?? false)
+            || ((object as? NSWindow).map { !$0.isVisible } ?? false)
+          if hidden { hiddenCount += 1 }
+          let element = object as? any NSAccessibilityProtocol
+          let isElement = element?.isAccessibilityElement() ?? false
+          let frame = element?.accessibilityFrame()
+          let nonempty = frame.map { !$0.isEmpty } ?? false
+          if element != nil { protocolCount += 1 }
+          if isElement { elementCount += 1 }
+          if isElement && nonempty { nonemptyCount += 1 }
+          if isElement && nonempty && !hidden { acceptedCount += 1 }
+          let id =
+            element?.accessibilityIdentifier() ?? stringGetter(object, "accessibilityIdentifier")
+            ?? "nil"
+          let label =
+            element?.accessibilityLabel() ?? stringGetter(object, "accessibilityLabel") ?? "nil"
+          let role =
+            element?.accessibilityRole()?.rawValue ?? stringGetter(object, "accessibilityRole")
+            ?? "nil"
+          let line =
+            "type=\(short(String(reflecting: type(of: object)))) role=\(short(role)) id=\(short(id)) label=\(short(label)) frame=\(String(describing: frame)) protocol=\(element != nil) isElement=\(isElement) nonempty=\(nonempty) hiddenPath=\(hidden)"
+          if samples.count < 24 { samples.append(line) }
+          if id == identifier, matches.count < 8 { matches.append(line) }
+          let axChildren = element?.accessibilityChildren() ?? childrenGetter(object)
+          if axChildren.count > 64 { truncated = true }
+          for child in axChildren.prefix(64) {
+            visit(child as AnyObject, hiddenAncestor: hidden, depth: depth + 1)
+          }
+          if let view = object as? NSView {
+            if view.subviews.count > 64 { truncated = true }
+            for child in view.subviews.prefix(64) {
+              visit(child, hiddenAncestor: hidden, depth: depth + 1)
+            }
+          }
+          if let current = object as? NSWindow {
+            if let content = current.contentView {
+              visit(content, hiddenAncestor: hidden, depth: depth + 1)
+            }
+            for child in (current.sheets + (current.childWindows ?? [])).prefix(16) {
+              visit(child, hiddenAncestor: hidden, depth: depth + 1)
+            }
+          }
+        }
+        visit(window, hiddenAncestor: false, depth: 0)
+        print(
+          "CATALOG_HOSTED_DIAGNOSTIC traversal raw=\(visited.count) protocol=\(protocolCount) isElement=\(elementCount) elementAndNonempty=\(nonemptyCount) hiddenPath=\(hiddenCount) accepted=\(acceptedCount) truncated=\(truncated)"
+        )
+        for sample in samples { print("CATALOG_HOSTED_DIAGNOSTIC node \(sample)") }
+        print("CATALOG_HOSTED_DIAGNOSTIC matchingIdentifierCount=\(matches.count)")
+        for match in matches { print("CATALOG_HOSTED_DIAGNOSTIC matchingIdentifier \(match)") }
       }
 
       func element(
