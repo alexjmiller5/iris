@@ -23,6 +23,49 @@ struct RecordExportPresentationTests {
   }
 
   @Test(arguments: [false, true])
+  func obsoletePreparationCannotClearNewerOperation(fails: Bool) async throws {
+    let serializer = try exportTestSerializer()
+    let older = ExportResultGate()
+    let newer = ExportResultGate()
+    let model = RecordExportPresentation(snapshot: exportTestSnapshot()) { snapshot, format in
+      let artifact = try await serializer.serialize(snapshot, format: format)
+      if format == .csv {
+        await older.hold()
+        if fails { throw CocoaError(.fileWriteNoPermission) }
+      } else {
+        await newer.hold()
+      }
+      return artifact
+    }
+    var published = false
+    model.format = .csv
+    let first = model.startPreparation { _ in published = true }
+    await older.waitUntilEntered()
+    model.cancelPreparation()
+    model.format = .json
+    let second = model.startPreparation { _ in published = true }
+    await newer.waitUntilEntered()
+
+    await older.release()
+    await first?.value
+    #expect(model.preparing)
+    #expect(!published)
+    #expect(model.metadata == nil)
+    #expect(model.error == nil)
+
+    // A's defer must retain B's task handle so dismissing still cancels B.
+    model.cancelPreparation()
+    await newer.release()
+    await second?.value
+    let newerWasCancelled = await newer.wasCancelled
+    #expect(newerWasCancelled)
+    #expect(!model.preparing)
+    #expect(!published)
+    #expect(model.metadata == nil)
+    #expect(model.error == nil)
+  }
+
+  @Test(arguments: [false, true])
   func dismissedPreparationIgnoresLateFilesAndFailures(fails: Bool) async throws {
     let serializer = try exportTestSerializer()
     let gate = ExportResultGate()
@@ -111,6 +154,7 @@ struct RecordExportPresentationTests {
 
 /// Holds an actual serialized artifact so dismissal deterministically precedes completion.
 private actor ExportResultGate {
+  private(set) var wasCancelled = false
   private var entered = false
   private var arrival: CheckedContinuation<Void, Never>?
   private var completion: CheckedContinuation<Void, Never>?
@@ -120,6 +164,7 @@ private actor ExportResultGate {
     arrival?.resume()
     arrival = nil
     await withCheckedContinuation { completion = $0 }
+    wasCancelled = Task.isCancelled
   }
 
   func waitUntilEntered() async {
