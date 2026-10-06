@@ -9,6 +9,15 @@ struct WorkspaceStatusSheet: View {
       Form {
         Section("Workspace") {
           Text(model.location).textSelection(.enabled)
+          LabeledContent("App version") {
+            let version =
+              Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+              ?? "?"
+            let build =
+              Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+            Text("\(version) (\(build))")
+              .accessibilityIdentifier("app-version")
+          }
         }
         if model.isReplica {
           Section("Sync") {

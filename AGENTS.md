@@ -75,7 +75,11 @@ temporary runner keychain, verifies the exported IPA and uploads only age-encryp
 output with one-day retention. The required `artifact_recipient` dispatch input is
 a public age recipient; its temporary private identity stays with the operator.
 An IPA embeds a profile containing enrolled device IDs, so plaintext IPA artifacts
-are forbidden on this public repository. Installation and OTA remain separate.
+are forbidden on this public repository. Each workflow run stamps and verifies
+the exported build number as run.attempt after project generation. OTA manifests
+use that build number, with distinct install-page, manifest and IPA URLs; the
+status sheet reads the installed app's version from Bundle.main. Installation
+and OTA remain separate.
 
 Shared core owns local FTS5 indexing and search. Web table search and Cmd+K use
 literal word prefixes combined with AND; user input never becomes raw MATCH

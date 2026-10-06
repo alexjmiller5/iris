@@ -2,6 +2,24 @@ import XCTest
 
 @MainActor
 final class NativeControlsUITests: XCTestCase {
+  func testWorkspaceStatusShowsInstalledAppVersion() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    defer { app.terminate() }
+    XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 15))
+    app.buttons["workspace-status"].tap()
+    XCTAssertTrue(app.navigationBars["Workspace status"].waitForExistence(timeout: 5))
+    let version = app.descendants(matching: .any)["app-version"].firstMatch
+    XCTAssertTrue(version.waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertTrue(version.isHittable, "Installed version must be visible in workspace status")
+    XCTAssertEqual(version.label, "App version, 1.0 (1)")
+    capture(app, "native-installed-app-version")
+    app.buttons["status-done"].tap()
+    XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 5))
+  }
+
   func testChoiceCustomValueLabelIsVisibleAndOpens() throws {
     continueAfterFailure = false
     let app = XCUIApplication()
