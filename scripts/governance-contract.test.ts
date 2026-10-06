@@ -69,6 +69,15 @@ test('an enforced invariant rolls back the entire multi-field candidate', async 
   expect(f.state()).toEqual(before);
 });
 
+test('a required-field violation rejects every field in the candidate', async () => {
+  const f = await setup();
+  const before = f.state();
+  const response = await f.patch({ values: { name: null, status: 'closed' } });
+  expect(response.status).toBe(422);
+  expect(await response.json()).toEqual({ error: 'validation_failed' });
+  expect(f.state()).toEqual(before);
+});
+
 for (const field of ['updated_at', 'hub_at'] as const) {
   test(`a ${field} race after validation preserves the winning edit without patch side effects`, async () => {
     const f = await setup();

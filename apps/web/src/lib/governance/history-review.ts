@@ -7,7 +7,9 @@ export interface HistoryReviewState<Preview> {
 	error: string;
 }
 
-/** Presentation state only. The injected core owns all inverse/preview semantics. */
+/** Presentation state only. The injected core owns all inverse/preview semantics.
+ * Recreate for a different scoped core binding; reset invalidates its review only.
+ */
 export function createHistoryReview<Preview>(preview: (eventIDs: string[]) => Promise<Preview>) {
 	let generation = 0;
 	let disposed = false;
