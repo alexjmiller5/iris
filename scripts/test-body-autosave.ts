@@ -6,7 +6,7 @@ const browser=await chromium.connectOverCDP('http://127.0.0.1:9222');
 try{
  const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);
  if(!page)throw Error('Owned test page unavailable');
- page.on('dialog',d=>d.accept());page.setDefaultTimeout(5000);
+ page.on('dialog',d=>d.accept());page.setDefaultTimeout(5000);page.setDefaultNavigationTimeout(30000);
  await page.goto(new URL('/',url).href);
  const cdp=await page.context().newCDPSession(page);
  await cdp.send('Storage.clearDataForOrigin',{origin,storageTypes:'all'});await cdp.detach();
@@ -41,6 +41,7 @@ try{
    };
  });
  await page.goto(url);
+ await page.waitForLoadState('networkidle');
  await page.getByRole('button',{name:'Try sample workspace',exact:true}).click();
  await page.getByRole('button',{name:'A place to start',exact:true}).click();
  await page.getByRole('button', {name:'Body options',exact:true}).click();
@@ -124,5 +125,18 @@ try{
  await page.getByRole('button',{name:'Save record',exact:true}).click();
  await expect(page.getByRole('button',{name:'Save record',exact:true})).toBeEnabled();
  expect(await appendix()).toBe('Keep the appendix');
+ // Each Markdown field owns its own menu dismissal and focus restoration.
+ await page.getByRole('button',{name:'Close record',exact:true}).click();
+ await page.getByRole('button',{name:'A place to start',exact:true}).click();
+ const bodyOptions = page.getByRole('button',{name:'Body options',exact:true});
+ const appendixOptions = page.getByRole('button',{name:'Appendix options',exact:true});
+ await bodyOptions.click();
+ await expect(page.getByRole('menu',{name:'Body options',exact:true})).toBeVisible();
+ await appendixOptions.click();
+ await expect(page.getByRole('menu',{name:'Body options',exact:true})).toBeHidden();
+ await expect(page.getByRole('menu',{name:'Appendix options',exact:true})).toBeVisible();
+ await page.keyboard.press('Escape');
+ await expect(page.getByRole('menu',{name:'Appendix options',exact:true})).toBeHidden();
+ await expect(appendixOptions).toBeFocused();
  console.log('PASS: autosave races/conflicts and catalog refreshes preserve all drafts and unopened fields');
 }finally{await browser.contexts()[0]?.unroute(`${origin}/src/lib/database.worker.ts*`);await browser.close()}
