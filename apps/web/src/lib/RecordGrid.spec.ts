@@ -68,3 +68,49 @@ test.each([false, true])(
 		window.close();
 	}
 );
+
+test('configured action columns reorder data and keep the first visible data cell tabbable', () => {
+	const window = new Window();
+	window.document.body.innerHTML = render(RecordGrid, {
+		props: {
+			rows: [{ id: 'a', title: 'Alpha', state: 'Open', updated_at: '2026-01-01T00:00:00.000Z' }],
+			properties: [
+				{ col: 'title', label: 'Title' },
+				{ col: 'state', label: 'State' }
+			],
+			widths: {},
+			busy: false,
+			canCreate: false,
+			actions: [{ id: 'close', label: 'Close item', values: { state: 'Closed' } }],
+			actionLayout: [
+				{ kind: 'action', id: 'close' },
+				{ kind: 'column', id: 'state' },
+				{ kind: 'column', id: 'title' }
+			],
+			canRunAction: false,
+			onaction: async () => {},
+			format: (_p: unknown, value: unknown) => String(value ?? ''),
+			canEdit: () => false,
+			onbegin: async () => false,
+			oncommit: async () => ({}),
+			onopen: async () => false,
+			onnew: async () => false,
+			onduplicate: async () => false
+		} as never
+	}).body;
+	expect([...window.document.querySelectorAll('th')].map((e) => e.textContent?.trim())).toEqual([
+		'Close item',
+		'State',
+		'Title'
+	]);
+	expect(window.document.querySelector('[data-column="state"]')?.getAttribute('tabindex')).toBe(
+		'0'
+	);
+	expect(window.document.querySelector('[data-column="title"]')?.getAttribute('tabindex')).toBe(
+		'-1'
+	);
+	expect(
+		window.document.querySelector('button[aria-label="Close item"]')?.hasAttribute('disabled')
+	).toBe(true);
+	window.close();
+});

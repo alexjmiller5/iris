@@ -1031,6 +1031,7 @@ final class WorkspaceUITests: XCTestCase {
     title.typeText("Alpha parity")
     tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
     tapWhenReady(app.buttons["view-options"])
+    tapWhenReady(app.buttons["Add sort"])
     tapWhenReady(app.buttons["sort-column"])
     tapWhenReady(app.buttons["Title"])
     tapWhenReady(app.buttons["sort-direction"])
@@ -1040,7 +1041,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.buttons["Contains"])
     tapWhenReady(app.textFields["filter-value"])
     app.textFields["filter-value"].typeText("parity")
-    tapWhenReady(app.navigationBars["Sort and filter"].buttons["apply-view-options"])
+    tapWhenReady(app.navigationBars["View options"].buttons["apply-view-options"])
     let alpha = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Alpha parity"))
       .firstMatch
     XCTAssertTrue(alpha.waitForExistence(timeout: 5))
@@ -1057,7 +1058,7 @@ final class WorkspaceUITests: XCTestCase {
     add(filterShot)
     tapWhenReady(app.buttons["view-options"])
     tapWhenReady(app.buttons["Reset sort and filters"])
-    tapWhenReady(app.navigationBars["Sort and filter"].buttons["apply-view-options"])
+    tapWhenReady(app.navigationBars["View options"].buttons["apply-view-options"])
     XCTAssertTrue(
       app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
         .firstMatch.waitForExistence(timeout: 5))

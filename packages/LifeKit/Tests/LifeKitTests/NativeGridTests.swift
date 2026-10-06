@@ -10,6 +10,20 @@ struct NativeGridTests {
     ["col": .string("body"), "label": .string("Content"), "type": .string("markdown")],
   ]
 
+  @Test func actionsInterleaveWithColumnsAndKeepSeparateIdentities() {
+    let columns = NativeGridColumn.columns(properties: properties, selected: ["title", "done"])
+    let actions = [CoreRowAction(id: "title", label: "Review", values: ["done": .bool(true)])]
+    let items = NativeGridItem.items(
+      columns: columns, actions: actions,
+      layout: [
+        CoreViewLayoutItem(kind: "column", id: "title"),
+        CoreViewLayoutItem(kind: "action", id: "title"),
+        CoreViewLayoutItem(kind: "column", id: "done"),
+      ])
+    #expect(items.map(\.label) == ["Title", "Review", "Complete"])
+    #expect(Set(items.map(\.id)).count == 3)
+  }
+
   @Test func savedColumnsKeepOrderAndHideUnselectedFields() {
     let columns = NativeGridColumn.columns(properties: properties, selected: ["done", "title"])
     #expect(columns.map(\.id) == ["done", "title"])

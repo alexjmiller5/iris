@@ -31,6 +31,16 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   snapshot. Native hosts reject stale IDs and collect all live snapshots before record actions.
   Keep Markdown as storage, preserve untouched source, and render imported HTML
   inert. The island has no network, SQL or credential access.
+- Retained `/v1/files/<opaque-key>` image references use the enrolled host
+  transport. Web uses managed blob URLs; native passes bytes over the document
+  bridge and owns temporary Quick Look files. Both refuse redirects. Image
+  previews accept at most 8 MiB and produce a static PNG with a maximum edge of
+  1024 pixels; original attachment downloads allow 128 MiB. Reject oversized
+  image metadata before decoding. Browser decoder allocation remains platform-owned.
+  External images stay inert. File viewing never rewrites Markdown.
+  Source links resolve through core `resolveSourceLink` and whole-record import
+  provenance, then ordinary fresh-row navigation. Unmapped URLs retain an explicit
+  original-link action. Cancel or close disposes requests and file resources.
 - `scripts`: build and fixture test operations. No credentials or data exports.
 
 The supported service dependency is the life-data hub API with independently
@@ -177,6 +187,12 @@ Notification and usage-device rows also use byte-exact keys. Keep the original
 event IDs in mark-read requests.
 Native permission is requested only by the explicit Enable alerts action.
 Usage is deployment-scoped; provider-wide billing APIs do not belong in clients.
+Registered push owns banners; polling continues to update the inbox. Suppress
+local banners only after an authenticated registration receipt matches the current
+deployment, session, installation and token generation. Rotation, logout and
+replacement invalidate readiness. After every awaited permission or scheduling
+operation, recheck the current binding and merge fresh alert preferences and exact
+delivered IDs so another window's disable or successful delivery is preserved.
 
 ## Data integrity
 
@@ -194,6 +210,20 @@ silently discarding later typing. Web body autosave writes only editable Markdow
 columns on existing rows; it updates the acknowledged baseline without replacing
 the live draft. Failed identical patches must not loop. Preserve unknown existing
 multi-select values.
+
+Saved view version 2 supports bounded all/any groups, host-resolved Today,
+ordered option/value sorts, literal row actions and interleaved action columns.
+Preserve every clause and source order when editing or reopening. Browser Intl
+and native Foundation resolve the saved timezone's configured local day boundary,
+defaulting to midnight, and refresh there and on foreground entry. A missing local
+time advances to the next valid instant; repeated times use the first occurrence.
+The shared JSC core has no Intl.
+Calendar contexts are query arguments only, never persisted in definitions.
+Actions use the generated runRowAction operation with the selected full row's
+post-save revision and the applied saved-view revision. Disable them during writes
+or while view settings are unsaved. Core
+resolves the current saved action, validates its ordinary write and publishes
+undo only after commit. Local receipts remain subject to sync rejection.
 
 Native catalog choices load through `NativeWorkspace.options`; controls only
 change draft bindings. Keep selected unknown choices and exact UTF-8 option keys,
@@ -232,8 +262,13 @@ canonical equivalence must not merge records, recoveries or reference selections
 Keep the original String values at the core boundary.
 
 Whole Worker requests are serialized. Native instances opening the same physical
-file share FIFO request admission, including initial schema repair; independent
-files and memory databases keep separate admission. Resolve symbolic links before
+file share request admission, including initial schema repair; independent
+files and memory databases keep separate admission. Foreground local operations
+may pass only a trailing run of passive reference-label reads, preserving order
+among foreground operations. Sync, close, transport-bearing requests and
+transport continuations remain ordering barriers. Canceled queued
+catalog/row reads release their reserved file turn without entering SQLite;
+an admitted request always finishes its transaction and callback. Resolve symbolic links before
 opening and refuse hard-linked database files so journals have one identity.
 Native requests retain SQLite ownership
 across every transaction and local await. HTTP outside a transaction suspends
@@ -244,7 +279,10 @@ eligible foreground requests before close. Keep the sync file lock while suspend
 Native destination waits stay visible outside scrolling content and offer Cancel.
 Cancellation invalidates only the navigation request and immediately releases its
 controls; late results and old defers must not affect a newer request. It never
-cancels sync or removes a core continuation. Sync has its own progress and Cancel
+cancels sync or removes a core continuation. Canceled reloads preserve displayed
+rows and errors. Admitted sync and committed mutations own their awaited model
+reconciliation, with fresh workspace/query guards, independently of scene-task
+cancellation. Sync has its own progress and Cancel
 action, with cooperative transport cancellation and a 15-minute round deadline.
 The scene's single foreground task runs automatic catch-up every 60 seconds.
 Successful local record/view saves and undo debounce catch-up by 750 ms; edits

@@ -21,13 +21,17 @@
 		IconArrowForwardUp
 	} from '@tabler/icons-svelte';
 	import type { MarkdownCommand, MarkdownController } from '../markdown-editor';
+	import { retainedFileKey, type RetainedFileResolver } from '../retained-files';
 	let {
 		value = $bindable(''),
 		label,
 		id,
 		disabled = false,
 		onchange,
-		onready
+		onready,
+		resolveFile,
+		onopenlink,
+		onopenfile
 	}: {
 		value?: string;
 		label: string;
@@ -35,18 +39,78 @@
 		disabled?: boolean;
 		onchange?(value: string): void;
 		onready?(): void;
+		resolveFile?: RetainedFileResolver;
+		onopenlink?(href: string): Promise<boolean>;
+		onopenfile?(key: string): Promise<void>;
 	} = $props();
 	let host: HTMLDivElement;
 	let editorRoot: HTMLDivElement;
 	let controller = $state<MarkdownController>();
 	let source = $state(false);
 	let error = $state('');
-	let popup = $state<'options' | 'blocks' | 'link' | 'help' | null>(null);
+	let popup = $state<'options' | 'blocks' | 'link' | 'help' | 'destination' | null>(null);
 	let selected = $state(false);
 	let selectionRange: Range | undefined;
 	let optionsButton: HTMLButtonElement;
 	let linkURL = $state('');
 	let linkError = $state('');
+	let selectedLink = $state(''),
+		openingLink = $state(false),
+		openError = $state('');
+	let linkAnchor: HTMLAnchorElement | undefined;
+	const fileKey = $derived(retainedFileKey(selectedLink));
+	const externalLink = $derived.by(() => {
+		try {
+			if (/[\s\\\u0000-\u001f\u007f]/.test(selectedLink)) return null;
+			const url = new URL(selectedLink);
+			return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password
+				? url.href
+				: null;
+		} catch {
+			return null;
+		}
+	});
+	const downloads: (() => void)[] = [];
+	const downloadAbort = new AbortController();
+	let disposed = false;
+	async function openSelectedLink() {
+		if (openingLink) return;
+		const href = selectedLink;
+		const key = fileKey;
+		openingLink = true;
+		openError = '';
+		try {
+			if (key) {
+				if (onopenfile) await onopenfile(key);
+				else {
+					if (!resolveFile) throw Error('Connect to your hub to download this file.');
+					const file = await resolveFile(key, downloadAbort.signal);
+					if (disposed) {
+						file.dispose();
+						return;
+					}
+					downloads.push(file.dispose);
+					const link = document.createElement('a');
+					link.href = file.url;
+					link.download = key.split('/').at(-1) || 'attachment';
+					document.body.appendChild(link);
+					link.click();
+					link.remove();
+				}
+			} else if (!onopenlink || !(await onopenlink(href))) {
+				throw Error(
+					'This link has no record available in this workspace. Use the original link below.'
+				);
+			}
+			if (!disposed && selectedLink === href && popup === 'destination') closePopup(false);
+		} catch (reason) {
+			if (reason instanceof Error && reason.name === 'AbortError') return;
+			if (!disposed && selectedLink === href && popup === 'destination')
+				openError = reason instanceof Error ? reason.message : 'The link could not open.';
+		} finally {
+			openingLink = false;
+		}
+	}
 	let menu = $state<HTMLDivElement>();
 	let linkInput = $state<HTMLInputElement>();
 	function trackSelection() {
@@ -123,8 +187,10 @@
 	function closePopup(restoreFocus = true) {
 		const previous = popup;
 		popup = null;
+		selectedLink = '';
 		if (restoreFocus) {
-			if (previous === 'options' || previous === 'help') optionsButton.focus();
+			if (previous === 'destination') linkAnchor?.focus({ preventScroll: true });
+			else if (previous === 'options' || previous === 'help') optionsButton.focus();
 			else controller?.focus();
 		}
 	}
@@ -178,7 +244,6 @@
 		{ command: 'redo', name: 'Redo', icon: IconArrowForwardUp }
 	];
 	onMount(() => {
-		let disposed = false;
 		void import('../markdown-editor')
 			.then(async ({ createMarkdownEditor }) => {
 				if (disposed) return;
@@ -187,6 +252,21 @@
 					label,
 					id: `${id}-rich`,
 					onslash: () => openMenu('blocks'),
+					resolveFile: (key, signal, preview) => {
+						if (!resolveFile)
+							return Promise.reject(Error('Connect to your hub to view this image.'));
+						return resolveFile(key, signal, preview);
+					},
+					onopenlink: async (href, anchor) => {
+						selectedLink = href;
+						linkAnchor = anchor;
+						openError = '';
+						popup = 'destination';
+						await tick();
+						menu
+							?.querySelector<HTMLButtonElement>('button:not(:disabled)')
+							?.focus({ preventScroll: true });
+					},
 					onchange(next) {
 						if (!disposed) {
 							value = next;
@@ -213,6 +293,8 @@
 			});
 		return () => {
 			disposed = true;
+			downloadAbort.abort();
+			for (const dispose of downloads) dispose();
 			void controller?.destroy();
 		};
 	});
@@ -413,6 +495,28 @@
 		</div>
 	{/if}
 	<div bind:this={host} class="rich-document" hidden={source}></div>
+	{#if popup === 'destination'}
+		<div
+			class="editor-popup link-destination"
+			role="dialog"
+			aria-label="Open document link"
+			tabindex="-1"
+			bind:this={menu}
+			use:placePopup={{ anchor: () => linkAnchor?.getBoundingClientRect() ?? caretRect() }}
+		>
+			<p>{selectedLink}</p>
+			{#if fileKey || onopenlink}<button
+					type="button"
+					disabled={openingLink}
+					onclick={openSelectedLink}>{fileKey ? 'Download file' : 'Open in workspace'}</button
+				>{/if}
+			{#if externalLink}<a href={externalLink} target="_blank" rel="noopener noreferrer"
+					>Open original link</a
+				>{/if}
+			<button type="button" onclick={() => closePopup()}>Close link</button>
+			{#if openError}<p role="status">{openError}</p>{/if}
+		</div>
+	{/if}
 	{#if source}<textarea
 			{id}
 			aria-label={label}
@@ -435,6 +539,28 @@
 		border: 1px solid var(--color-rule);
 		border-radius: 0.6rem;
 		background: var(--color-paper);
+	}
+	.link-destination {
+		width: 19rem;
+		padding: 0.5rem;
+		overflow-wrap: anywhere;
+	}
+	.link-destination p {
+		margin: 0.25rem 0 0.5rem;
+		font-size: 0.8rem;
+	}
+	.link-destination a {
+		color: var(--color-accent);
+		text-decoration: underline;
+		display: inline-flex;
+		align-items: center;
+		padding: 0.45rem;
+		font-size: 0.8rem;
+	}
+	.rich-document :global([data-type='retained-image'] img) {
+		max-width: 100%;
+		max-height: 70vh;
+		object-fit: contain;
 	}
 	.options-trigger {
 		justify-content: center;
@@ -556,7 +682,8 @@
 	}
 	@media (max-width: 640px), (pointer: coarse) {
 		.options-trigger,
-		.editor-popup button {
+		.editor-popup button,
+		.link-destination a {
 			min-width: 2.75rem;
 			min-height: 2.75rem;
 		}

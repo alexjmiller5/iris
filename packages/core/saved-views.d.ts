@@ -1,5 +1,7 @@
 import type { DeleteViewArgs, ListViewsArgs, SaveViewArgs, SavedViewList, SavedViewRecord } from './contract.generated.ts';
 import type { SqlDriver } from './driver.ts';
+/** Internal action lookup; the caller holds the writer transaction. */
+export declare function loadSavedView(db: SqlDriver, id: string): Promise<SavedViewRecord>;
 /** Lists shared definitions only. Returned view.columns is SQL projection and
  * may omit id, updated_at and hidden fields. For editing, query without columns
  * or fetch a full row by id; never treat a projected row as a complete record. */

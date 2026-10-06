@@ -11,5 +11,7 @@ export declare function compileView(view: View, properties: Property[]): {
     sql: string;
     params: (string | number | null)[];
 };
+/** Saved definitions validate without a host clock; executing a relative query requires one. */
+export declare function validateView(view: View, properties: Property[]): void;
 /** Use only the configured scalar label, then id; never infer a schema. */
 export declare function displayName(row: Row, displayColumn?: string | null): string;

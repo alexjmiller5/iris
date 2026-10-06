@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Property } from 'life-ui-core/client';
 	import MarkdownEditor from './components/MarkdownEditor.svelte';
+	import type { RetainedFileResolver } from './retained-files';
 	import { IconX } from '@tabler/icons-svelte';
 	let {
 		id,
@@ -11,7 +12,9 @@
 		references = [],
 		showReferenceSelections = true,
 		onsearch,
-		onchange
+		onchange,
+		resolveFile,
+		onopenlink
 	}: {
 		id: string;
 		property: Property;
@@ -22,6 +25,8 @@
 		showReferenceSelections?: boolean;
 		onsearch?(query: string): void;
 		onchange?(value: string): void;
+		resolveFile?: RetainedFileResolver;
+		onopenlink?(href: string): Promise<boolean>;
 	} = $props();
 	const label = $derived(
 		property.label ||
@@ -134,7 +139,7 @@
 				</div>{/if}
 		{/if}
 	{:else if property.type === 'markdown'}
-		<MarkdownEditor {id} {label} {value} {disabled} onchange={change} />
+		<MarkdownEditor {id} {label} {value} {disabled} {resolveFile} {onopenlink} onchange={change} />
 	{:else if property.type === 'json'}
 		<textarea
 			{id}
