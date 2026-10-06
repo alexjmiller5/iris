@@ -15,17 +15,18 @@ struct CatalogRecordAcceptanceTests {
     let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     try Self.seed(runtime)
+    try #require(try await workspace.writeability(table: "record_examples").writable)
     let properties = try await workspace.catalog().properties.filter {
-      $0["tbl"] == .string("catalog_examples")
+      $0["tbl"] == .string("record_examples")
     }
-    let original = try #require(try await workspace.rows(table: "catalog_examples").first?.record)
+    let original = try #require(try await workspace.rows(table: "record_examples").first?.record)
     let journal = EditorDraftStore(
       root: directory, workspace: directory.appendingPathComponent("test.sqlite"))
     let editor = RecordEditorModel(
-      properties: properties, original: original, table: "catalog_examples", store: journal
+      properties: properties, original: original, table: "record_examples", store: journal
     ) { patch, baseline in
       try await workspace.write(
-        table: "catalog_examples", patch: patch, expectedUpdatedAt: baseline?["updated_at"]?.text)
+        table: "record_examples", patch: patch, expectedUpdatedAt: baseline?["updated_at"]?.text)
     }
     let history = try Self.history(runtime)
     let pending = try await workspace.status().pendingUiEdits
@@ -48,24 +49,24 @@ struct CatalogRecordAcceptanceTests {
     #expect(editor.draft.values["title"] == "Blocked")
     #expect(editor.draft.values["detail"] == "Retained second edit")
     #expect(editor.draft.original == original)
-    #expect(try await workspace.rows(table: "catalog_examples").first?.record == original)
+    #expect(try await workspace.rows(table: "record_examples").first?.record == original)
     #expect(try Self.history(runtime) == history)
     #expect(try await workspace.status().pendingUiEdits == pending)
     let retained = try #require(
-      try journal.load(table: "catalog_examples", recordID: "catalog-record"))
+      try journal.load(table: "record_examples", recordID: "catalog-record"))
     #expect(retained.draft.values["title"] == "Blocked")
     #expect(retained.draft.values["detail"] == "Retained second edit")
     #expect(retained.draft.original == original)
     editor.setValue("Allowed", for: "title")
     try await editor.saveAll()
-    let saved = try #require(try await workspace.rows(table: "catalog_examples").first?.record)
+    let saved = try #require(try await workspace.rows(table: "record_examples").first?.record)
     #expect(saved["title"] == .string("Allowed"))
     #expect(saved["detail"] == .string("Retained second edit"))
     #expect(saved["locked"] == .string("Immutable fixture value"))
     #expect(saved["computed"] == .string("Derived fixture value"))
     #expect(saved["updated_at"] != original["updated_at"])
     #expect(!editor.dirty && editor.violations.isEmpty)
-    #expect(try journal.load(table: "catalog_examples", recordID: "catalog-record") == nil)
+    #expect(try journal.load(table: "record_examples", recordID: "catalog-record") == nil)
     try await workspace.close()
   }
 
@@ -98,14 +99,15 @@ struct CatalogRecordAcceptanceTests {
     if !existed { try await workspace.createSample() }
     // Never modify existing records/fixtures when a preparation is accidentally repeated.
     try #require(
-      !(try await workspace.catalog().tables.contains { $0["id"] == .string("catalog_examples") }))
+      !(try await workspace.catalog().tables.contains { $0["id"] == .string("record_examples") }))
     try Self.seed(runtime)
+    try #require(try await workspace.writeability(table: "record_examples").writable)
     try await workspace.close()
   }
 
   private static func history(_ runtime: LifeCoreRuntime) throws -> String {
     let value = runtime.context.evaluateScript(
-      "JSON.stringify(LifeSql.all(\"SELECT * FROM history WHERE tbl='catalog_examples' ORDER BY id\"))"
+      "JSON.stringify(LifeSql.all(\"SELECT * FROM history WHERE tbl='record_examples' ORDER BY id\"))"
     )
     try #require(runtime.context.exception == nil)
     return try #require(value?.toString())
@@ -114,12 +116,12 @@ struct CatalogRecordAcceptanceTests {
   private static func seed(_ runtime: LifeCoreRuntime) throws {
     runtime.context.evaluateScript(
       #"""
-      const ddl = `CREATE TABLE catalog_examples (
+      const ddl = `CREATE TABLE record_examples (
         id TEXT PRIMARY KEY, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT,
         title TEXT, detail TEXT, state TEXT, locked TEXT, computed TEXT)`;
       LifeSql.run(ddl);
       LifeSql.run('INSERT INTO _schema_log(ddl) VALUES (?)', [ddl]);
-      LifeSql.run("INSERT INTO catalog_tables(id,kind,display,purpose) VALUES ('catalog_examples','table','title','Synthetic catalog acceptance')");
+      LifeSql.run("INSERT INTO catalog_tables(id,kind,display,purpose) VALUES ('record_examples','table','title','Synthetic catalog acceptance')");
       for (const [col,label,type,sort,required,description,options,immutable,derived] of [
         ['title','Title','text',0,1,'Short fixture title.',null,0,null],
         ['detail','Detail','text',1,0,'A second independent edit.',null,0,null],
@@ -127,10 +129,10 @@ struct CatalogRecordAcceptanceTests {
         ['locked','Locked','text',3,0,'Set once by the creator.',null,1,null],
         ['computed','Computed','text',4,0,'Filled by the fixture derivation.',null,0,'fixture-derivation']
       ]) LifeSql.run('INSERT INTO catalog_properties(id,tbl,col,label,type,sort,required,description,options,immutable,derived_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-        ['catalog_examples.'+col,'catalog_examples',col,label,type,sort,required,description,options,immutable,derived]);
+        ['record_examples.'+col,'record_examples',col,label,type,sort,required,description,options,immutable,derived]);
       LifeSql.run("INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
-        ['catalog-title','catalog_examples','invariant',1,"SELECT id FROM changed WHERE title='Blocked'",'Fixture title is blocked.']);
-      LifeSql.run("INSERT INTO catalog_examples VALUES ('catalog-record','2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z',NULL,NULL,'Catalog fixture','Original detail','Draft','Immutable fixture value','Derived fixture value')");
+        ['catalog-title','record_examples','invariant',1,"SELECT id FROM changed WHERE title='Blocked'",'Fixture title is blocked.']);
+      LifeSql.run("INSERT INTO record_examples VALUES ('catalog-record','2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z',NULL,NULL,'Catalog fixture','Original detail','Draft','Immutable fixture value','Derived fixture value')");
       """#)
     try #require(
       runtime.context.exception == nil,

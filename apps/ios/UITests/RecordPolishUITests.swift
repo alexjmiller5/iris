@@ -189,7 +189,7 @@ final class RecordPolishUITests: XCTestCase {
     app.buttons["open-local"].tap()
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 10))
     app.navigationBars.buttons["BackButton"].firstMatch.tap()
-    let table = app.buttons["sidebar-table-catalog_examples"]
+    let table = app.buttons["sidebar-table-record_examples"]
     XCTAssertTrue(table.waitForExistence(timeout: 5))
     table.tap()
     let record = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Catalog fixture"))

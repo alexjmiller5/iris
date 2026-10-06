@@ -27,7 +27,7 @@ final class CatalogRecordUITests: XCTestCase {
     location.typeText(file.path)
     location.typeKey(.return, modifierFlags: [])
     app.buttons["Open"].firstMatch.click()
-    let table = app.buttons["sidebar-table-catalog_examples"]
+    let table = app.buttons["sidebar-table-record_examples"]
     XCTAssertTrue(table.waitForExistence(timeout: 10))
     table.click()
     let record = app.buttons["Open Catalog fixture"]
