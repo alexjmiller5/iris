@@ -171,7 +171,7 @@ try {
       );
     }
     const before = await stored();
-    const pending = (await local("status")).pendingUiEdits;
+    const pending = (await local("snapshot")).status.pendingUiEdits;
     const history = db.db
       .query("SELECT * FROM history WHERE row_id='fixture-record' ORDER BY id")
       .all();
@@ -185,7 +185,7 @@ try {
     await value("detail", "Retained second edit");
     await enabled("Save record", true);
     expect(await stored()).toEqual(before);
-    expect((await local("status")).pendingUiEdits).toBe(pending);
+    expect((await local("snapshot")).status.pendingUiEdits).toBe(pending);
     expect(
       db.db
         .query(
@@ -282,18 +282,37 @@ try {
     await enabled("New record", true);
     console.log("PASS: a real rule dependency requires backfill");
 
+    // Completed coverage remains valid when an incremental pull fails before
+    // changing schema or metadata. A transport failure alone is not revocation.
+    const certified = await stored();
     failPull = true;
     await sync();
-    await enabled("New record", false);
-    await bodyHas("incomplete");
-    failPull = false;
-    await sync();
+    await bodyHas("Sync did not finish. Local records remain available.");
     await enabled("New record", true);
+    expect(await stored()).toEqual(certified);
     await cdp.navigate(url);
     await click("Open my workspace");
     await enabled("New record", true);
+    await click("Fixture record");
+    await value("quantity", "44");
+    await cdp.fill(field("detail"), "Saved after interrupted refresh");
+    await click("Save record");
+    await bodyHas("Pending edits: 1");
+    expect(await stored()).toMatchObject({
+      quantity: 44,
+      detail: "Saved after interrupted refresh",
+    });
+    await click("Close record");
+    failPull = false;
+    await sync();
+    await enabled("New record", true);
+    expect(
+      db.db
+        .query("SELECT quantity,detail FROM widgets WHERE id='fixture-record'")
+        .get(),
+    ).toEqual({ quantity: 44, detail: "Saved after interrupted refresh" });
     console.log(
-      "PASS: interrupted coverage revokes writes and recovery survives reopen",
+      "PASS: unchanged incremental failure retains certified writes after reopen and recovery",
     );
 
     await cdp.evaluate(`window.holdPermissionTable='history'`);
