@@ -3,6 +3,28 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { createMarkdownEditor, type MarkdownController } from './markdown-editor';
 
 const editors: MarkdownController[] = [];
+test('a late image response is disposed after its source node leaves the document', async () => {
+	const element = document.createElement('div');
+	document.body.appendChild(element);
+	let release!: (file: { url: string; contentType: string; dispose(): void }) => void;
+	const pending = new Promise<{ url: string; contentType: string; dispose(): void }>(
+		(resolve) => (release = resolve)
+	);
+	const editor = await createMarkdownEditor(element, {
+		value: '![Diagram](/v1/files/raw/a.png)',
+		label: 'Body',
+		id: 'late',
+		onchange() {},
+		resolveFile: () => pending
+	});
+	editors.push(editor);
+	editor.replaceMarkdown('Other document');
+	const dispose = vi.fn();
+	release({ url: 'blob:late', contentType: 'image/png', dispose });
+	await vi.waitFor(() => expect(dispose).toHaveBeenCalledTimes(1));
+	expect(element.querySelector('img[src]')).toBeNull();
+	expect(editor.getMarkdown()).toBe('Other document');
+});
 afterEach(async () => {
 	for (const editor of editors.splice(0)) await editor.destroy();
 	document.body.replaceChildren();
@@ -19,6 +41,61 @@ async function open(value: string, onchange = (_value: string) => {}) {
 	editors.push(editor);
 	return { editor, element };
 }
+test('retained images render through the host without editing their original Markdown', async () => {
+	const element = document.createElement('div');
+	document.body.appendChild(element);
+	const source =
+		'![Diagram](/v1/files/raw/diagram.png)\n\n![Remote](https://expired.example/image.png)\n';
+	const dispose = vi.fn(),
+		onchange = vi.fn();
+	const resolveFile = vi.fn(async () => ({
+		url: 'blob:fixture-image',
+		contentType: 'image/png',
+		dispose
+	}));
+	const editor = await createMarkdownEditor(element, {
+		value: source,
+		label: 'Body',
+		id: 'files',
+		onchange,
+		resolveFile
+	});
+	editors.push(editor);
+	await vi.waitFor(() =>
+		expect(element.querySelector('img[src]')?.getAttribute('src')).toBe('blob:fixture-image')
+	);
+	expect(resolveFile).toHaveBeenCalledTimes(1);
+	expect(resolveFile).toHaveBeenCalledWith('raw/diagram.png', expect.any(AbortSignal));
+	expect(editor.getMarkdown()).toBe(source);
+	expect(onchange).not.toHaveBeenCalled();
+	editor.replaceMarkdown('Removed');
+	expect(dispose).toHaveBeenCalledTimes(1);
+});
+test('retained image failures show retry, and a retry leaves source unchanged', async () => {
+	const element = document.createElement('div');
+	document.body.appendChild(element);
+	const source = '![Diagram](/v1/files/raw/a.png)';
+	const resolveFile = vi
+		.fn()
+		.mockRejectedValueOnce(Error('File HTTP 404'))
+		.mockResolvedValue({ url: 'blob:retry', contentType: 'image/png', dispose: vi.fn() });
+	const onchange = vi.fn();
+	const editor = await createMarkdownEditor(element, {
+		value: source,
+		label: 'Body',
+		id: 'retry',
+		onchange,
+		resolveFile
+	});
+	editors.push(editor);
+	await vi.waitFor(() => expect(element.textContent).toContain('File HTTP 404'));
+	(element.querySelector('button') as HTMLButtonElement).click();
+	await vi.waitFor(() =>
+		expect(element.querySelector('img[src]')?.getAttribute('src')).toBe('blob:retry')
+	);
+	expect(editor.getMarkdown()).toBe(source);
+	expect(onchange).not.toHaveBeenCalled();
+});
 test('opening Markdown renders a heading and keeps the untouched source bytes', async () => {
 	const source = '# A heading\n\n**Bold** and _italic_.\n';
 	const { editor, element } = await open(source);

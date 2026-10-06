@@ -1,0 +1,34 @@
+import { afterEach, expect, test, vi } from 'vitest';
+import { editorFiles } from './editor-files';
+import type { EditorMessage } from './editor-island';
+afterEach(() => vi.unstubAllGlobals());
+test('host file requests work without secure-context crypto and reject stale document replies', async () => {
+	vi.stubGlobal('crypto', {});
+	const messages: EditorMessage[] = [];
+	const files = editorFiles((message) => messages.push(message));
+	const result = files.resolve('draft-1')('raw/a');
+	const request = messages[0];
+	expect(request?.type).toBe('file');
+	if (!request || !('request' in request)) throw Error('No file request');
+	files.receive({ ...request, id: 'old-draft', base64: btoa('wrong'), contentType: 'image/png' });
+	files.receive({ ...request, base64: btoa('image'), contentType: 'image/png' });
+	const file = await result;
+	expect(file.contentType).toBe('image/png');
+	expect(file.url).toMatch(/^blob:/);
+	file.dispose();
+	files.dispose();
+});
+test('canceled file requests and closed editors ignore late host bytes', async () => {
+	const messages: EditorMessage[] = [];
+	const files = editorFiles((message) => messages.push(message));
+	const controller = new AbortController();
+	const file = files.resolve('draft')('raw/a', controller.signal);
+	const rejection = expect(file).rejects.toThrow(/canceled/);
+	controller.abort();
+	await rejection;
+	files.receive({ ...messages[0], base64: btoa('late'), contentType: 'image/png' });
+	const link = files.openLink('draft', 'https://example.com');
+	const closed = expect(link).rejects.toThrow(/closed/);
+	files.dispose();
+	await closed;
+});

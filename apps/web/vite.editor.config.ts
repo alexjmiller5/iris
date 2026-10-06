@@ -33,7 +33,7 @@ export default defineConfig({
 				}
 				const script = chunks[0].code.replace(/<\/script/gi, '<\\/script');
 				const css = styles.map((file) => String(file.source)).join('\n');
-				const csp = `default-src 'none'; script-src 'sha256-${hash(script)}'; style-src 'sha256-${hash(css)}'; base-uri 'none'; form-action 'none'`;
+				const csp = `default-src 'none'; img-src blob:; script-src 'sha256-${hash(script)}'; style-src 'sha256-${hash(css)}'; base-uri 'none'; form-action 'none'`;
 				for (const name of Object.keys(bundle)) delete bundle[name];
 				this.emitFile({
 					type: 'asset',

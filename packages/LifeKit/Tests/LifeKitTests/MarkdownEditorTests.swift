@@ -6,6 +6,90 @@ import WebKit
 
 @MainActor
 struct MarkdownEditorTests {
+  @Test func closingTheEditorInvalidatesFileAndLinkCallbacks() {
+    let session = MarkdownEditorSession(value: "Body", label: "Body")
+    session.markReady()
+    session.openFile = { _ in }
+    session.openLink = { _ in true }
+    session.openExternal = { _ in }
+    session.invalidate()
+    #expect(!session.ready)
+    #expect(session.openFile == nil && session.openLink == nil && session.openExternal == nil)
+  }
+
+  @Test func nativeDocumentLinksUseExplicitHostActionsAndKeepSource() async throws {
+    let source =
+      "[Attachment](/v1/files/raw/document.txt)\n\n[External](https://example.com/source)\n"
+    let session = MarkdownEditorSession(value: source, label: "Body")
+    var openedFiles: [String] = []
+    var external: [URL] = []
+    session.openFile = { openedFiles.append($0) }
+    session.openExternal = { external.append($0) }
+    let host = MarkdownWebView.Coordinator(session: session)
+    let view = host.makeView()
+    defer { host.stop(view) }
+    for _ in 0..<300 where !session.ready { try await Task.sleep(for: .milliseconds(20)) }
+    try #require(session.ready)
+    func click(_ selector: String, text: String) async throws {
+      for _ in 0..<100 {
+        let clicked = try await view.callAsyncJavaScript(
+          """
+          const element=[...document.querySelectorAll(selector)].find(node=>node.textContent.trim()===text);
+          if (!element) return false;
+          element.click(); return true;
+          """, arguments: ["selector": selector, "text": text], in: nil, contentWorld: .page)
+        if clicked as? Bool == true { return }
+        try await Task.sleep(for: .milliseconds(20))
+      }
+      throw WorkspaceError(message: "Missing fixture link \(text)", violations: [])
+    }
+    try await click("a", text: "Attachment")
+    try await click("button", text: "Download file")
+    for _ in 0..<100 where openedFiles.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(openedFiles == ["raw/document.txt"])
+    try await click("a", text: "External")
+    try await click("a", text: "Open original link")
+    for _ in 0..<100 where external.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(external.map(\.absoluteString) == ["https://example.com/source"])
+    #expect(try await host.snapshot().value == source)
+  }
+  @Test func retainedImageRendersInRealWebKitWithoutChangingSource() async throws {
+    let source = "![Diagram](/v1/files/raw/diagram.png)\n"
+    let session = MarkdownEditorSession(value: source, label: "Body")
+    var requests: [String] = []
+    var changes: [String] = []
+    session.onChange = { changes.append($0) }
+    session.resolveFile = { key in
+      requests.append(key)
+      let bytes = Data(
+        base64Encoded:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII="
+      )!
+      return try RetainedFile(data: bytes, contentType: "image/png", name: "diagram.png")
+    }
+    let host = MarkdownWebView.Coordinator(session: session)
+    let view = host.makeView()
+    defer { host.stop(view) }
+    for _ in 0..<300 where !session.ready { try await Task.sleep(for: .milliseconds(20)) }
+    try #require(session.ready)
+    var loaded = false
+    for _ in 0..<100 where !loaded {
+      loaded =
+        (try await view.callAsyncJavaScript(
+          """
+          const image=document.querySelector('[data-type="retained-image"] img');
+          return image?.complete === true && image.naturalWidth === 1;
+          """, arguments: [:], in: nil, contentWorld: .page) as? Bool) == true
+      if !loaded { try await Task.sleep(for: .milliseconds(20)) }
+    }
+    let rendered = try await view.callAsyncJavaScript(
+      "return document.querySelector('.markdown-editor')?.outerHTML ?? 'missing editor'",
+      arguments: [:], in: nil, contentWorld: .page)
+    #expect(loaded, Comment(rawValue: String(describing: rendered)))
+    #expect(requests == ["raw/diagram.png"])
+    #expect(changes.isEmpty)
+    #expect(try await host.snapshot().value == source)
+  }
   @Test func switchingDocumentsRejectsOldCallbacksAndReadOnlyChanges() throws {
     let session = MarkdownEditorSession(value: "# Original", label: "Body")
     var changes: [String] = []

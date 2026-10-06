@@ -364,6 +364,8 @@ async function dispatch(request: DatabaseRequest) {
 			return local.referenceSources(args);
 		case 'referencedBy':
 			return local.referencedBy(args);
+		case 'resolveSourceLink':
+			return local.resolveSourceLink(args);
 		case 'search':
 			return local.search(args);
 		case 'remoteRows': {

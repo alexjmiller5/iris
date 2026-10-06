@@ -37,6 +37,10 @@ export interface DatabaseOperations {
 	rows: { args: { view: CoreArgs<'rows'> }; result: CoreResult<'rows'>[number]['record'][] };
 	referenceSources: { args: CoreArgs<'referenceSources'>; result: CoreResult<'referenceSources'> };
 	referencedBy: { args: CoreArgs<'referencedBy'>; result: CoreResult<'referencedBy'> };
+	resolveSourceLink: {
+		args: CoreArgs<'resolveSourceLink'>;
+		result: CoreResult<'resolveSourceLink'>;
+	};
 	search: { args: CoreArgs<'search'>; result: CoreResult<'search'> };
 	remoteRows: {
 		args: CoreArgs<'remoteRows'> & { token: string };

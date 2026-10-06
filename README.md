@@ -1,5 +1,12 @@
 # Life UI
 
+Markdown documents display retained PNG, JPEG, GIF, WebP, AVIF and BMP images
+through the connected hub. Other retained attachments have an explicit download
+action on the web and a native Quick Look preview. Files are limited to 128 MB;
+missing files can be retried. Viewing preserves the original Markdown, and remote
+images do not load automatically. Imported Notion links can open their local
+record when a whole-record import mapping exists; the original link stays available.
+
 A local-first Svelte web client and native SwiftUI apps for catalogued
 life-data databases. The three clients consume the same TypeScript validation,
 query, write and sync implementation. No PWA or analytics.

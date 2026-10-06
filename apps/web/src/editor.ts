@@ -5,7 +5,11 @@ import './islands.css';
 
 declare global {
 	interface Window {
-		lifeEditor: { setDocument(input: unknown): void; getDocument(): EditorDocument };
+		lifeEditor: {
+			setDocument(input: unknown): void;
+			getDocument(): EditorDocument;
+			receiveFile(input: unknown): void;
+		};
 	}
 }
 const host = window as Window & {
@@ -20,5 +24,6 @@ const editor = mount(EditorIsland, {
 });
 window.lifeEditor = {
 	setDocument: (input) => flushSync(() => editor.setDocument(input)),
+	receiveFile: (input) => editor.receiveFile(input),
 	getDocument: () => flushSync(() => editor.getDocument())
 };

@@ -18,6 +18,10 @@ final class MarkdownEditorSession {
   var onChange: (String) -> Void = { _ in }
   var snapshot: ((Bool) async throws -> MarkdownDocument)?
   var resumeEditing: (() -> Void)?
+  var resolveFile: ((String) async throws -> RetainedFile)?
+  var openFile: ((String) async throws -> Void)?
+  var openLink: ((String) async throws -> Bool)?
+  var openExternal: ((URL) -> Void)?
 
   init(value: String, label: String, readOnly: Bool = false) {
     document = MarkdownDocument(
@@ -87,7 +91,12 @@ final class MarkdownEditorSession {
 
   func invalidate() {
     active = false
+    ready = false
     snapshot = nil
     resumeEditing = nil
+    resolveFile = nil
+    openFile = nil
+    openLink = nil
+    openExternal = nil
   }
 }

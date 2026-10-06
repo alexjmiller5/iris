@@ -56,6 +56,48 @@ struct HubTransport: Sendable {
     try await request(route: route, body: body)
   }
 
+  func retainedFile(key: String) async throws -> RetainedFile {
+    let route = try retainedFileRoute(key: key)
+    guard let url = URL(string: endpoint + route) else {
+      throw WorkspaceError(message: "Invalid file request.", violations: [])
+    }
+    var request = URLRequest(url: url)
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    do {
+      let (bytes, reply) = try await session.bytes(for: request)
+      defer { bytes.task.cancel() }
+      guard let reply = reply as? HTTPURLResponse else {
+        throw WorkspaceError(message: "Invalid file response.", violations: [])
+      }
+      guard (200..<300).contains(reply.statusCode) else {
+        throw WorkspaceError(
+          message:
+            "File HTTP \(reply.statusCode). Retry after checking your connection and access.",
+          violations: [])
+      }
+      let maximum = 128 * 1024 * 1024
+      guard reply.expectedContentLength <= maximum else {
+        throw WorkspaceError(message: "File exceeds the 128 MB viewing limit.", violations: [])
+      }
+      var data = Data()
+      for try await byte in bytes {
+        try Task.checkCancellation()
+        guard data.count < maximum else {
+          throw WorkspaceError(message: "File exceeds the 128 MB viewing limit.", violations: [])
+        }
+        data.append(byte)
+      }
+      return try RetainedFile(
+        data: data, contentType: reply.mimeType?.lowercased() ?? "application/octet-stream",
+        name: key.split(separator: "/").last.map(String.init) ?? "attachment")
+    } catch {
+      if Task.isCancelled || error is CancellationError { throw CancellationError() }
+      if let failure = error as? WorkspaceError { throw failure }
+      throw WorkspaceError(
+        message: "File request failed. Check the connection and retry.", violations: [])
+    }
+  }
+
   /// Enrollment keeps HTTP status separate from policy. Only the fixed session
   /// endpoint receives the candidate credential; large sync replies use their own path.
   func sessionReply(revoking: Bool = false, maxResponseBytes: Int) async throws -> CoreSessionReply

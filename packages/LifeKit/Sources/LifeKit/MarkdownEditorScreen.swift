@@ -1,3 +1,4 @@
+import QuickLook
 import SwiftUI
 
 #if os(iOS)
@@ -11,6 +12,11 @@ struct MarkdownEditorScreen: View {
   let undoAction: CoreUndoAction?
   let undo: ((CoreUndoAction) async throws -> WorkspaceRecord)?
   let isCurrent: @MainActor () -> Bool
+  let resolveFile: ((String) async throws -> RetainedFile)?
+  let openSourceLink: ((String) async throws -> Bool)?
+  @State private var previewFile: RetainedFile?
+  @State private var previewURL: URL?
+  @Environment(\.openURL) private var openURL
   @State private var session: MarkdownEditorSession
   @State private var nativeSource = false
   @State private var finishing = false
@@ -27,7 +33,9 @@ struct MarkdownEditorScreen: View {
     value: Binding<String>, label: String, editor: RecordEditorModel,
     undoAction: CoreUndoAction? = nil,
     undo: ((CoreUndoAction) async throws -> WorkspaceRecord)? = nil,
-    isCurrent: @escaping @MainActor () -> Bool = { true }
+    isCurrent: @escaping @MainActor () -> Bool = { true },
+    resolveFile: ((String) async throws -> RetainedFile)? = nil,
+    openSourceLink: ((String) async throws -> Bool)? = nil
   ) {
     _value = value
     self.label = label
@@ -35,6 +43,8 @@ struct MarkdownEditorScreen: View {
     self.undoAction = undoAction
     self.undo = undo
     self.isCurrent = isCurrent
+    self.resolveFile = resolveFile
+    self.openSourceLink = openSourceLink
     _session = State(initialValue: MarkdownEditorSession(value: value.wrappedValue, label: label))
   }
 
@@ -136,15 +146,58 @@ struct MarkdownEditorScreen: View {
       }
     }
     .disabled(finishing)
+    .quickLookPreview($previewURL)
+    .onChange(of: previewURL) { _, url in
+      if url == nil {
+        previewFile?.dispose()
+        previewFile = nil
+      }
+    }
     .onAppear {
       session.onChange = { value = $0 }
       session.begin(value: value, label: label, readOnly: editor.isTrashed)
+      session.resolveFile = resolveFile
+      session.openExternal = { openURL($0) }
+      session.openLink = { href in
+        guard let openSourceLink, isCurrent(), !finishing else { return false }
+        finishing = true
+        defer {
+          finishing = false
+          session.resumeEditing?()
+        }
+        try await collect(lock: true)
+        try await editor.flushMarkdown()
+        guard !editor.dirty, !editor.needsReview else {
+          throw WorkspaceError(
+            message:
+              "Save the other record changes before opening this link. Your draft has been kept.",
+            violations: [])
+        }
+        return try await openSourceLink(href)
+      }
+      session.openFile = { key in
+        guard let resolveFile else {
+          throw WorkspaceError(message: "Connect to your hub to open this file.", violations: [])
+        }
+        let file = try await resolveFile(key)
+        guard isCurrent() else {
+          file.dispose()
+          return
+        }
+        previewFile?.dispose()
+        previewFile = file
+        previewURL = file.url
+      }
     }
     .onChange(of: scenePhase) { _, phase in
       if phase == .inactive { flushInBackground() }
     }
     .onChange(of: session.document.value) { _, _ in copied = false }
-    .onDisappear { session.invalidate() }
+    .onDisappear {
+      session.invalidate()
+      previewFile?.dispose()
+      previewFile = nil
+    }
   }
 
   private func collect(lock: Bool) async throws {

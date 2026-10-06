@@ -1155,6 +1155,8 @@ private struct RecordEditor: View {
                 editor: editor, onOpenReference: openReference,
                 undoAction: model.undoAction, undo: { try await model.undo($0, context: context) },
                 isCurrent: editorIsCurrent,
+                resolveFile: { try await model.retainedFile($0, context: context) },
+                openSourceLink: openSourceLink,
                 referenceAvailability: referenceAvailability(field),
                 value: Binding(
                   get: { editor.draft.values[field.id] ?? "" },
@@ -1405,6 +1407,18 @@ private struct RecordEditor: View {
     }
   }
 
+  private func openSourceLink(_ url: String) async throws -> Bool {
+    guard editorIsCurrent(), let context else { return false }
+    let result = try await context.workspace.resolveSourceLink(url)
+    guard editorIsCurrent(), let destination = result.destination else { return false }
+    let opened = await referenceNavigation?.open(table: destination.table, id: destination.row)
+    if let error = referenceNavigation?.error {
+      referenceNavigation?.cancel()
+      throw WorkspaceError(message: error, violations: [])
+    }
+    return opened != nil
+  }
+
   private func duplicate() {
     guard let context, let id = editor.draft.original?["id"]?.text, !duplicating else { return }
     focusedField = nil
@@ -1484,6 +1498,8 @@ private struct FieldInput: View {
   let undoAction: CoreUndoAction?
   let undo: (CoreUndoAction) async throws -> WorkspaceRecord
   let isCurrent: @MainActor () -> Bool
+  let resolveFile: (String) async throws -> RetainedFile
+  let openSourceLink: (String) async throws -> Bool
   let referenceAvailability: String?
   @Binding var value: String
 
@@ -1503,7 +1519,8 @@ private struct FieldInput: View {
         NavigationLink {
           MarkdownEditorScreen(
             value: $value, label: field.label, editor: editor,
-            undoAction: undoAction, undo: undo, isCurrent: isCurrent
+            undoAction: undoAction, undo: undo, isCurrent: isCurrent, resolveFile: resolveFile,
+            openSourceLink: openSourceLink
           )
           .onAppear { focus.wrappedValue = nil }
         } label: {

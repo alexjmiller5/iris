@@ -244,6 +244,10 @@ public final class NativeWorkspace {
   public func referencedBy(_ args: CoreReferencedByArgs) async throws -> CoreReferencedByPage {
     try await decode(CoreRequests.ReferencedBy(args))
   }
+
+  public func resolveSourceLink(_ url: String) async throws -> CoreSourceLinkResult {
+    try await decode(CoreRequests.ResolveSourceLink(CoreSourceLinkArgs(url: url)))
+  }
   public func search(_ args: CoreSearchArgs) async throws -> [CoreSearchHit] {
     try await decode(CoreRequests.Search(args))
   }

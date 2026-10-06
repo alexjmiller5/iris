@@ -22,6 +22,8 @@ import { gfm, insertTableCommand } from '@milkdown/kit/preset/gfm';
 import { history, undoCommand, redoCommand } from '@milkdown/kit/plugin/history';
 import { Plugin, TextSelection } from '@milkdown/kit/prose/state';
 import { $prose, callCommand, replaceAll } from '@milkdown/kit/utils';
+import { retainedImage } from './retained-image';
+import type { RetainedFileResolver } from './retained-files';
 
 export type MarkdownCommand =
 	| 'heading1'
@@ -54,6 +56,8 @@ export async function createMarkdownEditor(
 		id: string;
 		onchange(value: string): void;
 		onslash?(): void;
+		resolveFile?: RetainedFileResolver;
+		onopenlink?(href: string): void;
 	}
 ): Promise<MarkdownController> {
 	let source = options.value;
@@ -128,6 +132,7 @@ export async function createMarkdownEditor(
 					return false;
 				},
 				nodeViews: {
+					image: (node) => retainedImage(node, options.resolveFile),
 					list_item(node, view, getPos) {
 						const dom = document.createElement('li');
 						const contentDOM = document.createElement('div');
@@ -176,8 +181,11 @@ export async function createMarkdownEditor(
 				},
 				handleDOMEvents: {
 					click: (_view, event) => {
-						if ((event.target as Element).closest('a')) {
+						const link = (event.target as Element).closest('a');
+						if (link) {
 							event.preventDefault();
+							const href = link.getAttribute('href');
+							if (href) options.onopenlink?.(href);
 							return true;
 						}
 						return false;

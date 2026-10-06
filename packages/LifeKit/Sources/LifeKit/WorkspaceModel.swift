@@ -256,6 +256,22 @@ final class WorkspaceModel {
   let services = HubServicesModel()
   private var groupsURL: URL?
   private var transport: HubTransport?
+
+  func retainedFile(_ key: String, context: WorkspaceEditingContext?) async throws -> RetainedFile {
+    guard let context, context.workspace === client, let transport else {
+      throw WorkspaceError(message: "Connect to your hub to open this file.", violations: [])
+    }
+    let generation = workspaceGeneration
+    let file = try await transport.retainedFile(key: key)
+    guard generation == workspaceGeneration, context.workspace === client,
+      self.transport?.endpoint == transport.endpoint
+    else {
+      file.dispose()
+      throw WorkspaceError(
+        message: "The workspace connection changed. Reopen the file.", violations: [])
+    }
+    return file
+  }
   private var revision = 0
   private var scopedURL: URL?
   private let resolveLocalURL: @MainActor () throws -> URL

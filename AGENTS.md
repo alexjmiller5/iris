@@ -31,6 +31,13 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   snapshot. Native hosts reject stale IDs and collect the snapshot before Done.
   Keep Markdown as storage, preserve untouched source, and render imported HTML
   inert. The island has no network, SQL or credential access.
+- Retained `/v1/files/<opaque-key>` image references use the enrolled host
+  transport. Web uses managed blob URLs; native passes bytes over the document
+  bridge and owns temporary Quick Look files. Both refuse redirects and cap a
+  file at 128 MB. External images stay inert. File viewing never rewrites Markdown.
+  Source links resolve through core `resolveSourceLink` and whole-record import
+  provenance, then ordinary fresh-row navigation. Unmapped URLs retain an explicit
+  original-link action. Cancel or close disposes requests and file resources.
 - `scripts`: build and fixture test operations. No credentials or data exports.
 
 The supported service dependency is the life-data hub API with independently

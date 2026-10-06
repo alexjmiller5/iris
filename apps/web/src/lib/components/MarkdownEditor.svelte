@@ -18,13 +18,17 @@
 		IconArrowForwardUp
 	} from '@tabler/icons-svelte';
 	import type { MarkdownCommand, MarkdownController } from '../markdown-editor';
+	import { retainedFileKey, type RetainedFileResolver } from '../retained-files';
 	let {
 		value = $bindable(''),
 		label,
 		id,
 		disabled = false,
 		onchange,
-		onready
+		onready,
+		resolveFile,
+		onopenlink,
+		onopenfile
 	}: {
 		value?: string;
 		label: string;
@@ -32,6 +36,9 @@
 		disabled?: boolean;
 		onchange?(value: string): void;
 		onready?(): void;
+		resolveFile?: RetainedFileResolver;
+		onopenlink?(href: string): Promise<boolean>;
+		onopenfile?(key: string): Promise<void>;
 	} = $props();
 	let host: HTMLDivElement;
 	let controller = $state<MarkdownController>();
@@ -41,6 +48,57 @@
 	let linkOpen = $state(false);
 	let linkURL = $state('');
 	let linkError = $state('');
+	let selectedLink = $state(''),
+		openingLink = $state(false),
+		openError = $state('');
+	const fileKey = $derived(retainedFileKey(selectedLink));
+	const externalLink = $derived.by(() => {
+		try {
+			if (/[\s\\\u0000-\u001f\u007f]/.test(selectedLink)) return null;
+			const url = new URL(selectedLink);
+			return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password
+				? url.href
+				: null;
+		} catch {
+			return null;
+		}
+	});
+	const downloads: (() => void)[] = [];
+	let disposed = false;
+	async function openSelectedLink() {
+		if (openingLink) return;
+		openingLink = true;
+		openError = '';
+		try {
+			if (fileKey) {
+				if (onopenfile) await onopenfile(fileKey);
+				else {
+					if (!resolveFile) throw Error('Connect to your hub to download this file.');
+					const file = await resolveFile(fileKey);
+					if (disposed) {
+						file.dispose();
+						return;
+					}
+					downloads.push(file.dispose);
+					const link = document.createElement('a');
+					link.href = file.url;
+					link.download = fileKey.split('/').at(-1) || 'attachment';
+					document.body.appendChild(link);
+					link.click();
+					link.remove();
+				}
+			} else if (!onopenlink || !(await onopenlink(selectedLink))) {
+				throw Error(
+					'This link has no record available in this workspace. Use the original link below.'
+				);
+			}
+			selectedLink = '';
+		} catch (reason) {
+			openError = reason instanceof Error ? reason.message : 'The link could not open.';
+		} finally {
+			openingLink = false;
+		}
+	}
 	let menu = $state<HTMLDivElement>();
 	let linkInput = $state<HTMLInputElement>();
 	async function openBlocks() {
@@ -90,7 +148,6 @@
 		{ command: 'redo', name: 'Redo', icon: IconArrowForwardUp }
 	];
 	onMount(() => {
-		let disposed = false;
 		void import('../markdown-editor')
 			.then(async ({ createMarkdownEditor }) => {
 				if (disposed) return;
@@ -98,6 +155,15 @@
 					value,
 					label,
 					id: `${id}-rich`,
+					resolveFile: (key, signal) => {
+						if (!resolveFile)
+							return Promise.reject(Error('Connect to your hub to view this image.'));
+						return resolveFile(key, signal);
+					},
+					onopenlink: (href) => {
+						selectedLink = href;
+						openError = '';
+					},
 					onslash: openBlocks,
 					onchange(next) {
 						if (!disposed) {
@@ -125,6 +191,7 @@
 			});
 		return () => {
 			disposed = true;
+			for (const dispose of downloads) dispose();
 			void controller?.destroy();
 		};
 	});
@@ -225,6 +292,23 @@
 		</div>
 	{/if}
 	<div bind:this={host} class="rich-document" hidden={source}></div>
+	{#if selectedLink}
+		<div class="link-destination" role="group" aria-label="Open document link">
+			<p>{selectedLink}</p>
+			{#if fileKey || onopenlink}<button
+					type="button"
+					disabled={openingLink}
+					onclick={openSelectedLink}>{fileKey ? 'Download file' : 'Open in workspace'}</button
+				>{/if}
+			{#if externalLink}<a href={externalLink} target="_blank" rel="noopener noreferrer"
+					>Open original link</a
+				>{/if}
+			<button type="button" disabled={openingLink} onclick={() => (selectedLink = '')}
+				>Close link</button
+			>
+			{#if openError}<p role="status">{openError}</p>{/if}
+		</div>
+	{/if}
 	{#if source}<textarea
 			{id}
 			aria-label={label}
@@ -247,6 +331,21 @@
 		border-radius: 0.6rem;
 		overflow: hidden;
 		background: var(--color-paper);
+	}
+	.link-destination {
+		padding: 0.75rem;
+		border-top: 1px solid var(--color-rule);
+		overflow-wrap: anywhere;
+	}
+	.link-destination a {
+		color: var(--color-accent);
+		text-decoration: underline;
+		margin: 0 0.5rem;
+	}
+	.rich-document :global([data-type='retained-image'] img) {
+		max-width: 100%;
+		max-height: 70vh;
+		object-fit: contain;
 	}
 	.editor-bar {
 		display: flex;

@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "f56c9b19b667c1b06d46a2474e2185ae38891cf3de493d5ec28d8bbb6bab8afa";
+export declare const CORE_CONTRACT_HASH = "23c4c53e4ae4178d28e00d9fd698c8c2502b50d517b89ad15d3020edca4ab6e4";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -414,6 +414,16 @@ export type RunRowActionArgs = {
     rowId: string;
     expectedUpdatedAt: string;
 };
+export type SourceLinkArgs = {
+    url: string;
+};
+export type SourceRecordDestination = {
+    table: string;
+    row: string;
+};
+export type SourceLinkResult = {
+    destination?: SourceRecordDestination;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -522,6 +532,10 @@ export interface CoreOperations {
     runRowAction: {
         args: RunRowActionArgs;
         result: Row;
+    };
+    resolveSourceLink: {
+        args: SourceLinkArgs;
+        result: SourceLinkResult;
     };
 }
 export type CoreMethod = keyof CoreOperations;

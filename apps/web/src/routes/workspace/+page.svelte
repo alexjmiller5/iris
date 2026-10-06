@@ -4,6 +4,7 @@
 	import { editRevision } from '$lib/record-revision';
 	import { reconcileUndo } from '$lib/record-undo';
 	import FieldEditor from '$lib/FieldEditor.svelte';
+	import { createRetainedFileResolver } from '$lib/retained-files';
 	import RejectedEdits from '$lib/RejectedEdits.svelte';
 	import type { RejectionSnapshot } from '$lib/rejection-inbox';
 	import RecordGrid from '$lib/RecordGrid.svelte';
@@ -165,6 +166,9 @@
 		connection: { endpoint: string; token: string };
 	} | null>(null);
 	let connectedHub = $state<{ endpoint: string; token: string } | null>(null);
+	const resolveRetainedFile = $derived(
+		connectedHub ? createRetainedFileResolver(connectedHub) : undefined
+	);
 	let findVisible = $state(false);
 	let findVersion = 0;
 	let findNavigation = $state<NavigationState>({ destinations: [], loading: false, error: '' });
@@ -1656,6 +1660,16 @@
 		}
 		return true;
 	}
+	async function openSourceLink(url: string): Promise<boolean> {
+		if (!database || busy || writing || bodySaving)
+			throw Error('Wait for the current save, then open the link again.');
+		const workspace = database,
+			version = editorVersion;
+		const current = () => database === workspace && editorVersion === version && editing;
+		const { destination } = await workspace.request('resolveSourceLink', { url });
+		if (!current() || !destination) return false;
+		return openDestination({ ...destination, view: null }, current);
+	}
 	async function openRelatedRecord(
 		target: { table: string; id: string },
 		button: HTMLButtonElement
@@ -2192,6 +2206,8 @@
 									<FieldEditor
 										id={`field-${p.col}`}
 										property={p}
+										resolveFile={resolveRetainedFile}
+										onopenlink={openSourceLink}
 										bind:value={draft[p.col]}
 										onchange={() => {
 											if (!selected) explicitCreation = new Set([...explicitCreation, p.col]);
