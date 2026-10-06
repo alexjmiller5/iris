@@ -241,10 +241,18 @@ newer drafts; those drafts require an explicit Save before autosave resumes.
 Failures retain the draft and action. A returned tombstone stays read-only until
 explicit Restore, which also preserves the retained draft. Text-editor Undo stays
 separate. Reopening a workspace clears the session action.
+
 An affected dirty grid cell moves into the record review panel after Undo,
 using the receipt's full baseline plus only the newer raw cell value. Clear an
 unchanged affected cell; leave another row's cell draft untouched. Creation Undo
 retains the draft beside a read-only tombstone, and Restore preserves it.
+
+Governance presentation imports generated Life Data DTOs. The panel remains
+unmounted with no API or journal injection until service operations and capability
+advertisement are verified. DTOs and the pure inverse planner do not authorize
+client previews or writes. Keep the original approval request/key after an uncertain
+response; only a matching committed receipt, purged result or authenticated durable
+`not_committed` result can settle it. HTTP classification belongs to the core adapter.
 
 Native recovery journals are private, atomic and isolated per editor. Persist
 the latest draft and any unacknowledged write before awaiting its receipt.
