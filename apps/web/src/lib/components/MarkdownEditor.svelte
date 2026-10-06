@@ -3,6 +3,7 @@
 	import {
 		IconItalic,
 		IconLink,
+		IconLetterT,
 		IconH1,
 		IconH2,
 		IconH3,
@@ -163,6 +164,7 @@
 	const tools: { command: MarkdownCommand; name: string; icon: typeof IconH1 }[] = [
 		{ command: 'bold', name: 'Bold', icon: IconBold },
 		{ command: 'italic', name: 'Italic', icon: IconItalic },
+		{ command: 'paragraph', name: 'Text', icon: IconLetterT },
 		{ command: 'heading1', name: 'Heading 1', icon: IconH1 },
 		{ command: 'heading2', name: 'Heading 2', icon: IconH2 },
 		{ command: 'heading3', name: 'Heading 3', icon: IconH3 },
@@ -323,6 +325,13 @@
 				title="Link"
 				onmousedown={(event) => event.preventDefault()}
 				onclick={openLink}><IconLink size={18} /></button
+			>
+			<button
+				type="button"
+				aria-label="Code"
+				title="Code"
+				onmousedown={(event) => event.preventDefault()}
+				onclick={() => controller?.command('inlineCode')}><IconCode size={18} /></button
 			>
 		</div>
 	{/if}
