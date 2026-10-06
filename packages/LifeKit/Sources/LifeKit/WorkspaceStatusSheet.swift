@@ -3,6 +3,8 @@ import SwiftUI
 struct WorkspaceStatusSheet: View {
   let model: WorkspaceModel
   @Environment(\.dismiss) private var dismiss
+  @State private var diagnosticsCopied = false
+  @State private var diagnosticCopyFailed = false
 
   var body: some View {
     NavigationStack {
@@ -17,6 +19,29 @@ struct WorkspaceStatusSheet: View {
               Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
             Text("\(version) (\(build))")
               .accessibilityIdentifier("app-version")
+          }
+          Button {
+            guard let workspace = model.client else { return }
+            do {
+              let report = try workspace.diagnosticReport(
+                version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+                  as? String ?? "",
+                build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")
+              CopyDraftButton.copy(report)
+              diagnosticsCopied = true
+              diagnosticCopyFailed = false
+            } catch {
+              diagnosticsCopied = false
+              diagnosticCopyFailed = true
+            }
+          } label: {
+            Label(diagnosticsCopied ? "Copied" : "Copy diagnostics", systemImage: "doc.on.doc")
+          }
+          .disabled(model.client == nil)
+          .accessibilityIdentifier("copy-diagnostics")
+          .help("Copy timing information without record contents or connection details.")
+          if diagnosticCopyFailed {
+            Text("Could not copy diagnostics. Try again.").foregroundStyle(.secondary)
           }
         }
         if model.isReplica {
