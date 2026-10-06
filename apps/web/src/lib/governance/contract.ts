@@ -1,5 +1,7 @@
 // PROVISIONAL TYPE-ONLY copy approved by the Life Data owner.
-// Source: Life Data docs/governance-api-contract.md.
+// Source: Life Data core/src/contract.generated.ts at
+// f0ed465d230c96dd63c2610691274034c34c79e9.
+// Contract hash: 323ba793aeb8962d9555f48d80ccf486bf1010116f1f1b89d8c33f9491c26d12.
 // No operation is available until advertised by core. Replace with canonical
 // generated DTO imports during integration; never bind guessed HTTP routes.
 
@@ -83,10 +85,17 @@ export type MutationErrorCode =
 	| 'unavailable'
 	| 'expired_preview'
 	| 'idempotency_conflict';
+export type MutationResolution = 'unresolved' | 'not_committed';
+export type MutationError = {
+	kind: 'error';
+	code: MutationErrorCode;
+	resolution: MutationResolution;
+	conflicts: Conflict[];
+};
 export type MutationResult<T> =
 	| { kind: 'success'; value: T }
 	| { kind: 'purged' }
-	| { kind: 'error'; code: MutationErrorCode; conflicts: Conflict[] }
+	| MutationError
 	// Adapter outcomes, never JSON fabricated by the service:
 	| { kind: 'transport_error'; code: 'offline' | 'indeterminate' };
 export type ApprovalResult = MutationResult<ApprovalReceipt>;

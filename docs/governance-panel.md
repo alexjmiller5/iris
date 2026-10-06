@@ -37,10 +37,11 @@ cached display content and invalidates late page/preview responses.
 
 `contract.ts` is the explicitly permitted provisional type-only copy of the Life Data
 contract. Root must replace it with generated imports after regenerating from
-Life Data foundation `d5908d0f95817f3ba4699a80e548534702d10a87` (DTO prerequisite
-`3e96010cf0c46ea07285180e6c1ba573a77d5fd7`, contract hash
-`63c9b511a3baf6682adff6b6f820b71d2a08d5416ff7b0a7069fc431de4e7d19`).
-That foundation adds no advertised governance HTTP API or CoreOperations. Its inverse
+Life Data `f0ed465d230c96dd63c2610691274034c34c79e9`, contract hash
+`323ba793aeb8962d9555f48d80ccf486bf1010116f1f1b89d8c33f9491c26d12`.
+This is the generated DTO source prerequisite, separate from the proposed transport
+routes/capability in its `docs/governance-transport-contract.md`. It adds no advertised
+governance HTTP API or CoreOperations. The foundation's inverse
 planner requires trusted complete ordered typed evidence; clients must not supply
 untrusted evidence to manufacture an authorized preview.
 
@@ -65,7 +66,19 @@ same request/key; reopening retries that exact request without a new preview. A
 committed retry is reauthorized, then looked up before preview expiry/current revision
 checks. Session replacement leaves the old scope parked and must never rebind its
 adapter to new credentials. Navigation/disposal does not delete an uncertain request.
-A definitive result compare-deletes the journal; failed deletion blocks new approvals
+Only a validated success, content-free purged result or error with required
+`resolution: "not_committed"` compare-deletes the journal. The negative result means
+the service durably excluded every late or concurrent execution of the exact original
+key/request. Current rejection, rollback, or absence of a success receipt is insufficient.
+Errors with `resolution: "unresolved"` keep the complete request, even after a retry
+receives authentication, authority, usage-cap, resource, revision or validation rejection.
+All errors invalidate the preview independently of whether the key is settled.
+
+The model checks the typed result envelope before settlement. Missing/unknown resolution,
+bare read-only `unavailable`, malformed payloads and unknown kinds become indeterminate.
+A successful receipt must match the retained proposal ID/version and target, using the
+original entry even after navigation/unmount. Replayed receipts may have older revisions
+or empty history IDs; neither is a reason to discard them. Failed deletion blocks new approvals
 until reopening/reconciliation. A purged result carries no content and clears displayed
 copies. Service-side redaction of all proposal/receipt versions remains the owner's
 requirement. Local browser storage can be cleared or evicted; no storage API promises
@@ -85,6 +98,16 @@ CI runs these presentation boundaries and the merged history-selection tests. Th
 Life Data HTTP fixture remains a separate pinned-source conformance command; it requires
 that owner checkout and is not silently replaced with a stub in CI. Happy DOM checks
 verify mounted disablement and cache invalidation, not real browser storage.
+
+Retry regressions exercise normalized API errors representing 401/403/429, every unresolved
+mutation code, missing/malformed resolution and envelope, mismatched receipts, late responses,
+reopen with the original key, and durable negative settlement requiring fresh review. They do
+not exercise HTTP classification. The future core adapter must validate the complete
+status/code/resolution matrix, mapping malformed or unlisted pairs to indeterminate after
+dispatch. The model does not implement that matrix or infer authentication/negative-receipt
+durability. Real positive and negative receipt writers and capability advertisement remain
+required before activation. No generated core/resource, host, service or release change is
+part of this model correction.
 
 Actual browser checks are prepared in `scripts/check-governance-browser.ts`. Allocate
 two owned disposable targets through the existing browser helper and supply their IDs;
