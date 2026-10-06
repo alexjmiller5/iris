@@ -11,7 +11,7 @@ struct NativeReadCancellationTests {
     defer { fixture.release() }
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var submitted: [Int] = []
     let reads = (0..<6).map { index in
@@ -26,7 +26,7 @@ struct NativeReadCancellationTests {
     }
     try await waitUntil { submitted.count == reads.count }
     let leaving = Array(reads.prefix(cancelledCount))
-    await Task.detached { leaving.forEach { $0.cancel() } }.value
+    await Task.detached { for task in leaving { task.cancel() } }.value
     fixture.release()
     _ = try await blocker.value
     for (index, read) in reads.enumerated() {
@@ -81,7 +81,7 @@ struct NativeReadCancellationTests {
     }
     first.holdNext()
     let blocker = Task { try await first.workspace.catalog() }
-    try await waitUntil { first.holding }
+    try await first.waitUntilHeld()
     var submitted = 0
     let cancelled = (0..<4).map { _ in
       Task {
@@ -90,7 +90,7 @@ struct NativeReadCancellationTests {
       }
     }
     try await waitUntil { submitted == cancelled.count }
-    cancelled.forEach { $0.cancel() }
+    for task in cancelled { task.cancel() }
     var liveFinished = 0
     let thirdLive = Task {
       defer { liveFinished += 1 }
@@ -132,7 +132,7 @@ struct NativeReadCancellationTests {
       defer { finished = true }
       return try await first.workspace.rows(table: "notes")
     }
-    try await waitUntil { first.holding }
+    try await first.waitUntilHeld()
     first.runtime.context.evaluateScript(
       "LifeSql.run(\"UPDATE notes SET title='Synthetic committed title'\")")
     try #require(first.runtime.context.exception == nil)
@@ -159,7 +159,7 @@ struct NativeReadCancellationTests {
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var submitted = 0
     let write = Task {
@@ -184,132 +184,181 @@ struct NativeReadCancellationTests {
     await #expect(throws: WorkspaceError.self) { try await fixture.workspace.catalog() }
   }
 
-  private func waitUntil(_ condition: () -> Bool) async throws {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
-    while !condition(), ContinuousClock.now < deadline { await Task.yield() }
-    try #require(condition(), "Read admission barrier was not reached")
+  private func waitUntil(
+    sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool
+  ) async throws {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+    while !condition(), ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(5))
+    }
+    try #require(
+      condition(), "Read admission barrier was not reached", sourceLocation: sourceLocation)
   }
 }
 
 @MainActor
 struct WorkspaceReadCancellationTests {
+  @Test(arguments: [false, true])
+  func failedOrCancelledTestReleasesItsAdmittedRequest(cancelled: Bool) async throws {
+    enum FixtureFailure: Error { case expected }
+    var retained: ReadAdmissionFixture?
+    let operation = Task { @MainActor in
+      try await withReadAdmissionFixture { fixture in
+        retained = fixture
+        fixture.holdNext("rows")
+        _ = fixture.track(Task { try await fixture.workspace.rows(table: "notes") })
+        try await fixture.waitUntilHeld()
+        if cancelled {
+          withUnsafeCurrentTask { $0?.cancel() }
+          try Task.checkCancellation()
+        }
+        throw FixtureFailure.expected
+      }
+    }
+    do {
+      try await operation.value
+      Issue.record("The fixture body must fail")
+    } catch {
+      #expect(cancelled ? error is CancellationError : error is FixtureFailure)
+    }
+    let fixture = try #require(retained)
+    try #require(fixture.didClose, "Failed test must close its released fixture")
+    #expect(!fixture.holding)
+    await #expect(throws: WorkspaceError.self) { try await fixture.workspace.catalog() }
+  }
+
   @Test(arguments: [false, true], [false, true])
   func cancelledReloadPreservesVisibleState(afterAdmission: Bool, fails: Bool) async throws {
-    let fixture = try await ReadAdmissionFixture()
-    let model = try await makeModel(fixture)
-    let original = model.rows
-    let undo = model.undoAction
-    model.error = "Previous load error"
-    fixture.holdNext(afterAdmission ? "rows" : "writeability")
-    let reload = Task { await model.reload() }
-    defer { fixture.release() }
-    try await waitUntil { fixture.holding }
-    fixture.runtime.context.evaluateScript(
-      fails
-        ? "LifeSql.run(\"DROP TABLE notes\")"
-        : "LifeSql.run(\"UPDATE notes SET title='Changed while refreshing'\")")
-    try #require(fixture.runtime.context.exception == nil)
-    reload.cancel()
-    fixture.release()
-    await reload.value
-    #expect(model.rows == original)
-    #expect(model.error == "Previous load error")
-    #expect(model.undoAction == undo)
-    #expect(!model.loading)
-    try await fixture.workspace.close()
+    try await withReadAdmissionFixture { fixture in
+      let model = try await makeModel(fixture)
+      let original = model.rows
+      let undo = model.undoAction
+      model.error = "Previous load error"
+      fixture.holdNext(afterAdmission ? "rows" : "writeability")
+      let reload = fixture.track(Task { await model.reload() })
+      defer { fixture.release() }
+      try await fixture.waitUntilHeld()
+      fixture.runtime.context.evaluateScript(
+        fails
+          ? "LifeSql.run(\"DROP TABLE notes\")"
+          : "LifeSql.run(\"UPDATE notes SET title='Changed while refreshing'\")")
+      try #require(fixture.runtime.context.exception == nil)
+      reload.cancel()
+      fixture.release()
+      await reload.value
+      #expect(model.rows == original)
+      #expect(model.error == "Previous load error")
+      #expect(model.undoAction == undo)
+      #expect(!model.loading)
+    }
   }
 
   @Test func cancelledCommittedSaveAndUndoReconcileVisibleRows() async throws {
-    let fixture = try await ReadAdmissionFixture()
-    let model = try await makeModel(fixture)
-    let original = try #require(model.rows.first?.record)
-    let context = try #require(model.editingContext)
-    fixture.holdNext("write")
-    let save = Task {
-      try await model.save(
-        ["id": original["id"]!, "title": .string("Committed despite cancellation")],
-        original: original, context: context)
+    try await withReadAdmissionFixture { fixture in
+      let model = try await makeModel(fixture)
+      let original = try #require(model.rows.first?.record)
+      let context = try #require(model.editingContext)
+      fixture.holdNext("write")
+      let save = fixture.track(
+        Task {
+          try await model.save(
+            ["id": original["id"]!, "title": .string("Committed despite cancellation")],
+            original: original, context: context)
+        })
+      defer { fixture.release() }
+      try await fixture.waitUntilHeld()
+      save.cancel()
+      fixture.release()
+      #expect(try await save.value["title"] == .string("Committed despite cancellation"))
+      #expect(model.rows.first?.label == "Committed despite cancellation")
+      #expect(model.error == nil && !model.loading)
+      let action = try #require(model.undoAction)
+      fixture.holdNext("undo")
+      let undo = fixture.track(Task { try await model.undo(action, context: context) })
+      try await fixture.waitUntilHeld()
+      undo.cancel()
+      fixture.release()
+      #expect(try await undo.value["title"] == original["title"])
+      #expect(model.rows.first?.record["title"] == original["title"])
+      #expect(model.error == nil && !model.loading)
     }
-    defer { fixture.release() }
-    try await waitUntil { fixture.holding }
-    save.cancel()
-    fixture.release()
-    #expect(try await save.value["title"] == .string("Committed despite cancellation"))
-    #expect(model.rows.first?.label == "Committed despite cancellation")
-    #expect(model.error == nil && !model.loading)
-    let action = try #require(model.undoAction)
-    fixture.holdNext("undo")
-    let undo = Task { try await model.undo(action, context: context) }
-    try await waitUntil { fixture.holding }
-    undo.cancel()
-    fixture.release()
-    #expect(try await undo.value["title"] == original["title"])
-    #expect(model.rows.first?.record["title"] == original["title"])
-    #expect(model.error == nil && !model.loading)
-    try await fixture.workspace.close()
   }
 
   @Test(arguments: ["table", "query", "workspace"])
   func committedSaveDoesNotRefreshReplacementContext(change: String) async throws {
-    let fixture = try await ReadAdmissionFixture()
-    let replacement = try await ReadAdmissionFixture()
-    let model = try await makeModel(fixture)
-    let original = try #require(model.rows.first?.record)
-    let context = try #require(model.editingContext)
-    fixture.holdNext("write")
-    let save = Task {
-      try await model.save(
-        ["id": original["id"]!, "title": .string("Saved in original context")],
-        original: original, context: context)
+    try await withReadAdmissionFixture { fixture in
+      let replacement = try await ReadAdmissionFixture()
+      fixture.addCleanup { try await replacement.workspace.close() }
+      let model = try await makeModel(fixture)
+      let original = try #require(model.rows.first?.record)
+      let context = try #require(model.editingContext)
+      fixture.holdNext("write")
+      let save = fixture.track(
+        Task {
+          try await model.save(
+            ["id": original["id"]!, "title": .string("Saved in original context")],
+            original: original, context: context)
+        })
+      defer { fixture.release() }
+      try await fixture.waitUntilHeld()
+      if change == "table" {
+        model.table = "topics"
+      } else if change == "query" {
+        model.search = "No matching synthetic record"
+      } else {
+        model.client = replacement.workspace
+      }
+      // Clear before the replacement can complete on its independent workspace.
+      // Observing its start must not discard an already-admitted row request.
+      fixture.clearTrace()
+      replacement.clearTrace()
+      let replacementStarted = ReadAdmissionSignal()
+      let reload = fixture.track(
+        Task {
+          replacementStarted.signal()
+          await model.reload()
+        })
+      try #require(await replacementStarted.wait(), "Replacement reload task did not start")
+      save.cancel()
+      fixture.release()
+      _ = try await save.value
+      await reload.value
+      #expect(model.error == nil && !model.loading)
+      let rowRequests = (fixture.admitted + replacement.admitted).filter { $0 == "rows" }.count
+      #expect(
+        rowRequests == 1,
+        "The committed old save must not start a second refresh in the new context")
+      if change == "query" {
+        #expect(model.rows.isEmpty)
+      } else {
+        #expect(!model.rows.isEmpty && model.rows.first?.label != "Saved in original context")
+      }
     }
-    defer { fixture.release() }
-    try await waitUntil { fixture.holding }
-    if change == "table" {
-      model.table = "topics"
-    } else if change == "query" {
-      model.search = "No matching synthetic record"
-    } else {
-      model.client = replacement.workspace
-    }
-    let reload = Task { await model.reload() }
-    try await waitUntil { model.loading }
-    save.cancel()
-    fixture.clearTrace()
-    replacement.clearTrace()
-    fixture.release()
-    _ = try await save.value
-    await reload.value
-    #expect(model.error == nil && !model.loading)
-    let rowRequests = (fixture.admitted + replacement.admitted).filter { $0 == "rows" }.count
-    #expect(
-      rowRequests == 1, "The committed old save must not start a second refresh in the new context")
-    if change == "query" {
-      #expect(model.rows.isEmpty)
-    } else {
-      #expect(!model.rows.isEmpty && model.rows.first?.label != "Saved in original context")
-    }
-    try await fixture.workspace.close()
-    try await replacement.workspace.close()
   }
 
   @Test func cancelledOldReloadCannotPublishOverNewTable() async throws {
-    let fixture = try await ReadAdmissionFixture()
-    let model = try await makeModel(fixture)
-    fixture.holdNext("rows")
-    let old = Task { await model.reload() }
-    defer { fixture.release() }
-    try await waitUntil { fixture.holding }
-    model.table = "topics"
-    let current = Task { await model.reload() }
-    try await waitUntil { model.loading }
-    old.cancel()
-    fixture.release()
-    await old.value
-    await current.value
-    #expect(model.table == "topics")
-    #expect(!model.rows.isEmpty && model.rows.allSatisfy { $0.record["body"] == nil })
-    #expect(model.error == nil && !model.loading)
-    try await fixture.workspace.close()
+    try await withReadAdmissionFixture { fixture in
+      let model = try await makeModel(fixture)
+      fixture.holdNext("rows")
+      let old = fixture.track(Task { await model.reload() })
+      defer { fixture.release() }
+      try await fixture.waitUntilHeld()
+      model.table = "topics"
+      let replacementStarted = ReadAdmissionSignal()
+      let current = fixture.track(
+        Task {
+          replacementStarted.signal()
+          await model.reload()
+        })
+      try #require(await replacementStarted.wait(), "Replacement table reload task did not start")
+      old.cancel()
+      fixture.release()
+      await old.value
+      await current.value
+      #expect(model.table == "topics")
+      #expect(!model.rows.isEmpty && model.rows.allSatisfy { $0.record["body"] == nil })
+      #expect(model.error == nil && !model.loading)
+    }
   }
 
   private func makeModel(_ fixture: ReadAdmissionFixture) async throws -> WorkspaceModel {
@@ -322,12 +371,6 @@ struct WorkspaceReadCancellationTests {
     fixture.clearTrace()
     return model
   }
-
-  private func waitUntil(_ condition: () -> Bool) async throws {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
-    while !condition(), ContinuousClock.now < deadline { await Task.yield() }
-    try #require(condition(), "Model request barrier was not reached")
-  }
 }
 
 @MainActor
@@ -338,7 +381,7 @@ struct ReferenceReadAdmissionTests {
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var submitted = 0
     let labels = (0..<12).map { _ in
@@ -389,7 +432,7 @@ struct ReferenceReadAdmissionTests {
       try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
     }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     var submitted = false
     var cancelledFinished = false
     let cancelled = Task {
@@ -419,7 +462,7 @@ struct ReferenceReadAdmissionTests {
       try await fixture.workspace.referenceRows(view: CoreView(table: "missing_fixture_table"))
     }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     let live = Task {
       try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
     }
@@ -440,7 +483,7 @@ struct ReferenceReadAdmissionTests {
       return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
     }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     var submitted = 0
     cancelled = Task {
       submitted += 1
@@ -468,7 +511,7 @@ struct ReferenceReadAdmissionTests {
       try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
     }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     var submitted = 0
     let waiting = (0..<6).map { _ in
       Task {
@@ -500,7 +543,7 @@ struct ReferenceReadAdmissionTests {
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var enqueued = 0
     let labels = (0..<8).map { _ in
@@ -546,7 +589,7 @@ struct ReferenceReadAdmissionTests {
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var enqueued = 0
     let labels = (0..<20).map { _ in
@@ -573,7 +616,7 @@ struct ReferenceReadAdmissionTests {
     let context = try model.activateDestination(
       try await navigation.value,
       workspace: fixture.workspace, generation: model.workspaceGeneration)
-    if cancelOnActivation { labels.forEach { $0.cancel() } }
+    if cancelOnActivation { for label in labels { label.cancel() } }
     await model.reload()
     #expect(fixture.admitted.first == "catalog")
     #expect(
@@ -606,7 +649,7 @@ struct ReferenceReadAdmissionTests {
       return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
     }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     let write = Task {
       queued += 1
       return try await fixture.workspace.write(
@@ -653,7 +696,7 @@ struct ReferenceReadAdmissionTests {
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     fixture.clearTrace()
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [ReadAdmissionTransport.self]
@@ -699,7 +742,7 @@ struct ReferenceReadAdmissionTests {
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
     defer { fixture.release() }
-    try await waitUntil { fixture.holding }
+    try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var queued = 0
     let before = Task {
@@ -731,16 +774,27 @@ struct ReferenceReadAdmissionTests {
     #expect(fixture.admitted == ["rows"])
   }
 
-  private func waitUntil(_ condition: () -> Bool) async throws {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
-    while !condition(), ContinuousClock.now < deadline { await Task.yield() }
-    try #require(condition(), "Reference admission barrier was not reached")
+  private func waitUntil(
+    sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool
+  ) async throws {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+    while !condition(), ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(5))
+    }
+    try #require(
+      condition(), "Reference admission barrier was not reached", sourceLocation: sourceLocation)
   }
 }
 
 @MainActor private final class ReadAdmissionFixture {
   let runtime: LifeCoreRuntime
   let workspace: NativeWorkspace
+  private(set) var didClose = false
+  private var heldSignal: ReadAdmissionSignal?
+  private var expectedMethod: String?
+  private var cancellations: [() -> Void] = []
+  private var completions: [() async -> Void] = []
+  private var extraCleanup: [() async throws -> Void] = []
 
   init(path: String = ":memory:", seed: Bool = true) async throws {
     runtime = try LifeCoreRuntime()
@@ -765,6 +819,7 @@ struct ReferenceReadAdmissionTests {
           releaseRead = null;
           admissionRequest(id, method, args);
         };
+        readAdmissionReached();
       };
       """#)
     try #require(runtime.context.exception == nil)
@@ -777,6 +832,11 @@ struct ReferenceReadAdmissionTests {
     runtime.context.evaluateScript("releaseRead !== null")?.toBool() == true
   }
   func holdNext(_ method: String? = nil) {
+    let signal = ReadAdmissionSignal()
+    heldSignal = signal
+    expectedMethod = method
+    let reached: @convention(block) () -> Void = { signal.signal() }
+    runtime.context.setObject(reached, forKeyedSubscript: "readAdmissionReached" as NSString)
     runtime.context.setObject(
       method ?? NSNull() as Any, forKeyedSubscript: "heldReadMethod" as NSString)
     runtime.context.evaluateScript("holdNextRead = true")
@@ -784,7 +844,96 @@ struct ReferenceReadAdmissionTests {
   func clearTrace() {
     runtime.context.evaluateScript("readAdmissionTrace = []; readAdmissionIDs = []")
   }
-  func release() { runtime.context.evaluateScript("releaseRead?.()") }
+  func waitUntilHeld(sourceLocation: SourceLocation = #_sourceLocation) async throws {
+    let signal = try #require(
+      heldSignal, "Arm the held request first", sourceLocation: sourceLocation)
+    let reached = await signal.wait()
+    try Task.checkCancellation()
+    try #require(
+      reached,
+      "JSC admission watchdog expired: expected=\(expectedMethod ?? "any"), admitted=\(admitted), exception=\(String(describing: runtime.context.exception))",
+      sourceLocation: sourceLocation)
+    try #require(
+      holding, "Admission signal must follow releaseRead installation",
+      sourceLocation: sourceLocation)
+  }
+  func release() {
+    // Disarm an admission that has not happened yet as well as releasing a held one.
+    runtime.context.evaluateScript("holdNextRead = false; releaseRead?.()")
+  }
+
+  func track<T: Sendable, Failure: Error>(_ task: Task<T, Failure>) -> Task<T, Failure> {
+    cancellations.append { task.cancel() }
+    completions.append { _ = await task.result }
+    return task
+  }
+
+  func addCleanup(_ cleanup: @escaping () async throws -> Void) { extraCleanup.append(cleanup) }
+
+  func cleanUp(sourceLocation: SourceLocation) async {
+    // The cancellation-independent supervisor bounds teardown even when the test
+    // fails before JSC admission. Never await a possibly stuck queue unboundedly.
+    let supervisor = Task { @MainActor in
+      for cancel in cancellations { cancel() }
+      release()
+      let finished = ReadAdmissionSignal()
+      let closing = Task { @MainActor in
+        defer { finished.signal() }
+        for completion in completions { await completion() }
+        do {
+          try await workspace.close()
+          didClose = true
+        } catch {
+          Issue.record(error, sourceLocation: sourceLocation)
+        }
+        for cleanup in extraCleanup {
+          do { try await cleanup() } catch { Issue.record(error, sourceLocation: sourceLocation) }
+        }
+      }
+      let completed = await finished.wait()
+      if !completed { closing.cancel() }
+      #expect(
+        completed, "Read fixture cleanup exceeded 20 seconds; outstanding fixture retained",
+        sourceLocation: sourceLocation)
+    }
+    await supervisor.value
+  }
+}
+
+@MainActor private func withReadAdmissionFixture(
+  sourceLocation: SourceLocation = #_sourceLocation,
+  _ body: (ReadAdmissionFixture) async throws -> Void
+) async throws {
+  let fixture = try await ReadAdmissionFixture()
+  do { try await body(fixture) } catch {
+    await fixture.cleanUp(sourceLocation: sourceLocation)
+    throw error
+  }
+  await fixture.cleanUp(sourceLocation: sourceLocation)
+}
+
+private struct ReadAdmissionSignal: Sendable {
+  private let stream: AsyncStream<Void>
+  private let continuation: AsyncStream<Void>.Continuation
+
+  init() {
+    (stream, continuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+  }
+
+  func signal() {
+    continuation.yield(())
+    continuation.finish()
+  }
+
+  func wait() async -> Bool {
+    let watchdog = Task {
+      do { try await Task.sleep(for: .seconds(20)) } catch { return }
+      continuation.finish()
+    }
+    defer { watchdog.cancel() }
+    var iterator = stream.makeAsyncIterator()
+    return await iterator.next() != nil
+  }
 }
 
 private final class ReadAdmissionTransport: URLProtocol, @unchecked Sendable {
