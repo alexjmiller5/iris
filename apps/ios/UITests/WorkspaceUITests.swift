@@ -214,7 +214,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let source = app.webViews.textViews["Body"]
-    tapWhenReady(source)
+    visibleMarkdownPoint(source, in: app).tap()
     source.typeText("Saved body for Undo")
     let saved = app.staticTexts["markdown-save-status"]
     let savedState = XCTNSPredicateExpectation(
@@ -727,9 +727,11 @@ final class WorkspaceUITests: XCTestCase {
     let source = app.webViews.textViews["Body"]
     XCTAssertEqual(source.value as? String, "Recovered body to keep")
     revealRecordControl(app.buttons["Copy Body"], in: app)
+    revealRecordControl(source, in: app, down: true)
     let copied = typeMarkerThenFinalCharacter(
       source, marker: "CopyZ", previous: "Recovered body to keep")
     app.buttons["Copy Body"].tap()
+    revealRecordControl(source, in: app, down: true)
     let retained = typeMarkerThenFinalCharacter(source, marker: "KeepZ", previous: copied)
     // Neither action is preceded by Save or a source read after the final keystroke.
     app.navigationBars["Record"].buttons["keep-record-draft"].tap()
@@ -744,11 +746,14 @@ final class WorkspaceUITests: XCTestCase {
     // Paste the copied source into a separate new draft using the actual OS
     // clipboard, then relaunch to verify the original recovery is still there.
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    if app.buttons["Start new record"].waitForExistence(timeout: 1) {
+      tapWhenReady(app.buttons["Start new record"])
+    }
     revealMarkdown(app)
     tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
-    tapWhenReady(source)
-    source.press(forDuration: 1.2)
+    visibleMarkdownPoint(source, in: app).tap()
+    visibleMarkdownPoint(source, in: app).press(forDuration: 1.2)
     tapWhenReady(app.menuItems["Paste"].firstMatch)
     XCTAssertEqual(source.value as? String, copied)
     tapWhenReady(app.navigationBars["New record"].buttons["Cancel"])
@@ -777,6 +782,9 @@ final class WorkspaceUITests: XCTestCase {
     openLocalWorkspace(app)
     let name = "Autosave " + UUID().uuidString.prefix(8)
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    if app.buttons["Start new record"].waitForExistence(timeout: 1) {
+      tapWhenReady(app.buttons["Start new record"])
+    }
     tapWhenReady(app.textFields["field-title"])
     app.textFields["field-title"].typeText(name)
     tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
@@ -789,7 +797,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
     let source = app.webViews.textViews["Body"]
-    tapWhenReady(source)
+    visibleMarkdownPoint(source, in: app).tap()
     source.typeText("Synthetic autosave final!")
     XCUIDevice.shared.press(.home)
     app.activate()
@@ -816,27 +824,44 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertEqual(source.value as? String, "Synthetic autosave final!")
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
+    if app.buttons["Start new record"].waitForExistence(timeout: 1) {
+      tapWhenReady(app.buttons["Start new record"])
+    }
+    let uncreatedTitle = "Uncreated recovery fixture " + UUID().uuidString.prefix(8)
     tapWhenReady(title)
-    title.typeText("Uncreated recovery fixture")
+    title.typeText(uncreatedTitle)
     revealMarkdown(app)
     tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
-    tapWhenReady(source)
+    visibleMarkdownPoint(source, in: app).tap()
     source.typeText("Unsaved new source!")
     // Cancel collects the live document without creating the row. Keeping the
     // editor open leaves its journal available after the process is terminated.
     tapWhenReady(app.navigationBars["New record"].buttons["Cancel"])
-    tapWhenReady(app.buttons["Keep editing"])
+    let discard = app.sheets["Discard unsaved changes?"]
+    XCTAssertTrue(discard.waitForExistence(timeout: 5))
+    if app.buttons["Keep editing"].exists {
+      tapWhenReady(app.buttons["Keep editing"])
+    } else {
+      // iOS presents this confirmation as a popover with no Cancel action.
+      let outside = CGPoint(x: app.frame.minX + 8, y: discard.frame.midY)
+      XCTAssertFalse(discard.frame.contains(outside))
+      app.coordinate(withNormalizedOffset: .zero).withOffset(
+        CGVector(dx: outside.x, dy: outside.y)
+      ).tap()
+    }
+    XCTAssertTrue(discard.waitForNonExistence(timeout: 5))
+    XCTAssertTrue(app.navigationBars["New record"].exists)
     app.terminate()
     app.launch()
     openLocalWorkspace(app)
     tapWhenReady(
       app.buttons.matching(identifier: "resume-unsaved-draft").matching(
-        NSPredicate(format: "label CONTAINS %@", "Uncreated recovery fixture")
+        NSPredicate(format: "label CONTAINS %@", uncreatedTitle)
       ).firstMatch)
     tapWhenReady(app.buttons["Resume draft"])
     XCTAssertTrue(app.navigationBars["New record"].waitForExistence(timeout: 5))
-    XCTAssertEqual(title.value as? String, "Uncreated recovery fixture")
+    XCTAssertEqual(title.value as? String, uncreatedTitle)
     revealMarkdown(app)
     tapWhenReady(app.webViews.descendants(matching: .any)["Body options"])
     tapWhenReady(app.webViews.descendants(matching: .any)["Body source"])
@@ -851,7 +876,7 @@ final class WorkspaceUITests: XCTestCase {
       app.buttons.matching(
         NSPredicate(
           format: "label BEGINSWITH %@",
-          "Uncreated recovery fixture")
+          uncreatedTitle)
       ).firstMatch.exists)
   }
 
@@ -868,7 +893,7 @@ final class WorkspaceUITests: XCTestCase {
     title.typeText("Editor lifecycle fixture")
     revealMarkdown(app)
     let editor = app.webViews.textViews["Body"]
-    tapWhenReady(editor)
+    visibleMarkdownPoint(editor, in: app).tap()
     var expected = "Cycles"
     editor.typeText(expected)
     for cycle in 1...10 {
@@ -935,7 +960,10 @@ final class WorkspaceUITests: XCTestCase {
     // Rotation can leave the modal window's accessibility frame invalid while
     // its editor visibly retains keyboard focus. Continue real keyboard input
     // instead of asking XCTest to synthesize an unnecessary hit-test tap.
-    if refocus || !XCUIApplication().keyboards.firstMatch.exists { tapWhenReady(editor) }
+    let app = XCUIApplication()
+    if refocus || !app.keyboards.firstMatch.exists {
+      visibleMarkdownPoint(editor, in: app).tap()
+    }
     editor.typeText(marker)
     let entered = (editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     XCTAssertEqual(entered.replacingOccurrences(of: marker, with: ""), previous)
@@ -1308,15 +1336,8 @@ final class WorkspaceUITests: XCTestCase {
     _ element: XCUIElement, in app: XCUIApplication, down: Bool = false,
     file: StaticString = #filePath, line: UInt = #line
   ) {
-    let form = app.collectionViews["record-form"]
     func visibleArea() -> CGRect {
-      var area = form.frame.intersection(app.frame)
-      let top = max(area.minY, app.navigationBars.firstMatch.frame.maxY)
-      let keyboard = app.keyboards.firstMatch
-      let bottom = min(area.maxY - 34, keyboard.exists ? keyboard.frame.minY - 52 : area.maxY)
-      area.origin.y = top
-      area.size.height = max(0, bottom - top)
-      return area
+      recordVisibleArea(app)
     }
     func visible() -> Bool {
       guard element.exists, element.isHittable, element.frame.height > 0 else { return false }
@@ -1338,6 +1359,45 @@ final class WorkspaceUITests: XCTestCase {
         withVelocity: .slow, thenHoldForDuration: 0.2)
     }
     XCTAssertTrue(visible(), app.debugDescription, file: file, line: line)
+  }
+
+  private func recordVisibleArea(_ app: XCUIApplication) -> CGRect {
+    let form = app.collectionViews["record-form"]
+    var area = form.frame.intersection(app.frame)
+    let navigation =
+      app.navigationBars["Record"].exists
+      ? app.navigationBars["Record"] : app.navigationBars["New record"]
+    let top = max(area.minY, navigation.frame.maxY)
+    let keyboard = app.keyboards.firstMatch
+    var bottom = area.maxY - 34
+    if keyboard.exists {
+      bottom = min(bottom, keyboard.frame.minY - 52)
+      // WKWebView's Previous/Next/Done accessory is above the keys and
+      // predictions. A drag starting there cannot scroll the record Form.
+      let accessory = app.toolbars.containing(.button, identifier: "Done").firstMatch
+      if accessory.exists { bottom = min(bottom, accessory.frame.minY - 10) }
+    }
+    area.origin.y = top
+    area.size.height = max(0, bottom - top)
+    return area
+  }
+
+  private func visibleMarkdownPoint(
+    _ editor: XCUIElement, in app: XCUIApplication,
+    file: StaticString = #filePath, line: UInt = #line
+  ) -> XCUICoordinate {
+    XCTAssertTrue(editor.waitForExistence(timeout: 10), file: file, line: line)
+    let web = app.webViews.containing(.textView, identifier: editor.label).firstMatch
+    func intersection() -> CGRect {
+      editor.frame.intersection(web.frame).intersection(recordVisibleArea(app))
+    }
+    if intersection().isEmpty { revealRecordControl(editor, in: app, file: file, line: line) }
+    let area = intersection()
+    XCTAssertFalse(area.isEmpty, app.debugDescription, file: file, line: line)
+    // WK's AX frame can extend under the keyboard even when isHittable is true.
+    // Use the portion a person can actually see, rather than its offscreen center.
+    return app.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: area.midX, dy: area.midY))
   }
 
   private func connectUsingFixtureToken(_ app: XCUIApplication) {
