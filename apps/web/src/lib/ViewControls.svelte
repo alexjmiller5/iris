@@ -9,7 +9,7 @@
 	} from 'life-ui-core/client';
 	import ViewFilter from './ViewFilter.svelte';
 	import FieldEditor from './FieldEditor.svelte';
-	import { editSort } from './view-controls';
+	import { editSort, parseDayStart } from './view-controls';
 	import { cellPatch, rawValue } from './record-grid';
 	let {
 		properties,
@@ -19,7 +19,11 @@
 		actions,
 		layout,
 		timeZone,
+		dayStartMinutes = 0,
 		columns,
+		actionOptions = {},
+		actionReferences = {},
+		onactionsearch,
 		disabled = false,
 		onchange
 	}: {
@@ -30,7 +34,11 @@
 		actions: RowAction[];
 		layout?: ViewLayoutItem[];
 		timeZone: string;
+		dayStartMinutes?: number;
 		columns: string[];
+		actionOptions?: Record<string, string[]>;
+		actionReferences?: Record<string, { id: string; label: string }[]>;
+		onactionsearch?: (action: RowAction, property: Property, query: string) => void;
 		disabled?: boolean;
 		onchange: (patch: {
 			sorts?: Sort[];
@@ -39,6 +47,7 @@
 			actions?: RowAction[];
 			layout?: ViewLayoutItem[];
 			timeZone?: string;
+			dayStartMinutes?: number;
 		}) => void;
 	} = $props();
 	let error = $state('');
@@ -203,6 +212,22 @@
 				onchange={(e) => onchange({ timeZone: e.currentTarget.value })}
 			/></label
 		>
+		<label
+			>Day starts at <input
+				type="time"
+				aria-label="Day starts at"
+				value={`${String(Math.floor(dayStartMinutes / 60)).padStart(2, '0')}:${String(dayStartMinutes % 60).padStart(2, '0')}`}
+				onchange={(e) => {
+					try {
+						onchange({ dayStartMinutes: parseDayStart(e.currentTarget.value) });
+						error = '';
+					} catch (e) {
+						error = (e as Error).message;
+					}
+				}}
+			/></label
+		>
+		<p>Today starts at this time in the selected timezone.</p>
 	</details>
 	<details>
 		<summary>Row actions{actions.length ? ` (${actions.length})` : ''}</summary>
@@ -222,6 +247,9 @@
 							id={`action-${a.id}-${col}`}
 							property={p}
 							value={rawValue(value)}
+							options={actionOptions[p.col] ?? []}
+							references={actionReferences[JSON.stringify([a.id, p.col])] ?? []}
+							onsearch={(query) => onactionsearch?.(a, p, query)}
 							onchange={(raw) => actionValue(index, p, raw)}
 						/>{:else}<p role="alert">Unavailable property: {col}</p>{/if}
 					<button

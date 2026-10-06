@@ -144,8 +144,7 @@ public struct WorkspaceView: View {
     }
     .task(id: model.queryKey) { await model.reload() }
     .task(
-      id:
-        "\(model.workspaceGeneration)|\(model.table ?? "")|\(model.viewTimeZone)|\(model.hasRelativeFilters)|\(scenePhase == .active)"
+      id: model.calendarRefreshKey + [String(scenePhase == .active)]
     ) {
       guard scenePhase == .active else { return }
       await model.runCalendarRefresh()

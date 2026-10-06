@@ -16,6 +16,7 @@ struct WorkspaceOptionsView: View {
   @State private var actions: [CoreRowAction]
   @State private var layout: [CoreViewLayoutItem]?
   @State private var timeZone: String
+  @State private var dayStart: Date
   @State private var error: String?
 
   init(model: WorkspaceModel) {
@@ -28,6 +29,8 @@ struct WorkspaceOptionsView: View {
     _actions = State(initialValue: model.viewActions)
     _layout = State(initialValue: model.viewLayout)
     _timeZone = State(initialValue: model.viewTimeZone)
+    _dayStart = State(
+      initialValue: Date(timeIntervalSinceReferenceDate: Double(model.viewDayStartMinutes) * 60))
   }
 
   private var writable: [CatalogField] {
@@ -39,10 +42,7 @@ struct WorkspaceOptionsView: View {
     }
   }
   private var items: [CoreViewLayoutItem] {
-    layout ?? (model.visibleRecordColumns ?? fields.map(\.id)).map {
-      CoreViewLayoutItem(kind: "column", id: $0)
-    }
-      + actions.map { CoreViewLayoutItem(kind: "action", id: $0.id) }
+    layout ?? model.defaultViewLayout
   }
 
   var body: some View {
@@ -124,11 +124,15 @@ struct WorkspaceOptionsView: View {
             }
           }.disabled(groups.count >= 16)
           TextField("Today timezone", text: $timeZone)
+          DatePicker("Day starts at", selection: $dayStart, displayedComponents: .hourAndMinute)
+            .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
+            .environment(\.calendar, Calendar(identifier: .gregorian))
+            .accessibilityIdentifier("day-start-time")
         } header: {
           Text("Filter groups")
         } footer: {
           Text(
-            "Records must match every group and the individual filters. Today follows the selected timezone."
+            "Records must match every group and the individual filters. Today starts at this time in the selected timezone."
           )
         }
         Section {
@@ -204,7 +208,9 @@ struct WorkspaceOptionsView: View {
             do {
               try model.applyWorkflowOptions(
                 sorts: sorts.map(\.value), filters: filters, groups: groups, actions: actions,
-                layout: layout, timeZone: timeZone, context: context)
+                layout: layout, timeZone: timeZone,
+                dayStartMinutes: Int(dayStart.timeIntervalSinceReferenceDate / 60), context: context
+              )
               dismiss()
             } catch { self.error = error.localizedDescription }
           }.accessibilityIdentifier("apply-view-options")
