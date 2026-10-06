@@ -12,6 +12,7 @@ let package = Package(
       resources: [
         .copy("Resources/life-core.js"), .copy("Resources/graph.html"),
         .copy("Resources/editor.html"),
+        .copy("Resources/record-export.js"),
       ]),
     .testTarget(name: "LifeKitTests", dependencies: ["LifeKit"], resources: [.copy("Fixtures")]),
   ]

@@ -332,6 +332,168 @@ struct WorkspaceReadCancellationTests {
 
 @MainActor
 struct ReferenceReadAdmissionTests {
+  @Test(arguments: ["serviceNotifications", "sync"])
+  func serviceBarrierDoesNotAdmitAnEntirePassiveBacklog(method: String) async throws {
+    let fixture = try await ReadAdmissionFixture()
+    fixture.holdNext()
+    let blocker = Task { try await fixture.workspace.catalog() }
+    defer { fixture.release() }
+    try await waitUntil { fixture.holding }
+    fixture.clearTrace()
+    var submitted = 0
+    let labels = (0..<12).map { _ in
+      Task {
+        submitted += 1
+        return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      }
+    }
+    try await waitUntil { submitted == labels.count }
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [ReadAdmissionTransport.self]
+    let transport = try HubTransport(
+      endpoint: "https://read-admission.invalid", token: "synthetic", configuration: configuration)
+    var remoteQueued = false
+    let remote = Task {
+      remoteQueued = true
+      if method == "sync" {
+        _ = try await fixture.workspace.sync(using: transport)
+      } else {
+        _ = try await fixture.workspace.notifications(using: transport)
+      }
+    }
+    try await waitUntil { remoteQueued }
+    var navigationQueued = false
+    let navigation = Task {
+      navigationQueued = true
+      return try await NativeDestinationResolver(workspace: fixture.workspace).resolve(
+        NativeDestination(table: "topics"), isCurrent: { true })
+    }
+    try await waitUntil { navigationQueued }
+    fixture.release()
+    _ = try await blocker.value
+    #expect(try await navigation.value.destination.table == "topics")
+    let openingIndex = try #require(fixture.admitted.firstIndex(of: "catalog"))
+    #expect(fixture.admitted[..<openingIndex].filter { $0 == "rows" }.count <= 1)
+    #expect(fixture.admitted.prefix(3) == ["rows", method, "catalog"])
+    for label in labels { #expect(!(try await label.value).isEmpty) }
+    _ = await remote.result
+    try await fixture.workspace.close()
+  }
+
+  @Test func cancelledPassiveWaiterFinishesBeforeActiveTransactionAndDoesNotConsumeNextRead()
+    async throws
+  {
+    let fixture = try await ReadAdmissionFixture()
+    fixture.holdNext("rows")
+    let active = Task {
+      try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+    }
+    defer { fixture.release() }
+    try await waitUntil { fixture.holding }
+    var submitted = false
+    var cancelledFinished = false
+    let cancelled = Task {
+      defer { cancelledFinished = true }
+      submitted = true
+      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+    }
+    try await waitUntil { submitted }
+    await Task.detached { cancelled.cancel() }.value
+    try await waitUntil { cancelledFinished }
+    await #expect(throws: CancellationError.self) { try await cancelled.value }
+    #expect(fixture.holding && fixture.admitted == ["rows"])
+    let live = Task {
+      try await fixture.workspace.referenceRows(view: CoreView(table: "topics"))
+    }
+    fixture.release()
+    #expect(!(try await active.value).isEmpty)
+    #expect(!(try await live.value).isEmpty)
+    #expect(fixture.admitted == ["rows", "rows"])
+    try await fixture.workspace.close()
+  }
+
+  @Test func failedPassiveReadReleasesWaitingLabels() async throws {
+    let fixture = try await ReadAdmissionFixture()
+    fixture.holdNext("rows")
+    let failed = Task {
+      try await fixture.workspace.referenceRows(view: CoreView(table: "missing_fixture_table"))
+    }
+    defer { fixture.release() }
+    try await waitUntil { fixture.holding }
+    let live = Task {
+      try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+    }
+    fixture.release()
+    await #expect(throws: WorkspaceError.self) { try await failed.value }
+    #expect(!(try await live.value).isEmpty)
+    try await fixture.workspace.close()
+  }
+
+  @Test func cancellationAfterPassivePermitHandoffReleasesItForNextWaiter() async throws {
+    let fixture = try await ReadAdmissionFixture()
+    var cancelled: Task<[WorkspaceRow], Error>?
+    fixture.holdNext("rows")
+    let active = Task {
+      // referenceRows hands its permit to the next waiter before returning.
+      // Cancel that waiter in this same actor turn, before it can resume.
+      defer { cancelled?.cancel() }
+      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+    }
+    defer { fixture.release() }
+    try await waitUntil { fixture.holding }
+    var submitted = 0
+    cancelled = Task {
+      submitted += 1
+      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+    }
+    try await waitUntil { submitted == 1 }
+    let live = Task {
+      submitted += 1
+      return try await fixture.workspace.referenceRows(view: CoreView(table: "topics"))
+    }
+    try await waitUntil { submitted == 2 }
+    fixture.release()
+    #expect(!(try await active.value).isEmpty)
+    let cancelledTask = try #require(cancelled)
+    await #expect(throws: CancellationError.self) { try await cancelledTask.value }
+    #expect(!(try await live.value).isEmpty)
+    #expect(fixture.admitted == ["rows", "rows"])
+    try await fixture.workspace.close()
+  }
+
+  @Test func closeDrainsUnsubmittedPassiveLabelsWithoutCallingCore() async throws {
+    let fixture = try await ReadAdmissionFixture()
+    fixture.holdNext("rows")
+    let active = Task {
+      try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+    }
+    defer { fixture.release() }
+    try await waitUntil { fixture.holding }
+    var submitted = 0
+    let waiting = (0..<6).map { _ in
+      Task {
+        submitted += 1
+        return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      }
+    }
+    try await waitUntil { submitted == waiting.count }
+    var closing = false
+    let close = Task {
+      closing = true
+      try await fixture.workspace.close()
+    }
+    try await waitUntil { closing }
+    active.cancel()
+    #expect(fixture.holding, "An admitted transaction must finish despite view cancellation")
+    fixture.release()
+    #expect(!(try await active.value).isEmpty)
+    try await close.value
+    for label in waiting {
+      await #expect(throws: WorkspaceError.self) { try await label.value }
+    }
+    #expect(fixture.admitted == ["rows"])
+  }
+
   @Test func liveReferenceLabelsYieldToDestinationBeforeOldViewLeaves() async throws {
     let fixture = try await ReadAdmissionFixture()
     let row = try #require(try await fixture.workspace.rows(table: "notes").first)
@@ -478,7 +640,8 @@ struct ReferenceReadAdmissionTests {
     _ = try await after.value
     #expect(fixture.admitted == ["rows", "write", "write", "rows", "rows"])
     let ids = fixture.runtime.context.evaluateScript("readAdmissionIDs")?.toArray() as? [Int] ?? []
-    #expect(ids.count == 5 && ids[1] < ids[2] && ids[2] < ids[3] && ids[3] > ids[4])
+    // Waiting passive callers receive a request identity only when submitted.
+    #expect(ids.count == 5 && ids[1] < ids[2] && ids[2] < ids[3])
     try await fixture.workspace.close()
   }
 
