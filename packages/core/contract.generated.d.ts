@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "323ba793aeb8962d9555f48d80ccf486bf1010116f1f1b89d8c33f9491c26d12";
+export declare const CORE_CONTRACT_HASH = "816ff5ed0ebeeccd324b1741e464693b5d5da8caa76c6b844a03e0045e31a169";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -311,6 +311,7 @@ export type SessionInfo = {
     name: string;
     scopes: string[];
     replica: ReplicaEligibility;
+    governance?: GovernanceCapability;
 };
 export type SessionDataArgs = {
     data: JSONValue;
@@ -379,6 +380,7 @@ export type HubCapabilities = {
     files: "opaque-key-v1";
     conditional_patch?: "revision-v1";
     subscription_features?: "scalar-lifecycle-v1";
+    governance?: GovernanceCapability;
 };
 export type HubSession = {
     name: string;
@@ -625,6 +627,23 @@ export type RejectProposalArgs = {
     expectedVersion: string;
     idempotencyKey: string;
 };
+export type GovernanceLimits = {
+    maxSelectedEvents: Count;
+    maxChangedColumns: Count;
+    maxRequestBytes: Count;
+    maxPageSize: Count;
+    previewTtlSeconds: Count;
+};
+export type GovernanceAuthority = {
+    propose: boolean;
+    approve: boolean;
+};
+export type GovernanceCapability = {
+    protocol: "selected-inverse-proposals-v1";
+    principal: Actor;
+    authority: GovernanceAuthority;
+    limits: GovernanceLimits;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -737,6 +756,42 @@ export interface CoreOperations {
     resolveSourceLink: {
         args: SourceLinkArgs;
         result: SourceLinkResult;
+    };
+    historyEvents: {
+        args: HistoryEventsArgs;
+        result: HistoryEventsResult;
+    };
+    previewChanges: {
+        args: PreviewRequest;
+        result: PreviewResult;
+    };
+    createProposal: {
+        args: CreateProposalArgs;
+        result: ProposalMutationResult;
+    };
+    listProposals: {
+        args: ListProposalsArgs;
+        result: ProposalsResult;
+    };
+    getProposal: {
+        args: GetProposalArgs;
+        result: ProposalResult;
+    };
+    editProposal: {
+        args: EditProposalArgs;
+        result: ProposalMutationResult;
+    };
+    previewProposal: {
+        args: PreviewProposalArgs;
+        result: PreviewResult;
+    };
+    approveProposal: {
+        args: ApproveProposalArgs;
+        result: ApprovalResult;
+    };
+    rejectProposal: {
+        args: RejectProposalArgs;
+        result: ProposalMutationResult;
     };
 }
 export type CoreMethod = keyof CoreOperations;

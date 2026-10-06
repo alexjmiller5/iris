@@ -19,6 +19,7 @@ export interface InversePlan {
     selectedEventIds: string[];
     conflicts: Conflict[];
 }
+export declare function isCellValue(value: unknown): value is CellValue;
 /** Produce only selected-column inverse differences. The future writer must
  * reacquire and guard this evidence in its transaction; a plan is not approval. */
 export declare function planSelectedInverse(selection: InverseSelection, evidence: InverseEvidence): InversePlan;
