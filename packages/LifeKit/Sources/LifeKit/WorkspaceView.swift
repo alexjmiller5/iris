@@ -32,6 +32,11 @@ public struct WorkspaceView: View {
 
   public init(demo: Bool = false) { self.demo = demo }
 
+  init(model: WorkspaceModel, demo: Bool = false) {
+    self.demo = demo
+    _model = State(initialValue: model)
+  }
+
   public var body: some View {
     VStack(spacing: 0) {
       pendingLinkBanner

@@ -60,6 +60,7 @@ struct WorkspaceSyncProgress: Equatable, Sendable {
 public final class NativeWorkspace {
   private let runtime: LifeCoreRuntime
   private let database: SQLiteBridge
+  private let fileGate: WorkspaceFileGate
   private let path: String
   private var syncLock: SyncFileLock?
   private enum Work {
@@ -121,17 +122,20 @@ public final class NativeWorkspace {
       throw WorkspaceError(
         message: "Core contract does not match the bundled runtime.", violations: [])
     }
-    self.path = path
+    let opened = try WorkspaceFileGate.open(path)
+    self.path = opened.gate.path
     self.runtime = runtime
-    database = try SQLiteBridge(path: path)
+    database = opened.database
+    fileGate = opened.gate
     try database.install(in: runtime.context)
     let finish: @convention(block) (Int, String) -> Void = { [weak self] id, json in
       self?.finish(id: id, json: json)
     }
-    let yield: @convention(block) (JSValue) -> Void = { callback in
-      Task { @MainActor in
+    let yield: @convention(block) (JSValue) -> Void = { [weak self] callback in
+      guard let owner = self?.active?.id else { return }
+      Task { @MainActor [weak self] in
         await Task.yield()
-        callback.call(withArguments: [])
+        self?.invokeCallback(callback, owner: owner, arguments: [])
       }
     }
     let post: @convention(block) (String, String, JSValue) -> Void = {
@@ -387,7 +391,7 @@ public final class NativeWorkspace {
       startNext()
     }
   }
-  private func startNext() {
+  fileprivate func startNext() {
     guard active == nil, !requests.isEmpty else { return }
     var index = 0
     if suspended.values.contains(where: { $0.method == "sync" }) {
@@ -402,16 +406,25 @@ public final class NativeWorkspace {
       }
       guard index < requests.count else { return }
     }
+    // An instance waiting for its own HTTP must not reserve the shared file.
+    if case .request(let request) = requests[index], request.method == "close",
+      !suspended.isEmpty
+    {
+      return
+    }
+    guard fileGate.acquire(self) else { return }
     if case .resumeTransport(let id, let callback, let response) = requests[index] {
       requests.remove(at: index)
-      guard let owner = suspended.removeValue(forKey: id) else { return }
+      guard let owner = suspended.removeValue(forKey: id) else {
+        fileGate.release(self)
+        Task { @MainActor [self] in startNext() }
+        return
+      }
       active = owner
-      callback.call(withArguments: [response])
+      invokeCallback(callback, owner: id, arguments: [response])
       return
     }
     guard case .request(let request) = requests[index] else { return }
-    // Close waits for every suspended request; a second sync waits for its owner.
-    if request.method == "close", !suspended.isEmpty { return }
     requests.remove(at: index)
     active = request
     if closed {
@@ -424,6 +437,10 @@ public final class NativeWorkspace {
         closed = true
         complete(.success(.null))
       } catch { complete(.failure(error)) }
+      return
+    }
+    do { try database.prepareForRequests() } catch {
+      complete(.failure(error))
       return
     }
     if request.method == "sync", path != ":memory:" {
@@ -460,13 +477,25 @@ public final class NativeWorkspace {
     } catch { complete(.failure(error)) }
   }
   private func complete(_ result: Result<JSONValue, Error>) {
+    var outcome = result
+    if !closed, database.isInsideTransaction {
+      do {
+        try database.rollbackUnfinishedTransaction()
+        if case .success = outcome {
+          outcome = .failure(
+            WorkspaceError(
+              message: "The operation ended before its transaction committed.", violations: []))
+        }
+      } catch { outcome = .failure(error) }
+    }
     if active?.method == "sync" {
       syncLock = nil
       active?.control?.deadline?.cancel()
     }
     let continuation = active?.continuation
     active = nil
-    continuation?.resume(with: result)
+    fileGate.release(self)
+    continuation?.resume(with: outcome)
     // Do not reenter JSC from inside its completion callback.
     Task { @MainActor [self] in startNext() }
   }
@@ -478,6 +507,7 @@ public final class NativeWorkspace {
     }
     suspended[owner.id] = owner
     active = nil
+    fileGate.release(self)
     // Leave the current JSC callback before starting another JS operation.
     Task { @MainActor [self] in startNext() }
   }
@@ -497,7 +527,98 @@ public final class NativeWorkspace {
       requests.insert(.resumeTransport(owner, callback, response), at: barrier)
       Task { @MainActor [self] in startNext() }
     } else if active?.id == owner {
-      callback.call(withArguments: [response])
+      invokeCallback(callback, owner: owner, arguments: [response])
+    }
+  }
+
+  private func invokeCallback(_ callback: JSValue, owner: Int, arguments: [Any]) {
+    guard active?.id == owner else { return }
+    runtime.context.exception = nil
+    callback.call(withArguments: arguments)
+    // The callback can finish its own request. Never complete a different owner.
+    if active?.id == owner, let exception = runtime.context.exception {
+      complete(.failure(WorkspaceError(message: exception.toString(), violations: [])))
+    }
+  }
+}
+
+/// SQLite transactions can span MainActor turns. All windows opening one physical
+/// file share admission, while independent files and in-memory samples stay separate.
+@MainActor
+private final class WorkspaceFileGate {
+  private struct Identity: Hashable {
+    let device: UInt64
+    let inode: UInt64
+  }
+  private struct WeakGate {
+    weak var value: WorkspaceFileGate?
+  }
+  private static var files: [Identity: WeakGate] = [:]
+  private var owner: NativeWorkspace?
+  private var waiting: [NativeWorkspace] = []
+
+  let path: String
+
+  private init(path: String) { self.path = path }
+
+  static func open(_ path: String) throws -> (gate: WorkspaceFileGate, database: SQLiteBridge) {
+    if path.isEmpty || path == ":memory:" {
+      return (
+        WorkspaceFileGate(path: path), try SQLiteBridge(path: path, deferredPreparation: true)
+      )
+    }
+    let canonical = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+    if FileManager.default.fileExists(atPath: canonical),
+      let existing = files[try identity(canonical)]?.value
+    {
+      // Keep the opened filename stable for SQLite and its journal.
+      guard try identity(existing.path) == identity(canonical) else {
+        throw WorkspaceError(
+          message: "The workspace file moved or changed. Close its other windows and reopen it.",
+          violations: [])
+      }
+      return (existing, try SQLiteBridge(path: existing.path, deferredPreparation: true))
+    }
+    let database = try SQLiteBridge(path: canonical, deferredPreparation: true)
+    let key = try identity(canonical)
+    files = files.filter { $0.value.value != nil }
+    let gate = WorkspaceFileGate(path: canonical)
+    files[key] = WeakGate(value: gate)
+    return (gate, database)
+  }
+
+  private static func identity(_ path: String) throws -> Identity {
+    let attributes = try FileManager.default.attributesOfItem(atPath: path)
+    guard (attributes[.referenceCount] as? NSNumber)?.intValue == 1 else {
+      throw WorkspaceError(
+        message:
+          "Hard-linked databases cannot be opened safely. Open a regular database file instead.",
+        violations: [])
+    }
+    guard let device = attributes[.systemNumber] as? NSNumber,
+      let inode = attributes[.systemFileNumber] as? NSNumber
+    else {
+      throw WorkspaceError(message: "Could not identify the workspace file.", violations: [])
+    }
+    return Identity(device: device.uint64Value, inode: inode.uint64Value)
+  }
+
+  func acquire(_ workspace: NativeWorkspace) -> Bool {
+    if owner === workspace { return true }
+    guard owner == nil else {
+      if !waiting.contains(where: { $0 === workspace }) { waiting.append(workspace) }
+      return false
+    }
+    owner = workspace
+    return true
+  }
+
+  func release(_ workspace: NativeWorkspace) {
+    precondition(owner === workspace)
+    // Reserve the next owner now, so a just-completed instance cannot jump ahead.
+    owner = waiting.isEmpty ? nil : waiting.removeFirst()
+    if let next = owner {
+      Task { @MainActor in next.startNext() }
     }
   }
 }

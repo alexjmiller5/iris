@@ -221,7 +221,11 @@ keys and SwiftUI row identity must preserve their exact bytes; Swift String
 canonical equivalence must not merge records, recoveries or reference selections.
 Keep the original String values at the core boundary.
 
-Whole Worker requests are serialized. Native requests retain SQLite ownership
+Whole Worker requests are serialized. Native instances opening the same physical
+file share FIFO request admission, including initial schema repair; independent
+files and memory databases keep separate admission. Resolve symbolic links before
+opening and refuse hard-linked database files so journals have one identity.
+Native requests retain SQLite ownership
 across every transaction and local await. HTTP outside a transaction suspends
 its request owner so complete foreground requests can run; the HTTP continuation
 resumes through that same queue, never inside another request's transaction.
@@ -397,13 +401,16 @@ repeated table navigation; the optional loopback `navigation-hub.py` mode holds
 real sync HTTP while `TableNavigationUITests` verifies cached navigation and
 persisted local saves before the response is released.
 
-NativeWorkspace serializes whole database operations, yielding ownership only
+NativeWorkspace serializes whole database operations across every open instance
+of the same file, yielding ownership only
 at transaction-free HTTP boundaries. Suspended requests capture their transport;
 responses reenter behind complete foreground operations. Close waits for every
 suspended owner, while duplicate sync requests do not block local requests ahead
 of close. The sync file lock lasts through suspension. Progress carries phase,
 table, page, row count and start time only. Cancel unwinds transport without
-resetting checkpoints or discarding local changes; the total deadline is fifteen
+resetting checkpoints or discarding local changes. Synchronous JSC callback failures
+reject only their captured request; roll back an unfinished transaction before
+releasing file admission. The total deadline is fifteen
 minutes, with per-request transport timeouts retained. Incomplete rounds can
 repeat uncheckpointed pages on retry.
 
