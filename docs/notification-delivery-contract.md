@@ -81,6 +81,8 @@ session replacement or deployment replacement invalidates readiness immediately.
 An async registration receipt is accepted only when its captured generation
 still equals the current generation. The canonical registration API is not yet
 available; this gate is the integration boundary, not a client HTTP adapter.
+The future supported API must supply an opaque receipt binding. The service's
+internal token hash must never become a public session or installation identity.
 
 The delivery gate checks readiness again after awaiting OS permission settings,
 so registration that finishes during that lookup suppresses local scheduling.
@@ -118,9 +120,9 @@ delivery checkpoint, not shared read state.
   or deployment change is included here. Visible alert delivery alone does not
   require adding a background-fetch feature.
 
-The service owner supplies the existing supported registration API, subscription
-receipts and sender integration. The app owner supplies lifecycle/delegate and
-signing changes using the selected push-only banner policy.
+The service owner supplies the canonical registration API when available,
+subscription receipts and sender integration. The app owner supplies
+lifecycle/delegate and signing changes using the selected push-only banner policy.
 
 ## Acceptance evidence
 
