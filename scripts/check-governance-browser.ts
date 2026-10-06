@@ -61,9 +61,9 @@ try {
   await check('quota failure leaves no dispatchable retained entry', async () => { assert.equal(await a!.evaluate(`${h}.fault('quota').then(()=>false,()=>true)`), true); assert.equal(await a!.evaluate(`${h}.load()`), null); });
   await check('unsupported strict durability rejects opening', async () => { assert.equal(await a!.evaluate(`${h}.fault('durability').then(()=>false,()=>true)`), true); });
   await check('corrupt and unknown-version entries cannot be overwritten or deleted', async () => {
-    for (const value of ['broken-json', JSON.stringify({ ...original, version: 99 })]) {
+    for (const value of ['broken-json', JSON.stringify({ ...original, version: 99 }), null, 17, {}, undefined]) {
       await a!.evaluate(`${h}.corrupt(${JSON.stringify(value)})`);
-      for (const method of ['load()', 'retain()', 'resolve()']) assert.equal(await b!.evaluate(`${h}.${method}.then(()=>false,()=>true)`), true);
+      for (const method of ['load()', 'retain()', 'resolve()']) assert.equal(await b!.evaluate(`${h}.${method}.then(()=>false,()=>true)`), true, `${method} must reject stored ${String(value)}`);
     }
   });
   console.log(`${checks} real-browser journal checks passed`);

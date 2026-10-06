@@ -95,11 +95,26 @@ test database. It neither attaches to an arbitrary tab nor starts another browse
 bun scripts/check-governance-browser.ts --target <owned-target> --peer <owned-peer> --port <cdp-port> --helper <path-to-cdp-eval.mjs>
 ```
 
-Browser execution is queued, not yet claimed passing: strict completion ordering,
-new-tab/reopen persistence, competing-client retain, identical retry, compare-delete,
-session isolation, corrupt/unknown formats and injected quota/unsupported-durability
-failures. Real crash/reopen recovery and panel interaction verification must pass before
-journal injection enables approval. The synthetic fixture has no live API adapter.
+Real-browser journal acceptance passed all ten groups: strict transaction completion
+before retention resolves, second-tab reads, reload/reopen with the exact request/key,
+identical retries, compare-delete, competing-client retention with exactly one winner,
+session isolation, malformed/unknown-version records, and injected quota/unsupported-
+durability failures. An additional controlled renderer crash emitted
+`Inspector.targetCrashed`; reopening both pages recovered the exact retained request/key.
+Quota and unsupported durability are injected fault cases, not exhaustion of the real
+storage device or a second browser engine.
+
+Expanded malformed-record tests first exposed that `get()` cannot distinguish an
+absent key from a stored `undefined` value. The journal now checks cursor presence;
+all malformed values fail closed, including `undefined`, null, numbers and objects.
+Four real-browser mutations were killed: early transaction resolution, replacing an
+unresolved entry, deleting mismatched bytes and treating `undefined` as absent. The
+restored implementation passed again. Every runner removed its exact synthetic database
+and stopped its server; final database enumeration was empty and the owned group closed.
+
+The browser fixture has no live API adapter. Host mounting and actual product-flow
+verification remain integration gates; API and journal injection stay null until root
+releases them and the real service advertises the operations.
 
 Current tests do not prove service authority, preview inertness, atomic proposal/receipt
 storage or end-to-end idempotency. Real service integration must additionally verify

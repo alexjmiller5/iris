@@ -207,13 +207,13 @@ export async function openApprovalJournal(
 	return {
 		async load() {
 			return transaction<PendingApproval | null>('readonly', (store, done, fail) => {
-				const request = store.get(key);
+				const request = store.openCursor(key);
 				request.onsuccess = () => {
 					try {
 						done(
-							request.result === undefined
+							request.result === null
 								? null
-								: decodePendingApproval(request.result, boundScope)
+								: decodePendingApproval(request.result.value, boundScope)
 						);
 					} catch (error) {
 						fail(error);
@@ -224,12 +224,12 @@ export async function openApprovalJournal(
 		async retain(entry) {
 			const encoded = encodePendingApproval(entry, boundScope);
 			await transaction<void>('readwrite', (store, done, fail) => {
-				const request = store.get(key);
+				const request = store.openCursor(key);
 				request.onsuccess = () => {
 					try {
-						if (request.result !== undefined) {
-							decodePendingApproval(request.result, boundScope);
-							if (request.result !== encoded)
+						if (request.result !== null) {
+							decodePendingApproval(request.result.value, boundScope);
+							if (request.result.value !== encoded)
 								throw new Error('Resolve the existing approval before replacing it.');
 						} else store.add(encoded, key);
 						done();
@@ -242,12 +242,12 @@ export async function openApprovalJournal(
 		async resolve(entry) {
 			const encoded = encodePendingApproval(entry, boundScope);
 			await transaction<void>('readwrite', (store, done, fail) => {
-				const request = store.get(key);
+				const request = store.openCursor(key);
 				request.onsuccess = () => {
 					try {
-						if (request.result !== undefined) {
-							decodePendingApproval(request.result, boundScope);
-							if (request.result !== encoded)
+						if (request.result !== null) {
+							decodePendingApproval(request.result.value, boundScope);
+							if (request.result.value !== encoded)
 								throw new Error('Retained approval changed; it was not removed.');
 							store.delete(key);
 						}
