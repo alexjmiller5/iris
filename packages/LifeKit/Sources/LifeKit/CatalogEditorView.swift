@@ -34,6 +34,7 @@ struct CatalogEditorView: View {
                 .tag(row["id"]?.text ?? "")
             }
           }
+          .accessibilityIdentifier("catalog-entry")
           TextField(model.mode == .property ? "Column ID" : "Rule ID", text: $model.key)
             .disabled(model.original != nil).accessibilityIdentifier("catalog-key")
         }

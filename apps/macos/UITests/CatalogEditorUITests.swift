@@ -20,8 +20,9 @@ final class CatalogEditorUITests: XCTestCase {
     let edit = app.buttons["edit-catalog"]
     XCTAssertTrue(edit.waitForExistence(timeout: 10))
     edit.click()
-    let entry = app.popUpButtons["Entry"]
-    XCTAssertTrue(entry.waitForExistence(timeout: 5))
+    let entry = app.descendants(matching: .any)["catalog-entry"].firstMatch
+    XCTAssertTrue(entry.waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertTrue(entry.isHittable)
     entry.click()
     app.menuItems["title"].click()
     let label = app.textFields["catalog-label"]
