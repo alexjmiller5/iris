@@ -26,6 +26,73 @@ def profile():
 
 
 class SigningTests(unittest.TestCase):
+    def test_extension_profiles_require_same_team_device_group_and_certificate(self):
+        m = load()
+        import copy
+        app = profile()
+        app['Entitlements']['application-identifier'] = 'TESTTEAM.com.example.App'
+        app['Entitlements']['com.apple.security.application-groups'] = ['group.com.example.App']
+        widget = copy.deepcopy(app)
+        widget['UUID'] = 'widget-profile'
+        widget['Entitlements']['application-identifier'] = 'TESTTEAM.com.example.App.widgets'
+        profiles = {'com.example.App': app, 'com.example.App.widgets': widget}
+        self.assertEqual(m.validate_profile_set(profiles, 'synthetic-device', ['group.com.example.App']),
+                         ('TESTTEAM', [b'certificate']))
+        def other_team(p):
+            p['TeamIdentifier'] = ['OTHERTEAM']
+            p['ApplicationIdentifierPrefix'] = ['OTHERTEAM']
+            p['Entitlements']['com.apple.developer.team-identifier'] = 'OTHERTEAM'
+            p['Entitlements']['application-identifier'] = 'OTHERTEAM.com.example.App.widgets'
+        for mutate in [
+            lambda p: p['Entitlements'].update({'com.apple.security.application-groups': []}),
+            lambda p: p.update({'ProvisionedDevices': ['other-device']}),
+            lambda p: p.update({'DeveloperCertificates': [b'other-certificate']}),
+            lambda p: p['Entitlements'].update({'application-identifier': 'TESTTEAM.com.example.*'}),
+            other_team,
+        ]:
+            invalid = copy.deepcopy(profiles)
+            mutate(invalid['com.example.App.widgets'])
+            with self.subTest(mutate=mutate), self.assertRaises(ValueError):
+                m.validate_profile_set(invalid, 'synthetic-device', ['group.com.example.App'])
+
+    def test_exported_extension_set_versions_and_groups_are_verified(self):
+        m = load()
+        with tempfile.TemporaryDirectory() as root:
+            app = Path(root) / 'Fixture.app'
+            widget = app / 'PlugIns/Widget.appex'
+            widget.mkdir(parents=True)
+            app_info = {'CFBundleIdentifier': 'com.example.App', 'CFBundleVersion': '12.1',
+                        'CFBundleShortVersionString': '0.1.0'}
+            widget_info = dict(app_info, CFBundleIdentifier='com.example.App.widgets')
+            (app / 'Info.plist').write_bytes(plistlib.dumps(app_info))
+            (widget / 'Info.plist').write_bytes(plistlib.dumps(widget_info))
+            expected = {'com.example.App': 'app-profile', 'com.example.App.widgets': 'widget-profile'}
+            entitlements = {'com.apple.security.application-groups': ['group.com.example.App']}
+            with patch.object(m, 'verify_app', return_value=entitlements) as verify:
+                m.verify_app_tree(app, 'com.example.App', 'TESTTEAM', 'fingerprint', 'synthetic-device',
+                                  expected, ['group.com.example.App'])
+                self.assertEqual(verify.call_count, 2)
+                with self.assertRaises(ValueError):
+                    m.verify_app_tree(app, 'com.example.App', 'TESTTEAM', 'fingerprint', None,
+                                      {'com.example.App': 'app-profile'}, ['group.com.example.App'])
+                widget_info['CFBundleVersion'] = '11.1'
+                (widget / 'Info.plist').write_bytes(plistlib.dumps(widget_info))
+                with self.assertRaises(ValueError):
+                    m.verify_app_tree(app, 'com.example.App', 'TESTTEAM', 'fingerprint', None,
+                                      expected, ['group.com.example.App'])
+                widget_info['CFBundleVersion'] = '12.1'
+                widget_info['CFBundleShortVersionString'] = '0.2.0'
+                (widget / 'Info.plist').write_bytes(plistlib.dumps(widget_info))
+                with self.assertRaises(ValueError):
+                    m.verify_app_tree(app, 'com.example.App', 'TESTTEAM', 'fingerprint', None,
+                                      expected, ['group.com.example.App'])
+                widget_info['CFBundleShortVersionString'] = '0.1.0'
+                (widget / 'Info.plist').write_bytes(plistlib.dumps(widget_info))
+                verify.return_value = {}
+                with self.assertRaises(ValueError):
+                    m.verify_app_tree(app, 'com.example.App', 'TESTTEAM', 'fingerprint', None,
+                                      expected, ['group.com.example.App'])
+
     def test_ad_hoc_profile_matches_bundle_and_selected_device(self):
         m = load()
         self.assertEqual(m.validate_profile(profile(), 'com.example.App', 'synthetic-device'),
