@@ -1435,6 +1435,9 @@
         },
         "name": {
           "type": "string"
+        },
+        "profile": {
+          "type": "string"
         }
       },
       "required": [
@@ -1547,6 +1550,9 @@
         },
         "governance": {
           "$ref": "#/$defs/GovernanceCapability"
+        },
+        "enrollmentProfile": {
+          "$ref": "#/$defs/EnrollmentProfileReceipt"
         }
       },
       "required": [
@@ -1560,6 +1566,9 @@
       "properties": {
         "data": {
           "$ref": "#/$defs/JSONValue"
+        },
+        "expectedProfile": {
+          "$ref": "#/$defs/EnrollmentProfileExpectation"
         }
       },
       "required": [
@@ -1593,6 +1602,9 @@
         },
         "expectedFingerprint": {
           "type": "string"
+        },
+        "expectedProfile": {
+          "$ref": "#/$defs/EnrollmentProfileExpectation"
         }
       },
       "required": [
@@ -1877,6 +1889,9 @@
         },
         "governance": {
           "$ref": "#/$defs/GovernanceCapability"
+        },
+        "rowCreation": {
+          "$ref": "#/$defs/RowCreationCapability"
         }
       },
       "required": [
@@ -3190,6 +3205,415 @@
         "deploymentId",
         "sessionId"
       ]
+    },
+    "EnrollmentProfileReceipt": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ]
+    },
+    "EnrollmentProfileExpectation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "scopes"
+      ]
+    },
+    "CreationPolicyRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ]
+    },
+    "RowCreationCapability": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "atomic-origin-v1"
+          ]
+        },
+        "policies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CreationPolicyRef"
+          }
+        }
+      },
+      "required": [
+        "protocol",
+        "policies"
+      ]
+    },
+    "RowCreationTarget": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "generated",
+            "adopted"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ]
+    },
+    "RowCreationRequest": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "$ref": "#/$defs/CreationPolicyRef"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "occurrenceKey": {
+          "$ref": "#/$defs/CreationOccurrenceKey"
+        },
+        "target": {
+          "$ref": "#/$defs/RowCreationTarget"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/FilterValue"
+          }
+        }
+      },
+      "required": [
+        "policy",
+        "sourceId",
+        "occurrenceKey",
+        "target",
+        "updatedAt",
+        "values"
+      ]
+    },
+    "RowCreatedReceipt": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "created"
+          ]
+        },
+        "policy": {
+          "$ref": "#/$defs/CreationPolicyRef"
+        },
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "originId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "policy",
+        "id",
+        "revision",
+        "originId"
+      ]
+    },
+    "RowExistingReceipt": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "existing"
+          ]
+        },
+        "policy": {
+          "$ref": "#/$defs/CreationPolicyRef"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "policy",
+        "id"
+      ]
+    },
+    "RowCreationReceipt": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RowCreatedReceipt"
+        },
+        {
+          "$ref": "#/$defs/RowExistingReceipt"
+        }
+      ]
+    },
+    "CreationOccurrenceKey": {
+      "type": [
+        "string",
+        "integer"
+      ]
+    },
+    "ResolveDerivedArgs": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "column": {
+          "type": "string"
+        },
+        "expectedUpdatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "table",
+        "id",
+        "column",
+        "expectedUpdatedAt"
+      ],
+      "description": "Resolve one saved derived property on the bound hub, requiring the displayed row revision. Never accepts draft values or locally computes metadata."
+    },
+    "DerivationFailure": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "col": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "retry_after": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "col",
+        "error"
+      ]
+    },
+    "ResolveDerivedResult": {
+      "type": "object",
+      "properties": {
+        "derived": {
+          "type": "integer"
+        },
+        "failed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DerivationFailure"
+          }
+        }
+      },
+      "required": [
+        "derived",
+        "failed"
+      ]
+    },
+    "SidebarPin": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "tbl": {
+          "type": "string"
+        },
+        "position": {
+          "type": "integer"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "deleted_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unavailable": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "tbl",
+        "position",
+        "updated_at",
+        "deleted_at",
+        "unavailable"
+      ]
+    },
+    "SidebarPinList": {
+      "type": "object",
+      "properties": {
+        "pins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SidebarPin"
+          }
+        },
+        "unavailable": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "pins",
+        "unavailable"
+      ]
+    },
+    "PinTableArgs": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string"
+        },
+        "expectedUpdatedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "table",
+        "expectedUpdatedAt"
+      ]
+    },
+    "UnpinTableArgs": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "expectedUpdatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expectedUpdatedAt"
+      ]
+    },
+    "PinRevision": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "updated_at"
+      ]
+    },
+    "MoveTablePinArgs": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "up",
+            "down"
+          ]
+        },
+        "expected": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PinRevision"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "direction",
+        "expected"
+      ]
     }
   },
   "operations": {
@@ -3525,6 +3949,47 @@
         "$ref": "#/$defs/ProposalMutationResult"
       },
       "description": "Calls only an explicitly injected, capability-validated governance adapter. Unconfigured handlers remain unavailable; no local writer fallback."
+    },
+    "resolveDerived": {
+      "args": {
+        "$ref": "#/$defs/ResolveDerivedArgs"
+      },
+      "result": {
+        "$ref": "#/$defs/ResolveDerivedResult"
+      },
+      "description": "Request hub-owned derivation for an unchanged saved row. Hosts retain drafts, then sync and re-read the record; this operation never writes replica values."
+    },
+    "listSidebarPins": {
+      "args": {
+        "$ref": "#/$defs/EmptyArgs"
+      },
+      "result": {
+        "$ref": "#/$defs/SidebarPinList"
+      }
+    },
+    "pinTable": {
+      "args": {
+        "$ref": "#/$defs/PinTableArgs"
+      },
+      "result": {
+        "$ref": "#/$defs/SidebarPinList"
+      }
+    },
+    "unpinTable": {
+      "args": {
+        "$ref": "#/$defs/UnpinTableArgs"
+      },
+      "result": {
+        "$ref": "#/$defs/SidebarPinList"
+      }
+    },
+    "moveTablePin": {
+      "args": {
+        "$ref": "#/$defs/MoveTablePinArgs"
+      },
+      "result": {
+        "$ref": "#/$defs/SidebarPinList"
+      }
     }
   }
 }

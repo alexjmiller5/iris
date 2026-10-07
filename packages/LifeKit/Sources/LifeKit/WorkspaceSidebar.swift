@@ -3,6 +3,7 @@ import SwiftUI
 struct WorkspaceSidebar: View {
   let tables: NativeSidebarTables
   let recents: NativeRecentsModel?
+  let pins: NativePinsModel?
   let selectedTable: String?
   let disabled: Bool
   let error: String?
@@ -17,9 +18,13 @@ struct WorkspaceSidebar: View {
     if let recents {
       RecentDestinations(recents: recents, disabled: disabled, onOpen: onOpen)
     }
+    if let pins {
+      PinnedTablesSection(pins: pins, selected: selectedTable, disabled: disabled, onOpen: onOpen)
+    }
     Section("Tables") {
       ForEach(tables.ordinary) { table in
-        SidebarTableRow(table: table, selected: selectedTable == table.id, disabled: disabled) {
+        SidebarTableRow(table: table, selected: selectedTable == table.id, disabled: disabled,
+          pinDisabled: pins?.disabled ?? true, onPin: { Task { await pins?.pin(table.id) } }) {
           onOpen(NativeDestination(table: table.id))
         }
       }
@@ -27,7 +32,8 @@ struct WorkspaceSidebar: View {
     if !tables.system.isEmpty {
       DisclosureGroup("System tables", isExpanded: $systemExpanded) {
         ForEach(tables.system) { table in
-          SidebarTableRow(table: table, selected: selectedTable == table.id, disabled: disabled) {
+          SidebarTableRow(table: table, selected: selectedTable == table.id, disabled: disabled,
+          pinDisabled: pins?.disabled ?? true, onPin: { Task { await pins?.pin(table.id) } }) {
             onOpen(NativeDestination(table: table.id))
           }
         }
@@ -43,9 +49,12 @@ private struct SidebarTableRow: View {
   let table: NativeSidebarTable
   let selected: Bool
   let disabled: Bool
+  var pinDisabled = true
+  var onPin: (() -> Void)? = nil
   let onOpen: () -> Void
 
   var body: some View {
+    HStack {
     Button(action: onOpen) {
       Label {
         VStack(alignment: .leading, spacing: 3) {
@@ -63,6 +72,12 @@ private struct SidebarTableRow: View {
     .listRowBackground(selected ? Color.accentColor.opacity(0.12) : Color.clear)
     .accessibilityAddTraits(selected ? .isSelected : [])
     .accessibilityIdentifier("sidebar-table-" + table.id)
+    if let onPin {
+      Button(action: onPin) { Image(systemName: "pin").frame(minWidth: 32, minHeight: 36) }
+        .buttonStyle(.borderless).disabled(disabled || pinDisabled)
+        .accessibilityLabel("Pin \(table.id)").help("Pin table")
+    }
+    }
   }
 }
 
