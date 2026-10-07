@@ -28,6 +28,8 @@ final class WorkspaceModel {
         linkError = nil
         recents?.cancel()
         recents = nil
+        pins?.cancel()
+        pins = nil
         workspaceGeneration += 1
         undoAction = nil
         undoing = false
@@ -334,6 +336,7 @@ final class WorkspaceModel {
   var groups: [String: String] = [:]
   private(set) var recoverableDrafts: [StoredEditorDraft] = []
   private(set) var recents: NativeRecentsModel?
+  private(set) var pins: NativePinsModel?
   private var draftStore: EditorDraftStore?
   let services = HubServicesModel()
   private var groupsURL: URL?
@@ -1059,7 +1062,10 @@ final class WorkspaceModel {
       let workspace = try NativeWorkspace(path: path)
       do {
         if seed { try await workspace.createSample() }
-        if !demo, url == nil { try await workspace.prepareLocalViews() }
+        if !demo, url == nil {
+          try await workspace.prepareLocalViews()
+          try await workspace.prepareLocalPins()
+        }
         catalog = try await workspace.catalog()
       } catch {
         try? await workspace.close()
@@ -1259,6 +1265,16 @@ final class WorkspaceModel {
     // Forgetting a credential keeps this database open. Its local history
     // remains usable; replacing/closing the client cancels the old model.
     let current = { [weak self] in self?.client === client }
+    pins = NativePinsModel(
+      list: { try await client.listSidebarPins() },
+      pin: { try await client.pinTable($0) },
+      unpin: { try await client.unpinTable($0) },
+      move: { try await client.moveTablePin($0) }, isCurrent: current,
+      didCommit: { [weak self] in
+        guard let self, self.client === client else { return }
+        self.recordLocalChange()
+        await self.reload()
+      })
     recents = NativeRecentsModel(
       store: store,
       resolve: { try await resolver.resolve($0, isCurrent: current) }, isCurrent: current)

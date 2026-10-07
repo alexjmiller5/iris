@@ -11,7 +11,8 @@ final class NativeWorkspaceDiagnostics {
     case search, listViews, saveView, deleteView, writeability, remoteRows, remoteRow
     case undoStatus, undo, enrollmentApproval, validateDeviceSession, enrollmentPollResult
     case sessionRevocationResult, referenceSources, referencedBy, rejections, runRowAction
-    case resolveSourceLink, sample, prepareLocalViews, close
+    case resolveSourceLink, sample, prepareLocalViews, prepareLocalPins, close
+    case listSidebarPins, pinTable, unpinTable, moveTablePin
   }
 
   enum Phase: String, Codable { case queued, active, suspended, completed }
