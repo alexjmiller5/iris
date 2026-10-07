@@ -154,6 +154,13 @@ identity persistence succeed. Native Duplicate reads a fresh full active row int
 a new prepared editor, confirms discard only for a dirty source, and removes the
 unused copy's journal when the user keeps editing.
 
+Manual Resolve uses the core's revision-checked `resolveDerived` operation on the
+bound hub, followed by ordinary replica sync and a fresh full-row readback.
+HTTP-derived fields remain read-only. Require a saved, clean record before the
+request, collect retained native Markdown first, and preserve late input against
+the readback baseline. Display provider failures without claiming success.
+Never write provider results directly into the replica or implicitly save a draft.
+
 Saved views use the core contract and the canonical `core/schema/saved-views.json`
 manifest vendored by `bundle-core.ts`. Only explicit app-owned local/sample
 initialization may create missing storage; replicas receive logged DDL through
@@ -530,3 +537,11 @@ window is active. External commits refresh catalog/rows without resetting editor
 drafts; optimistic saved revisions still reject conflicting commits. Cancel old
 observation on workspace/scene changes. Never poll inside a core transaction or
 alter generated core code to implement host observation.
+
+## Nix distribution
+
+`nix/package.nix` preserves the published signed archive without fixup or stripping.
+`nix/darwin.nix` exports generic enable/package/migrateFromHomebrew options; early
+checks precede application publication and the exact non-zap cask removal precedes
+Homebrew cleanup. Keep the cask publisher available for Homebrew consumers.
+Migration receipts and runtime data never belong in source.

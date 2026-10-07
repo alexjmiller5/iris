@@ -386,6 +386,15 @@ async function dispatch(request: DatabaseRequest) {
 			);
 			return createCoreHandlers(db, () => hub, 'life-ui').remoteRow(input);
 		}
+		case 'resolveDerived': {
+			if (databaseName === 'life-ui-demo')
+				throw new Error('Connect a workspace to resolve derived fields.');
+			const { token, ...input } = args;
+			const hub = createHttpHub(input.endpoint, token, (url, init) =>
+				fetch(url, { ...init, signal: AbortSignal.timeout(90_000) })
+			);
+			return createCoreHandlers(db, () => hub, 'life-ui').resolveDerived(input);
+		}
 		case 'listViews':
 			return local.listViews(args);
 		case 'saveView':

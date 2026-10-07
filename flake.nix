@@ -17,6 +17,8 @@
           default = package;
           life-ui = package;
         });
+      darwinModules.default = import ./nix/darwin.nix;
+      darwinModules.life-ui = import ./nix/darwin.nix;
       homeModules.default = homeModule;
       homeModules.life-ui = homeModule;
       devShells = nixpkgs.lib.genAttrs systems (system:
