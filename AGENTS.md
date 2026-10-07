@@ -45,7 +45,9 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   image metadata before decoding. Browser decoder allocation remains platform-owned.
   External images stay inert. File viewing never rewrites Markdown.
   Source links resolve through core `resolveSourceLink` and whole-record import
-  provenance, then ordinary fresh-row navigation. Unmapped URLs retain an explicit
+  provenance, then ordinary fresh-row navigation. Text fields containing explicit
+  `table/id` identities offer Open record through the same guarded resolver;
+  unavailable targets preserve the field and never become external navigation. Unmapped URLs retain an explicit
   original-link action. Cancel or close disposes requests and file resources.
 - `scripts`: build and fixture test operations. No credentials or data exports.
 
@@ -518,6 +520,14 @@ remove an existing connection or claim an unused approval URL was revoked.
 Established Keychain replicas reopen offline before a sync attempt. Keep the
 canonical enrollment fixture synchronized through `bundle-core.ts` and execute
 it in JavaScriptCore as well as the core's own tests.
+
+Saved views can select Calendar, Gallery or a select-grouped Board. Keep these
+settings in the canonical v2 presentation object. Calendar and Board layout use
+shared core operations over loaded rows; hosts supply existing civil-day bounds
+and display pagination coverage. Date-only range ends are inclusive; timed ends
+are exclusive. Board moves use normal revision-checked writes and the same draft
+and read-only guards as other edits. Gallery covers use the selected catalog
+property and the existing separate retained/public image credential paths.
 
 ## Development and verification
 

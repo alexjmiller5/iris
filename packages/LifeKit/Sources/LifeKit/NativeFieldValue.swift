@@ -35,6 +35,14 @@ enum NativeDateValue {
 }
 
 enum NativeFieldLink {
+  // Presentation hint only. The core checks the catalog and exact stored ID.
+  static func isRecordReference(_ value: String) -> Bool {
+    value.utf16.count <= 4096
+      && value.range(
+        of: #"^[A-Za-z_][A-Za-z0-9_]*/[^\s/\\?#\x00-\x1f\x7f]+$"#,
+        options: .regularExpression) != nil
+  }
+
   static func destination(type: String, value: String) -> URL? {
     guard !value.isEmpty,
       value.rangeOfCharacter(from: .controlCharacters.union(.newlines)) == nil

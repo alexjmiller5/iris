@@ -15,6 +15,7 @@ struct WorkspaceOptionsView: View {
   @State private var groups: [WorkspaceFilterGroup]
   @State private var actions: [CoreRowAction]
   @State private var layout: [CoreViewLayoutItem]?
+  @State private var presentation: CoreViewPresentation
   @State private var timeZone: String
   @State private var dayStart: Date
   @State private var error: String?
@@ -37,6 +38,7 @@ struct WorkspaceOptionsView: View {
     _groups = State(initialValue: model.filterGroups)
     _actions = State(initialValue: model.viewActions)
     _layout = State(initialValue: model.viewLayout)
+    _presentation = State(initialValue: model.viewPresentation)
     _timeZone = State(initialValue: model.viewTimeZone)
     _dayStart = State(
       initialValue: Date(timeIntervalSinceReferenceDate: Double(model.viewDayStartMinutes) * 60))
@@ -57,6 +59,8 @@ struct WorkspaceOptionsView: View {
   var body: some View {
     NavigationStack {
       Form {
+        NativePresentationControls(value: $presentation, fields: model.properties.map(CatalogField.init))
+
         Section("Sort order") {
           ForEach($sorts) { $sort in
             VStack(alignment: .leading) {
@@ -218,7 +222,8 @@ struct WorkspaceOptionsView: View {
               try model.applyWorkflowOptions(
                 sorts: sorts.map(\.value), filters: filters, groups: groups, actions: actions,
                 layout: layout, timeZone: timeZone,
-                dayStartMinutes: Int(dayStart.timeIntervalSinceReferenceDate / 60), context: context
+                dayStartMinutes: Int(dayStart.timeIntervalSinceReferenceDate / 60),
+                presentation: presentation, context: context
               )
               dismiss()
             } catch { self.error = error.localizedDescription }

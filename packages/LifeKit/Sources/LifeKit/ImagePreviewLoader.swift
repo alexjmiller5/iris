@@ -55,6 +55,25 @@ enum ImageReference: Hashable, Sendable {
     }
   }
 
+  /// An explicitly selected Gallery cover does not need a filename extension.
+  static func cover(type: String, value: String) -> ImageReference? {
+    guard ["text", "url", "json"].contains(type) else { return nil }
+    let values: [String]
+    if type == "json" {
+      values = (try? JSONDecoder().decode([String].self, from: Data(value.utf8))) ?? []
+    } else { values = [value] }
+    for raw in values {
+      let reference: ImageReference
+      if raw.hasPrefix("https://"), let url = URL(string: raw) {
+        reference = .external(url)
+      } else if raw.hasPrefix("/v1/files/") {
+        reference = .retained(String(raw.dropFirst(10)))
+      } else { continue }
+      if (try? reference.url(endpoint: "https://preview.invalid")) != nil { return reference }
+    }
+    return nil
+  }
+
   var embeddedSVG: Data? {
     if case .embedded(let mime, let data) = self, mime == "image/svg+xml" { return data }
     return nil
