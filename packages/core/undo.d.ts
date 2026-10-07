@@ -11,4 +11,5 @@ export declare function createWriteSession(db: SqlDriver, origin: string): {
     undo: (args: UndoArgs) => Row | Promise<Row>;
     undoStatus: (args: import("./contract.generated.ts").EmptyArgs) => import("./contract.generated.ts").UndoStatus | Promise<import("./contract.generated.ts").UndoStatus>;
     viewMutation: <A, T>(input: A, operation: (args: A, capture: (value: WriteCapture) => void) => Promise<T>) => Promise<T>;
+    sidebarMutation: <A, T>(input: A, operation: (args: A) => Promise<T>) => Promise<T>;
 };

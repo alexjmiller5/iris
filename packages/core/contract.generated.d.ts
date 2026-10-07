@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "60ef49df41290118bfe4dc2e147cee534aca4f9d9a84e063e462f93a7cab947c";
+export declare const CORE_CONTRACT_HASH = "8f37229188ef68933aee8f4bc79b8fd5ce8ac4c76ffbc8bf947af1b6d413c49f";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -745,6 +745,35 @@ export type BoardColumnRows = {
 export type BoardRowsResult = {
     columns: BoardColumnRows[];
 };
+export type SidebarPinList = {
+    pins: SidebarPin[];
+    unavailable: string | null;
+};
+export type SidebarPin = {
+    id: string;
+    tbl: string;
+    position: number;
+    updated_at: string;
+    deleted_at: string | null;
+    unavailable: string | null;
+};
+export type PinTableArgs = {
+    table: string;
+    expectedUpdatedAt: string | null;
+};
+export type UnpinTableArgs = {
+    id: string;
+    expectedUpdatedAt: string;
+};
+export type PinRevision = {
+    id: string;
+    updated_at: string;
+};
+export type MoveTablePinArgs = {
+    id: string;
+    direction: "up" | "down";
+    expected: PinRevision[];
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -905,6 +934,22 @@ export interface CoreOperations {
     boardRows: {
         args: BoardRowsArgs;
         result: BoardRowsResult;
+    };
+    pinTable: {
+        args: PinTableArgs;
+        result: SidebarPinList;
+    };
+    listSidebarPins: {
+        args: EmptyArgs;
+        result: SidebarPinList;
+    };
+    unpinTable: {
+        args: UnpinTableArgs;
+        result: SidebarPinList;
+    };
+    moveTablePin: {
+        args: MoveTablePinArgs;
+        result: SidebarPinList;
     };
 }
 export type CoreMethod = keyof CoreOperations;

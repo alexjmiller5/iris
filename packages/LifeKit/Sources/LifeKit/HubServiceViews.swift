@@ -139,6 +139,7 @@ struct HubNotificationsView: View {
       if services.refreshing { ProgressView("Refreshing…") }
       if let feed = services.feed, feed.notifications.isEmpty {
         ContentUnavailableView("No notifications", systemImage: "bell")
+          .frame(maxWidth: .infinity)
       }
       ForEach((services.feed?.notifications ?? []).reversed(), id: \.byteExactID) { notification in
         VStack(alignment: .leading, spacing: 8) {

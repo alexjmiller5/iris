@@ -22,9 +22,11 @@ if (source !== "--native") {
   const sourcePath = resolve(source);
   const sourceRoot = resolve(dirname(sourcePath), '../..');
   const schemaPath = join(sourceRoot, 'core/contract/core.json');
+  const pinSchemaPath = join(sourceRoot, 'core/schema/sidebar-pins.json');
   const viewSchemaPath = join(sourceRoot, 'core/schema/saved-views.json');
   await mkdir(join(root, 'packages/core/schema'), { recursive: true });
   await copyFile(viewSchemaPath, join(root, 'packages/core/schema/saved-views.json'));
+  await copyFile(pinSchemaPath, join(root, 'packages/core/schema/sidebar-pins.json'));
   const fixtureDir = join(root, 'packages/LifeKit/Tests/LifeKitTests/Fixtures');
   await mkdir(fixtureDir, { recursive: true });
   await copyFile(join(sourceRoot, 'tests/fixtures/read-dependencies.json'), join(fixtureDir, 'read-dependencies.json'));
@@ -105,6 +107,7 @@ if (source !== "--native") {
         .update(await readFile(join(dirname(sourcePath), name)));
     }
     coreHash.update('schema/saved-views.json\0').update(await readFile(viewSchemaPath));
+    coreHash.update('schema/sidebar-pins.json\0').update(await readFile(pinSchemaPath));
     const coreBanner = `// Generated from life-core. SHA-256: ${coreHash.digest("hex")}\n`;
     const clientPath = join(dirname(sourcePath), "index.ts");
     const client = await Bun.build({
