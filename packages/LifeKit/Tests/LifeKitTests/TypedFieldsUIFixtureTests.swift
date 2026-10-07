@@ -12,7 +12,7 @@ struct TypedFieldsUIFixtureTests {
       let environment = ProcessInfo.processInfo.environment
       try #require(environment["LIFE_UI_TEST_FIELDS_SIMULATOR"] == environment["SIMULATOR_UDID"])
       let model = WorkspaceModel()
-      try model.forgetConnection()
+      try await model.forgetConnection()
       await model.open()
       let store = try #require(model.editingContext?.draftStore)
       for saved in try store.all() where saved.table == "field_examples" {

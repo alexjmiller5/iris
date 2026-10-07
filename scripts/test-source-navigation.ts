@@ -23,6 +23,7 @@ const sourceURL = `https://app.notion.com/p/Related-${sourceID}`;
 const body = `# Source document\n\n[Related record](${sourceURL})\n\n[Unmapped record](https://app.notion.com/p/Absent-aaaaaaaa222233334444555555555555)\n`;
 for (const ddl of [
   "ALTER TABLE widgets ADD COLUMN parent TEXT",
+  "ALTER TABLE widgets ADD COLUMN output TEXT",
   "CREATE TABLE provenance (id TEXT PRIMARY KEY,from_kind TEXT,from_ref TEXT,to_kind TEXT,to_ref TEXT,rel TEXT,field TEXT,created_at TEXT,updated_at TEXT,deleted_at TEXT,hub_at TEXT)",
 ]) {
   db.db.exec(ddl);
@@ -55,6 +56,15 @@ db.db
     "2026-01-01T00:00:00.000Z",
     "2026-01-01T00:00:00.000Z",
   );
+
+db.db
+  .query(
+    "INSERT INTO catalog_properties(id,tbl,col,label,sort,type) VALUES (?,?,?,?,?,?)",
+  )
+  .run("widgets.output", "widgets", "output", "Output", 6, "text");
+db.db
+  .query("UPDATE widgets SET output=? WHERE id=?")
+  .run("widgets/second-record", "fixture-record");
 
 function installWorkerBarrier() {
   const state = window as any;
@@ -209,6 +219,47 @@ try {
       await release();
     }
   }
+  await check(
+    "explicit record identity opens a fresh destination without writing",
+    async () => {
+      const writes = await evaluate(`${fixture}.writes`);
+      await click(button("Open record", editor));
+      await until(`!!(${heading("Second record")})`);
+      expect(await evaluate(`${fixture}.writes`)).toBe(writes);
+      expect(
+        db.db
+          .query("SELECT output FROM widgets WHERE id='fixture-record'")
+          .get(),
+      ).toEqual({ output: "widgets/second-record" });
+    },
+  );
+  await check(
+    "unavailable explicit identity keeps the draft and reports an error",
+    async () => {
+      await fill(input("Output"), "widgets/missing");
+      const writes = await evaluate(`${fixture}.writes`);
+      await click(button("Open record", editor));
+      await until(
+        `(${editor}).textContent.includes('This record is not available in this workspace.')`,
+      );
+      expect(await evaluate(`(${input("Output")}).value`)).toBe(
+        "widgets/missing",
+      );
+      expect(await evaluate(`${fixture}.writes`)).toBe(writes);
+    },
+  );
+  await check(
+    "a changed draft can cancel explicit record navigation",
+    async () => {
+      acceptDiscard = false;
+      await fill(input("Title"), "Unsaved title");
+      const writes = await evaluate(`${fixture}.writes`);
+      await click(button("Open record", editor));
+      await until(`!!(${button("Open record", editor)}) && !(${button("Open record", editor)}).disabled`);
+      expect(await evaluate(`(${input("Title")}).value`)).toBe("Unsaved title");
+      expect(await evaluate(`${fixture}.writes`)).toBe(writes);
+    },
+  );
   for (const navigation of ["related", "Find"]) {
     await check(
       `older source lookup cannot replace newer ${navigation} navigation`,

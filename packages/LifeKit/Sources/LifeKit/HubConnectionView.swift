@@ -79,10 +79,14 @@ struct HubConnectionView: View {
           }.disabled(busy)
           if model.connection != nil {
             Button("Forget saved connection", role: .destructive) {
-              do {
-                try model.forgetConnection()
-                dismiss()
-              } catch { failure = error.localizedDescription }
+              connecting = true
+              Task {
+                defer { connecting = false }
+                do {
+                  try await model.forgetConnection()
+                  dismiss()
+                } catch { failure = error.localizedDescription }
+              }
             }.disabled(busy)
             Text(
               "The local replica stays on this device. Reconnect to the same hub to resume sync."

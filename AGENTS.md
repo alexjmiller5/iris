@@ -3,6 +3,13 @@
 Local-first web and native Apple clients for catalogued life-data databases.
 Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
 
+Preferred table views are synced IDs through canonical `getViewDefault`/`setViewDefault`.
+Plain table navigation applies the preference; explicit view or record links win.
+Unavailable targets show a catalog-default fallback without rewriting stored views.
+Preference changes use displayed revisions, the ordinary writer and Undo. Local/demo
+setup uses the canonical `view-defaults/v1` manifest; replicas require operator-provisioned
+schema and permitted sync scope. View names and personal lifecycle filters are runtime data.
+
 ## Layout and contracts
 
 - `apps/web`: Svelte 5/SvelteKit, Tailwind 4, Cloudflare Worker static assets.
@@ -45,7 +52,9 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   image metadata before decoding. Browser decoder allocation remains platform-owned.
   External images stay inert. File viewing never rewrites Markdown.
   Source links resolve through core `resolveSourceLink` and whole-record import
-  provenance, then ordinary fresh-row navigation. Unmapped URLs retain an explicit
+  provenance, then ordinary fresh-row navigation. Text fields containing explicit
+  `table/id` identities offer Open record through the same guarded resolver;
+  unavailable targets preserve the field and never become external navigation. Unmapped URLs retain an explicit
   original-link action. Cancel or close disposes requests and file resources.
 - `scripts`: build and fixture test operations. No credentials or data exports.
 
@@ -107,7 +116,9 @@ bootstrap has set `OP_SERVICE_ACCOUNT_TOKEN` (until then the job skips with a
 notice). Cloudflare Access protects the Worker's hostnames; converge it with
 `scripts/cf-access.py`. The public repository is `alexjmiller5/life-ui`.
 
-Mac distribution uses `.github/workflows/release-macos.yml`, triggered only by
+Apple validation uses `macos-latest`; signing workflows use standard
+`macos-26-intel` hosted runners. Mac distribution
+uses `.github/workflows/release-macos.yml`, triggered only by
 explicitly approved stable version tags. It stamps the tag version, builds both
 Apple Silicon and Intel, exports with the existing Developer ID certificate and
 an app-owned distribution profile, notarizes, staples, checks Gatekeeper and
@@ -132,8 +143,9 @@ certificates to compensate for a missing profile.
 Ordinary changes never bump a version or push a release tag.
 
 iOS Ad Hoc distribution uses the manual `build-ios.yml` workflow with existing
-Apple Signing distribution material and the project CI service account. It checks
-the intended `IOS_DEVICE_ID` project ENV field against the profile, signs using a
+Apple Signing distribution material and the project CI service account. It downloads the app-specific `IOS_APP_ADHOC` profile identified by repository
+variable `IOS_PROVISIONING_PROFILE_ID` using the existing App Store Connect key.
+It checks the production APNs entitlement and the intended `IOS_DEVICE_ID` project ENV field against the profile, signs using a
 temporary runner keychain, verifies the exported IPA and uploads only age-encrypted
 output with one-day retention. The required `artifact_recipient` dispatch input is
 a public age recipient; its temporary private identity stays with the operator.
@@ -245,7 +257,19 @@ Persist alert IDs byte for byte and compare their UTF-8 bytes; Swift String
 sets can collapse distinct event IDs. Checkpoint files retain their JSON arrays.
 Notification and usage-device rows also use byte-exact keys. Keep the original
 event IDs in mark-read requests.
-Native permission is requested only by the explicit Enable alerts action.
+Native permission is requested only by the explicit Enable alerts action. Native push registration uses the
+existing authenticated transport and the canonical `apns-registration-v1`
+capability. Public profile discovery only offers an explicit browser approval
+link; it never grants authority or replaces the existing credential. The app
+delegates deliver opaque OS tokens to the current session helper. No provider
+facts or signing credentials belong in the client. Readiness is volatile, bound
+to the current token and exact UTF-8 deployment/session/profile identifiers. The
+existing alert preference remains authoritative across windows. Server revision
+checks own retries and installation state; do not add a parallel client store.
+Before a registration write, retain an attempted-registration hint in the existing
+alert checkpoint. Forget resolves server state whenever that hint is present;
+disabled local alerts alone do not prove revocation. Never-enabled connections
+remain forgettable offline.
 Usage is deployment-scoped; provider-wide billing APIs do not belong in clients.
 Registered push owns banners; polling continues to update the inbox. Suppress
 local banners only after an authenticated registration receipt matches the current
@@ -518,6 +542,14 @@ remove an existing connection or claim an unused approval URL was revoked.
 Established Keychain replicas reopen offline before a sync attempt. Keep the
 canonical enrollment fixture synchronized through `bundle-core.ts` and execute
 it in JavaScriptCore as well as the core's own tests.
+
+Saved views can select Calendar, Gallery or a select-grouped Board. Keep these
+settings in the canonical v2 presentation object. Calendar and Board layout use
+shared core operations over loaded rows; hosts supply existing civil-day bounds
+and display pagination coverage. Date-only range ends are inclusive; timed ends
+are exclusive. Board moves use normal revision-checked writes and the same draft
+and read-only guards as other edits. Gallery covers use the selected catalog
+property and the existing separate retained/public image credential paths.
 
 ## Development and verification
 

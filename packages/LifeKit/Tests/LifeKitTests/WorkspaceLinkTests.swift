@@ -29,6 +29,21 @@ struct WorkspaceLinkTests {
       try await workspace.resolveSourceLink("https://example.com/reference").destination == nil)
     try await workspace.close()
   }
+  @Test func explicitRecordIdentityUsesCatalogAndFreshNativeNavigation() async throws {
+    let workspace = try NativeWorkspace(path: ":memory:")
+    try await workspace.createSample()
+    let target = try #require(try await workspace.rows(table: "notes").first)
+    let result = try await workspace.resolveSourceLink("notes/" + target.id)
+    let mapped = try #require(result.destination)
+    #expect(mapped.table == "notes" && mapped.row == target.id)
+    let resolved = try await NativeDestinationResolver(workspace: workspace).resolve(
+      NativeDestination(table: mapped.table, rowID: mapped.row), isCurrent: { true })
+    #expect(resolved.row?.id == target.id)
+    #expect(try await workspace.resolveSourceLink("notes/missing").destination == nil)
+    #expect(try await workspace.resolveSourceLink("sqlite_master/notes").destination == nil)
+    try await workspace.close()
+  }
+
   private func directory() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -198,7 +213,7 @@ struct WorkspaceLinkTests {
     let link = try NativeDeepLink(
       url: model.linkURL(for: NativeDestination(table: "notes"), context: model.editingContext))
     #expect(link.binding == .replica(canonicalEndpoint: endpoint))
-    try model.forgetConnection()
+    try await model.forgetConnection()
     #expect(!model.isReplica && model.connection == nil && model.client === client)
     #expect(try model.linkedDestination(link) == NativeDestination(table: "notes"))
     #expect(try model.linkURL(for: link.destination, context: model.editingContext) == link.url)

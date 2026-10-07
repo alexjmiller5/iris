@@ -3,8 +3,8 @@
 The inbox feed and shared read acknowledgements belong to Life Data. Life UI
 owns permission handling and presentation. This document specifies the compact
 transport identity and the integration requirements for Apple push delivery.
-It does not enable push registration, provide a sender, or change the existing
-local alert identifiers and checkpoint files.
+Native apps register through the canonical service capability and platform token
+callbacks. Local alert identifiers and checkpoints remain separate from APNs.
 
 ## Event identity
 
@@ -49,7 +49,7 @@ APNs collapse behavior is not a durable receipt or a substitute for deduplicatio
 
 The service API owner supplies registration and delivery retry persistence.
 There is no second client registration store, schema or writer in this change.
-The future API must meet these requirements:
+The canonical API and client lifecycle use these requirements:
 
 | Trigger | Required behavior |
 | --- | --- |
@@ -62,8 +62,8 @@ The future API must meet these requirements:
 | Provider acceptance | Record acceptance separately from presentation and shared read state. Acceptance does not prove a banner appeared. |
 | Another client marks read | Reconcile the feed's authoritative read state independently of local or remote delivery receipts. |
 
-These lifecycle rows are acceptance requirements for the service integration,
-not claims of implemented registration or tested authentication enforcement.
+These rows define integration acceptance. Unit and transport tests exercise
+registration guards; signed physical delivery requires separate evidence.
 
 ## Selected presentation policy
 
@@ -72,16 +72,17 @@ only the inbox and shared read state. Before registration, existing foreground
 local alerts continue. `NotificationAlerts.isPushRegistered` is an injected,
 deployment-scoped readiness lookup. The app owner must supply it from the current
 authenticated installation registration, not from a token callback, permission
-grant, previous session or registration attempt. Its default is false because
-the existing apps do not yet register for push.
+grant, previous session or registration attempt. Its default is false.
+HubServicesModel supplies readiness from the current PushRegistration object
+only after a confirmed canonical receipt.
 
 Readiness must bind the server receipt to the exact deployment, current
 authenticated session, installation and token generation. Rotation, logout,
 session replacement or deployment replacement invalidates readiness immediately.
 An async registration receipt is accepted only when its captured generation
-still equals the current generation. The canonical registration API is not yet
-available; this gate is the integration boundary, not a client HTTP adapter.
-The future supported API must supply an opaque receipt binding. The service's
+still equals the current generation. The canonical registration API supplies
+an opaque receipt binding. HubTransport uses it under the enrolled session;
+an uncertain attempt never establishes readiness. The service's
 internal token hash must never become a public session or installation identity.
 
 The delivery gate checks readiness again after awaiting OS permission settings,
@@ -107,8 +108,8 @@ the same batch.
 
 ## Minimal application and signing integration
 
-- The app owner adds iOS/macOS registration success/failure callbacks and
-  forwards opaque tokens under the current authenticated device session.
+- NativePushNotifications receives iOS/macOS registration success/failure
+  callbacks and forwards opaque tokens under the current authenticated session.
   Register through the platform API at the agreed lifecycle point. Stop stale
   callbacks from crossing logout, session changes or token generations.
 - The app owner coordinates a single `UNUserNotificationCenter` delegate for
@@ -121,14 +122,16 @@ the same batch.
   macOS requires its matching profile and
   `com.apple.developer.aps-environment` entitlement. Verify the exported signed
   app and profile agree on bundle/topic and environment.
-- A signed build or editor installation is not APNs entitlement or delivery
-  evidence. No provisioning, entitlement, capability, distribution, installation
-  or deployment change is included here. Visible alert delivery alone does not
+- Signing configuration includes the platform APNs entitlement. A signed build
+  or installation alone is not delivery evidence; verify the exported app and
+  profile before physical acceptance. Visible alert delivery alone does not
   require adding a background-fetch feature.
 
-The service owner supplies the canonical registration API when available,
-subscription receipts and sender integration. The app owner supplies
-lifecycle/delegate and signing changes using the selected push-only banner policy.
+The service owns canonical registration, subscription receipts and sender
+integration. Native apps use the selected push-only banner policy. Forgetting a
+connection requires confirmed revocation when alerts were enabled or registration
+was attempted. The durable attempt hint supports recovery after relaunch and is
+not registration authority.
 
 ## Acceptance evidence
 

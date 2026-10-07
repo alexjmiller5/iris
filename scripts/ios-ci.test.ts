@@ -85,6 +85,11 @@ describe('iOS distribution workflow boundary', () => {
     expect(step.env.OP_SERVICE_ACCOUNT_TOKEN).toBe('${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}');
     expect(step.env.IOS_CERTIFICATE_P12_BASE64).toBe('op://Apple Signing/Apple Distribution Cert/p12_base64');
     expect(step.env.IOS_CERTIFICATE_PASSWORD).toBe('op://Apple Signing/Apple Distribution Cert/password');
-    expect(step.env.IOS_PROFILE_BASE64).toBe('op://Apple Signing/Wildcard Ad Hoc Profile/mobileprovision_base64');
+    expect(step.env.IOS_PROFILE_BASE64).toBeUndefined();
+    expect(step.env.ASC_KEY_P8_BASE64).toBe('op://Apple Signing/App Store Connect API Key/p8_base64');
+    const download = workflow().jobs.build.steps.find((s: any) => s.name === 'Download app-specific Ad Hoc profile');
+    expect(download.env.PROFILE_ID).toBe('${{ vars.IOS_PROVISIONING_PROFILE_ID }}');
+    expect(download.run).toContain("profile.profileType!=='IOS_APP_ADHOC'");
+    expect(download.run).toContain('::add-mask::');
   });
 });

@@ -13,7 +13,7 @@ struct IncomingReferencesUIFixtureTests {
       let environment = ProcessInfo.processInfo.environment
       try #require(environment["LIFE_UI_TEST_INCOMING_SIMULATOR"] == environment["SIMULATOR_UDID"])
       let model = WorkspaceModel()
-      try model.forgetConnection()
+      try await model.forgetConnection()
       await model.open()
       try #require(model.client != nil)
       let store = try #require(model.editingContext?.draftStore)

@@ -4,6 +4,130 @@ import Testing
 @testable import LifeKit
 
 @Suite(.serialized) @MainActor struct HubServicesTests {
+  @Test(arguments: [false, true])
+  func forgettingAfterRelaunchCannotTreatDisabledLocalAlertsAsServerRevocation(
+    missingSession: Bool
+  ) async throws {
+    let hub = try ServiceFixture.transport()
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let alerts = NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery())
+    // Disable persists before its server revoke finishes. A relaunched services
+    // model has no in-memory registration object, but the server may still send.
+    let workspace = try NativeWorkspace(path: ":memory:")
+    let device = ServicePushDevice()
+    let original = HubServicesModel(
+      alerts: alerts, pushDevice: device,
+      pushSession: { _ in
+        CoreSessionInfo(
+          name: "fixture", scopes: ["full"], replica: .init(allowed: true, reason: nil),
+          pushRegistration: .init(
+            protocol: "apns-registration-v1", deploymentIdentity: "deployment",
+            sessionBinding: "session", profiles: [.init(id: "desktop", platform: .macos)]))
+      })
+    original.configure(workspace: workspace, transport: hub)
+    await original.enableAlerts()
+    device.deliver(Data([0xaa]))
+    for _ in 0..<500 where !original.pushReady { try await Task.sleep(for: .milliseconds(1)) }
+    try #require(original.pushReady)
+    original.disableAlerts()
+    // The synthetic server has no revoke route: revocation cannot be confirmed.
+    await #expect(throws: Error.self) { try await original.revokePushBeforeForgetting() }
+    original.configure(workspace: nil, transport: nil)
+    try await workspace.close()
+    let reopened = HubServicesModel(
+      alerts: alerts, pushDevice: ServicePushDevice(),
+      pushSession: { _ in
+        if missingSession { return nil }
+        throw URLError(.notConnectedToInternet)
+      })
+    reopened.configure(workspace: nil, transport: hub)
+    defer { reopened.configure(workspace: nil, transport: nil) }
+    await #expect(throws: Error.self) { try await reopened.revokePushBeforeForgetting() }
+    #expect(reopened.connected)
+    #expect(try alerts.state(endpoint: hub.endpoint).enabled == false)
+  }
+
+  @Test func forgettingWithoutPushStillChecksTheCurrentServerSession() async throws {
+    let hub = try ServiceFixture.transport()
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let alerts = NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery())
+    _ = try await alerts.enable(endpoint: hub.endpoint)
+    var sessionReads = 0
+    let model = HubServicesModel(
+      alerts: alerts, pushDevice: ServicePushDevice(),
+      pushSession: { _ in
+        sessionReads += 1
+        return CoreSessionInfo(
+          name: "fixture", scopes: ["full"], replica: .init(allowed: true, reason: nil))
+      })
+    model.configure(workspace: nil, transport: hub)
+    defer { model.configure(workspace: nil, transport: nil) }
+    try await model.revokePushBeforeForgetting()
+    #expect(sessionReads == 1)
+    #expect(model.connected)
+  }
+
+  @Test func neverEnabledPushCanBeForgottenOffline() async throws {
+    let hub = try ServiceFixture.transport()
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = HubServicesModel(
+      alerts: NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery()),
+      pushDevice: ServicePushDevice(),
+      pushSession: { _ in throw URLError(.notConnectedToInternet) })
+    model.configure(workspace: nil, transport: hub)
+    defer { model.configure(workspace: nil, transport: nil) }
+    try await model.revokePushBeforeForgetting()
+  }
+
+  @Test func confirmedPushSuppressesPollingButKeepsInboxAndReadState() async throws {
+    let hub = try ServiceFixture.transport()
+    let workspace = try NativeWorkspace(path: ":memory:")
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let delivery = FixtureNotificationDelivery()
+    let alerts = NotificationAlerts(directory: directory, delivery: delivery)
+    let device = ServicePushDevice()
+    let model = HubServicesModel(
+      alerts: alerts, pushDevice: device,
+      pushSession: { _ in
+        CoreSessionInfo(
+          name: "fixture", scopes: ["full"], replica: .init(allowed: true, reason: nil),
+          pushRegistration: .init(
+            protocol: "apns-registration-v1", deploymentIdentity: "deployment",
+            sessionBinding: "session", profiles: [.init(id: "desktop", platform: .macos)]))
+      })
+    model.configure(workspace: workspace, transport: hub)
+    await model.enableAlerts()
+    #expect(device.registrations == 1)
+    #expect(!model.pushReady)
+    device.error = "Registration failed"
+    #expect(model.pushError == "Registration failed")
+    await model.refresh()
+    #expect(device.registrations == 2)
+    #expect(device.error == nil)
+    ServiceFixture.state.appendEvent()
+    await model.refresh()
+    #expect(delivery.delivered.count == 1, "Before an OS token and receipt, local alerts remain")
+    device.deliver(Data([0xaa]))
+    for _ in 0..<500 where !model.pushReady { try await Task.sleep(for: .milliseconds(1)) }
+    #expect(model.pushReady)
+    ServiceFixture.state.appendEvent()
+    await model.refresh()
+    #expect(model.feed?.latestCursor == 207)
+    #expect(model.unreadCount == 207)
+    #expect(delivery.delivered.count == 1)
+    #expect(try alerts.state(endpoint: hub.endpoint).baseline == 207)
+    await model.markRead(id: "event-207")
+    #expect(model.unreadCount == 206)
+    model.disableAlerts()
+    #expect(!model.pushReady)
+    model.configure(workspace: nil, transport: nil)
+    try await workspace.close()
+  }
+
   @Test func deliveryFailureRecomputesCoreProposalAfterRelaunch() async throws {
     let hub = try ServiceFixture.transport()
     let workspace = try NativeWorkspace(path: ":memory:")
@@ -267,6 +391,36 @@ final class ServiceFixtureState: @unchecked Sendable {
         return (401, .object([:]))
       }
       switch request.url!.path {
+      case "/v1/push/registration":
+        if request.httpMethod == "GET" {
+          return (200, .object(["kind": .string("available"), "registration": .null]))
+        }
+        var data = request.httpBody ?? Data()
+        if let stream = request.httpBodyStream {
+          stream.open()
+          defer { stream.close() }
+          var buffer = [UInt8](repeating: 0, count: 4096)
+          while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { break }
+            data.append(contentsOf: buffer[..<count])
+          }
+        }
+        let body = try JSONDecoder().decode(CorePushRegistrationRequest.self, from: data)
+        let receipt = CorePushRegistrationReceipt(
+          requestId: body.requestId,
+          registration: .init(
+            installationId: "installation", revision: "revision", state: .active,
+            deploymentIdentity: "deployment", sessionBinding: "session", appProfile: "desktop",
+            activatedAfterSeq: 205, updatedAt: "2026-01-01T00:00:00.000Z"))
+        return (
+          200,
+          .object([
+            "kind": .string("confirmed"),
+            "receipt": try JSONDecoder().decode(
+              JSONValue.self, from: JSONEncoder().encode(receipt)),
+          ])
+        )
       case "/v1/usage":
         usageReadCount += 1
         guard request.httpMethod == "GET", case .object(var usage) = fixture["usage"],
@@ -330,5 +484,27 @@ final class ServiceFixtureState: @unchecked Sendable {
       default: throw URLError(.badURL)
       }
     }
+  }
+}
+
+@MainActor private final class ServicePushDevice: PushNotificationDevice {
+  var token: Data?
+  var error: String?
+  var platform: CorePushPlatform { .macos }
+  var registrations = 0
+  func register() {
+    registrations += 1
+    error = nil
+  }
+  private var observers: [UUID: (Data) -> Void] = [:]
+  func observe(_ observer: @escaping (Data) -> Void) -> UUID {
+    let id = UUID()
+    observers[id] = observer
+    return id
+  }
+  func removeObserver(_ id: UUID) { observers.removeValue(forKey: id) }
+  func deliver(_ token: Data) {
+    self.token = token
+    for observer in observers.values { observer(token) }
   }
 }

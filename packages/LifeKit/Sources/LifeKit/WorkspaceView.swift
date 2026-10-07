@@ -952,70 +952,81 @@ public struct WorkspaceView: View {
   }
 
   @ViewBuilder private var recordContent: some View {
-    #if os(macOS)
+    if model.viewPresentation.kind != "table" {
       VStack(alignment: .leading, spacing: 0) {
-        // Size to the notices, scrolling only beyond 180 points.
-        ScrollView { macRecordNotices }
+        ScrollView { recordNotices }
           .scrollBounceBehavior(.basedOnSize)
           .frame(maxHeight: 180)
           .fixedSize(horizontal: false, vertical: true)
-        MacRecordTable(
-          rows: displayedRows,
-          columns: macRecordColumns,
-          titleField: model.titleProperty,
-          editingRow: editor?.inlineField != nil
-            ? editor?.row?["id"]?.text.data(using: .utf8) : nil,
-          editingColumn: editor?.inlineField, editorID: editor?.id,
-          actionsEnabled: canFind, onOpen: openRecord,
-          onEdit: { row, column in
-            guard let table = model.table else { return }
-            openDestination(
-              NativeDestination(table: table, rowID: row.id),
-              preservingQuery: true, inlineField: column)
-          },
-          onSort: { column, ascending in
-            guard canFind else { return }
-            do {
-              try model.applyViewOptions(
-                sortColumn: column, ascending: ascending,
-                filters: model.filters, context: model.editingContext)
-            } catch { model.error = error.localizedDescription }
-          },
-          onFilter: { column in
-            guard canFind else { return }
-            filterColumn = column
-            options = true
-          }, workspace: model.client, transport: model.imageTransport,
-          actions: model.viewActions, layout: model.viewLayout,
-          canRunAction: model.canRunRowAction, onAction: runRowAction
-        ) {
-          if let target = editor, target.inlineField != nil {
-            recordEditor(target)
-          }
-        }
-        .id(model.queryKey + [String(model.workspaceGeneration)])
-        .overlay {
-          if displayedRows.isEmpty && !model.loading {
-            ContentUnavailableView(
-              model.trash ? "Trash is empty" : "No records", systemImage: "tray",
-              description: Text("Create a record or try a different search or filter."))
-          }
-        }
-        HStack {
-          Text(
-            model.rows.count == 1 ? "1 record loaded" : "\(model.rows.count) records loaded"
-          ).font(.caption).foregroundStyle(.secondary)
-          Spacer()
-          if model.loading { ProgressView().controlSize(.small) }
-          if model.canLoadMore {
-            Button("Load more") { Task { await model.reload(more: true) } }
-              .disabled(model.loading)
-          }
-        }.padding(12)
+        RecordPresentationView(
+          model: model, rows: displayedRows, canAct: canFind, onOpen: openRecord)
       }
-    #else
-      recordList
-    #endif
+    } else {
+      #if os(macOS)
+        VStack(alignment: .leading, spacing: 0) {
+          // Size to the notices, scrolling only beyond 180 points.
+          ScrollView { macRecordNotices }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: 180)
+            .fixedSize(horizontal: false, vertical: true)
+          MacRecordTable(
+            rows: displayedRows,
+            columns: macRecordColumns,
+            titleField: model.titleProperty,
+            editingRow: editor?.inlineField != nil
+              ? editor?.row?["id"]?.text.data(using: .utf8) : nil,
+            editingColumn: editor?.inlineField, editorID: editor?.id,
+            actionsEnabled: canFind, onOpen: openRecord,
+            onEdit: { row, column in
+              guard let table = model.table else { return }
+              openDestination(
+                NativeDestination(table: table, rowID: row.id),
+                preservingQuery: true, inlineField: column)
+            },
+            onSort: { column, ascending in
+              guard canFind else { return }
+              do {
+                try model.applyViewOptions(
+                  sortColumn: column, ascending: ascending,
+                  filters: model.filters, context: model.editingContext)
+              } catch { model.error = error.localizedDescription }
+            },
+            onFilter: { column in
+              guard canFind else { return }
+              filterColumn = column
+              options = true
+            }, workspace: model.client, transport: model.imageTransport,
+            actions: model.viewActions, layout: model.viewLayout,
+            canRunAction: model.canRunRowAction, onAction: runRowAction
+          ) {
+            if let target = editor, target.inlineField != nil {
+              recordEditor(target)
+            }
+          }
+          .id(model.queryKey + [String(model.workspaceGeneration)])
+          .overlay {
+            if displayedRows.isEmpty && !model.loading {
+              ContentUnavailableView(
+                model.trash ? "Trash is empty" : "No records", systemImage: "tray",
+                description: Text("Create a record or try a different search or filter."))
+            }
+          }
+          HStack {
+            Text(
+              model.rows.count == 1 ? "1 record loaded" : "\(model.rows.count) records loaded"
+            ).font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            if model.loading { ProgressView().controlSize(.small) }
+            if model.canLoadMore {
+              Button("Load more") { Task { await model.reload(more: true) } }
+                .disabled(model.loading)
+            }
+          }.padding(12)
+        }
+      #else
+        recordList
+      #endif
+    }
   }
 
   private var macRecordNotices: some View {
@@ -1098,6 +1109,12 @@ public struct WorkspaceView: View {
 
   private var records: some View {
     recordContent
+      .safeAreaInset(edge: .top) {
+        if let notice = model.defaultViewNotice {
+          Text(notice).font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+            .accessibilityIdentifier("default-view-notice")
+        }
+      }
       .safeAreaInset(edge: .top, spacing: 0) {
         #if os(macOS)
           VStack(alignment: .leading, spacing: 8) {
@@ -2244,6 +2261,8 @@ private struct FieldInput: View {
   let isCurrent: @MainActor () -> Bool
   let referenceAvailability: String?
   @Binding var value: String
+  @State private var linkOpening = false
+  @State private var linkError: String?
 
   var body: some View {
     Group {
@@ -2282,11 +2301,48 @@ private struct FieldInput: View {
           Text("False").tag("false")
         }.accessibilityIdentifier("field-\(field.id)")
       } else {
-        TextField(field.label, text: $value, axis: .vertical)
-          .fixedSize(horizontal: false, vertical: true)
-          .focused(focus, equals: field.id)
-          .accessibilityIdentifier("field-\(field.id)")
-          .autocorrectionDisabled(field.type != "text")
+        VStack(alignment: .leading, spacing: 6) {
+          TextField(field.label, text: $value, axis: .vertical)
+            .fixedSize(horizontal: false, vertical: true)
+            .focused(focus, equals: field.id)
+            .accessibilityIdentifier("field-\(field.id)")
+            .autocorrectionDisabled(field.type != "text")
+          if field.type == "text", NativeFieldLink.isRecordReference(value) {
+            Button(linkOpening ? "Opening record…" : "Open record") {
+              openRecord()
+            }
+            .buttonStyle(.borderless)
+            .disabled(linkOpening || editor.saving)
+            .accessibilityIdentifier("open-record-\(field.id)")
+            if let linkError { Text(linkError).font(.caption).foregroundStyle(.red) }
+          }
+        }
+      }
+    }
+  }
+
+  private func openRecord() {
+    guard !linkOpening, !editor.saving, isCurrent(), let workspace else { return }
+    let original = value
+    linkOpening = true
+    linkError = nil
+    Task {
+      defer { linkOpening = false }
+      do {
+        let result = try await workspace.resolveSourceLink(original)
+        guard isCurrent(), Data(value.utf8) == Data(original.utf8),
+          !Task.isCancelled, !editor.saving
+        else { return }
+        guard let destination = result.destination else {
+          linkError = "This record is not available in this workspace."
+          return
+        }
+        onOpenReference(destination.table, destination.row)
+      } catch {
+        guard isCurrent(), Data(value.utf8) == Data(original.utf8), !Task.isCancelled else {
+          return
+        }
+        linkError = error.localizedDescription
       }
     }
   }

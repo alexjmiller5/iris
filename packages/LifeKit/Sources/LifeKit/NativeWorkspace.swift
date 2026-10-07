@@ -363,6 +363,12 @@ public final class NativeWorkspace {
   public func listViews(table: String) async throws -> CoreSavedViewList {
     try await decode(CoreRequests.ListViews(CoreListViewsArgs(table: table)))
   }
+  public func getViewDefault(table: String) async throws -> CoreViewDefault {
+    try await decode(CoreRequests.GetViewDefault(CoreGetViewDefaultArgs(table: table)))
+  }
+  public func setViewDefault(_ args: CoreSetViewDefaultArgs) async throws -> CoreViewDefault {
+    try await decode(CoreRequests.SetViewDefault(args))
+  }
   public func saveView(_ args: CoreSaveViewArgs) async throws -> CoreSavedViewRecord {
     try await decode(CoreRequests.SaveView(args))
   }
@@ -437,6 +443,14 @@ public final class NativeWorkspace {
         CoreResolveDerivedArgs(
           endpoint: transport.endpoint, table: table, id: id, column: column,
           expectedUpdatedAt: expectedUpdatedAt)), transport: transport)
+  }
+
+  func calendarRows(_ args: CoreCalendarRowsArgs) async throws -> CoreCalendarRowsResult {
+    try await decode(CoreRequests.CalendarRows(args))
+  }
+
+  func boardRows(_ args: CoreBoardRowsArgs) async throws -> CoreBoardRowsResult {
+    try await decode(CoreRequests.BoardRows(args))
   }
 
   func remoteRows(

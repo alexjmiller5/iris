@@ -1,4 +1,11 @@
 <script lang="ts">
+	import PresentationControls from '$lib/PresentationControls.svelte';
+	import RecordPresentations from '$lib/RecordPresentations.svelte';
+	import type { ViewPresentation, ViewDefault } from 'life-ui-core/client';
+	let presentation = $state<ViewPresentation>({ kind: 'table' });
+	let preferredView = $state<ViewDefault | null>(null);
+	let defaultPermission = $state<Writeability | null>(null);
+	let defaultViewNotice = $state<string | null>(null);
 	import PageCaptureViewer from '$lib/PageCaptureViewer.svelte';
 	import { savedUndoShortcut } from '$lib/undo-shortcut';
 	import { resolveDerivedRecord } from '$lib/resolve-derived';
@@ -346,6 +353,7 @@
 			table = resolved.table;
 			graphVisible = false;
 			applyView(resolved.view);
+			defaultViewNotice = resolved.defaultNotice;
 			if (resolved.row) trash = !!resolved.row.deleted_at;
 			if (resolved.row) edit(resolved.row, false);
 			version = editorVersion;
@@ -861,6 +869,11 @@
 			if (current()) error = message(e);
 		}
 	}
+	function loadBoardOptions() {
+		if (presentation.kind !== 'board') return;
+		const property = properties.find((p) => p.col === presentation.groupColumn);
+		if (property) void loadOptions(property);
+	}
 	async function loadOptions(p: Property) {
 		const workspace = database,
 			version = editorVersion,
@@ -1204,8 +1217,15 @@
 			rejected = state.rejected;
 			rejectedCount = state.status.rejected;
 			skipped = state.skipped ?? [];
-			if (!table && catalog.tables.length)
+			if (!table && catalog.tables.length) {
 				table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
+				const target = table,
+					version = editorVersion;
+				const preferred = await workspace.request('getViewDefault', { table: target });
+				if (database !== workspace || table !== target || editorVersion !== version) return;
+				applyView(preferred.view);
+				defaultViewNotice = preferred.unavailable;
+			}
 			await Promise.all([loadRows(), loadViews(), loadWriteability(), pins.refresh()]);
 			if (database === workspace) refreshRecentLabels();
 		} finally {
@@ -1242,12 +1262,16 @@
 		filterGroups = [];
 		actions = [];
 		actionLayout = undefined;
+		presentation = { kind: 'table' };
 		timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		dayStartMinutes = 0;
 		chosenView = null;
 		viewBaseline = '';
 		savedViews = [];
 		viewsUnavailable = null;
+		preferredView = null;
+		defaultPermission = null;
+		defaultViewNotice = null;
 		viewVersion++;
 		actionReferenceSearch = {};
 		viewsRequest++;
@@ -1326,27 +1350,13 @@
 		}
 	}
 	async function changeTable(name: string) {
-		if (!discard()) return;
-		locationRequest++;
-		navigationLoading = false;
-		resetView();
-		graphVisible = false;
-		table = name;
-		const version = editorVersion;
-		let loaded = true;
-		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {
-			loaded = false;
-			if (editorVersion === version) error = message(e);
-		});
-		if (editorVersion === version) {
-			await reflectLocation();
-			if (loaded && editorVersion === version) recordRecent();
-		}
+		await openDestination({ table: name, view: null, row: null }, () => true);
 	}
 
 	function viewDefinition(): SavedViewDefinition {
 		return $state.snapshot({
 			version: 2,
+			presentation,
 			groups: filterGroups,
 			timeZone,
 			...(dayStartMinutes !== 0 || chosenView?.definition?.dayStartMinutes !== undefined
@@ -1369,7 +1379,13 @@
 			target = table,
 			request = ++viewsRequest;
 		const result = await workspace.request('listViews', { table: target });
+		const preferred = await workspace.request('getViewDefault', { table: target });
+		const permission = await workspace
+			.request('writeability', { table: 'view_defaults' })
+			.catch(() => null);
 		if (database !== workspace || table !== target || request !== viewsRequest) return;
+		preferredView = preferred;
+		defaultPermission = permission;
 		savedViews = result.views;
 		viewsUnavailable = result.unavailable;
 		// Keep the applied revision and query. A remote edit must not silently
@@ -1410,6 +1426,10 @@
 		actionLayout = definition?.layout ? $state.snapshot(definition.layout) : undefined;
 		timeZone = definition?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 		dayStartMinutes = definition?.dayStartMinutes ?? 0;
+		presentation = definition?.presentation
+			? $state.snapshot(definition.presentation)
+			: { kind: 'table' };
+		loadBoardOptions();
 		search = definition?.search ?? '';
 		trash = definition?.trash ?? false;
 		importedSort = definition?.sort?.map((clause) => ({ ...clause })) ?? null;
@@ -1421,6 +1441,34 @@
 		chosenView = view ?? null;
 		viewBaseline = JSON.stringify(viewDefinition());
 		error = '';
+	}
+	async function setDefaultView(id: string | null) {
+		if (!database || busy || !preferredView || !defaultPermission?.writable) return;
+		const workspace = database,
+			target = table,
+			version = viewVersion;
+		const expectedUpdatedAt = preferredView.updated_at;
+		busy = true;
+		writing = true;
+		try {
+			const saved = await workspace.request('setViewDefault', {
+				table: target,
+				viewId: id,
+				expectedUpdatedAt
+			});
+			if (database !== workspace || table !== target || version !== viewVersion) return;
+			preferredView = saved;
+			defaultViewNotice = saved.unavailable;
+			await refresh();
+			notice = 'Default view saved. It applies when opening this table.';
+		} catch (e) {
+			if (database === workspace && table === target) error = message(e);
+		} finally {
+			if (database === workspace) {
+				busy = false;
+				writing = false;
+			}
+		}
 	}
 	async function saveNamedView(name: string, update: boolean) {
 		if (!database || busy) return;
@@ -1543,6 +1591,33 @@
 				value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value);
 		}
 		return values;
+	}
+	async function moveBoardRecord(row: Row, value: string | null) {
+		const property = properties.find((p) => p.col === presentation.groupColumn);
+		if (!database || !property || !canEditCell(property) || busy || navigationLoading || dirty) {
+			error = 'Finish the current edit before moving a record.';
+			return;
+		}
+		const workspace = database,
+			target = table;
+		busy = true;
+		writing = true;
+		error = '';
+		try {
+			await workspace.request('write', {
+				table: target,
+				patch: { id: row.id, [property.col]: value },
+				expectedUpdatedAt: editRevision(row)
+			});
+			if (database === workspace && table === target) await refresh();
+		} catch (e) {
+			if (database === workspace) error = message(e);
+		} finally {
+			if (database === workspace) {
+				busy = false;
+				writing = false;
+			}
+		}
 	}
 	async function resolveField(property: Property) {
 		if (
@@ -1927,6 +2002,7 @@
 		table = resolved.table;
 		graphVisible = false;
 		applyView(resolved.view);
+		defaultViewNotice = resolved.defaultNotice;
 		if (resolved.row) {
 			trash = !!resolved.row.deleted_at;
 			edit(resolved.row, false);
@@ -2291,6 +2367,20 @@
 									onsave={saveNamedView}
 									ondelete={deleteNamedView}
 								/>
+								<div role="group" aria-label="Default view">
+									<span>Default: {preferredView?.view?.name ?? 'Catalog default'}</span>
+									<button
+										disabled={busy || !defaultPermission?.writable || !chosenView || viewModified}
+										onclick={() => setDefaultView(chosenView?.id ?? null)}
+										>Use current view by default</button
+									>
+									<button
+										disabled={busy || !defaultPermission?.writable || !preferredView?.viewId}
+										onclick={() => setDefaultView(null)}>Use catalog default</button
+									>
+									{#if preferredView?.unavailable}<p>{preferredView.unavailable}</p>{/if}
+								</div>
+								{#if defaultViewNotice}<p role="status">{defaultViewNotice}</p>{/if}
 							</div>
 						{/key}
 						<div class="toolbar">
@@ -2350,6 +2440,16 @@
 								}}
 							/>
 						</div>
+						<PresentationControls
+							value={presentation}
+							{properties}
+							disabled={busy || navigationLoading}
+							onchange={(value) => {
+								if (!closeRecord()) return;
+								presentation = value;
+								loadBoardOptions();
+							}}
+						/>
 						<ViewControls
 							properties={viewProperties}
 							sorts={sortClauses}
@@ -2448,49 +2548,72 @@
 									onreview={reviewRejected}
 								/>{/if}
 						{/key}
-						{#key gridContext}
-							<RecordGrid
+						{#if presentation.kind !== 'table'}
+							<RecordPresentations
+								{presentation}
 								{rows}
-								bind:selectedIds={selectedRowIds}
-								{actions}
-								{actionLayout}
-								canRunAction={!!chosenView &&
-									!viewModified &&
-									!blocked &&
-									!readOnly &&
-									!trash &&
-									!navigationLoading}
-								onaction={runSavedAction}
-								properties={gridColumns}
-								{widths}
-								busy={busy || gridActionOpening !== null}
-								canCreate={!navigationLoading && !readOnly && !blocked && !trash}
-								canTrash={!navigationLoading && !readOnly && !blocked}
-								{trash}
-								bind:edit={gridDraft}
-								format={(p, value) => cell(p, value)}
-								canEdit={(p) => !navigationLoading && canEditCell(p)}
-								onbegin={beginCell}
-								oncommit={commitCell}
+								{properties}
+								{display}
+								{timeZone}
+								{dayStartMinutes}
+								options={optionValues[presentation.groupColumn ?? ''] ?? []}
+								canMove={!busy &&
+									!navigationLoading &&
+									!dirty &&
+									!!properties.find((p) => p.col === presentation.groupColumn && canEditCell(p))}
+								onmove={moveBoardRecord}
 								resolveFile={resolveRetainedFile}
-								onopenlink={openSourceLink}
 								onopen={(id) =>
 									openRecord({ table, id }, () => !findVisible, true).catch((e) => {
 										error = message(e);
 										return false;
 									})}
-								onnew={newGridRecord}
-								onduplicate={duplicateRecord}
-								ontrash={trashGridRecord}
-								options={optionValues}
-								referenceOptions={(p) =>
-									(references[p.col] ?? []).map((row) => ({
-										id: String(row.id),
-										label: refTitle(p, row)
-									}))}
-								onsearch={loadReferences}
 							/>
-						{/key}
+						{:else}
+							{#key gridContext}
+								<RecordGrid
+									{rows}
+									bind:selectedIds={selectedRowIds}
+									{actions}
+									{actionLayout}
+									canRunAction={!!chosenView &&
+										!viewModified &&
+										!blocked &&
+										!readOnly &&
+										!trash &&
+										!navigationLoading}
+									onaction={runSavedAction}
+									properties={gridColumns}
+									{widths}
+									busy={busy || gridActionOpening !== null}
+									canCreate={!navigationLoading && !readOnly && !blocked && !trash}
+									canTrash={!navigationLoading && !readOnly && !blocked}
+									{trash}
+									bind:edit={gridDraft}
+									format={(p, value) => cell(p, value)}
+									canEdit={(p) => !navigationLoading && canEditCell(p)}
+									onbegin={beginCell}
+									oncommit={commitCell}
+									resolveFile={resolveRetainedFile}
+									onopenlink={openSourceLink}
+									onopen={(id) =>
+										openRecord({ table, id }, () => !findVisible, true).catch((e) => {
+											error = message(e);
+											return false;
+										})}
+									onnew={newGridRecord}
+									onduplicate={duplicateRecord}
+									ontrash={trashGridRecord}
+									options={optionValues}
+									referenceOptions={(p) =>
+										(references[p.col] ?? []).map((row) => ({
+											id: String(row.id),
+											label: refTitle(p, row)
+										}))}
+									onsearch={loadReferences}
+								/>
+							{/key}
+						{/if}
 						{#if gridActionOpening !== null}<p role="status">Opening record action…</p>{/if}
 						{#if rows.length === 0}<div class="empty">
 								{trash
