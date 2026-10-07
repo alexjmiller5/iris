@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
-const {values}=parseArgs({args:Bun.argv.slice(2),options:{target:{type:'string'},port:{type:'string',default:'9222'},helper:{type:'string'},shot:{type:'string'}}});
+const {values}=parseArgs({args:Bun.argv.slice(2),options:{target:{type:'string'},port:{type:'string',default:'9222'},helper:{type:'string'},shot:{type:'string'},mobile:{type:'boolean',default:false}}});
 if(!values.target||!values.helper||!process.env.LIFE_DATA_CONTRACT_ROOT)throw Error('Explicit owned target, helper and LIFE_DATA_CONTRACT_ROOT required');
 const root=process.env.LIFE_DATA_CONTRACT_ROOT;
 const {default:worker}=await import(pathToFileURL(resolve(root,'worker/src/main.js')).href);
@@ -42,10 +42,20 @@ return new Response(`<!doctype html><meta name="viewport" content="width=device-
 async function evaluate(expression:string){const p=Bun.spawn(['node',values.helper!,values.port!,'-','--target',values.target!],{stdin:new Blob([`(async()=>JSON.stringify({value:await (${expression})}))()`]),stdout:'pipe',stderr:'pipe'});const [out,err,code]=await Promise.all([new Response(p.stdout).text(),new Response(p.stderr).text(),p.exited]);if(code)throw Error(err);return JSON.parse(out).value;}
 async function wait(expression:string){for(let i=0;i<80;i++){if(await evaluate(expression))return;await Bun.sleep(50);}throw Error('Browser condition timed out: '+expression);}
 async function click(label:string){await evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b||b.disabled)throw Error('Button unavailable');b.click();return true;})()`);}
+let viewport:WebSocket|null=null;
+if(values.mobile){
+  const targets=await (await fetch(`http://127.0.0.1:${values.port}/json/list`)).json();
+  const target=targets.find(t=>t.id===values.target);if(!target)throw Error('Owned target missing');
+  viewport=new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise(r=>viewport!.addEventListener('open',r,{once:true}));
+  const ready=new Promise((yes,no)=>viewport!.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.id===1)m.error?no(Error(JSON.stringify(m.error))):yes(m.result);}));
+  viewport.send(JSON.stringify({id:1,method:'Emulation.setDeviceMetricsOverride',params:{width:390,height:844,deviceScaleFactor:1,mobile:true}}));await ready;
+}
 try{
 await evaluate(`(setTimeout(()=>location.assign(${JSON.stringify(server.url+'?proposal='+created.value.id)}),100),true)`);await Bun.sleep(250);await wait("!!document.querySelector('button')");
 await click('Review changes');await wait("!!document.querySelector('#changeset-id')");await click('Open review');await wait("document.body.textContent.includes('Approve 2 changes')");
 assert.equal(env.DB.db.query("SELECT label FROM items WHERE id='existing'").get().label,'Before');
+if(values.mobile){assert.equal(await evaluate('innerWidth'),390);assert.equal(await evaluate('document.querySelector("dialog").scrollWidth <= document.querySelector("dialog").clientWidth'),true);}
 assert.equal(await evaluate("!![...document.querySelectorAll('td')].find(c=>c.textContent==='Updated')"),true);
 if(values.shot){const p=Bun.spawn(['node',values.helper!,values.port!,'--shot',values.shot,'--target',values.target!]);if(await p.exited)throw Error('Screenshot failed');}
 await click('Approve 2 changes');await wait("document.body.textContent.includes('Resolve previous approval')");
@@ -55,5 +65,5 @@ await evaluate('(setTimeout(()=>location.reload(),100),true)');await Bun.sleep(2
 assert.equal(approvals,2);assert.equal(env.DB.db.query('SELECT count(*) n FROM _governance_history').get().n,history);assert.equal(env.DB.db.query('SELECT count(*) n FROM items').get().n,2);
 console.log('PASS rendered review, inert preview, atomic save, lost response, reload, original-key retry and no duplicate history');
 }finally{
-try{await evaluate(`(async()=>{document.querySelector('dialog')?.close();await new Promise(r=>setTimeout(r,100));await new Promise((yes,no)=>{const r=indexedDB.deleteDatabase('life-ui-changesets');r.onsuccess=yes;r.onerror=no;r.onblocked=()=>no(Error('blocked'));});setTimeout(()=>location.assign('about:blank'),100);return true;})()`);}finally{server.stop(true);env.DB.db.close();env.AUTH_DB.db.close();}
+try{await evaluate(`(async()=>{document.querySelector('dialog')?.close();await new Promise(r=>setTimeout(r,100));await new Promise((yes,no)=>{const r=indexedDB.deleteDatabase('life-ui-changesets');r.onsuccess=yes;r.onerror=no;r.onblocked=()=>no(Error('blocked'));});setTimeout(()=>location.assign('about:blank'),100);return true;})()`);}finally{viewport?.close();server.stop(true);env.DB.db.close();env.AUTH_DB.db.close();}
 }
