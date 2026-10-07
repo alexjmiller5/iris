@@ -2,9 +2,9 @@
 
 The codec carries an existing `NativeDestination` in a versioned `life://open/v1`
 URL. The query has exactly one workspace selector, `replica` or `local`, a required
-`table`, and optional `view` and `row` identifiers. Identifiers remain byte-exact
+`table`, optional `view` and `row` identifiers, and optional `state` query JSON. Identifiers remain byte-exact
 UTF-8 values, including literal plus and percent characters. Unknown parameters,
-duplicate parameters, unsupported versions and empty identifiers are errors.
+duplicate parameters, unsupported versions and empty identifiers are errors. Query state is limited to 16 KiB and validated by the canonical read-only view compiler after workspace matching. It carries no action values; those come from the displayed saved revision.
 
 Replica selectors are the existing SHA-256 storage key of the canonical enrolled
 hub endpoint. Callers supply the endpoint already canonicalized by `HubTransport`.
