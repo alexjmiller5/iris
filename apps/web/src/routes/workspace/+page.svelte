@@ -15,6 +15,8 @@
 	import RejectedEdits from '$lib/RejectedEdits.svelte';
 	import type { RejectionSnapshot } from '$lib/rejection-inbox';
 	import RecordGrid from '$lib/RecordGrid.svelte';
+	import BulkActions from '$lib/BulkActions.svelte';
+	import { runBulkRecords, type BulkRecordResult } from '$lib/bulk-records';
 	import ExportPanel from '$lib/export/ExportPanel.svelte';
 	import type { ExportSnapshot } from '$lib/export/serialize';
 	import {
@@ -279,6 +281,7 @@
 			}
 	});
 	let gridDraft = $state<CellDraft | null>(null);
+	let selectedRowIds = $state<string[]>([]);
 	let explicitCreation = $state<Set<string>>(new Set());
 	let copiedCreation = $state<Row | null>(null);
 	let gridContext = $state(0);
@@ -1070,7 +1073,62 @@
 		};
 	});
 
+	async function changeSelectedRows(
+		ids: string[],
+		patch: Row,
+		signal: AbortSignal,
+		progress: (results: BulkRecordResult[]) => void
+	) {
+		if (
+			!database ||
+			busy ||
+			navigationLoading ||
+			dirty ||
+			gridDraft ||
+			readOnly ||
+			blocked ||
+			trash ||
+			!exportSnapshot ||
+			exportContext !== currentExportContext
+		)
+			throw Error('Finish the current edit or refresh before changing selected rows.');
+		if (ids.some((id) => !rows.some((row) => row.id === id)))
+			throw Error('The selection is no longer on this loaded page. Select the rows again.');
+		const workspace = database,
+			target = table,
+			generation = gridContext,
+			query = currentExportContext,
+			metadata = JSON.stringify($state.snapshot(catalog));
+		// Each accepted write broadcasts a row refresh. That does not change the
+		// frozen selection; a different workspace/query/catalog still stops it.
+		const isCurrent = () =>
+			database === workspace &&
+			table === target &&
+			gridContext === generation &&
+			currentExportContext === query &&
+			JSON.stringify(catalog) === metadata;
+		busy = true;
+		error = '';
+		try {
+			const results = await runBulkRecords(workspace, target, ids, patch, {
+				signal,
+				isCurrent,
+				onProgress: progress
+			});
+			if (database === workspace) {
+				const succeeded = results.filter((row) => row.status === 'succeeded').length;
+				notice = `${target}: ${succeeded} saved, ${results.filter((row) => row.status === 'failed').length} failed, ${results.filter((row) => row.status === 'unattempted').length} unattempted.`;
+				await refresh().catch((cause) => {
+					error = `Changes were processed. Could not refresh records: ${message(cause)}`;
+				});
+			}
+			return results;
+		} finally {
+			if (database === workspace) busy = false;
+		}
+	}
 	async function loadRows() {
+		selectedRowIds = [];
 		exportSnapshot = null;
 		if (!database || !table) return;
 		const workspace = database;
@@ -2303,10 +2361,35 @@
 							>
 							<ExportPanel
 								snapshot={exportSnapshot}
+								selectedIds={selectedRowIds.length ? selectedRowIds : undefined}
 								disabled={busy ||
 									navigationLoading ||
 									exportRefreshes > 0 ||
 									exportContext !== currentExportContext}
+							/>
+							<BulkActions
+								selectedIds={selectedRowIds}
+								properties={properties.filter((p) => canEditCell(p))}
+								disabled={busy ||
+									navigationLoading ||
+									dirty ||
+									!!gridDraft ||
+									readOnly ||
+									blocked ||
+									trash ||
+									!exportSnapshot ||
+									exportContext !== currentExportContext}
+								onrun={changeSelectedRows}
+								options={optionValues}
+								references={(p) =>
+									(references[p.col] ?? []).map((row) => ({
+										id: String(row.id),
+										label: refTitle(p, row)
+									}))}
+								onsearch={(p, query) => {
+									if (p.type === 'ref' || p.type === 'multi_ref') void loadReferences(p, query);
+									else void loadOptions(p);
+								}}
 							/>
 						</div>
 						<PresentationControls
@@ -2442,6 +2525,7 @@
 							{#key gridContext}
 								<RecordGrid
 									{rows}
+									bind:selectedIds={selectedRowIds}
 									{actions}
 									{actionLayout}
 									canRunAction={!!chosenView &&

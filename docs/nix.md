@@ -8,7 +8,7 @@ development prerequisite; the Nix app package does not build Swift.
 ## Signed macOS app
 
 `nix build .#life-ui` produces `result/Applications/LifeUI.app`. The default
-package pins the published universal **0.5.0** ZIP by SHA-256. It extracts and
+package pins the published universal **0.6.0** ZIP by SHA-256. It extracts and
 copies the bundle without fixup, stripping, patching or re-signing. The embedded
 profile, entitlements and stapled notarization ticket stay with the app.
 App packages support Apple Silicon and Intel macOS. Their Nixpkgs 26.05 pin
@@ -71,17 +71,17 @@ xcrun stapler validate '<output>/Applications/LifeUI.app'
 spctl --assess --type execute --verbose=2 '<output>/Applications/LifeUI.app'
 ```
 
-Verification on macOS, 2026-10-07 UTC, against published 0.5.0:
+Verification on macOS, 2026-10-07 UTC, against published 0.6.0:
 
 | Check | Result |
 | --- | --- |
-| Archive SHA-256 | `e9a34ec1ee8f06d60c5e325f0bc02d32371cdfc732dc71512ecbfeeb6177b8a2` |
+| Archive SHA-256 | `b65041f0ce0f0b55f761f806960adef6dd2126a09d8b819542e9b347d37ba1c9` |
 | Nix build and synthetic preservation/module checks | Pass |
 | All source/output file hashes, symlink targets, executable bits | Identical |
 | arm64 and x86_64 entitlements and designated requirements | Identical |
 | Strict signature, stapled ticket, Gatekeeper | Pass; Notarized Developer ID |
 
-The [0.5.0 release CI](https://github.com/alexjmiller5/life-ui/actions/runs/37633092355)
+The [0.6.0 release CI](https://github.com/alexjmiller5/life-ui/actions/runs/37640029572)
 also records `Data Protection Keychain create/read/update/delete passed` from
 the separately signed production-adapter probe with a unique synthetic service.
 That is release evidence, not a fresh local Keychain probe of the Nix output.
