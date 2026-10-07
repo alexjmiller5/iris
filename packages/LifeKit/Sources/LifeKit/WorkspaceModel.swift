@@ -1741,6 +1741,8 @@ final class WorkspaceModel {
 
   func close() async {
     stopAutomaticSync()
+    // Unwind held HTTP before the native close barrier waits for its owner.
+    client?.cancelSync()
     workspaceGeneration += 1
     revision += 1
     services.configure(workspace: nil, transport: nil)

@@ -162,6 +162,48 @@ struct ForegroundSyncTests {
     HeldSyncTransport.release()
     await model.close()
   }
+  @Test func closingWorkspaceCancelsHeldSyncAndRetainsQueuedLocalEdits() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let hub = try transport()
+    let model = WorkspaceModel(
+      localURL: { directory.appendingPathComponent("local.sqlite") }, makeTransport: { _ in hub })
+    try await model.connect(
+      HubCredentials(endpoint: hub.endpoint, token: "fixture"), remember: false,
+      synchronizeAfter: false)
+    let workspace = try #require(model.client)
+    try await workspace.createSample()
+    let row = try #require(try await workspace.rows(table: "notes").first)
+    _ = try await workspace.write(
+      table: "notes", patch: ["id": .string(row.id), "title": .string("Queued offline edit")])
+    let before = try await workspace.rows(table: "notes")
+    let status = try await workspace.status()
+    #expect(status.pendingUiEdits > 0)
+    let sync = Task { await model.synchronize() }
+    try await waitUntil { HeldSyncTransport.isWaiting }
+    let completed = TestSignal()
+    let close = Task {
+      await model.close()
+      completed.signal()
+    }
+    let closed = await completed.wait()
+    #expect(closed, "Close workspace must not await a stalled hub response")
+    // Unblock the unfixed implementation after the bounded failure.
+    HeldSyncTransport.release()
+    await close.value
+    await sync.value
+    #expect(model.client == nil && model.catalog == nil && model.rows.isEmpty)
+    #expect(!model.syncing && model.syncProgress == nil)
+    #expect(model.error == nil)
+    let reopened = try NativeWorkspace(
+      path: WorkspaceModel.replicaURL(
+        root: directory, endpoint: hub.endpoint
+      ).path)
+    #expect(try await reopened.rows(table: "notes") == before)
+    #expect(try await reopened.status().pendingUiEdits == status.pendingUiEdits)
+    try await reopened.close()
+  }
+
   @Test func cancellationUnwindsHeldTransportAndKeepsLocalData() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
