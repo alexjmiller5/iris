@@ -1,12 +1,17 @@
 import { qident } from '../packages/core/client.js';
 import type { SqlDriver, Value } from '../packages/core/index.d.ts';
+import defaults from '../packages/core/schema/view-defaults.json';
 import viewStorage from '../packages/core/schema/saved-views.json';
 import pinStorage from '../packages/core/schema/sidebar-pins.json';
 import type { Row } from '../packages/core/client.js';
 
 /** Only the host's explicitly app-owned local/demo database may call this.
  * Ordinary replicas receive the operator's logged schema through sync. */
-export const prepareLocalViews = (db: SqlDriver) => prepareLocalTable(db, viewStorage);
+export async function prepareLocalViews(db: SqlDriver): Promise<boolean> {
+  const views = await prepareLocalTable(db, viewStorage);
+  const preferred = await prepareLocalTable(db, defaults);
+  return views || preferred;
+}
 export const prepareLocalPins = (db: SqlDriver) => prepareLocalTable(db, pinStorage);
 
 async function prepareLocalTable(db: SqlDriver, storage: {ddl:string[];table:Row;properties:Row[]}): Promise<boolean> {

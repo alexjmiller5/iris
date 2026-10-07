@@ -958,7 +958,8 @@ public struct WorkspaceView: View {
           .scrollBounceBehavior(.basedOnSize)
           .frame(maxHeight: 180)
           .fixedSize(horizontal: false, vertical: true)
-        RecordPresentationView(model: model, rows: displayedRows, canAct: canFind, onOpen: openRecord)
+        RecordPresentationView(
+          model: model, rows: displayedRows, canAct: canFind, onOpen: openRecord)
       }
     } else {
       #if os(macOS)
@@ -1108,6 +1109,12 @@ public struct WorkspaceView: View {
 
   private var records: some View {
     recordContent
+      .safeAreaInset(edge: .top) {
+        if let notice = model.defaultViewNotice {
+          Text(notice).font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+            .accessibilityIdentifier("default-view-notice")
+        }
+      }
       .safeAreaInset(edge: .top, spacing: 0) {
         #if os(macOS)
           VStack(alignment: .leading, spacing: 8) {

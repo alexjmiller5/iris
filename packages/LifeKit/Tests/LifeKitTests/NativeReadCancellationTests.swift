@@ -592,15 +592,18 @@ struct ReferenceReadAdmissionTests {
     try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var enqueued = 0
-    let labels = (0..<20).map { _ in
+    var completedLabels: Set<Int> = []
+    let labels = (0..<20).map { index in
       Task {
-        await NativePropertyValue.referenceLabels(
+        let result = await NativePropertyValue.referenceLabels(
           field: CatalogField(property: ["type": .string("ref"), "ref_table": .string("notes")]),
           value: row.id
         ) { view in
           enqueued += 1
           return try await fixture.workspace.referenceRows(view: view)
         }
+        completedLabels.insert(index)
+        return result
       }
     }
     try await waitUntil { enqueued == labels.count }
@@ -616,6 +619,7 @@ struct ReferenceReadAdmissionTests {
     let context = try model.activateDestination(
       try await navigation.value,
       workspace: fixture.workspace, generation: model.workspaceGeneration)
+    let completedBeforeCancellation = completedLabels
     if cancelOnActivation { for label in labels { label.cancel() } }
     await model.reload()
     #expect(fixture.admitted.first == "catalog")
@@ -632,8 +636,10 @@ struct ReferenceReadAdmissionTests {
     #expect(
       fixture.admitted.filter { $0 == "rows" }.count < labels.count,
       "Saving and its refresh must also complete before the passive-label backlog drains")
-    for label in labels {
-      #expect(await label.value == (cancelOnActivation ? "Unavailable" : row.label))
+    for (index, label) in labels.enumerated() {
+      let cancelledBeforeCompletion =
+        cancelOnActivation && !completedBeforeCancellation.contains(index)
+      #expect(await label.value == (cancelledBeforeCompletion ? "Unavailable" : row.label))
     }
     try await fixture.workspace.close()
   }

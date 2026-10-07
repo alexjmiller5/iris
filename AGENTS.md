@@ -3,6 +3,13 @@
 Local-first web and native Apple clients for catalogued life-data databases.
 Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
 
+Preferred table views are synced IDs through canonical `getViewDefault`/`setViewDefault`.
+Plain table navigation applies the preference; explicit view or record links win.
+Unavailable targets show a catalog-default fallback without rewriting stored views.
+Preference changes use displayed revisions, the ordinary writer and Undo. Local/demo
+setup uses the canonical `view-defaults/v1` manifest; replicas require operator-provisioned
+schema and permitted sync scope. View names and personal lifecycle filters are runtime data.
+
 ## Layout and contracts
 
 - `apps/web`: Svelte 5/SvelteKit, Tailwind 4, Cloudflare Worker static assets.

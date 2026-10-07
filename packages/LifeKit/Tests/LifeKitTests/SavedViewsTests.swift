@@ -336,3 +336,29 @@ struct SavedViewsTests {
     await model.close()
   }
 }
+
+extension SavedViewsTests {
+  @Test func preferredViewReceiptCannotReplaceTableRoundTripState() async throws {
+    let runtime = try LifeCoreRuntime()
+    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await client.createSample()
+    let model = WorkspaceModel()
+    model.client = client
+    model.catalog = try await client.catalog()
+    model.table = "notes"
+    let context = try #require(model.editingContext)
+    try await model.refreshSavedViews(context: context)
+    let saved = try await client.saveView(CoreSaveViewArgs(table: "notes", name: "Chosen", definition: CoreSavedViewDefinition(version: 1)))
+    runtime.context.evaluateScript("globalThis.originalFinish = __lifeFinish; globalThis.heldReceipt = null; __lifeFinish = (id, reply) => { heldReceipt = [id, reply]; };")
+    let saving = Task { try await model.setDefaultView(saved, context: context) }
+    while runtime.context.objectForKeyedSubscript("heldReceipt")?.isNull != false { await Task.yield() }
+    #expect(model.savingView)
+    model.table = "topics"
+    model.table = "notes"
+    runtime.context.evaluateScript("__lifeFinish = originalFinish; originalFinish(...heldReceipt);")
+    await #expect(throws: WorkspaceError.self) { try await saving.value }
+    #expect(model.viewDefault == nil)
+    #expect(!model.savingView)
+    try await client.close()
+  }
+}

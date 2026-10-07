@@ -408,6 +408,10 @@ async function dispatch(request: DatabaseRequest) {
 		}
 		case 'listViews':
 			return local.listViews(args);
+		case 'getViewDefault':
+			return local.getViewDefault(args);
+		case 'setViewDefault':
+			return local.setViewDefault(args);
 		case 'saveView':
 			return local.saveView(args);
 		case 'deleteView':
@@ -486,6 +490,7 @@ scope.onmessage = ({ data }) => {
 					'sync',
 					'saveView',
 					'deleteView',
+					'setViewDefault',
 					'pinTable',
 					'unpinTable',
 					'moveTablePin'

@@ -239,3 +239,33 @@ struct NativeDestinationTests {
     #expect(second.label == "notes" && calls == 2)
   }
 }
+
+extension NativeDestinationTests {
+  @Test func preferredViewUsesIdentityAndExplicitDestinationsWin() async throws {
+    let workspace = try NativeWorkspace(path: ":memory:")
+    try await workspace.createSample()
+    let note = try #require(try await workspace.rows(view: CoreView(table: "notes")).first)
+    let saved = try await workspace.saveView(
+      CoreSaveViewArgs(
+        table: "notes", name: "Preferred",
+        definition: CoreSavedViewDefinition(version: 1, search: "not-the-record")))
+    _ = try await workspace.setViewDefault(
+      CoreSetViewDefaultArgs(table: "notes", viewId: saved.id, expectedUpdatedAt: nil))
+    let resolver = NativeDestinationResolver(workspace: workspace)
+    let plain = try await resolver.resolve(NativeDestination(table: "notes"), isCurrent: { true })
+    #expect(plain.view?.id == saved.id)
+    #expect(plain.defaultNotice == nil)
+    let explicit = try await resolver.resolve(
+      NativeDestination(table: "notes", rowID: note.id), isCurrent: { true })
+    #expect(explicit.view == nil)
+    #expect(explicit.row?.id == note.id)
+    _ = try await workspace.deleteView(
+      CoreDeleteViewArgs(id: saved.id, expectedUpdatedAt: saved.updatedAt!))
+    let fallback = try await resolver.resolve(
+      NativeDestination(table: "notes"), isCurrent: { true })
+    #expect(fallback.view == nil)
+    #expect(fallback.defaultNotice?.isEmpty == false)
+    #expect(try await workspace.getViewDefault(table: "notes").viewId == saved.id)
+    try await workspace.close()
+  }
+}
