@@ -4,8 +4,10 @@ import Testing
 @testable import LifeKit
 
 @Suite(.serialized) @MainActor struct HubServicesTests {
-  @Test func forgettingAfterRelaunchCannotTreatDisabledLocalAlertsAsServerRevocation() async throws
-  {
+  @Test(arguments: [false, true])
+  func forgettingAfterRelaunchCannotTreatDisabledLocalAlertsAsServerRevocation(
+    missingSession: Bool
+  ) async throws {
     let hub = try ServiceFixture.transport()
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -15,12 +17,35 @@ import Testing
     try alerts.disable(endpoint: hub.endpoint)
     let reopened = HubServicesModel(
       alerts: alerts, pushDevice: ServicePushDevice(),
-      pushSession: { _ in throw URLError(.notConnectedToInternet) })
+      pushSession: { _ in
+        if missingSession { return nil }
+        throw URLError(.notConnectedToInternet)
+      })
     reopened.configure(workspace: nil, transport: hub)
     defer { reopened.configure(workspace: nil, transport: nil) }
     await #expect(throws: Error.self) { try await reopened.revokePushBeforeForgetting() }
-    #expect(reopened.connected == false)
+    #expect(reopened.connected)
     #expect(try alerts.state(endpoint: hub.endpoint).enabled == false)
+  }
+
+  @Test func forgettingWithoutPushStillChecksTheCurrentServerSession() async throws {
+    let hub = try ServiceFixture.transport()
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let alerts = NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery())
+    var sessionReads = 0
+    let model = HubServicesModel(
+      alerts: alerts, pushDevice: ServicePushDevice(),
+      pushSession: { _ in
+        sessionReads += 1
+        return CoreSessionInfo(
+          name: "fixture", scopes: ["full"], replica: .init(allowed: true, reason: nil))
+      })
+    model.configure(workspace: nil, transport: hub)
+    defer { model.configure(workspace: nil, transport: nil) }
+    try await model.revokePushBeforeForgetting()
+    #expect(sessionReads == 1)
+    #expect(model.connected)
   }
 
   @Test func confirmedPushSuppressesPollingButKeepsInboxAndReadState() async throws {
