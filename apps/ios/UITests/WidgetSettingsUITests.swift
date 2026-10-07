@@ -32,7 +32,7 @@ import XCTest
 
   private func openWorkspace(_ app: XCUIApplication) {
     if app.navigationBars["notes"].waitForExistence(timeout: 3) { return }
-    app.buttons["Open my workspace"].tap()
+    app.buttons["Open local workspace"].tap()
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 15))
   }
 }

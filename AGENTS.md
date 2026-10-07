@@ -17,6 +17,9 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
 - `packages/LifeKit/Sources/LifeWidgets`: App Intents widget configuration queries
   over authorized publications, depending only on LifeExtensionSupport. Calendar
   choices require tagged calendar bindings from the canonical core plan.
+  The iOS WidgetKit extension embeds table-title, Today and bounded-count widgets;
+  accessories expose only generic labels/counts. Both targets use the configured
+  `LIFE_WIDGET_APP_GROUP`; signed distribution requires explicit matching profiles.
 - Widget source opt-ins are durable private host preferences, separate from
   regenerable App Group publications. NativeWidgetSettings publishes paired list
   and count plans from the opened database; the library scopes them by workspace
