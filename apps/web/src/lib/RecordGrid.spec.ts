@@ -25,6 +25,7 @@ test('grid exposes labeled cells by identity and a guarded bottom creation actio
 		}
 	}).body;
 	expect(window.document.querySelector('[role="grid"]')).not.toBeNull();
+	expect(window.document.querySelector('input[type="checkbox"]')).toBeNull();
 	expect(
 		window.document.querySelector('[role="gridcell"][data-row="a"][data-column="qty"]')?.textContent
 	).toContain('0');
@@ -73,6 +74,7 @@ test('configured action columns reorder data and keep the first visible data cel
 	const window = new Window();
 	window.document.body.innerHTML = render(RecordGrid, {
 		props: {
+			selectedIds: [],
 			rows: [{ id: 'a', title: 'Alpha', state: 'Open', updated_at: '2026-01-01T00:00:00.000Z' }],
 			properties: [
 				{ col: 'title', label: 'Title' },

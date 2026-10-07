@@ -2160,7 +2160,15 @@
 					<small>Pending edits: {pendingEdits}</small>
 				</div>
 				{#if !demo}
-					{#key connectedHub}<HubServices connection={connectedHub} />{/key}
+					{#key connectedHub}<HubServices
+							connection={connectedHub}
+							canReview={!busy &&
+								!writing &&
+								!bodySaving &&
+								!dirty &&
+								!gridDraft &&
+								pendingEdits === 0}
+						/>{/key}
 					<details class="connect">
 						<summary>Connect to a hub</summary>
 						{#if database}{#key database}<HubEnrollment
