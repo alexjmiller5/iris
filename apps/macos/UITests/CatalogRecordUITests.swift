@@ -18,6 +18,10 @@ final class CatalogRecordUITests: XCTestCase {
     app.launchArguments = ["--normal-startup", "-ApplePersistenceIgnoreState", "YES"]
     app.launch()
     app.activate()
+    if !app.windows.firstMatch.waitForExistence(timeout: 3) {
+      app.menuBars.menuBarItems["File"].click()
+      app.menuItems["New Window"].click()
+    }
     defer { app.terminate() }
     // Use the supported external-file picker, never replace the app's local replica.
     let open = app.buttons["Open a local database…"]
