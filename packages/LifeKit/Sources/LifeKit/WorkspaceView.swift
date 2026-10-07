@@ -2195,6 +2195,8 @@ private struct FieldInput: View {
   let isCurrent: @MainActor () -> Bool
   let referenceAvailability: String?
   @Binding var value: String
+  @State private var linkOpening = false
+  @State private var linkError: String?
 
   var body: some View {
     Group {
@@ -2233,11 +2235,48 @@ private struct FieldInput: View {
           Text("False").tag("false")
         }.accessibilityIdentifier("field-\(field.id)")
       } else {
-        TextField(field.label, text: $value, axis: .vertical)
-          .fixedSize(horizontal: false, vertical: true)
-          .focused(focus, equals: field.id)
-          .accessibilityIdentifier("field-\(field.id)")
-          .autocorrectionDisabled(field.type != "text")
+        VStack(alignment: .leading, spacing: 6) {
+          TextField(field.label, text: $value, axis: .vertical)
+            .fixedSize(horizontal: false, vertical: true)
+            .focused(focus, equals: field.id)
+            .accessibilityIdentifier("field-\(field.id)")
+            .autocorrectionDisabled(field.type != "text")
+          if field.type == "text", NativeFieldLink.isRecordReference(value) {
+            Button(linkOpening ? "Opening record…" : "Open record") {
+              openRecord()
+            }
+            .buttonStyle(.borderless)
+            .disabled(linkOpening || editor.saving)
+            .accessibilityIdentifier("open-record-\(field.id)")
+            if let linkError { Text(linkError).font(.caption).foregroundStyle(.red) }
+          }
+        }
+      }
+    }
+  }
+
+  private func openRecord() {
+    guard !linkOpening, !editor.saving, isCurrent(), let workspace else { return }
+    let original = value
+    linkOpening = true
+    linkError = nil
+    Task {
+      defer { linkOpening = false }
+      do {
+        let result = try await workspace.resolveSourceLink(original)
+        guard isCurrent(), Data(value.utf8) == Data(original.utf8),
+          !Task.isCancelled, !editor.saving
+        else { return }
+        guard let destination = result.destination else {
+          linkError = "This record is not available in this workspace."
+          return
+        }
+        onOpenReference(destination.table, destination.row)
+      } catch {
+        guard isCurrent(), Data(value.utf8) == Data(original.utf8), !Task.isCancelled else {
+          return
+        }
+        linkError = error.localizedDescription
       }
     }
   }

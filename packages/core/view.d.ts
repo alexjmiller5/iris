@@ -1,5 +1,5 @@
 import { type Property, type Row } from "./validate.ts";
-import type { View, CalendarContext } from './contract.generated.ts';
+import type { View, CalendarContext, ReadPlanKind, ReadPlanParameter } from './contract.generated.ts';
 export type { Filter, View } from './contract.generated.ts';
 /** Compile a catalog-scoped view. Equality is null-safe; contains is literal
  * (ASCII case-insensitive text, exact JSON array membership). Empty includes
@@ -10,6 +10,12 @@ export type { Filter, View } from './contract.generated.ts';
 export declare function compileView(view: View, properties: Property[]): {
     sql: string;
     params: (string | number | null)[];
+};
+/** Same compiler, tagged at binding sites. The caller supplies explicit title/id
+ * projection and validates the saved definition before count drops its ordering. */
+export declare function compileReadQuery(view: View, properties: Property[], kind: ReadPlanKind): {
+    sql: string;
+    parameters: ReadPlanParameter[];
 };
 /** Saved definitions validate without a host clock; executing a relative query requires one. */
 export declare function validateView(view: View, properties: Property[]): void;
