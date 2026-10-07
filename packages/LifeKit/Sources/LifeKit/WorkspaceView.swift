@@ -12,6 +12,7 @@ public struct WorkspaceView: View {
   @State private var savedViews = false
   @State private var showingGraph = false
   @State private var showingStatus = false
+  @State private var widgetSettings = false
   @State private var pendingGraphTable: (table: String, generation: Int)?
   @State private var preferredColumn: NavigationSplitViewColumn = .detail
   @State private var navigationRequest = 0
@@ -224,6 +225,9 @@ public struct WorkspaceView: View {
       .sheet(isPresented: $showingStatus) { WorkspaceStatusSheet(model: model) }
     #endif
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
+    .sheet(isPresented: $widgetSettings) {
+      if let widgets = model.widgets { WidgetSettingsView(model: model, settings: widgets) }
+    }
     .sheet(item: $recordExport) { target in
       RecordExportView(snapshot: target.snapshot)
     }
@@ -1022,6 +1026,13 @@ public struct WorkspaceView: View {
           Label("Hub connection", systemImage: "gearshape")
         }.disabled(editor != nil)
         exportLoadedRowsAction
+        Button {
+          do {
+            try model.prepareWidgets()
+            widgetSettings = true
+          } catch { model.error = error.localizedDescription }
+        } label: { Label("Widgets", systemImage: "square.grid.2x2") }
+          .disabled(editor != nil).accessibilityIdentifier("widget-settings")
         Button(action: showRejections) { Label("Issues", systemImage: "exclamationmark.bubble") }
           .disabled(!canFind).accessibilityIdentifier("workspace-issues")
         Divider()

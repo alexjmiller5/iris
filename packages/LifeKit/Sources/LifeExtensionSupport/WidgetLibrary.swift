@@ -19,6 +19,14 @@ public struct WidgetLibrary: Sendable {
   public let root: URL
   public init(root: URL) { self.root = root }
 
+  public static func installed(bundle: Bundle = .main) -> Self? {
+    guard let group = bundle.object(forInfoDictionaryKey: "LifeWidgetAppGroup") as? String,
+      group.hasPrefix("group."), !group.contains("$"),
+      let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
+    else { return nil }
+    return Self(root: container.appendingPathComponent("WidgetPublications", isDirectory: true))
+  }
+
   public func store(workspaceID: String) -> WidgetPublicationStore {
     WidgetPublicationStore(
       root: root.appendingPathComponent(digest(Data(workspaceID.utf8)), isDirectory: true))

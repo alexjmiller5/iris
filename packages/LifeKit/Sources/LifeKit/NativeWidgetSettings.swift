@@ -21,6 +21,7 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
   private let workspaceID: String
   private let replicaID: String
   private let preferencesURL: URL
+  private let didChange: @MainActor () -> Void
   private var permit: WidgetPublicationPermit?
   private var revisionData: Data?
   private var alive = true
@@ -37,13 +38,14 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
 
   init(
     workspace: NativeWorkspace, library: WidgetLibrary, workspaceID: String,
-    replicaID: String, preferencesURL: URL
+    replicaID: String, preferencesURL: URL, didChange: @escaping @MainActor () -> Void = {}
   ) {
     self.workspace = workspace
     self.store = library.store(workspaceID: workspaceID)
     self.workspaceID = workspaceID
     self.replicaID = replicaID
     self.preferencesURL = preferencesURL
+    self.didChange = didChange
     do {
       guard let data = try readPreferences() else { return }
       let saved = try JSONDecoder().decode(Preferences.self, from: data)
@@ -125,6 +127,22 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
     }
   }
 
+  /// Explicit recovery keeps the unread file and removes its old authorization.
+  func resetUnreadSettings() throws {
+    guard alive, !busy, unreadable else { throw Self.failure }
+    try store.revoke()
+    if FileManager.default.fileExists(atPath: preferencesURL.path) {
+      let retained = preferencesURL.appendingPathExtension("unread-" + UUID().uuidString)
+      try FileManager.default.moveItem(at: preferencesURL, to: retained)
+    }
+    revisionData = nil
+    permit = nil
+    selections = []
+    unreadable = false
+    error = nil
+    didChange()
+  }
+
   /// Closing the host keeps the last authorized publication available offline.
   func cancel() {
     alive = false
@@ -135,6 +153,7 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
   /// Explicit access removal, unlike ordinary workspace closure.
   func revoke() throws {
     try store.revoke()
+    defer { didChange() }
     refreshTask?.cancel()
     refreshTask = nil
     permit = nil
@@ -145,6 +164,7 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
 
   private func finish() {
     busy = false
+    didChange()
     if pending {
       pending = false
       scheduleRefresh(partial: partial)

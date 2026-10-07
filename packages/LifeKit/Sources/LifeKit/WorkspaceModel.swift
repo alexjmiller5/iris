@@ -1,6 +1,9 @@
 import CryptoKit
 import Foundation
 import Observation
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 struct WorkspaceEditingContext {
   let workspace: NativeWorkspace
@@ -30,6 +33,9 @@ final class WorkspaceModel {
         recents = nil
         pins?.cancel()
         pins = nil
+        widgets?.cancel()
+        widgets = nil
+        widgetWorkspaceURL = nil
         workspaceGeneration += 1
         undoAction = nil
         undoing = false
@@ -44,6 +50,54 @@ final class WorkspaceModel {
   private(set) var linkBinding: NativeWorkspaceBinding?
   private(set) var linkError: String?
   private var linkIdentityStore: NativeLinkIdentityStore?
+  private(set) var widgets: NativeWidgetSettings?
+  private let widgetLibrary: WidgetLibrary?
+  private var widgetWorkspaceURL: URL?
+
+  func prepareWidgets() throws {
+    try configureWidgets(createIdentity: true)
+  }
+
+  private func configureWidgets(createIdentity: Bool) throws {
+    guard widgets == nil else { return }
+    guard let client, let widgetLibrary, let file = widgetWorkspaceURL else {
+      if createIdentity {
+        throw WorkspaceError(message: "Open a saved workspace in an app with widget support.", violations: [])
+      }
+      return
+    }
+    let root = try resolveLocalURL().deletingLastPathComponent()
+    let identity = try NativeLinkIdentityStore(root: root, workspace: file).retainingOpenedFile()
+    let loaded = try identity.load()
+    if let replaced = try identity.replacedBinding() {
+      let priorWorkspaceID: String
+      switch linkBinding ?? replaced {
+      case .local(let id): priorWorkspaceID = "local:" + id.uuidString.lowercased()
+      case .replica(let id): priorWorkspaceID = "replica:" + id
+      }
+      try widgetLibrary.store(workspaceID: priorWorkspaceID).revoke()
+    }
+    guard let physical = try loaded ?? (createIdentity ? identity.create() : nil),
+      case .local(let replica) = physical
+    else { return }
+    let binding = linkBinding ?? physical
+    let workspaceID: String
+    switch binding {
+    case .local(let id): workspaceID = "local:" + id.uuidString.lowercased()
+    case .replica(let id): workspaceID = "replica:" + id
+    }
+    let preferences = root.appendingPathComponent("widgets", isDirectory: true)
+      .appendingPathComponent(replica.uuidString.lowercased() + ".json")
+    widgets = NativeWidgetSettings(
+      workspace: client, library: widgetLibrary, workspaceID: workspaceID,
+      replicaID: replica.uuidString.lowercased(), preferencesURL: preferences,
+      didChange: {
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
+      })
+    if linkBinding == nil { linkBinding = physical }
+  }
   private struct LoadedRowsContext: Equatable {
     let workspace: Int
     let query: [Data]
@@ -136,7 +190,10 @@ final class WorkspaceModel {
   }
   var catalog: WorkspaceCatalog? {
     didSet {
-      if !recordExportCatalogsMatch(oldValue, catalog) { exportCatalogRevision += 1 }
+      if !recordExportCatalogsMatch(oldValue, catalog) {
+        exportCatalogRevision += 1
+        widgets?.scheduleRefresh(partial: isReplica)
+      }
     }
   }
   var table: String? {
@@ -410,11 +467,13 @@ final class WorkspaceModel {
     makeTransport: @escaping @MainActor (HubCredentials) throws -> HubTransport = {
       try HubTransport(endpoint: $0.endpoint, token: $0.token)
     },
-    credentialStore: any HubCredentialStorage = HubCredentialStore()
+    credentialStore: any HubCredentialStorage = HubCredentialStore(),
+    widgetLibrary: WidgetLibrary? = WidgetLibrary.installed()
   ) {
     resolveLocalURL = localURL
     self.makeTransport = makeTransport
     self.credentialStore = credentialStore
+    self.widgetLibrary = widgetLibrary
   }
 
   var queryKey: [String] {
@@ -1086,6 +1145,7 @@ final class WorkspaceModel {
         throw error
       }
       client = workspace
+      widgetWorkspaceURL = demo ? nil : URL(fileURLWithPath: path)
       if !demo {
         do {
           linkIdentityStore = try NativeLinkIdentityStore(
@@ -1096,6 +1156,7 @@ final class WorkspaceModel {
         } catch { linkError = error.localizedDescription }
       }
       configureRecents(store: recentStore)
+      do { try configureWidgets(createIdentity: false) } catch { linkError = error.localizedDescription }
       location =
         demo
         ? "Sample workspace · temporary"
@@ -1156,6 +1217,7 @@ final class WorkspaceModel {
       error = nil
       syncStatus = status
       undoAction = undo.action
+      widgets?.scheduleRefresh(partial: isReplica)
       rows = append ? rows + result : result
       canLoadMore = result.count == 100
       // Catalog/status are separate reads. Export only a successfully loaded context
@@ -1490,6 +1552,8 @@ final class WorkspaceModel {
     localObserver = nextObserver
     client = prepared
     linkBinding = .replica(canonicalEndpoint: hub.endpoint)
+    widgetWorkspaceURL = path
+    do { try configureWidgets(createIdentity: false) } catch { linkError = error.localizedDescription }
     configureRecents(store: NativeRecentsStore(root: root, workspace: path))
     catalog = nextCatalog
     groups = nextGroups
@@ -1614,6 +1678,7 @@ final class WorkspaceModel {
 
   private func recordLocalChange() {
     localSyncRevision += 1
+    widgets?.scheduleRefresh(partial: isReplica)
     scheduleAutomaticSync()
   }
 
@@ -1645,6 +1710,7 @@ final class WorkspaceModel {
   }
 
   func forgetConnection() throws {
+    try widgets?.revoke()
     try credentialStore.remove()
     stopAutomaticSync()
     workspaceGeneration += 1

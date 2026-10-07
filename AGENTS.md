@@ -14,6 +14,13 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   calendar policy and bounded read-only SQLite extension reader. No JavaScriptCore,
   network, credentials or database writer. LifeKit reexports the portable types;
   `bundle-core.ts` generates their single canonical Swift source there.
+- Widget source opt-ins are durable private host preferences, separate from
+  regenerable App Group publications. NativeWidgetSettings publishes paired list
+  and count plans from the opened database; the library scopes them by workspace
+  and physical replica identity. Explicit access removal or database replacement
+  revokes the old publication; ordinary close retains its offline copy. A failed
+  refresh labels previous data stale. Unreadable preferences and link identity
+  files stay intact and must not block ordinary workspace use.
 - `packages/LifeKit`: serialized JavaScriptCore facade, GRDB adapter, native
   workspace, URLSession transport, Keychain storage and bundled graph island.
 - `packages/core`: generated TypeScript declarations and JS artifacts. Core
