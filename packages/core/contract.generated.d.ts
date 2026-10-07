@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "cb45e00f68cd4cc4e8743ed76df07a09ae5fbcabc33862a71d753da2783532f6";
+export declare const CORE_CONTRACT_HASH = "dbcc4af633c8aa0bad93f082d3a2a8b7d94d189fa868ba15aed30d99ad0a658b";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -210,6 +210,7 @@ export type SavedViewDefinition = {
     dayStartMinutes?: number;
     actions?: RowAction[];
     layout?: ViewLayoutItem[];
+    presentation?: ViewPresentation;
 };
 export type SavedViewRecord = {
     id: string;
@@ -711,6 +712,39 @@ export type ResolveDerivedResult = {
     derived: number;
     failed: DerivationFailure[];
 };
+export type ViewPresentation = {
+    kind: "table" | "calendar" | "gallery" | "board";
+    dateColumn?: string;
+    endDateColumn?: string;
+    coverColumn?: string;
+    groupColumn?: string;
+};
+export type CalendarRowsArgs = {
+    rows: Row[];
+    dateColumn: string;
+    endDateColumn?: string;
+    days: CalendarContext[];
+};
+export type CalendarDayRows = {
+    date: string;
+    rowIds: string[];
+};
+export type CalendarRowsResult = {
+    days: CalendarDayRows[];
+    undated: string[];
+};
+export type BoardRowsArgs = {
+    rows: Row[];
+    column: string;
+    options: string[];
+};
+export type BoardColumnRows = {
+    value: string | null;
+    rowIds: string[];
+};
+export type BoardRowsResult = {
+    columns: BoardColumnRows[];
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -863,6 +897,14 @@ export interface CoreOperations {
     resolveDerived: {
         args: ResolveDerivedArgs;
         result: ResolveDerivedResult;
+    };
+    calendarRows: {
+        args: CalendarRowsArgs;
+        result: CalendarRowsResult;
+    };
+    boardRows: {
+        args: BoardRowsArgs;
+        result: BoardRowsResult;
     };
 }
 export type CoreMethod = keyof CoreOperations;

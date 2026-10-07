@@ -1,4 +1,8 @@
 <script lang="ts">
+	import PresentationControls from '$lib/PresentationControls.svelte';
+	import RecordPresentations from '$lib/RecordPresentations.svelte';
+	import type { ViewPresentation } from 'life-ui-core/client';
+	let presentation = $state<ViewPresentation>({ kind: 'table' });
 	import { resolveDerivedRecord } from '$lib/resolve-derived';
 	import { prepareDuplicate } from '$lib/record-duplicate';
 	import { markdownPatch } from '$lib/record-autosave';
@@ -839,6 +843,11 @@
 			if (current()) error = message(e);
 		}
 	}
+	function loadBoardOptions() {
+		if (presentation.kind !== 'board') return;
+		const property = properties.find((p) => p.col === presentation.groupColumn);
+		if (property) void loadOptions(property);
+	}
 	async function loadOptions(p: Property) {
 		const workspace = database,
 			version = editorVersion,
@@ -1165,6 +1174,7 @@
 		filterGroups = [];
 		actions = [];
 		actionLayout = undefined;
+		presentation = { kind: 'table' };
 		timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		dayStartMinutes = 0;
 		chosenView = null;
@@ -1263,6 +1273,7 @@
 	function viewDefinition(): SavedViewDefinition {
 		return $state.snapshot({
 			version: 2,
+			presentation,
 			groups: filterGroups,
 			timeZone,
 			...(dayStartMinutes !== 0 || chosenView?.definition?.dayStartMinutes !== undefined
@@ -1326,6 +1337,10 @@
 		actionLayout = definition?.layout ? $state.snapshot(definition.layout) : undefined;
 		timeZone = definition?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 		dayStartMinutes = definition?.dayStartMinutes ?? 0;
+		presentation = definition?.presentation
+			? $state.snapshot(definition.presentation)
+			: { kind: 'table' };
+		loadBoardOptions();
 		search = definition?.search ?? '';
 		trash = definition?.trash ?? false;
 		importedSort = definition?.sort?.map((clause) => ({ ...clause })) ?? null;
@@ -1459,6 +1474,33 @@
 				value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value);
 		}
 		return values;
+	}
+	async function moveBoardRecord(row: Row, value: string | null) {
+		const property = properties.find((p) => p.col === presentation.groupColumn);
+		if (!database || !property || !canEditCell(property) || busy || navigationLoading || dirty) {
+			error = 'Finish the current edit before moving a record.';
+			return;
+		}
+		const workspace = database,
+			target = table;
+		busy = true;
+		writing = true;
+		error = '';
+		try {
+			await workspace.request('write', {
+				table: target,
+				patch: { id: row.id, [property.col]: value },
+				expectedUpdatedAt: editRevision(row)
+			});
+			if (database === workspace && table === target) await refresh();
+		} catch (e) {
+			if (database === workspace) error = message(e);
+		} finally {
+			if (database === workspace) {
+				busy = false;
+				writing = false;
+			}
+		}
 	}
 	async function resolveField(property: Property) {
 		if (
@@ -2201,6 +2243,16 @@
 									exportContext !== currentExportContext}
 							/>
 						</div>
+						<PresentationControls
+							value={presentation}
+							{properties}
+							disabled={busy || navigationLoading}
+							onchange={(value) => {
+								if (!closeRecord()) return;
+								presentation = value;
+								loadBoardOptions();
+							}}
+						/>
 						<ViewControls
 							properties={viewProperties}
 							sorts={sortClauses}
@@ -2299,48 +2351,71 @@
 									onreview={reviewRejected}
 								/>{/if}
 						{/key}
-						{#key gridContext}
-							<RecordGrid
+						{#if presentation.kind !== 'table'}
+							<RecordPresentations
+								{presentation}
 								{rows}
-								{actions}
-								{actionLayout}
-								canRunAction={!!chosenView &&
-									!viewModified &&
-									!blocked &&
-									!readOnly &&
-									!trash &&
-									!navigationLoading}
-								onaction={runSavedAction}
-								properties={gridColumns}
-								{widths}
-								busy={busy || gridActionOpening !== null}
-								canCreate={!navigationLoading && !readOnly && !blocked && !trash}
-								canTrash={!navigationLoading && !readOnly && !blocked}
-								{trash}
-								bind:edit={gridDraft}
-								format={(p, value) => cell(p, value)}
-								canEdit={(p) => !navigationLoading && canEditCell(p)}
-								onbegin={beginCell}
-								oncommit={commitCell}
+								{properties}
+								{display}
+								{timeZone}
+								{dayStartMinutes}
+								options={optionValues[presentation.groupColumn ?? ''] ?? []}
+								canMove={!busy &&
+									!navigationLoading &&
+									!dirty &&
+									!!properties.find((p) => p.col === presentation.groupColumn && canEditCell(p))}
+								onmove={moveBoardRecord}
 								resolveFile={resolveRetainedFile}
-								onopenlink={openSourceLink}
 								onopen={(id) =>
 									openRecord({ table, id }, () => !findVisible, true).catch((e) => {
 										error = message(e);
 										return false;
 									})}
-								onnew={newGridRecord}
-								onduplicate={duplicateRecord}
-								ontrash={trashGridRecord}
-								options={optionValues}
-								referenceOptions={(p) =>
-									(references[p.col] ?? []).map((row) => ({
-										id: String(row.id),
-										label: refTitle(p, row)
-									}))}
-								onsearch={loadReferences}
 							/>
-						{/key}
+						{:else}
+							{#key gridContext}
+								<RecordGrid
+									{rows}
+									{actions}
+									{actionLayout}
+									canRunAction={!!chosenView &&
+										!viewModified &&
+										!blocked &&
+										!readOnly &&
+										!trash &&
+										!navigationLoading}
+									onaction={runSavedAction}
+									properties={gridColumns}
+									{widths}
+									busy={busy || gridActionOpening !== null}
+									canCreate={!navigationLoading && !readOnly && !blocked && !trash}
+									canTrash={!navigationLoading && !readOnly && !blocked}
+									{trash}
+									bind:edit={gridDraft}
+									format={(p, value) => cell(p, value)}
+									canEdit={(p) => !navigationLoading && canEditCell(p)}
+									onbegin={beginCell}
+									oncommit={commitCell}
+									resolveFile={resolveRetainedFile}
+									onopenlink={openSourceLink}
+									onopen={(id) =>
+										openRecord({ table, id }, () => !findVisible, true).catch((e) => {
+											error = message(e);
+											return false;
+										})}
+									onnew={newGridRecord}
+									onduplicate={duplicateRecord}
+									ontrash={trashGridRecord}
+									options={optionValues}
+									referenceOptions={(p) =>
+										(references[p.col] ?? []).map((row) => ({
+											id: String(row.id),
+											label: refTitle(p, row)
+										}))}
+									onsearch={loadReferences}
+								/>
+							{/key}
+						{/if}
 						{#if gridActionOpening !== null}<p role="status">Opening record action…</p>{/if}
 						{#if rows.length === 0}<div class="empty">
 								{trash

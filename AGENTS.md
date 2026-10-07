@@ -463,6 +463,14 @@ Established Keychain replicas reopen offline before a sync attempt. Keep the
 canonical enrollment fixture synchronized through `bundle-core.ts` and execute
 it in JavaScriptCore as well as the core's own tests.
 
+Saved views can select Calendar, Gallery or a select-grouped Board. Keep these
+settings in the canonical v2 presentation object. Calendar and Board layout use
+shared core operations over loaded rows; hosts supply existing civil-day bounds
+and display pagination coverage. Date-only range ends are inclusive; timed ends
+are exclusive. Board moves use normal revision-checked writes and the same draft
+and read-only guards as other edits. Gallery covers use the selected catalog
+property and the existing separate retained/public image credential paths.
+
 ## Development and verification
 
 `bun install --frozen-lockfile`, then `just dev`. `just test`, `just check`,
