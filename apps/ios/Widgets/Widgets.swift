@@ -8,5 +8,9 @@ struct LifeUIWidgetBundle: WidgetBundle {
     LifeTableWidget()
     LifeTodayWidget()
     LifeCountWidget()
+    LifeQuickAddWidget()
+    if #available(iOS 18.0, *) {
+      LifeQuickAddControl()
+    }
   }
 }

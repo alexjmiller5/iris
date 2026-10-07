@@ -24,6 +24,8 @@ targets:
     sources: [App]
     dependencies:
       - package: LifeKit
+      - package: LifeKit
+        product: LifeWidgets
       - target: LifeUIWidgets
         embed: true
     settings:

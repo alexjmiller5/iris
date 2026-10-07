@@ -37,6 +37,11 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
     let selections: [NativeWidgetSelection]
   }
 
+  func pendingQuickAdd() throws -> WidgetQuickAdd? { try store.pendingQuickAdd() }
+  func retainedQuickAdd() throws -> WidgetQuickAdd? { try store.retainedQuickAdd() }
+  func discardQuickAdd(id: UUID) throws { try store.discardQuickAdd(id: id) }
+  func finishQuickAdd(id: UUID) throws { try store.finishQuickAdd(id: id) }
+
   init(
     workspace: NativeWorkspace, library: WidgetLibrary, workspaceID: String,
     replicaID: String, preferencesURL: URL, binding: NativeWorkspaceBinding? = nil,
@@ -177,6 +182,7 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
   private func publish() async throws {
     guard let permit, store.isCurrent(permit) else { throw Self.failure }
     var requests: [NativeWidgetSourceRequest] = []
+    let catalog = try await workspace.catalog()
     for selection in selections {
       try Task.checkCancellation()
       var title = selection.table
@@ -193,8 +199,16 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
       let openURL = try binding.map {
         try NativeDeepLink(
           destination: NativeDestination(table: selection.table, viewID: selection.viewID),
-          workspace: $0).url
+          workspace: $0
+        ).url
       }
+      let writable = try await workspace.writeability(table: selection.table)
+      let allowsQuickAdd =
+        writable.writable
+        && catalog.tables.contains {
+          $0["id"]?.text.utf8.elementsEqual(selection.table.utf8) == true
+            && $0["readOnly"] == .bool(false)
+        }
       for kind in CoreReadPlanKind.allCases {
         requests.append(
           NativeWidgetSourceRequest(
@@ -205,7 +219,7 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
               workspaceID: workspaceID, replicaID: replicaID,
               table: selection.table, kind: kind, viewID: selection.viewID,
               expectedViewUpdatedAt: revision),
-            openURL: openURL))
+            openURL: openURL, allowsQuickAdd: kind == .list && allowsQuickAdd))
       }
     }
     try Task.checkCancellation()
