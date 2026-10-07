@@ -6,15 +6,34 @@ import Testing
 @testable import LifeKit
 
 @MainActor struct WidgetEntryTests {
+  @Test func publicationCannotSupplyAnExternalNavigationURL() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let workspace = try NativeWorkspace(path: ":memory:")
+    try await workspace.createSample()
+    let library = WidgetLibrary(root: root)
+    let id = WidgetLibrary.sourceID(workspaceID: "workspace", table: "notes", viewID: nil, kind: .list)
+    try await NativeWidgetPublisher(workspace: workspace, store: library.store(workspaceID: "workspace"))
+      .publish([NativeWidgetSourceRequest(id: id, title: "Synthetic source",
+        plan: CorePrepareReadPlanArgs(workspaceID: "workspace", replicaID: "replica", table: "notes", kind: .list),
+        openURL: URL(string: "https://example.invalid"))], partial: false)
+    let entry = try #require(WidgetEntry.timeline(sourceID: id, library: library).entries.first)
+    #expect(entry.result.state == .current)
+    #expect(entry.openURL == nil)
+    #expect(entry.url(recordID: "record") == nil)
+    try await workspace.close()
+  }
+
   @Test func configuredTimelinesReadIndependentSourcesAndRefuseRevokedChoices() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let library = WidgetLibrary(root: root.appendingPathComponent("shared"))
+    let binding = NativeWorkspaceBinding.local(UUID())
     let settings = NativeWidgetSettings(
       workspace: workspace, library: library, workspaceID: "workspace", replicaID: "replica",
-      preferencesURL: root.appendingPathComponent("widgets.json"))
+      preferencesURL: root.appendingPathComponent("widgets.json"), binding: binding)
     #expect(await settings.setSelections([
       NativeWidgetSelection(table: "notes", viewID: nil),
       NativeWidgetSelection(table: "topics", viewID: nil),
@@ -27,6 +46,16 @@ import Testing
       #expect(list.entries.first?.result.state == .current)
       #expect(list.entries.first?.result.content?.title == source.title)
       #expect(list.entries.first?.result.content?.partial == true)
+      let url = try #require(list.entries.first?.openURL)
+      let link = try NativeDeepLink(url: url)
+      #expect(try link.destination(matching: binding) == NativeDestination(table: source.table))
+      #expect(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.count == 2)
+      let entry = try #require(list.entries.first)
+      let recordID = "opaque/&?#%ß"
+      let recordURL = try #require(entry.url(recordID: recordID))
+      #expect(try NativeDeepLink(url: recordURL).destination(matching: binding)
+        == NativeDestination(table: source.table, rowID: recordID))
+      #expect(entry.url(recordID: "") == nil)
       let count = WidgetEntry.timeline(sourceID: source.id, kind: .count, library: library, now: now)
       #expect(count.entries.first?.result.state == .current)
       #expect(count.entries.first?.result.content?.rows.first?["count"] != nil)
@@ -40,6 +69,7 @@ import Testing
       let removed = WidgetEntry.timeline(sourceID: source.id, library: library, now: now)
       #expect(removed.entries.first?.result.state == .unavailable)
       #expect(removed.entries.first?.result.content == nil)
+      #expect(removed.entries.first?.openURL == nil)
     }
     try await workspace.close()
   }

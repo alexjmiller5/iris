@@ -22,6 +22,7 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
   private let replicaID: String
   private let preferencesURL: URL
   private let didChange: @MainActor () -> Void
+  private let binding: NativeWorkspaceBinding?
   private var permit: WidgetPublicationPermit?
   private var revisionData: Data?
   private var alive = true
@@ -38,13 +39,15 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
 
   init(
     workspace: NativeWorkspace, library: WidgetLibrary, workspaceID: String,
-    replicaID: String, preferencesURL: URL, didChange: @escaping @MainActor () -> Void = {}
+    replicaID: String, preferencesURL: URL, binding: NativeWorkspaceBinding? = nil,
+    didChange: @escaping @MainActor () -> Void = {}
   ) {
     self.workspace = workspace
     self.store = library.store(workspaceID: workspaceID)
     self.workspaceID = workspaceID
     self.replicaID = replicaID
     self.preferencesURL = preferencesURL
+    self.binding = binding
     self.didChange = didChange
     do {
       guard let data = try readPreferences() else { return }
@@ -187,6 +190,11 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
         title = view.name
         revision = updated
       }
+      let openURL = try binding.map {
+        try NativeDeepLink(
+          destination: NativeDestination(table: selection.table, viewID: selection.viewID),
+          workspace: $0).url
+      }
       for kind in CoreReadPlanKind.allCases {
         requests.append(
           NativeWidgetSourceRequest(
@@ -196,7 +204,8 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
             plan: CorePrepareReadPlanArgs(
               workspaceID: workspaceID, replicaID: replicaID,
               table: selection.table, kind: kind, viewID: selection.viewID,
-              expectedViewUpdatedAt: revision)))
+              expectedViewUpdatedAt: revision),
+            openURL: openURL))
       }
     }
     try Task.checkCancellation()

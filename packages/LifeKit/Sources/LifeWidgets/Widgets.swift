@@ -18,6 +18,7 @@ struct WidgetContentView: View {
     if family == .accessoryInline {
       Text("\(presentation.total ?? "Unavailable") records")
         .accessibilityLabel(presentation.accessibilityLabel)
+        .widgetURL(entry.openURL)
     } else {
       content(presentation, accessory: accessory)
     }
@@ -30,7 +31,13 @@ struct WidgetContentView: View {
         Text(count).font(accessory ? .headline : .largeTitle).monospacedDigit()
       }
       ForEach(presentation.rows) { row in
-        Text(row.title).font(.body).lineLimit(textSize.isAccessibilitySize ? 2 : 1)
+        if (family == .systemMedium || family == .systemLarge),
+          let url = entry.url(recordID: row.recordID)
+        {
+          Link(destination: url) { rowTitle(row.title) }
+        } else {
+          rowTitle(row.title)
+        }
       }
       if let empty = presentation.emptyLabel {
         Text(empty).font(.caption).foregroundStyle(.secondary)
@@ -44,9 +51,14 @@ struct WidgetContentView: View {
       if !accessory { Spacer(minLength: 0) }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .accessibilityElement(children: .combine)
+    .accessibilityElement(children: .contain)
     .containerBackground(.fill.tertiary, for: .widget)
     .privacySensitive()
+    .widgetURL(entry.openURL)
+  }
+
+  private func rowTitle(_ title: String) -> some View {
+    Text(title).font(.body).lineLimit(textSize.isAccessibilitySize ? 2 : 1)
   }
 }
 

@@ -90,7 +90,7 @@ final class WorkspaceModel {
       .appendingPathComponent(replica.uuidString.lowercased() + ".json")
     widgets = NativeWidgetSettings(
       workspace: client, library: widgetLibrary, workspaceID: workspaceID,
-      replicaID: replica.uuidString.lowercased(), preferencesURL: preferences,
+      replicaID: replica.uuidString.lowercased(), preferencesURL: preferences, binding: binding,
       didChange: {
         #if canImport(WidgetKit)
         WidgetCenter.shared.reloadAllTimelines()

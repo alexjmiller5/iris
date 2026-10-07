@@ -4,6 +4,7 @@ struct NativeWidgetSourceRequest: Sendable {
   let id: String
   let title: String
   let plan: CorePrepareReadPlanArgs
+  var openURL: URL? = nil
 }
 
 /// Host-only preparation. The extension never links the writer or JS runtime.
@@ -48,7 +49,7 @@ struct NativeWidgetSourceRequest: Sendable {
       try Task.checkCancellation()
       let plan = try await prepare(request.plan)
       try Task.checkCancellation()
-      sources.append(WidgetSource(id: request.id, title: request.title, plan: plan))
+      sources.append(WidgetSource(id: request.id, title: request.title, plan: plan, openURL: request.openURL))
     }
     let capturedAt = Date()
     let file = store.root.appendingPathComponent(".capture-" + UUID().uuidString + ".sqlite")

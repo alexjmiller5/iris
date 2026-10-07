@@ -11,6 +11,7 @@ public struct WidgetSourceDescriptor: Sendable, Identifiable {
   public let kind: CoreReadPlanKind
   public let displayColumn: String?
   public let usesCalendar: Bool
+  public let openURL: URL?
 }
 
 /// A bounded picker catalog of authorized publications, without record bodies,
@@ -76,7 +77,7 @@ public struct WidgetLibrary: Sendable {
             usesCalendar: source.plan.parameters.contains {
               if case .calendar = $0 { return true }
               return false
-            })
+            }, openURL: source.openURL)
         }
       }
       result.append(contentsOf: sources ?? [])

@@ -6,10 +6,12 @@ public struct WidgetSource: Codable, Sendable {
   public let id: String
   public let title: String
   public let plan: CoreReadPlan
-  public init(id: String, title: String, plan: CoreReadPlan) {
+  public let openURL: URL?
+  public init(id: String, title: String, plan: CoreReadPlan, openURL: URL? = nil) {
     self.id = id
     self.title = title
     self.plan = plan
+    self.openURL = openURL
   }
 }
 
