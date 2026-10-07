@@ -7,6 +7,7 @@
       "devDependencies": {
         "@playwright/test": "^1.63.0",
         "@types/bun": "^1.4.2",
+        "life-ui-core": "workspace:*",
         "typescript": "^6.0.3",
       },
     },
@@ -43,6 +44,9 @@
       "name": "life-ui-core",
       "version": "0.0.1",
     },
+  },
+  "patchedDependencies": {
+    "wa-sqlite@github:rhashimoto/wa-sqlite#7a4b424": "patches/wa-sqlite@github%3Arhashimoto%2Fwa-sqlite#7a4b424.patch",
   },
   "packages": {
     "@babel/helper-string-parser": ["@babel/helper-string-parser@7.29.7", "", {}, "sha512-Pb5ijPrZ89GDH8223L4UP8i6QApWxs04RbPQJTeWDV0/keR2E36MeKnyr6LYmUUvqRRI+Iv87SuF1W6ErINzYw=="],

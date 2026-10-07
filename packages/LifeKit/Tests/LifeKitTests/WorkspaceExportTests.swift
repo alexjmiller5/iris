@@ -7,6 +7,65 @@ import Testing
 struct WorkspaceExportTests {
   private let capturedAt = Date(timeIntervalSince1970: 1_767_225_600)
 
+  @Test(arguments: [false, true])
+  func fixtureAdmissionSignalWorksBeforeAndAfterWaitStarts(admittedFirst: Bool) async throws {
+    let fixture = try await ExportWorkspaceFixture()
+    let observed = ExportAdmissionObserver()
+    fixture.holdNext("rows", onHeld: { observed.signal() })
+    let refresh = Task { await fixture.model.reload() }
+    defer {
+      refresh.cancel()
+      fixture.release()
+    }
+    if admittedFirst {
+      try #require(await observed.wait(), "Actual JSC admission must precede the waiter")
+    } else {
+      // No suspension yet: the child reload cannot have entered JSC on MainActor.
+      #expect(
+        fixture.runtime.context.evaluateScript("releaseExportRequest === null")?.toBool() == true)
+    }
+    try await fixture.waitUntilHeld()
+    #expect(!fixture.model.canExportLoadedRows)
+    fixture.release()
+    await refresh.value
+    #expect(fixture.model.canExportLoadedRows)
+    #expect(try fixture.model.captureLoadedRowsForExport(at: capturedAt).rows.count == 1)
+    await fixture.model.close()
+  }
+
+  @Test(arguments: [false, true])
+  func missingAdmissionSignalOrCancelledWaitReleasesWithoutClosingQueue(cancel: Bool) async throws {
+    let fixture = try await ExportWorkspaceFixture()
+    let observed = ExportAdmissionObserver()
+    fixture.holdNext("rows")
+    // Suppress only the notification, keeping the real JSC release closure intact.
+    let didHold: @convention(block) () -> Void = { observed.signal() }
+    fixture.runtime.context.setObject(didHold, forKeyedSubscript: "exportRequestHeld" as NSString)
+    let refresh = Task { await fixture.model.reload() }
+    defer {
+      refresh.cancel()
+      fixture.release()
+    }
+    try #require(await observed.wait(), "Missing-signal fixture must actually hold the request")
+    var threw = false
+    await withKnownIssue("Missing admission notification must fail the throwing requirement") {
+      let waiter = Task { try await fixture.waitUntilHeld(watchdogAfter: .milliseconds(20)) }
+      if cancel { waiter.cancel() }
+      do { try await waiter.value } catch { threw = true }
+    }
+    #expect(threw)
+    #expect(
+      fixture.model.client != nil, "Failure cleanup must not await or close the suspect queue")
+    #expect(
+      fixture.runtime.context.evaluateScript(
+        "exportHeldMethod === null && releaseExportRequest === null")?.toBool() == true)
+    await refresh.value
+    await fixture.model.reload()
+    #expect(fixture.model.canExportLoadedRows)
+    #expect(try fixture.model.captureLoadedRowsForExport(at: capturedAt).rows.count == 1)
+    await fixture.model.close()
+  }
+
   @Test func closingAnUnchangedRecordDoesNotStrandExport() async throws {
     let fixture = try await ExportWorkspaceFixture()
     let model = fixture.model
@@ -28,12 +87,15 @@ struct WorkspaceExportTests {
     let model = fixture.model
     model.search = "no-such-synthetic-row"
     var old: Task<Void, Never>?
+    defer {
+      old?.cancel()
+      fixture.release()
+    }
     if whileReloading {
       fixture.holdNext("rows")
       old = Task { await model.reload() }
       try await fixture.waitUntilHeld()
     }
-    defer { fixture.release() }
     var started = false
     let more = Task {
       started = true
@@ -90,7 +152,10 @@ struct WorkspaceExportTests {
     let prefix = model.rows.map(\.byteExactID)
     fixture.holdNext("rows")
     let next = Task { await model.reload(more: true) }
-    defer { fixture.release() }
+    defer {
+      next.cancel()
+      fixture.release()
+    }
     try await fixture.waitUntilHeld()
     if outcome == "cancel" {
       next.cancel()
@@ -135,7 +200,10 @@ struct WorkspaceExportTests {
         await model.reload()
       }
     }
-    defer { fixture.release() }
+    defer {
+      refresh.cancel()
+      fixture.release()
+    }
     try await fixture.waitUntilHeld()
     if afterWrite {
       fixture.runtime.context.evaluateScript(
@@ -254,7 +322,10 @@ struct WorkspaceExportTests {
     let snapshot = try model.captureLoadedRowsForExport(at: capturedAt)
     fixture.holdNext("rows")
     let refresh = Task { await model.reload() }
-    defer { fixture.release() }
+    defer {
+      refresh.cancel()
+      fixture.release()
+    }
     try await fixture.waitUntilHeld()
     #expect(!model.canExportLoadedRows)
     #expect(throws: WorkspaceError.self) { try model.captureLoadedRowsForExport(at: capturedAt) }
@@ -295,7 +366,10 @@ struct WorkspaceExportTests {
         ["id": original["id"]!, "body": .string("Committed after capture")],
         original: original, context: model.editingContext)
     }
-    defer { fixture.release() }
+    defer {
+      write.cancel()
+      fixture.release()
+    }
     try await fixture.waitUntilHeld()
     #expect(!model.canExportLoadedRows)
     #expect(throws: WorkspaceError.self) { try model.captureLoadedRowsForExport(at: capturedAt) }
@@ -320,7 +394,10 @@ struct WorkspaceExportTests {
     let action = try #require(model.undoAction)
     fixture.holdNext("undo")
     let undo = Task { try await model.undo(action, context: model.editingContext) }
-    defer { fixture.release() }
+    defer {
+      undo.cancel()
+      fixture.release()
+    }
     try await fixture.waitUntilHeld()
     #expect(!model.canExportLoadedRows)
     #expect(throws: WorkspaceError.self) { try model.captureLoadedRowsForExport(at: capturedAt) }
@@ -334,6 +411,9 @@ struct WorkspaceExportTests {
 @MainActor private final class ExportWorkspaceFixture {
   let runtime: LifeCoreRuntime
   let model: WorkspaceModel
+  private var heldStart: AsyncStream<Void>?
+  private var heldContinuation: AsyncStream<Void>.Continuation?
+  private var heldMethod: String?
 
   init() async throws {
     runtime = try LifeCoreRuntime()
@@ -359,6 +439,7 @@ struct WorkspaceExportTests {
           releaseExportRequest = null;
           exportRequest(id, method, args);
         };
+        exportRequestHeld();
       };
       """#)
     try #require(runtime.context.exception == nil)
@@ -374,15 +455,85 @@ struct WorkspaceExportTests {
   var requests: [String] {
     runtime.context.evaluateScript("exportRequests")?.toArray() as? [String] ?? []
   }
-  func holdNext(_ method: String) {
+  func holdNext(_ method: String, onHeld: @escaping @Sendable () -> Void = {}) {
+    let (stream, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    heldStart = stream
+    heldContinuation = continuation
+    heldMethod = method
+    // JSC emits only after the actual request has installed its release closure.
+    // Buffer the event even if admission precedes waitUntilHeld's suspension.
+    let started: @convention(block) () -> Void = {
+      continuation.yield(())
+      continuation.finish()
+      onHeld()
+    }
+    runtime.context.setObject(started, forKeyedSubscript: "exportRequestHeld" as NSString)
     runtime.context.setObject(method, forKeyedSubscript: "exportHeldMethod" as NSString)
   }
-  func release() { runtime.context.evaluateScript("releaseExportRequest?.()") }
-  func waitUntilHeld() async throws {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
-    while runtime.context.evaluateScript("releaseExportRequest !== null")?.toBool() != true,
-      ContinuousClock.now < deadline
-    { await Task.yield() }
-    try #require(runtime.context.evaluateScript("releaseExportRequest !== null")?.toBool() == true)
+
+  func release() {
+    // Disarm too: a failed admission wait must not trap a request arriving later.
+    runtime.context.evaluateScript("exportHeldMethod = null; releaseExportRequest?.()")
+    runtime.context.setObject(nil, forKeyedSubscript: "exportRequestHeld" as NSString)
+    heldContinuation?.finish()
+    heldContinuation = nil
+    heldStart = nil
+    heldMethod = nil
+  }
+
+  func waitUntilHeld(watchdogAfter: Duration = .seconds(10)) async throws {
+    let stream = try #require(heldStart)
+    let continuation = try #require(heldContinuation)
+    let method = try #require(heldMethod)
+    // This is a diagnostic watchdog, not an admission polling interval or a
+    // performance assertion. Keep the existing bound while removing busy JSC reads.
+    let watchdog = Task {
+      do { try await Task.sleep(for: watchdogAfter) } catch { return }
+      continuation.finish()
+    }
+    defer { watchdog.cancel() }
+    do {
+      var iterator = stream.makeAsyncIterator()
+      let started = await iterator.next()
+      try #require(
+        started != nil,
+        Comment(
+          rawValue:
+            "Held \(method) request did not signal admission; requests=\(requests), loading=\(model.loading), JSC=\(runtime.context.exception?.toString() ?? "none")"
+        ))
+      // Preserve the fixture-state assertion without repeatedly crossing JSC.
+      try #require(
+        runtime.context.evaluateScript("releaseExportRequest !== null")?.toBool() == true)
+    } catch {
+      release()
+      // Do not await close on the admission queue that may have stalled.
+      // Rethrow promptly so the caller's cancellation defer can unwind too.
+      throw error
+    }
+  }
+}
+
+/// Separate observer proves actual fixture entry before testing a buffered or absent notification.
+private struct ExportAdmissionObserver: Sendable {
+  private let stream: AsyncStream<Void>
+  private let continuation: AsyncStream<Void>.Continuation
+
+  init() {
+    (stream, continuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+  }
+
+  func signal() {
+    continuation.yield(())
+    continuation.finish()
+  }
+
+  func wait() async -> Bool {
+    let watchdog = Task {
+      do { try await Task.sleep(for: .seconds(10)) } catch { return }
+      continuation.finish()
+    }
+    defer { watchdog.cancel() }
+    var iterator = stream.makeAsyncIterator()
+    return await iterator.next() != nil
   }
 }

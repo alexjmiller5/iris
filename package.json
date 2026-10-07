@@ -24,6 +24,10 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/bun": "^1.4.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "life-ui-core": "workspace:*"
+  },
+  "patchedDependencies": {
+    "wa-sqlite@github:rhashimoto/wa-sqlite#7a4b424": "patches/wa-sqlite@github%3Arhashimoto%2Fwa-sqlite#7a4b424.patch"
   }
 }
