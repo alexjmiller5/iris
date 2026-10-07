@@ -253,9 +253,14 @@ import Observation
     let current = generation
     var retiring = push
     if retiring == nil {
-      guard (try? alerts.state(endpoint: transport.endpoint).enabled) == true else { return }
-      let session = try await pushSession(transport)
-      let next = session?.pushRegistration
+      // Local disable is persisted before the server acknowledges revocation.
+      // After relaunch, resolve the server binding even when that preference is off.
+      guard let session = try await pushSession(transport) else {
+        throw WorkspaceError(
+          message: "Push could not be checked. Retry before forgetting this connection.",
+          violations: [])
+      }
+      let next = session.pushRegistration
       guard current == generation, !Task.isCancelled else { throw CancellationError() }
       if let next, let profile = next.profiles.first(where: { $0.platform == pushDevice.platform })
       {
