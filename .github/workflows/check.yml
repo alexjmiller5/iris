@@ -33,7 +33,7 @@ jobs:
       - run: bun run --cwd apps/web lint
       - run: bun run build
   apple:
-    runs-on: macos-26-intel
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: oven-sh/setup-bun@v2

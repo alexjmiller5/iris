@@ -93,7 +93,8 @@ bootstrap has set `OP_SERVICE_ACCOUNT_TOKEN` (until then the job skips with a
 notice). Cloudflare Access protects the Worker's hostnames; converge it with
 `scripts/cf-access.py`. The public repository is `alexjmiller5/life-ui`.
 
-Apple workflows use standard `macos-26-intel` hosted runners. Mac distribution
+Apple validation uses `macos-latest`; signing workflows use standard
+`macos-26-intel` hosted runners. Mac distribution
 uses `.github/workflows/release-macos.yml`, triggered only by
 explicitly approved stable version tags. It stamps the tag version, builds both
 Apple Silicon and Intel, exports with the existing Developer ID certificate and
