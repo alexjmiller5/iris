@@ -21,7 +21,14 @@ final class CatalogEditorUITests: XCTestCase {
     XCTAssertTrue(edit.waitForExistence(timeout: 10))
     edit.click()
     let entry = app.descendants(matching: .any)["catalog-entry"].firstMatch
-    XCTAssertTrue(entry.waitForExistence(timeout: 5), app.debugDescription)
+    let entryAppeared = entry.waitForExistence(timeout: 5)
+    if !entryAppeared {
+      let screen = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+      screen.name = "catalog-editor-missing-entry-screen"
+      screen.lifetime = .keepAlways
+      add(screen)
+    }
+    XCTAssertTrue(entryAppeared, app.debugDescription)
     XCTAssertTrue(entry.isHittable)
     entry.click()
     app.menuItems["title"].click()
