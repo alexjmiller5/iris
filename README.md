@@ -53,7 +53,8 @@ policy interval within the original deadline. Malformed replies fail the attempt
 The core classifies replies; the browser explicitly owns these bounded retries.
 
 Closing or switching workspaces forgets the in-memory credential and preserves
-local rows for offline use. Forgetting is not revocation. Revoke an established
+local rows for offline use. Native **Close workspace** cancels an active sync
+without waiting for the hub, retaining committed rows and queued local edits. Forgetting is not revocation. Revoke an established
 device through the hub's device management page. A replacement browser/device
 creates a fresh credential through the same approval flow; no token export or
 storage transfer is required.
