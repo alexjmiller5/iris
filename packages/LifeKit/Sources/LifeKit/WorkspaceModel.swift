@@ -298,6 +298,9 @@ final class WorkspaceModel {
           violations: [])
       }
       undoAction = nil
+      // The inverse is already committed. A presentation refresh failure must
+      // not prevent automatic upload of that durable local change.
+      recordLocalChange()
       if action.table == "views", query == queryKey {
         try await refreshSavedViews(context: context)
         guard context.workspace === client, generation == workspaceGeneration,
@@ -311,7 +314,6 @@ final class WorkspaceModel {
           try installSavedView(restored, context: context)
         }
       }
-      recordLocalChange()
       await reloadAfterCommit(
         workspace: context.workspace, generation: generation,
         query: action.table == "views" ? queryKey : query)
