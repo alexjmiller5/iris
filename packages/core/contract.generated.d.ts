@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "e935ee9223797c2910128fcaef91cce70acfeb0baa329dc848074f45b9bf4ff3";
+export declare const CORE_CONTRACT_HASH = "6ee3fbe74b1f35e0b2b02daabd568704e2ce5c1fcd37b6902e3128e358da5c82";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -286,6 +286,7 @@ export type UndoArgs = {
 export type EnrollmentApprovalArgs = {
     fingerprint: string;
     name: string;
+    profile?: string;
 };
 export type EnrollmentPolicy = {
     pollIntervalSeconds: Count;
@@ -312,9 +313,13 @@ export type SessionInfo = {
     scopes: string[];
     replica: ReplicaEligibility;
     governance?: GovernanceCapability;
+    enrollmentProfile?: EnrollmentProfileReceipt;
+    pushRegistration?: PushRegistrationCapability;
+    pushProfiles?: PushAppProfile[];
 };
 export type SessionDataArgs = {
     data: JSONValue;
+    expectedProfile?: EnrollmentProfileExpectation;
 };
 export type SessionReply = {
     status: Count;
@@ -324,6 +329,7 @@ export type SessionReply = {
 export type EnrollmentPollArgs = {
     reply: SessionReply;
     expectedFingerprint: string;
+    expectedProfile?: EnrollmentProfileExpectation;
 };
 export type EnrollmentPollState = "pending" | "approved";
 export type EnrollmentPollResult = {
@@ -381,6 +387,9 @@ export type HubCapabilities = {
     conditional_patch?: "revision-v1";
     subscription_features?: "scalar-lifecycle-v1";
     governance?: GovernanceCapability;
+    rowCreation?: RowCreationCapability;
+    push_registration?: PushRegistrationCapability;
+    push_profiles?: PushAppProfile[];
 };
 export type HubSession = {
     name: string;
@@ -646,6 +655,85 @@ export type GovernanceCapability = {
     deploymentId: string;
     sessionId: string;
 };
+export type EnrollmentProfileReceipt = {
+    id: string;
+    revision: string;
+};
+export type EnrollmentProfileExpectation = {
+    id: string;
+    scopes: string[];
+};
+export type CreationPolicyRef = {
+    id: string;
+    revision: string;
+};
+export type RowCreationCapability = {
+    protocol: "atomic-origin-v1";
+    policies: CreationPolicyRef[];
+};
+export type RowCreationTarget = {
+    kind: "generated" | "adopted";
+    id: string;
+};
+export type RowCreationRequest = {
+    policy: CreationPolicyRef;
+    sourceId: string;
+    occurrenceKey: CreationOccurrenceKey;
+    target: RowCreationTarget;
+    updatedAt: string;
+    values: Record<string, FilterValue>;
+};
+export type RowCreatedReceipt = {
+    kind: "created";
+    policy: CreationPolicyRef;
+    id: string;
+    revision: Revision;
+    originId: string;
+};
+export type RowExistingReceipt = {
+    kind: "existing";
+    policy: CreationPolicyRef;
+    id: string;
+};
+export type RowCreationReceipt = RowCreatedReceipt | RowExistingReceipt;
+export type CreationOccurrenceKey = string | number;
+export type PushAppProfile = {
+    id: string;
+    platform: PushPlatform;
+};
+export type PushRegistrationCapability = {
+    protocol: string;
+    deploymentIdentity: string;
+    sessionBinding: string;
+    profiles: PushAppProfile[];
+};
+export type PushRegistrationState = {
+    installationId: string;
+    revision: string;
+    state: PushRegistrationStatus;
+    deploymentIdentity: string;
+    sessionBinding: string;
+    appProfile: string;
+    activatedAfterSeq: Count;
+    updatedAt: string;
+};
+export type PushRegistrationRequest = {
+    appProfile: string;
+    deviceToken: string;
+    expectedRevision: string | null;
+    requestId: string;
+};
+export type PushRevocationRequest = {
+    appProfile: string;
+    expectedRevision: string | null;
+    requestId: string;
+};
+export type PushRegistrationReceipt = {
+    requestId: string;
+    registration: PushRegistrationState;
+};
+export type PushPlatform = "ios" | "macos";
+export type PushRegistrationStatus = "active" | "revoked";
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;

@@ -13,7 +13,7 @@ struct RecordPolishUIFixtureTests {
       let env = ProcessInfo.processInfo.environment
       try #require(env["LIFE_UI_TEST_RECORD_POLISH_SIMULATOR"] == env["SIMULATOR_UDID"])
       let model = WorkspaceModel()
-      try model.forgetConnection()
+      try await model.forgetConnection()
       await model.open()
       if let store = model.editingContext?.draftStore {
         for saved in try store.all() where saved.table == "notes" {

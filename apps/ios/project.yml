@@ -27,6 +27,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.life-ui
         PRODUCT_NAME: LifeUI
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Signing/LifeUI.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
       configs:

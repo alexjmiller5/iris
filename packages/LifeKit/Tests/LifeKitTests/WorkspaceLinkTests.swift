@@ -198,7 +198,7 @@ struct WorkspaceLinkTests {
     let link = try NativeDeepLink(
       url: model.linkURL(for: NativeDestination(table: "notes"), context: model.editingContext))
     #expect(link.binding == .replica(canonicalEndpoint: endpoint))
-    try model.forgetConnection()
+    try await model.forgetConnection()
     #expect(!model.isReplica && model.connection == nil && model.client === client)
     #expect(try model.linkedDestination(link) == NativeDestination(table: "notes"))
     #expect(try model.linkURL(for: link.destination, context: model.editingContext) == link.url)

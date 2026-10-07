@@ -693,8 +693,22 @@ No provider credentials or account-wide billing requests belong in a client.
 Apple clients offer an explicit **Enable alerts** action. The initial feed is
 history, not a burst of new system alerts. Presentation checkpoints and stable
 notification IDs are local to each device and deployment. Foreground delivery
-uses native notifications; APNs registration and background delivery remain a
-separate hub-owned phase. System notification permission is a user choice.
+uses native notifications until push registration is confirmed. When the hub
+supports Apple push, **Approve push for this device** opens the hub's explicit
+approval page for the existing connection. It preserves the credential and local
+replica. After approval, return to Notifications and refresh. A current server
+receipt enables push banners while polling continues updating the inbox without
+another banner. Token rotation and connection replacement invalidate readiness.
+**Turn off alerts** also requests server revocation; retry any displayed failure
+while connected. Forgetting a known push-enabled connection requires confirmation
+that its registration was revoked. System permission is requested only by
+**Enable alerts**. APNs acceptance does not mark a notification read.
+
+Replacement machines enroll through the normal connection UI, approve their own
+push subscription and choose system permission independently. Provider keys and
+app-profile configuration remain service-side. A signed app must carry the
+production APNs entitlement authorized by its app-specific distribution profile.
+Synthetic contract tests do not establish physical closed-app delivery.
 
 The shared service contract lives in life-core. To test against synthetic state
 using the hub implementations (the same checkout can supply both after merge):
@@ -725,7 +739,10 @@ native testing. Both use synthetic records and loopback interfaces only.
   recipe. `IOS_INSTALL_HOST` can name the Mac paired to the device.
 - Ad Hoc distribution uses the manual **Build iOS Ad Hoc** GitHub workflow.
   The existing project CI service account reads the Apple Distribution P12,
-  password and Ad Hoc profile from the documented Apple Signing vault exception.
+  password and App Store Connect API key from the documented Apple Signing vault
+  exception. Set repository variable `IOS_PROVISIONING_PROFILE_ID` to the stable
+  API ID of this app's active `IOS_APP_ADHOC` profile. CI downloads it and verifies
+  the production push entitlement; wildcard profiles cannot enable APNs.
   Store `IOS_DEVICE_ID` in the project ENV item for the intended enrolled phone.
   The only GitHub secret remains `OP_SERVICE_ACCOUNT_TOKEN`.
   CI checks profile eligibility, signs in a temporary keychain and verifies the
@@ -774,7 +791,8 @@ Set the GitHub repository variable `HOMEBREW_TAP_REPOSITORY` to the tap's
 `owner/repository`. The shared tap credential must have write access there.
 Set `MACOS_PROVISIONING_PROFILE_ID` to the App Store Connect API ID of this
 app's Developer ID (`MAC_APP_DIRECT`) provisioning profile. The profile must
-authorize the existing signing certificate and this app's bundle ID. Create or
+authorize the existing signing certificate, this app's bundle ID and the
+production Apple push entitlement. Create or
 renew that app-owned profile through Apple's developer tools; CI downloads it
 with the existing App Store Connect team API key. That key needs profile read
 access. CI neither creates certificates nor uses cloud signing.
@@ -782,7 +800,7 @@ The app itself never receives any of these credentials.
 
 After release approval, push the chosen version tag and watch both workflow jobs.
 Before notarization/publication, CI verifies the final app's private App ID and
-team entitlements in both architectures against its embedded profile and exact
+team and production push entitlements in both architectures against its embedded profile and exact
 selected certificate. A separately signed probe uses the production credential
 store to create, read, update and delete a unique synthetic item in the Data
 Protection Keychain, including its device-only accessibility policy. These checks

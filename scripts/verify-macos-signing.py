@@ -21,13 +21,15 @@ def verify_claims(claims, profile, team, bundle, certificate):
     require(claims == {
         "com.apple.application-identifier": app_id,
         "com.apple.developer.team-identifier": team,
-    }, "App must claim only its profile-backed private app and team identity")
+        "com.apple.developer.aps-environment": "production",
+    }, "App must claim only its profile-backed private identity and production push entitlement")
     require(profile.get("TeamIdentifier") == [team], "Profile team mismatch")
     require(profile.get("Platform") == ["OSX"], "Profile is not for macOS")
     require(profile.get("ProvisionsAllDevices") is True, "Profile is not direct distribution")
     require(profile.get("ExpirationDate", datetime.datetime.min) > datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None), "Profile expired")
     require(certificate in profile.get("DeveloperCertificates", []), "Profile does not authorize signing certificate")
     allowed = profile.get("Entitlements", {})
+    require(allowed.get("com.apple.developer.aps-environment") == "production", "Profile must authorize production Apple push")
     require(allowed.get("com.apple.developer.team-identifier") == team, "Profile entitlement team mismatch")
     require(fnmatch.fnmatchcase(app_id, allowed.get("com.apple.application-identifier", "")), "Profile does not authorize app ID")
     require(not allowed.get("get-task-allow") and not allowed.get("com.apple.security.get-task-allow"), "Development profile is not distributable")
