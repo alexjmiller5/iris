@@ -177,3 +177,62 @@ it('uses the preferred ID only for plain table destinations and preserves fallba
 	await resolveDestination(workspace as never, { table: 'things', view: null, row: 'row' }, '');
 	expect(calls).not.toContain('getViewDefault');
 });
+
+it('round trips transient query configuration without URL-supplied actions', () => {
+	const state = {
+		version: 2,
+		columns: ['name'],
+		filters: [{ column: 'name', op: 'eq', value: 'Synthetic' }],
+		sort: [{ column: 'name', direction: 'desc' }],
+		actions: [{ id: 'action', name: 'Stored', values: {} }]
+	};
+	const url = destinationURL(new URL('https://example.test/workspace'), {
+		table: 'things',
+		view: 'saved',
+		row: null,
+		state
+	} as never);
+	expect(url.searchParams.has('state')).toBe(true);
+	const { actions, ...expected } = state;
+	expect(readDestination(url)).toEqual({
+		table: 'things',
+		view: 'saved',
+		row: null,
+		state: expected
+	});
+	for (const value of ['{', JSON.stringify({ version: 2, actions: [] }), 'x'.repeat(16385)]) {
+		expect(() =>
+			readDestination(
+				new URL('https://example.test/workspace?table=things&state=' + encodeURIComponent(value))
+			)
+		).toThrow();
+	}
+	expect(() =>
+		readDestination(new URL('https://example.test/workspace?state=%7B%22version%22%3A2%7D'))
+	).toThrow();
+});
+
+it('resolves transient state through core without loading a preference or saving a view', async () => {
+	const state = { version: 2, columns: ['name'] };
+	const calls: unknown[] = [];
+	const workspace = {
+		request: async (method: string, args?: unknown) => {
+			calls.push([method, args]);
+			if (method === 'snapshot')
+				return { catalog: { tables: [{ id: 'things' }], properties: [], rules: [] } };
+			if (method === 'resolveViewDefinition')
+				return { definition: state, view: { table: 'things', columns: ['name'] } };
+			throw Error(method);
+		}
+	};
+	const result = await resolveDestination(
+		workspace as never,
+		{ table: 'things', view: null, row: null, state } as never,
+		''
+	);
+	expect(result.definition).toEqual(state);
+	expect(calls).toEqual([
+		['snapshot', undefined],
+		['resolveViewDefinition', { table: 'things', definition: state }]
+	]);
+});

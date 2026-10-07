@@ -1,7 +1,10 @@
-import type { DeleteViewArgs, ListViewsArgs, SaveViewArgs, SavedViewList, SavedViewRecord } from './contract.generated.ts';
+import type { ResolveViewDefinitionArgs, ResolvedViewDefinition, DeleteViewArgs, ListViewsArgs, SaveViewArgs, SavedViewList, SavedViewRecord } from './contract.generated.ts';
 import type { SqlDriver } from './driver.ts';
 import { type Row } from './validate.ts';
 import { type WriteCapture } from './write.ts';
+/** Validate ephemeral UI configuration using the same compiler as stored views.
+ * No saved-view storage, history or write reservation is required. */
+export declare function resolveViewDefinition(db: SqlDriver, args: ResolveViewDefinitionArgs): Promise<ResolvedViewDefinition>;
 /** Internal action lookup; the caller holds the writer transaction. */
 export declare function loadSavedView(db: SqlDriver, id: string): Promise<SavedViewRecord>;
 /** Lists shared definitions only. Returned view.columns is SQL projection and

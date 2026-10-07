@@ -408,6 +408,8 @@ async function dispatch(request: DatabaseRequest) {
 			);
 			return createCoreHandlers(db, () => hub, 'life-ui').resolveDerived(input);
 		}
+		case 'resolveViewDefinition':
+			return local.resolveViewDefinition(args);
 		case 'listViews':
 			return local.listViews(args);
 		case 'getViewDefault':

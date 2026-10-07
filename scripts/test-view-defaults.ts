@@ -46,6 +46,17 @@ try {
  await expect.poll(()=>db.db.query('SELECT view_id FROM view_defaults WHERE tbl=? AND deleted_at IS NULL').get('widgets')?.view_id).toBe('preferred-opaque');
  // An explicit view wins over the persisted pointer, including after an OPFS reopen.
  await cdp.navigate(new URL('/workspace?table=widgets&view=other-opaque',url).href);await click('Open my workspace');await waitSelected('other-opaque');
+ // Unsaved search must survive a real OPFS reopen without modifying either saved definition.
+ const priorViews=db.db.query('SELECT id,definition FROM views ORDER BY id').all();
+ await cdp.fill(element('input[aria-label="Search records"]'),'Second record');
+ await cdp.until("JSON.parse(new URL(location.href).searchParams.get('state')??'{}').search==='Second record'");
+ await cdp.until("document.querySelector('[aria-label=\"Records\"]')?.innerText.includes('Second record')===true && document.querySelector('[aria-label=\"Records\"]')?.innerText.includes('Fixture record')===false");
+ const transientLink=await cdp.evaluate<string>('location.href');
+ await cdp.navigate(transientLink);await click('Open my workspace');await waitSelected('other-opaque');
+ await cdp.until("document.querySelector('input[aria-label=\"Search records\"]')?.value==='Second record'");
+ await cdp.until("document.querySelector('[aria-label=\"Records\"]')?.innerText.includes('Second record')===true && document.querySelector('[aria-label=\"Records\"]')?.innerText.includes('Fixture record')===false");
+ expect(db.db.query('SELECT id,definition FROM views ORDER BY id').all()).toEqual(priorViews);
+ console.log('PASS transient URL search, explicit saved identity, OPFS reopen, preferred-view precedence and unchanged saved rows.');
  await cdp.navigate(new URL('/workspace?table=widgets',url).href);await click('Open my workspace');await waitSelected('preferred-opaque');
  await click('Delete view');await click('Confirm delete');
  await openTable('views');await openTable('widgets');await waitSelected('');

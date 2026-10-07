@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "8f429c330ff1c9acf42371e2a662d6ea4a8b20c38a513299801a7cdd20441045";
+export declare const CORE_CONTRACT_HASH = "3d7d3586ca2ae7383b377c7d686c3a34936eaaf8058e3a27a05efe17f233b9f0";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -1061,6 +1061,14 @@ export type SaveCatalogRuleArgs = {
     expectedUpdatedAt: string | null;
     fields: Row;
 };
+export type ResolveViewDefinitionArgs = {
+    table: string;
+    definition: SavedViewDefinition;
+};
+export type ResolvedViewDefinition = {
+    definition: SavedViewDefinition;
+    view: View;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -1257,6 +1265,10 @@ export interface CoreOperations {
     saveCatalogRule: {
         args: SaveCatalogRuleArgs;
         result: Row;
+    };
+    resolveViewDefinition: {
+        args: ResolveViewDefinitionArgs;
+        result: ResolvedViewDefinition;
     };
 }
 export type CoreMethod = keyof CoreOperations;
