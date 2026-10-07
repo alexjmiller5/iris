@@ -190,6 +190,11 @@ stored choices stay selected until explicitly removed; core still validates Save
 **Edit JSON source** keeps malformed multi-select values available for repair.
 Opening a control does not rewrite its stored source.
 
+Saved archive metadata rows can be opened with **View page capture** on the web
+or **Open as page capture** in the native record menu. Screenshot is the default;
+archived HTML is isolated and original PNG/HTML downloads are verified independently.
+See [page captures](docs/page-captures.md) for preview limits and the file-access contract.
+
 Dates use a native picker. **Date source** holds the original text and **Clear
 date** for an explicit unset value. Datetimes display in UTC; untouched milliseconds remain
 intact. An invalid date stays visible until edited or explicitly replaced.
