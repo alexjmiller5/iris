@@ -110,10 +110,33 @@ export async function openApprovalJournal(
 	scope: ApprovalScope,
 	options: { indexedDB?: IDBFactory; databaseName?: string } = {}
 ): Promise<ApprovalJournal & { close(): void }> {
+	const boundScope = { ...scope };
+	return openScopedJournal<PendingApproval>(
+		scopeKey(boundScope),
+		{
+			encode: (entry) => encodePendingApproval(entry, boundScope),
+			decode: (raw) => decodePendingApproval(raw, boundScope)
+		},
+		options
+	);
+}
+
+export interface DurableJournal<T> {
+	load(): Promise<T | null>;
+	retain(entry: T): Promise<void>;
+	resolve(entry: T): Promise<void>;
+	close(): void;
+}
+
+/** Shared strict IndexedDB persistence; each protocol owns its exact codec/key. */
+export async function openScopedJournal<T>(
+	key: string,
+	codec: { encode(entry: T): string; decode(raw: unknown): T },
+	options: { indexedDB?: IDBFactory; databaseName?: string } = {}
+): Promise<DurableJournal<T>> {
+	if (!key) throw new Error('Missing journal scope.');
 	const factory = Object.hasOwn(options, 'indexedDB') ? options.indexedDB : globalThis.indexedDB;
 	if (!factory) throw new Error('IndexedDB approval recovery is unavailable.');
-	const key = scopeKey(scope);
-	const boundScope = { ...scope };
 	const db = await new Promise<IDBDatabase>((resolve, reject) => {
 		const opening = factory.open(options.databaseName ?? 'life-ui-governance', 1);
 		let failed = false;
@@ -206,15 +229,11 @@ export async function openApprovalJournal(
 	}
 	return {
 		async load() {
-			return transaction<PendingApproval | null>('readonly', (store, done, fail) => {
+			return transaction<T | null>('readonly', (store, done, fail) => {
 				const request = store.openCursor(key);
 				request.onsuccess = () => {
 					try {
-						done(
-							request.result === null
-								? null
-								: decodePendingApproval(request.result.value, boundScope)
-						);
+						done(request.result === null ? null : codec.decode(request.result.value));
 					} catch (error) {
 						fail(error);
 					}
@@ -222,13 +241,13 @@ export async function openApprovalJournal(
 			});
 		},
 		async retain(entry) {
-			const encoded = encodePendingApproval(entry, boundScope);
+			const encoded = codec.encode(entry);
 			await transaction<void>('readwrite', (store, done, fail) => {
 				const request = store.openCursor(key);
 				request.onsuccess = () => {
 					try {
 						if (request.result !== null) {
-							decodePendingApproval(request.result.value, boundScope);
+							codec.decode(request.result.value);
 							if (request.result.value !== encoded)
 								throw new Error('Resolve the existing approval before replacing it.');
 						} else store.add(encoded, key);
@@ -240,13 +259,13 @@ export async function openApprovalJournal(
 			});
 		},
 		async resolve(entry) {
-			const encoded = encodePendingApproval(entry, boundScope);
+			const encoded = codec.encode(entry);
 			await transaction<void>('readwrite', (store, done, fail) => {
 				const request = store.openCursor(key);
 				request.onsuccess = () => {
 					try {
 						if (request.result !== null) {
-							decodePendingApproval(request.result.value, boundScope);
+							codec.decode(request.result.value);
 							if (request.result.value !== encoded)
 								throw new Error('Retained approval changed; it was not removed.');
 							store.delete(key);

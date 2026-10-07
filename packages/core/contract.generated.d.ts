@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "8f37229188ef68933aee8f4bc79b8fd5ce8ac4c76ffbc8bf947af1b6d413c49f";
+export declare const CORE_CONTRACT_HASH = "5e7a5b7753042b64b8906e616a9f046cdc63473d35d768adf4aef3ca326c8190";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -315,6 +315,8 @@ export type SessionInfo = {
     replica: ReplicaEligibility;
     governance?: GovernanceCapability;
     enrollmentProfile?: EnrollmentProfileReceipt;
+    pushRegistration?: PushRegistrationCapability;
+    pushProfiles?: PushAppProfile[];
 };
 export type SessionDataArgs = {
     data: JSONValue;
@@ -387,6 +389,9 @@ export type HubCapabilities = {
     subscription_features?: "scalar-lifecycle-v1";
     governance?: GovernanceCapability;
     rowCreation?: RowCreationCapability;
+    push_registration?: PushRegistrationCapability;
+    push_profiles?: PushAppProfile[];
+    changesets?: ChangesetCapability;
 };
 export type HubSession = {
     name: string;
@@ -774,6 +779,163 @@ export type MoveTablePinArgs = {
     direction: "up" | "down";
     expected: PinRevision[];
 };
+export type GetViewDefaultArgs = {
+    table: string;
+};
+export type SetViewDefaultArgs = {
+    table: string;
+    viewId: string | null;
+    expectedUpdatedAt: string | null;
+};
+export type ViewDefault = {
+    table: string;
+    viewId: string | null;
+    updated_at: string | null;
+    view: SavedViewRecord | null;
+    unavailable: string | null;
+};
+export type PushAppProfile = {
+    id: string;
+    platform: PushPlatform;
+};
+export type PushRegistrationCapability = {
+    protocol: string;
+    deploymentIdentity: string;
+    sessionBinding: string;
+    profiles: PushAppProfile[];
+};
+export type PushRegistrationState = {
+    installationId: string;
+    revision: string;
+    state: PushRegistrationStatus;
+    deploymentIdentity: string;
+    sessionBinding: string;
+    appProfile: string;
+    activatedAfterSeq: Count;
+    updatedAt: string;
+};
+export type PushRegistrationRequest = {
+    appProfile: string;
+    deviceToken: string;
+    expectedRevision: string | null;
+    requestId: string;
+};
+export type PushRevocationRequest = {
+    appProfile: string;
+    expectedRevision: string | null;
+    requestId: string;
+};
+export type PushRegistrationReceipt = {
+    requestId: string;
+    registration: PushRegistrationState;
+};
+export type PushPlatform = "ios" | "macos";
+export type PushRegistrationStatus = "active" | "revoked";
+export type ChangesetCreate = {
+    kind: "create";
+    table: string;
+    id: string;
+    expected_revision: null;
+    values: Row;
+};
+export type ChangesetPatch = {
+    kind: "patch";
+    table: string;
+    id: string;
+    expected_revision: Revision;
+    values: Row;
+};
+export type ChangesetSoftDelete = {
+    kind: "soft_delete";
+    table: string;
+    id: string;
+    expected_revision: Revision;
+};
+export type ChangesetOperation = ChangesetCreate | ChangesetPatch | ChangesetSoftDelete;
+export type ChangesetReadSet = {
+    table: string;
+    where: Record<string, FilterValue>;
+    expected: ChangesetReadMember[];
+};
+export type ChangesetInput = {
+    operations: ChangesetOperation[];
+    reads: ChangesetReadSet[];
+};
+export type ChangesetChange = {
+    table: string;
+    id: string;
+    kind: "create" | "patch" | "soft_delete";
+    before: Row | null;
+    after: Row | null;
+};
+export type ChangesetPreview = {
+    changes: ChangesetChange[];
+    previewToken: string;
+    expiresAt: string;
+};
+export type ChangesetProposal = {
+    id: string;
+    version: string;
+    state: ProposalState;
+    input: ChangesetInput;
+    changes: ChangesetChange[];
+    dependencies: string;
+    proposedBy: Actor;
+    claimedOrigin: string | null;
+    createdAt: string;
+    updatedAt: string;
+};
+export type ChangesetRowReceipt = {
+    table: string;
+    id: string;
+    kind: "create" | "patch" | "soft_delete";
+    revision: Revision;
+};
+export type ChangesetApproval = {
+    operationId: string;
+    proposalId: string;
+    proposalVersion: string;
+    rows: ChangesetRowReceipt[];
+    historyEventIds: string[];
+    approvedBy: Actor;
+    committedAt: string;
+};
+export type ChangesetPreviewSuccess = {
+    kind: "success";
+    value: ChangesetPreview;
+};
+export type ChangesetPreviewResult = ChangesetPreviewSuccess | UnavailableResult | PurgedResult | MutationError | TransportError;
+export type ChangesetProposalSuccess = {
+    kind: "success";
+    value: ChangesetProposal;
+};
+export type ChangesetProposalResult = ChangesetProposalSuccess | UnavailableResult | PurgedResult | MutationError | TransportError;
+export type ChangesetApprovalSuccess = {
+    kind: "success";
+    value: ChangesetApproval;
+};
+export type ChangesetApprovalResult = ChangesetApprovalSuccess | UnavailableResult | PurgedResult | MutationError | TransportError;
+export type ChangesetLimits = {
+    maxOperations: number;
+    maxTables: number;
+    maxBytes: number;
+    maxReadSets: number;
+    maxMembershipRows: number;
+    maxReadRows: number;
+    previewTtlSeconds: number;
+};
+export type ChangesetCapability = {
+    protocol: "bounded-changeset-proposals-v1";
+    principal: Actor;
+    authority: GovernanceAuthority;
+    limits: ChangesetLimits;
+    deploymentId: string;
+    sessionId: string;
+};
+export type ChangesetReadMember = {
+    id: string;
+    revision: Revision;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -950,6 +1112,14 @@ export interface CoreOperations {
     moveTablePin: {
         args: MoveTablePinArgs;
         result: SidebarPinList;
+    };
+    getViewDefault: {
+        args: GetViewDefaultArgs;
+        result: ViewDefault;
+    };
+    setViewDefault: {
+        args: SetViewDefaultArgs;
+        result: ViewDefault;
     };
 }
 export type CoreMethod = keyof CoreOperations;
