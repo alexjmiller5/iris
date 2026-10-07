@@ -15,12 +15,17 @@ struct RecordPresentationView: View {
   private var byID: [Data: WorkspaceRow] {
     Dictionary(uniqueKeysWithValues: rows.map { (Data($0.id.utf8), $0) })
   }
+  static func configurationBytes<T: Encodable>(_ value: T) -> Data {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    return (try? encoder.encode(value)) ?? Data()
+  }
   private var key: [Data] {
     ([
       month, model.viewTimeZone, String(model.viewDayStartMinutes),
       String(model.workspaceGeneration), model.table ?? "",
-      String(data: (try? JSONEncoder().encode(model.properties)) ?? Data(), encoding: .utf8) ?? "",
-      String(data: (try? JSONEncoder().encode(definition)) ?? Data(), encoding: .utf8) ?? "",
+      String(data: Self.configurationBytes(model.properties), encoding: .utf8) ?? "",
+      String(data: Self.configurationBytes(definition), encoding: .utf8) ?? "",
     ]
       + rows.flatMap { [$0.id, $0.record["updated_at"]?.text ?? ""] }).map { Data($0.utf8) }
   }
