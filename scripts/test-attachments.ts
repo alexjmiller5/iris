@@ -215,7 +215,7 @@ try {
       void command("Page.handleJavaScriptDialog", { accept: true });
   });
   await evaluate(
-    `(()=>{const original=FileSystemDirectoryHandle.prototype.getFileHandle;window.__releaseAttachment=null;window.__attachmentHeld=false;FileSystemDirectoryHandle.prototype.getFileHandle=async function(name,options){if(options?.create&&name.startsWith('.stage-')){window.__attachmentHeld=true;await new Promise(resolve=>window.__releaseAttachment=resolve);}return original.call(this,name,options);};const input=${editor}.querySelector('input[type=file]');const transfer=new DataTransfer();transfer.items.add(new File(['held synthetic bytes'],'late-selection.txt',{type:'text/plain'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));window.__restoreAttachment=()=>FileSystemDirectoryHandle.prototype.getFileHandle=original;})()`,
+    `(()=>{window.__attachmentFailures=[];window.addEventListener('unhandledrejection',event=>window.__attachmentFailures.push(String(event.reason)));const original=FileSystemDirectoryHandle.prototype.getFileHandle;window.__releaseAttachment=null;window.__attachmentHeld=false;FileSystemDirectoryHandle.prototype.getFileHandle=async function(name,options){if(options?.create&&name.startsWith('.stage-')){window.__attachmentHeld=true;await new Promise(resolve=>window.__releaseAttachment=resolve);}return original.call(this,name,options);};const input=${editor}.querySelector('input[type=file]');const transfer=new DataTransfer();transfer.items.add(new File(['held synthetic bytes'],'late-selection.txt',{type:'text/plain'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));window.__restoreAttachment=()=>FileSystemDirectoryHandle.prototype.getFileHandle=original;})()`,
   );
   await until("window.__attachmentHeld===true");
   await click(button("Close record", editor));
@@ -224,6 +224,7 @@ try {
   await evaluate("window.__releaseAttachment();window.__restoreAttachment()");
   await expect.poll(() => uploaded.length, { timeout: 10000 }).toBe(3);
   expect(await sourceText()).toBe(reopenedSource);
+  expect(await evaluate("window.__attachmentFailures")).toEqual([]);
   expect(editorErrors).toEqual([]);
   console.log(
     "PASS mounted attachment selection, offline failure, exact source/bytes after restart, same-key reconnect upload, closed-editor late selection",

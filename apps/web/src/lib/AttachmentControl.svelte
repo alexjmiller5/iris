@@ -48,7 +48,7 @@
 		const owner = outbox;
 		try {
 			const entry = await owner.stage(file);
-			if (outbox === owner && !disabled)
+			if (active && outbox === owner && !disabled)
 				onchange(property ? '/v1/files/' + entry.key : attachmentMarkdown(entry, value));
 		} catch {
 			if (!active) return;
