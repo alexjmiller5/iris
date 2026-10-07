@@ -132,6 +132,17 @@ final class WorkspaceModel {
     }
     do {
       if let linkIdentityStore { linkBinding = try linkIdentityStore.create() }
+      var destination = destination
+      var definition = try currentViewDefinition()
+      if destination.viewID == appliedView?.id, destination.state == nil,
+        definition != (appliedView?.definition ?? CoreSavedViewDefinition(version: 1)) {
+        definition.actions = nil
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let state = String(decoding: try encoder.encode(definition), as: UTF8.self)
+        destination = NativeDestination(table: destination.table, viewID: destination.viewID,
+          rowID: destination.rowID, state: state)
+      }
       let url = try NativeDeepLink(destination: destination, workspace: linkBinding).url
       linkError = nil
       return url
@@ -770,6 +781,34 @@ final class WorkspaceModel {
     return context
   }
 
+  func editCatalog(
+    context: WorkspaceEditingContext,
+    operation: (NativeWorkspace) async throws -> WorkspaceRecord
+  ) async throws -> WorkspaceRecord {
+    _ = try requireViewContext(context)
+    guard !savingView, !undoing, !writingRecord, !loading else {
+      throw WorkspaceError(
+        message: "Finish the active operation before editing the catalog.", violations: [])
+    }
+    let workspace = workspaceGeneration
+    let generation = viewGeneration
+    savingView = true
+    defer { if generation == viewGeneration { savingView = false } }
+    let result = try await operation(context.workspace)
+    _ = try requireViewContext(context, generation: workspace)
+    guard generation == viewGeneration else {
+      throw WorkspaceError(
+        message: "The view changed. Reopen the catalog to see the saved result.", violations: [])
+    }
+    let updated = try await context.workspace.catalog()
+    _ = try requireViewContext(context, generation: workspace)
+    guard generation == viewGeneration else { throw CancellationError() }
+    catalog = updated
+    recordLocalChange()
+    await reloadAfterCommit(workspace: context.workspace, generation: workspace, query: queryKey)
+    return result
+  }
+
   func refreshSavedViews(context: WorkspaceEditingContext?) async throws {
     let context = try requireViewContext(context)
     await refreshWriteability()
@@ -814,24 +853,26 @@ final class WorkspaceModel {
     await reloadAfterCommit(workspace: context.workspace, generation: generation, query: queryKey)
   }
 
-  func applySavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?) throws {
+  func applySavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?, definition: CoreSavedViewDefinition? = nil) throws {
     let context = try requireViewContext(context)
     guard !savingView, !undoing else {
       throw WorkspaceError(message: "Wait for the saved view to finish saving.", violations: [])
     }
-    try installSavedView(saved, context: context)
+    try installSavedView(saved, context: context, transient: definition)
   }
 
-  private func installSavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext)
+  private func installSavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext, transient: CoreSavedViewDefinition? = nil)
     throws
   {
     if let saved {
       guard saved.tbl == context.table, saved.deletedAt == nil,
-        saved.unavailable == nil, let definition = saved.definition, saved.view != nil
+        saved.unavailable == nil, saved.definition != nil, saved.view != nil
       else {
         throw WorkspaceError(
           message: saved.unavailable ?? "This saved view is unavailable.", violations: [])
       }
+    }
+    if let definition = transient ?? saved?.definition {
       appliedView = saved
       visibleRecordColumns = definition.columns
       search = definition.search ?? ""
@@ -1014,7 +1055,7 @@ final class WorkspaceModel {
     if table == target { resetView() } else { table = target }
     let context = WorkspaceEditingContext(
       workspace: workspace, table: target, draftStore: draftStore)
-    try applySavedView(resolved.view, context: context)
+    try applySavedView(resolved.view, context: context, definition: resolved.definition)
     defaultViewNotice = resolved.defaultNotice
     if resolved.row != nil { trash = resolved.isTrashed }
     return context
@@ -1184,6 +1225,7 @@ final class WorkspaceModel {
         localObserver = demo ? nil : try LocalDatabaseObserver(path: path)
         if seed { try await workspace.createSample() }
         if !demo, url == nil {
+          try await workspace.prepareLocalCatalog()
           try await workspace.prepareLocalViews()
           try await workspace.prepareLocalPins()
         }
@@ -1786,6 +1828,8 @@ final class WorkspaceModel {
     attachments?.stop()
     attachments = nil
     stopAutomaticSync()
+    // Unwind held HTTP before the native close barrier waits for its owner.
+    client?.cancelSync()
     workspaceGeneration += 1
     revision += 1
     services.configure(workspace: nil, transport: nil)

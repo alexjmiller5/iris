@@ -9,6 +9,7 @@ public struct WorkspaceView: View {
   @State private var recordExport: RecordExportTarget?
   @State private var rowSelection: RecordSelectionTarget?
   @State private var options = false
+  @State private var catalogEditor: CatalogEditorModel?
   @State private var filterColumn: String?
   @State private var savedViews = false
   @State private var showingGraph = false
@@ -225,6 +226,7 @@ public struct WorkspaceView: View {
       .sheet(isPresented: $showingStatus) { WorkspaceStatusSheet(model: model) }
     #endif
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
+    .sheet(item: $catalogEditor) { CatalogEditorView(model: $0) }
     .sheet(item: $recordExport) { target in
       RecordExportView(snapshot: target.snapshot)
     }
@@ -350,11 +352,25 @@ public struct WorkspaceView: View {
       && pendingSearchEditor == nil && pendingDuplicateEditor == nil
       && pendingReferenceEditor == nil && rejectionInbox == nil && pendingRejection == nil
       && !settings && !options && !savedViews && !importing && recordExport == nil
-      && rowSelection == nil
+      && catalogEditor == nil && rowSelection == nil
   }
 
   private var canExportLoadedRows: Bool {
     canFind && !showingGraph && !showingStatus && model.canExportLoadedRows
+  }
+
+  private var catalogEditorButton: some View {
+    Button {
+      guard canFind, !model.loading, let context = model.editingContext else { return }
+      catalogEditor = CatalogEditorModel(workspace: model, context: context)
+    } label: {
+      Label("Edit catalog", systemImage: "list.bullet.rectangle")
+    }
+    .disabled(
+      !canFind || model.loading
+        || model.tables.first { $0["id"]?.text == model.table }?["readOnly"] != .bool(false)
+    )
+    .accessibilityIdentifier("edit-catalog")
   }
 
   private var exportLoadedRowsAction: some View {
@@ -1070,6 +1086,7 @@ public struct WorkspaceView: View {
           Label("Hub connection", systemImage: "gearshape")
         }.disabled(editor != nil)
         exportLoadedRowsAction
+        catalogEditorButton
         selectLoadedRowsAction
         Button(action: showRejections) { Label("Issues", systemImage: "exclamationmark.bubble") }
           .disabled(!canFind).accessibilityIdentifier("workspace-issues")
@@ -1155,6 +1172,7 @@ public struct WorkspaceView: View {
                   if !model.filters.isEmpty { Text("\(model.filters.count) active") }
                 }
               }.disabled(editor != nil).accessibilityIdentifier("view-options")
+              catalogEditorButton
               Spacer()
               Button {
                 guard let table = model.table else { return }

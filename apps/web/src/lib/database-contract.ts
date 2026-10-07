@@ -12,6 +12,11 @@ export interface WorkspaceSnapshot {
 	undo: CoreResult<'undoStatus'>['action'];
 }
 export interface DatabaseOperations {
+	saveCatalogProperty: {
+		args: CoreArgs<'saveCatalogProperty'>;
+		result: CoreResult<'saveCatalogProperty'>;
+	};
+	saveCatalogRule: { args: CoreArgs<'saveCatalogRule'>; result: CoreResult<'saveCatalogRule'> };
 	listSidebarPins: { args: CoreArgs<'listSidebarPins'>; result: CoreResult<'listSidebarPins'> };
 	pinTable: { args: CoreArgs<'pinTable'>; result: CoreResult<'pinTable'> };
 	unpinTable: { args: CoreArgs<'unpinTable'>; result: CoreResult<'unpinTable'> };
@@ -55,6 +60,10 @@ export interface DatabaseOperations {
 	resolveDerived: {
 		args: CoreArgs<'resolveDerived'> & { token: string };
 		result: CoreResult<'resolveDerived'>;
+	};
+	resolveViewDefinition: {
+		args: CoreArgs<'resolveViewDefinition'>;
+		result: CoreResult<'resolveViewDefinition'>;
 	};
 	listViews: { args: CoreArgs<'listViews'>; result: CoreResult<'listViews'> };
 	getViewDefault: { args: CoreArgs<'getViewDefault'>; result: CoreResult<'getViewDefault'> };

@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { prepareLocalCatalog } from '../../../../scripts/local-catalog';
 import { enrollmentEndpoint } from './enrollment-binding';
 import { rejectionSnapshot } from './rejection-inbox';
 import SQLiteFactory from '../../../../vendor/wa-sqlite/wa-sqlite.mjs';
@@ -323,6 +324,7 @@ async function dispatch(request: DatabaseRequest) {
 				if (args.demo) await migrateDemo();
 			});
 			if (args.demo) {
+				await prepareLocalCatalog(db);
 				await prepareLocalViews(db);
 				await prepareLocalPins(db);
 			}
@@ -406,12 +408,18 @@ async function dispatch(request: DatabaseRequest) {
 			);
 			return createCoreHandlers(db, () => hub, 'life-ui').resolveDerived(input);
 		}
+		case 'resolveViewDefinition':
+			return local.resolveViewDefinition(args);
 		case 'listViews':
 			return local.listViews(args);
 		case 'getViewDefault':
 			return local.getViewDefault(args);
 		case 'setViewDefault':
 			return local.setViewDefault(args);
+		case 'saveCatalogProperty':
+			return local.saveCatalogProperty(args);
+		case 'saveCatalogRule':
+			return local.saveCatalogRule(args);
 		case 'saveView':
 			return local.saveView(args);
 		case 'deleteView':
@@ -491,6 +499,8 @@ scope.onmessage = ({ data }) => {
 					'saveView',
 					'deleteView',
 					'setViewDefault',
+					'saveCatalogProperty',
+					'saveCatalogRule',
 					'pinTable',
 					'unpinTable',
 					'moveTablePin'

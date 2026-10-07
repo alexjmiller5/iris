@@ -4,15 +4,17 @@ struct NativeDestination: Codable, Hashable, Sendable {
   let table: String
   let viewID: String?
   let rowID: String?
+  let state: String?
 
-  init(table: String, viewID: String? = nil, rowID: String? = nil) {
+  init(table: String, viewID: String? = nil, rowID: String? = nil, state: String? = nil) {
     self.table = table
     self.viewID = viewID
     self.rowID = rowID
+    self.state = state
   }
 
   var identity: [Data?] {
-    [Data(table.utf8), viewID.map { Data($0.utf8) }, rowID.map { Data($0.utf8) }]
+    [Data(table.utf8), viewID.map { Data($0.utf8) }, rowID.map { Data($0.utf8) }] + (state.map { [Data($0.utf8)] } ?? [])
   }
 
   static func == (lhs: Self, rhs: Self) -> Bool { lhs.identity == rhs.identity }
@@ -22,6 +24,7 @@ struct NativeDestination: Codable, Hashable, Sendable {
     case table
     case viewID = "view"
     case rowID = "row"
+    case state
   }
 }
 
@@ -31,6 +34,7 @@ struct NativeResolvedDestination: Sendable {
   let view: CoreSavedViewRecord?
   let row: WorkspaceRow?
   var defaultNotice: String? = nil
+  var definition: CoreSavedViewDefinition? = nil
   var label: String { row?.label ?? view?.name ?? destination.table }
   var isTrashed: Bool {
     guard let deleted = row?.record["deleted_at"] else { return false }
@@ -43,24 +47,27 @@ struct NativeDestinationResolver {
   private let catalog: () async throws -> WorkspaceCatalog
   private let listViews: (String) async throws -> CoreSavedViewList
   private let preferred: ((String) async throws -> CoreViewDefault)?
+  private let resolveDefinition: ((String, WorkspaceRecord) async throws -> CoreResolvedViewDefinition)?
   private let rows: (CoreView) async throws -> [WorkspaceRow]
 
   init(workspace: NativeWorkspace) {
     self.init(
       catalog: workspace.catalog, listViews: workspace.listViews, rows: workspace.rows,
-      preferred: workspace.getViewDefault)
+      preferred: workspace.getViewDefault, resolveDefinition: workspace.resolveViewDefinition)
   }
 
   init(
     catalog: @escaping () async throws -> WorkspaceCatalog,
     listViews: @escaping (String) async throws -> CoreSavedViewList,
     rows: @escaping (CoreView) async throws -> [WorkspaceRow],
-    preferred: ((String) async throws -> CoreViewDefault)? = nil
+    preferred: ((String) async throws -> CoreViewDefault)? = nil,
+    resolveDefinition: ((String, WorkspaceRecord) async throws -> CoreResolvedViewDefinition)? = nil
   ) {
     self.catalog = catalog
     self.listViews = listViews
     self.rows = rows
     self.preferred = preferred
+    self.resolveDefinition = resolveDefinition
   }
 
   func resolve(_ destination: NativeDestination, isCurrent: () -> Bool) async throws
@@ -94,15 +101,25 @@ struct NativeDestinationResolver {
         view = found
       }
       var defaultNotice: String?
-      if destination.viewID == nil, destination.rowID == nil, let preferred {
+      if destination.viewID == nil, destination.rowID == nil, destination.state == nil, let preferred {
         let selection = try await preferred(destination.table)
         try checkCurrent()
         view = selection.view
         defaultNotice = selection.unavailable
       }
+      var transient: CoreSavedViewDefinition?
+      if let state = destination.state {
+        var definition = try NativeDeepLink.viewState(state)
+        if let actions = view?.definition?.actions {
+          definition["actions"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(actions))
+        }
+        guard let resolveDefinition else { throw WorkspaceError(message: "View settings are unavailable.", violations: []) }
+        transient = try await resolveDefinition(destination.table, definition).definition
+        try checkCurrent()
+      }
       var row: WorkspaceRow?
       if let rowID = destination.rowID {
-        let firstTrash = view?.definition?.trash ?? false
+        let firstTrash = transient?.trash ?? view?.definition?.trash ?? false
         for trash in [firstTrash, !firstTrash] {
           let found = try await rows(
             CoreView(
@@ -121,7 +138,7 @@ struct NativeDestinationResolver {
       }
       return NativeResolvedDestination(
         destination: destination, catalog: catalog, view: view, row: row,
-        defaultNotice: defaultNotice)
+        defaultNotice: defaultNotice, definition: transient)
     } catch {
       try checkCurrent()
       throw error

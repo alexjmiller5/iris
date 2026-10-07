@@ -30,7 +30,7 @@ only core catalog `readOnly`, independently of recent destination eligibility.
 ## Persistence
 
 Version 1 stores at most eight newest destination tuples using the common Codable
-keys `table`, `view` and `row`. Identifiers are preserved byte for byte; labels,
+keys `table`, `view`, `row` and optional bounded `state` query JSON. Identifiers are preserved byte for byte; labels,
 record fields, credentials and endpoints are not saved in the preference payload.
 The existing draft store derives the workspace key so app-owned paths survive
 container relocation and canonical external files remain isolated. Files and

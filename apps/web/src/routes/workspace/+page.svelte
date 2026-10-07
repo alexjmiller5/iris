@@ -1,4 +1,6 @@
 <script lang="ts">
+	import CatalogEditor from '$lib/CatalogEditor.svelte';
+	import type { SaveCatalogPropertyArgs, SaveCatalogRuleArgs } from 'life-ui-core/client';
 	import PresentationControls from '$lib/PresentationControls.svelte';
 	import RecordPresentations from '$lib/RecordPresentations.svelte';
 	import type { ViewPresentation, ViewDefault } from 'life-ui-core/client';
@@ -275,6 +277,7 @@
 			onlineBrowser = null;
 	});
 	let writing = $state(false);
+	let catalogEditing = $state(false);
 	let undoAction = $state<UndoAction | null>(null);
 	let undoPaused = $state(false);
 	let bodySaving = $state(false),
@@ -330,7 +333,12 @@
 			gridDirty
 	);
 	function confirmDiscard() {
-		if (writing || bodySaving || (dirty && !confirm('Discard unsaved changes to this record?')))
+		if (
+			catalogEditing ||
+			writing ||
+			bodySaving ||
+			(dirty && !confirm('Discard unsaved changes to this record?'))
+		)
 			return false;
 		return true;
 	}
@@ -356,11 +364,18 @@
 		return {
 			table: table || null,
 			view: chosenView?.id ?? null,
-			row: editing && selected ? String(selected.id) : null
+			row: editing && selected ? String(selected.id) : null,
+			...(!chosenView || viewModified ? { state: viewDefinition() } : {})
 		};
 	}
 	async function reflectLocation(replace = false) {
-		const url = destinationURL(new URL(window.location.href), currentDestination());
+		let url: URL;
+		try {
+			url = destinationURL(new URL(window.location.href), currentDestination());
+		} catch (e) {
+			error = message(e);
+			return;
+		}
 		if (url.href === window.location.href) return;
 		reflectingURL = url.href;
 		try {
@@ -384,7 +399,7 @@
 			catalog = resolved.catalog;
 			table = resolved.table;
 			graphVisible = false;
-			applyView(resolved.view);
+			applyView(resolved.view, resolved.definition ?? undefined);
 			defaultViewNotice = resolved.defaultNotice;
 			if (resolved.row) trash = !!resolved.row.deleted_at;
 			if (resolved.row) edit(resolved.row, false);
@@ -711,6 +726,7 @@
 			];
 		}
 		widths = sizes;
+		void reflectLocation(true);
 		void loadRows().catch((e) => (error = message(e)));
 	}
 	const rules = $derived(catalog.rules.filter((r) => r.tbl === table || r.scope === 'estate'));
@@ -1405,6 +1421,28 @@
 		});
 	}
 	const viewModified = $derived(!!chosenView && JSON.stringify(viewDefinition()) !== viewBaseline);
+	async function editCatalog<M extends 'saveCatalogProperty' | 'saveCatalogRule'>(
+		method: M,
+		args: M extends 'saveCatalogProperty' ? SaveCatalogPropertyArgs : SaveCatalogRuleArgs
+	) {
+		const workspace = database,
+			target = table;
+		if (!workspace || busy || writing || bodySaving || navigationLoading || args.table !== target)
+			throw new Error('Finish the active operation before editing the catalog.');
+		writing = true;
+		try {
+			const result =
+				method === 'saveCatalogProperty'
+					? await workspace.request('saveCatalogProperty', args as SaveCatalogPropertyArgs)
+					: await workspace.request('saveCatalogRule', args as SaveCatalogRuleArgs);
+			if (database !== workspace || table !== target)
+				throw new Error('The workspace changed. Reopen the catalog to see the saved result.');
+			await refresh();
+			return result;
+		} finally {
+			if (database === workspace) writing = false;
+		}
+	}
 	async function loadViews() {
 		if (!database || !table) return;
 		const workspace = database,
@@ -1438,7 +1476,7 @@
 		}
 		return true;
 	}
-	function applyView(view: SavedViewRecord | null) {
+	function applyView(view: SavedViewRecord | null, transient?: SavedViewDefinition) {
 		gridDraft = null;
 		gridContext++;
 		editorVersion++;
@@ -1449,7 +1487,7 @@
 		draft = {};
 		savedDraft = '';
 		bodyFailure = '';
-		const definition = view?.definition;
+		const definition = transient ?? view?.definition;
 		columns = definition?.columns?.filter((col) => col !== (display ?? 'id')) ?? null;
 		widths = { ...definition?.widths };
 		filters = definition?.filters?.map((filter) => ({ ...filter })) ?? [];
@@ -1471,7 +1509,9 @@
 		filterColumn = '';
 		filterValue = '';
 		chosenView = view ?? null;
-		viewBaseline = JSON.stringify(viewDefinition());
+		viewBaseline = transient
+			? JSON.stringify(view?.definition ?? {})
+			: JSON.stringify(viewDefinition());
 		error = '';
 	}
 	async function setDefaultView(id: string | null) {
@@ -1920,6 +1960,7 @@
 	}
 	async function find() {
 		offset = 0;
+		await reflectLocation(true);
 		try {
 			await loadRows();
 		} catch (e) {
@@ -2033,7 +2074,7 @@
 		catalog = resolved.catalog;
 		table = resolved.table;
 		graphVisible = false;
-		applyView(resolved.view);
+		applyView(resolved.view, resolved.definition ?? undefined);
 		defaultViewNotice = resolved.defaultNotice;
 		if (resolved.row) {
 			trash = !!resolved.row.deleted_at;
@@ -2203,6 +2244,15 @@
 			navigationLoading={findNavigation.loading}
 			navigationError={findNavigation.error}
 			onnavigate={openSearchDestination}
+		/>
+	{/if}
+	{#if catalogEditing}
+		<CatalogEditor
+			{table}
+			{catalog}
+			onclose={() => (catalogEditing = false)}
+			onproperty={async (args) => (await editCatalog('saveCatalogProperty', args)) as Property}
+			onrule={async (args) => await editCatalog('saveCatalogRule', args)}
 		/>
 	{/if}
 	<fieldset class="workspace-controls" disabled={writing} aria-label="Workspace controls">
@@ -2378,6 +2428,13 @@
 							</p>
 						</div>
 						<button
+							class="secondary"
+							disabled={busy || writing || bodySaving || navigationLoading || !table || readOnly}
+							onclick={() => {
+								if (discard()) catalogEditing = true;
+							}}>Edit catalog</button
+						>
+						<button
 							onclick={newGridRecord}
 							disabled={busy || navigationLoading || !table || readOnly || blocked || trash}
 							><IconPlus size={17} />New record</button
@@ -2435,6 +2492,7 @@
 								onclick={() => {
 									if (!closeRecord()) return;
 									trash = !trash;
+									void reflectLocation(true);
 									offset = 0;
 									loadRows().catch((e) => (error = message(e)));
 								}}><IconTrash size={16} />{trash ? 'All records' : 'Trash'}</button
@@ -2479,6 +2537,7 @@
 							onchange={(value) => {
 								if (!closeRecord()) return;
 								presentation = value;
+								void reflectLocation(true);
 								loadBoardOptions();
 							}}
 						/>
@@ -2505,6 +2564,7 @@
 								if (patch.layout) actionLayout = patch.layout;
 								if (patch.timeZone !== undefined) timeZone = patch.timeZone;
 								if (patch.dayStartMinutes !== undefined) dayStartMinutes = patch.dayStartMinutes;
+								void reflectLocation(true);
 								offset = 0;
 								loadRows().catch((e) => (error = message(e)));
 							}}

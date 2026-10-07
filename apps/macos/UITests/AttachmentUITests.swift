@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 
 @MainActor final class AttachmentUITests: XCTestCase {
@@ -77,7 +78,13 @@ import XCTest
     add(image)
   }
   private func stagedDirectory(name: String) -> URL? {
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let count = confstr(_CS_DARWIN_USER_TEMP_DIR, nil, 0)
+    guard count > 0 else { return nil }
+    var buffer = [CChar](repeating: 0, count: count)
+    _ = buffer.withUnsafeMutableBufferPointer {
+      confstr(_CS_DARWIN_USER_TEMP_DIR, $0.baseAddress, $0.count)
+    }
+    let root = URL(fileURLWithPath: String(cString: buffer)).appendingPathComponent(
       "life-ui-demo-attachments")
     guard let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
     else { return nil }

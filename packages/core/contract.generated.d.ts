@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "b2f2389bb98d8a3c74cfd1c077ea79f7c50378421fe04e8144fb6e1a2a7e07aa";
+export declare const CORE_CONTRACT_HASH = "3d7d3586ca2ae7383b377c7d686c3a34936eaaf8058e3a27a05efe17f233b9f0";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -56,6 +56,7 @@ export type Property = {
     source?: string | null;
     source_ref?: string | null;
     id?: string;
+    updated_at?: string | null;
 };
 export type Violation = {
     col: string;
@@ -1047,6 +1048,27 @@ export type ReadPlan = {
     calendarPolicy: ReadPlanCalendarPolicy | null;
     guards: ReadPlanGuard[];
 };
+export type SaveCatalogPropertyArgs = {
+    table: string;
+    column: string;
+    expectedUpdatedAt: string | null;
+    fields: Row;
+    addColumn?: boolean;
+};
+export type SaveCatalogRuleArgs = {
+    table: string;
+    id: string;
+    expectedUpdatedAt: string | null;
+    fields: Row;
+};
+export type ResolveViewDefinitionArgs = {
+    table: string;
+    definition: SavedViewDefinition;
+};
+export type ResolvedViewDefinition = {
+    definition: SavedViewDefinition;
+    view: View;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -1235,6 +1257,18 @@ export interface CoreOperations {
     prepareReadPlan: {
         args: PrepareReadPlanArgs;
         result: ReadPlan;
+    };
+    saveCatalogProperty: {
+        args: SaveCatalogPropertyArgs;
+        result: Property;
+    };
+    saveCatalogRule: {
+        args: SaveCatalogRuleArgs;
+        result: Row;
+    };
+    resolveViewDefinition: {
+        args: ResolveViewDefinitionArgs;
+        result: ResolvedViewDefinition;
     };
 }
 export type CoreMethod = keyof CoreOperations;

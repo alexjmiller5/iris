@@ -53,7 +53,8 @@ policy interval within the original deadline. Malformed replies fail the attempt
 The core classifies replies; the browser explicitly owns these bounded retries.
 
 Closing or switching workspaces forgets the in-memory credential and preserves
-local rows for offline use. Forgetting is not revocation. Revoke an established
+local rows for offline use. Native **Close workspace** cancels an active sync
+without waiting for the hub, retaining committed rows and queued local edits. Forgetting is not revocation. Revoke an established
 device through the hub's device management page. A replacement browser/device
 creates a fresh credential through the same approval flow; no token export or
 storage transfer is required.
@@ -118,20 +119,20 @@ receive it through schema sync from their operator; the client never adopts an
 unrelated table named `views`. Column visibility changes the grid only, so
 editing still reads all of a record's fields.
 
-**Copy link** shares the current table, saved view and saved record. Links use
+**Copy link** shares the current table, saved view and saved record. Unsaved filters, sorting, visible columns and presentation follow the link too; this does not save or modify a view. View settings are limited to 16 KiB; save larger configurations as a named view before sharing. Links use
 `/workspace?table=<table-id>&view=<view-id>&row=<record-id>` with optional view
 and row identifiers. Renaming a saved view does not change its link. Open the
 matching workspace on the receiving device, and sync if the target is not yet
 available there. Links never select a hub, open a workspace automatically or
-carry credentials or record contents.
+carry credentials or record drafts.
 
 Back and Forward restore the destination from current local data, including
 hidden editor fields and explicitly linked trashed records. Cancelling a draft
 discard retains both the editor and its current address; pending writes block
 navigation until their receipt. Missing destinations show an explanation while
 keeping the current editor. Copy link includes the saved view's identity, so
-reopening uses its latest saved definition. Unsaved filters, search, sort,
-column changes, grid pagination and drafts are not encoded in links.
+reopening uses its latest saved revision while retaining the copied query settings.
+Unsaved action definitions, grid pagination and editor drafts are not encoded in links.
 
 **Find records** (Cmd+K or Ctrl+K) searches across locally available tables,
 including Markdown bodies. Results show the record title, table and an excerpt;
