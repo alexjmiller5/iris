@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "cb45e00f68cd4cc4e8743ed76df07a09ae5fbcabc33862a71d753da2783532f6";
+export declare const CORE_CONTRACT_HASH = "8f37229188ef68933aee8f4bc79b8fd5ce8ac4c76ffbc8bf947af1b6d413c49f";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -210,6 +210,7 @@ export type SavedViewDefinition = {
     dayStartMinutes?: number;
     actions?: RowAction[];
     layout?: ViewLayoutItem[];
+    presentation?: ViewPresentation;
 };
 export type SavedViewRecord = {
     id: string;
@@ -674,7 +675,7 @@ export type RowCreationTarget = {
 export type RowCreationRequest = {
     policy: CreationPolicyRef;
     sourceId: string;
-    occurrenceKey: CreationOccurrenceKey;
+    occurrenceKey?: CreationOccurrenceKey;
     target: RowCreationTarget;
     updatedAt: string;
     values: Record<string, FilterValue>;
@@ -710,6 +711,68 @@ export type DerivationFailure = {
 export type ResolveDerivedResult = {
     derived: number;
     failed: DerivationFailure[];
+};
+export type ViewPresentation = {
+    kind: "table" | "calendar" | "gallery" | "board";
+    dateColumn?: string;
+    endDateColumn?: string;
+    coverColumn?: string;
+    groupColumn?: string;
+};
+export type CalendarRowsArgs = {
+    rows: Row[];
+    dateColumn: string;
+    endDateColumn?: string;
+    days: CalendarContext[];
+};
+export type CalendarDayRows = {
+    date: string;
+    rowIds: string[];
+};
+export type CalendarRowsResult = {
+    days: CalendarDayRows[];
+    undated: string[];
+};
+export type BoardRowsArgs = {
+    rows: Row[];
+    column: string;
+    options: string[];
+};
+export type BoardColumnRows = {
+    value: string | null;
+    rowIds: string[];
+};
+export type BoardRowsResult = {
+    columns: BoardColumnRows[];
+};
+export type SidebarPinList = {
+    pins: SidebarPin[];
+    unavailable: string | null;
+};
+export type SidebarPin = {
+    id: string;
+    tbl: string;
+    position: number;
+    updated_at: string;
+    deleted_at: string | null;
+    unavailable: string | null;
+};
+export type PinTableArgs = {
+    table: string;
+    expectedUpdatedAt: string | null;
+};
+export type UnpinTableArgs = {
+    id: string;
+    expectedUpdatedAt: string;
+};
+export type PinRevision = {
+    id: string;
+    updated_at: string;
+};
+export type MoveTablePinArgs = {
+    id: string;
+    direction: "up" | "down";
+    expected: PinRevision[];
 };
 export interface CoreOperations {
     catalog: {
@@ -863,6 +926,30 @@ export interface CoreOperations {
     resolveDerived: {
         args: ResolveDerivedArgs;
         result: ResolveDerivedResult;
+    };
+    calendarRows: {
+        args: CalendarRowsArgs;
+        result: CalendarRowsResult;
+    };
+    boardRows: {
+        args: BoardRowsArgs;
+        result: BoardRowsResult;
+    };
+    pinTable: {
+        args: PinTableArgs;
+        result: SidebarPinList;
+    };
+    listSidebarPins: {
+        args: EmptyArgs;
+        result: SidebarPinList;
+    };
+    unpinTable: {
+        args: UnpinTableArgs;
+        result: SidebarPinList;
+    };
+    moveTablePin: {
+        args: MoveTablePinArgs;
+        result: SidebarPinList;
     };
 }
 export type CoreMethod = keyof CoreOperations;

@@ -28,6 +28,8 @@ final class WorkspaceModel {
         linkError = nil
         recents?.cancel()
         recents = nil
+        pins?.cancel()
+        pins = nil
         workspaceGeneration += 1
         undoAction = nil
         undoing = false
@@ -296,6 +298,9 @@ final class WorkspaceModel {
           violations: [])
       }
       undoAction = nil
+      // The inverse is already committed. A presentation refresh failure must
+      // not prevent automatic upload of that durable local change.
+      recordLocalChange()
       if action.table == "views", query == queryKey {
         try await refreshSavedViews(context: context)
         guard context.workspace === client, generation == workspaceGeneration,
@@ -309,7 +314,6 @@ final class WorkspaceModel {
           try installSavedView(restored, context: context)
         }
       }
-      recordLocalChange()
       await reloadAfterCommit(
         workspace: context.workspace, generation: generation,
         query: action.table == "views" ? queryKey : query)
@@ -332,6 +336,7 @@ final class WorkspaceModel {
   var groups: [String: String] = [:]
   private(set) var recoverableDrafts: [StoredEditorDraft] = []
   private(set) var recents: NativeRecentsModel?
+  private(set) var pins: NativePinsModel?
   private var draftStore: EditorDraftStore?
   let services = HubServicesModel()
   private var groupsURL: URL?
@@ -1068,7 +1073,10 @@ final class WorkspaceModel {
       do {
         localObserver = demo ? nil : try LocalDatabaseObserver(path: path)
         if seed { try await workspace.createSample() }
-        if !demo, url == nil { try await workspace.prepareLocalViews() }
+        if !demo, url == nil {
+          try await workspace.prepareLocalViews()
+          try await workspace.prepareLocalPins()
+        }
         catalog = try await workspace.catalog()
         if !demo {
           if let url { try localSelection.save(url) } else { try localSelection.clear() }
@@ -1272,6 +1280,16 @@ final class WorkspaceModel {
     // Forgetting a credential keeps this database open. Its local history
     // remains usable; replacing/closing the client cancels the old model.
     let current = { [weak self] in self?.client === client }
+    pins = NativePinsModel(
+      list: { try await client.listSidebarPins() },
+      pin: { try await client.pinTable($0) },
+      unpin: { try await client.unpinTable($0) },
+      move: { try await client.moveTablePin($0) }, isCurrent: current,
+      didCommit: { [weak self] in
+        guard let self, self.client === client else { return }
+        self.recordLocalChange()
+        await self.reload()
+      })
     recents = NativeRecentsModel(
       store: store,
       resolve: { try await resolver.resolve($0, isCurrent: current) }, isCurrent: current)

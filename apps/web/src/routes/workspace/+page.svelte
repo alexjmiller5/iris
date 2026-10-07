@@ -79,6 +79,23 @@
 	import type { FilterGroup, RowAction, ViewLayoutItem } from 'life-ui-core/client';
 	import SidebarTables from '$lib/SidebarTables.svelte';
 	import SidebarRecents from '$lib/SidebarRecents.svelte';
+	import SidebarPinsView from '$lib/SidebarPins.svelte';
+	import { SidebarPins, unpinnedTables, type PinState } from '$lib/sidebar-pins';
+	let pinState = $state<PinState>({ snapshot: null, loading: false, busy: false, error: null });
+	const pins = new SidebarPins((state) => {
+		pinState = state;
+	});
+	const activePins = $derived(pinState.snapshot?.pins.filter((pin) => !pin.deleted_at) ?? []);
+	const pinsDisabled = $derived(
+		pinState.loading ||
+			pinState.busy ||
+			!!pinState.error ||
+			!pinState.snapshot ||
+			!!pinState.snapshot.unavailable
+	);
+	async function mutatePins(action: () => Promise<boolean>) {
+		if (await action()) await refresh();
+	}
 	import {
 		describeRecent,
 		loadRecentEntries,
@@ -328,7 +345,7 @@
 			if (resolved.row) trash = !!resolved.row.deleted_at;
 			if (resolved.row) edit(resolved.row, false);
 			version = editorVersion;
-			await Promise.all([loadRows(), loadViews(), loadWriteability()]);
+			await Promise.all([loadRows(), loadViews(), loadWriteability(), pins.refresh()]);
 			await tick();
 			if (current()) {
 				if (resolved.row) recordHeading?.focus();
@@ -1130,7 +1147,7 @@
 			skipped = state.skipped ?? [];
 			if (!table && catalog.tables.length)
 				table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
-			await Promise.all([loadRows(), loadViews(), loadWriteability()]);
+			await Promise.all([loadRows(), loadViews(), loadWriteability(), pins.refresh()]);
 			if (database === workspace) refreshRecentLabels();
 		} finally {
 			exportRefreshes--;
@@ -1191,6 +1208,13 @@
 		try {
 			database?.close();
 			database = new WorkspaceDatabase();
+			const pinWorkspace = database;
+			pins.setWorkspace({
+				list: () => pinWorkspace.request('listSidebarPins'),
+				pin: (args) => pinWorkspace.request('pinTable', args),
+				unpin: (args) => pinWorkspace.request('unpinTable', args),
+				move: (args) => pinWorkspace.request('moveTablePin', args)
+			});
 			await database.request('open', { demo: sample });
 			demo = sample;
 			readRecents();
@@ -1918,6 +1942,7 @@
 		editorVersion++;
 		database?.close();
 		database = null;
+		pins.setWorkspace(null);
 		recentsRequest++;
 	});
 </script>
@@ -1937,6 +1962,11 @@
 {/snippet}
 
 <svelte:head><title>Workspace | Life UI</title></svelte:head>
+<svelte:document
+	onvisibilitychange={() => {
+		if (opened && document.visibilityState === 'visible') void pins.refresh();
+	}}
+/>
 <svelte:window
 	onkeydown={(event) => {
 		if (savedUndoShortcut(event) && undoAction && !busy && !navigationLoading && !bodySaving) {
@@ -2027,12 +2057,6 @@
 				<button class="secondary" onclick={() => showFind(true)} disabled={busy}
 					><IconSearch size={16} /> Find records <kbd>⌘K</kbd></button
 				>
-				<SidebarTables
-					tables={catalog.tables}
-					current={table}
-					disabled={busy || writing || bodySaving}
-					onchoose={changeTable}
-				/>
 				<SidebarRecents
 					entries={recentEntries}
 					current={currentDestination()}
@@ -2040,6 +2064,25 @@
 					storageError={[recentReadError, recentStorageError].filter(Boolean).join(' ')}
 					onchoose={openRecent}
 					onremove={removeRecent}
+				/>
+				<SidebarPinsView
+					pins={activePins}
+					current={table}
+					disabled={busy || writing || bodySaving}
+					mutationDisabled={pinsDisabled}
+					error={pinState.error || pinState.snapshot?.unavailable || null}
+					onchoose={changeTable}
+					onunpin={(id) => mutatePins(() => pins.unpin(id))}
+					onmove={(id, direction) => mutatePins(() => pins.move(id, direction))}
+					onretry={() => pins.refresh()}
+				/>
+				<SidebarTables
+					tables={unpinnedTables(catalog.tables, activePins)}
+					current={table}
+					disabled={busy || writing || bodySaving}
+					pinDisabled={pinsDisabled}
+					onchoose={changeTable}
+					onpin={(table) => mutatePins(() => pins.pin(table))}
 				/>
 				<button
 					class="secondary"
@@ -2093,6 +2136,7 @@
 						if (!discard()) return;
 						database?.close();
 						database = null;
+						pins.setWorkspace(null);
 						recentsRequest++;
 						recentDestinations = [];
 						recentEntries = [];

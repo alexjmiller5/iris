@@ -12,6 +12,19 @@ Missing files can be retried. Viewing preserves the original Markdown, and remot
 images do not load automatically. Imported Notion links can open their local
 record when a whole-record import mapping exists; the original link stays available.
 
+## Pinned tables
+
+Pin a table to keep it immediately below Recents and ahead of the alphabetical
+list. Use Move up/down to change its order, or Unpin to return it to the ordinary
+list. The controls are available on web, iOS, and macOS. Pinning never changes a
+table's access policy or dismisses an unsaved record.
+
+Pins are ordinary synced workspace rows, not device preferences. After a
+successful sync, a fresh replica recovers them. Unsynced changes still depend on
+that device's database. The workspace owner can enable storage with
+`life table provision sidebar-pins` followed by `life sync`; app-owned samples
+prepare it automatically. A same-name unrelated table is left untouched.
+
 ## Using the web workspace
 
 Open the app, then choose **Open my workspace** or **Try sample workspace**.

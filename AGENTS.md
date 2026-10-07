@@ -21,6 +21,12 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   bundle hash without writes. Change the schema in life-data and regenerate the
   bundle; never hand-edit DTOs. Swift `CoreRequests` and TS operation pairs share
   these shapes. Native and Worker boundaries reject a local contract hash mismatch.
+- Sidebar table pins use core's ordinary synced `sidebar_pins` rows. NativePinsModel
+  and the web SidebarPins controller retain only acknowledged display state;
+  never add localStorage/UserDefaults pin authority. Pin controls use selected
+  revisions and existing guarded navigation. App-owned sample/local databases
+  may install the packaged manifest; enrolled replicas receive logged schema
+  through sync. Web refreshes pins on visibility return, not dialog focus.
 - `scripts/native-core.ts`: native adapter over the generated shared core.
   It must not become a second validator, view compiler or sync implementation.
 - `apps/web/vite.graph.config.ts`: self-contained native graph HTML built from
@@ -472,6 +478,9 @@ it in JavaScriptCore as well as the core's own tests.
 and `just build` cover web and Apple targets. `just fmt` formats owned source.
 The README documents browser smoke commands and a real Worker synthetic hub.
 Fixtures are synthetic only; never copy live personal data into tests or docs.
+Run the package suite with `swift test --no-parallel`: independent MainActor/JSC
+fixtures otherwise starve each other’s admission watchdogs. Keep explicit
+concurrent tasks inside tests and their assertions unchanged.
 
 `project.yml` is authoritative; generated Xcode projects and Info.plists are
 ignored. Child justfiles expose platform run/test/check/build. Caches and derived
