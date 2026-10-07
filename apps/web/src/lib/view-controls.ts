@@ -23,7 +23,7 @@ export function parseFilter(
 ): Filter {
 	if (op === 'empty' || op === 'not_empty') return { column, op };
 	if (today) {
-		if (!['date', 'datetime'].includes(type) || op === 'contains')
+		if (!['date', 'datetime', 'date_or_datetime'].includes(type) || op === 'contains')
 			throw new Error('Today requires a date comparison.');
 		return { column, op, relative: 'today' };
 	}
