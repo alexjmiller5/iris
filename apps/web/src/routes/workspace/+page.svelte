@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageCaptureViewer from '$lib/PageCaptureViewer.svelte';
 	import { savedUndoShortcut } from '$lib/undo-shortcut';
 	import { resolveDerivedRecord } from '$lib/resolve-derived';
 	import { prepareDuplicate } from '$lib/record-duplicate';
@@ -2101,7 +2102,15 @@
 					<small>Pending edits: {pendingEdits}</small>
 				</div>
 				{#if !demo}
-					{#key connectedHub}<HubServices connection={connectedHub} />{/key}
+					{#key connectedHub}<HubServices
+							connection={connectedHub}
+							canReview={!busy &&
+								!writing &&
+								!bodySaving &&
+								!dirty &&
+								!gridDraft &&
+								pendingEdits === 0}
+						/>{/key}
 					<details class="connect">
 						<summary>Connect to a hub</summary>
 						{#if database}{#key database}<HubEnrollment
@@ -2585,6 +2594,11 @@
 						{/each}
 						{#if error}<p role="status" class="failure">{error}</p>{/if}
 						<div class="editor-actions">
+							{#if selected}{#key `${editorVersion}:${selected.id}:${connectedHub?.endpoint}:${connectedHub?.token}`}<PageCaptureViewer
+										row={selected}
+										resolveFile={resolveRetainedFile}
+										disabled={busy || navigationLoading}
+									/>{/key}{/if}
 							{@render undoButton()}
 							{#if selected && selected.deleted_at == null}<button
 									type="button"
