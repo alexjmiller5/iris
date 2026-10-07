@@ -44,6 +44,12 @@ public struct WidgetReadResult: Sendable {
   public let content: WidgetContent?
 }
 
+/// Capture before any asynchronous preparation. Only this store can issue one.
+public struct WidgetPublicationPermit: Sendable {
+  fileprivate let root: URL
+  fileprivate let generation: String
+}
+
 /// Regenerable app-group state. Shared file locks protect readers across processes;
 /// an exclusive commit only swaps a completed generation and reclaims unheld ones.
 /// No disk state is written by a timeline read except its bounded display fallback.
@@ -54,9 +60,18 @@ public struct WidgetPublicationStore: Sendable {
   private var fallback: URL { root.appendingPathComponent("fallback", isDirectory: true) }
   private struct Pointer: Codable { let generation: String }
 
+  public func beginPublication() throws -> WidgetPublicationPermit {
+    try privateDirectory(root)
+    try privateDirectory(fallback)
+    return try withLock(exclusive: true) {
+      WidgetPublicationPermit(root: root.standardizedFileURL, generation: try revocationToken())
+    }
+  }
+
   public func publish(
     workspaceID: String, replicaID: String, dataAsOf: Date,
-    partial: Bool, sources: [WidgetSource], copyDatabase: (URL) throws -> Void
+    partial: Bool, sources: [WidgetSource], permit: WidgetPublicationPermit? = nil,
+    copyDatabase: (URL) throws -> Void
   ) throws {
     guard !workspaceID.isEmpty, !replicaID.isEmpty, dataAsOf.timeIntervalSince1970.isFinite,
       sources.count <= 64, Set(sources.map { Data($0.id.utf8) }).count == sources.count,
@@ -66,9 +81,11 @@ public struct WidgetPublicationStore: Sendable {
           && bytesEqual(source.plan.replicaID, replicaID)
       })
     else { throw unavailable }
-    try privateDirectory(root)
-    try privateDirectory(fallback)
-    let accessGeneration = try revocationToken()
+    let permit = try permit ?? beginPublication()
+    guard permit.root == root.standardizedFileURL,
+      try bytesEqual(permit.generation, revocationToken())
+    else { throw unavailable }
+    let accessGeneration = permit.generation
     let generation = UUID().uuidString.lowercased()
     let staging = root.appendingPathComponent(".staging-" + generation, isDirectory: true)
     try privateDirectory(staging)
