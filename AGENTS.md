@@ -305,6 +305,19 @@ client previews or writes. Keep the original approval request/key after an uncer
 response; only a matching committed receipt, purged result or authenticated durable
 `not_committed` result can settle it. HTTP classification belongs to the core adapter.
 
+Web related-change review uses the separate `bounded-changeset-proposals-v1`
+capability and canonical core client. Only an enrolled USER approval connection
+can open it; drafts and pending local edits must be resolved/synced first. The
+panel reads a supplied proposal ID, displays the entire frozen set and never
+writes SQL or edits its operations. Its journal captures endpoint, deployment,
+session, principal, full proposal and original request before dispatch. Closing,
+auth failure or an uncertain response retains the same key; only a validated
+whole-set receipt, purge or durable negative result clears it. A completed hub
+approval requires ordinary sync to update local rows. Shared IndexedDB storage
+uses strict durability and compare-delete, with immutable captured scope codecs.
+Native multi-row review is not mounted. Single-row presentation retains its
+separate existing boundary.
+
 Native recovery journals are private, atomic and isolated per editor. Persist
 the latest draft and any unacknowledged write before awaiting its receipt.
 Keep new-record defaults omitted until a field is explicitly edited. An explicit
