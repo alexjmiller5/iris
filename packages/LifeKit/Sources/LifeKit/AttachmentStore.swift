@@ -118,9 +118,10 @@ actor AttachmentStore {
     upload: @Sendable (StagedAttachment, URL) async throws -> AttachmentReceipt
   ) async throws {
     guard !uploading else { return }
+    let pending = try entries()
     uploading = true
     defer { uploading = false }
-    for var entry in try entries() where entry.state == .queued || entry.state == .failed {
+    for var entry in pending where entry.state == .queued || entry.state == .failed {
       if Task.isCancelled { return }
       do {
         _ = try localBytes(for: entry.id)

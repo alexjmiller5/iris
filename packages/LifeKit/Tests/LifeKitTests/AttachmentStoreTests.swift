@@ -97,4 +97,25 @@ struct AttachmentStoreTests {
       }
     }
   }
+  @Test func interruptedUploadRetriesDirectlyAfterRestart() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source")
+    try Data("restart fixture".utf8).write(to: source)
+    let outbox = root.appendingPathComponent("outbox")
+    let store = AttachmentStore(root: outbox)
+    var entry = try await store.stage(
+      source: source, name: "fixture.txt", contentType: "text/plain")
+    entry.state = .uploading
+    try JSONEncoder().encode(entry).write(
+      to: outbox.appendingPathComponent(entry.id).appendingPathComponent("metadata.json"))
+    let reopened = AttachmentStore(root: outbox)
+    try await reopened.uploadPending { supplied, _ in
+      AttachmentReceipt(
+        key: supplied.key, mime: supplied.contentType, bytes: supplied.bytes,
+        sha256: supplied.sha256)
+    }
+    #expect(try await reopened.entries().first?.state == .uploaded)
+  }
 }
