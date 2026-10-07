@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "e935ee9223797c2910128fcaef91cce70acfeb0baa329dc848074f45b9bf4ff3";
+export declare const CORE_CONTRACT_HASH = "40ce1fb59bfe27a26bc878b193d694414c3b491fdc365cb421a96000b6b1c3a0";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -286,6 +286,7 @@ export type UndoArgs = {
 export type EnrollmentApprovalArgs = {
     fingerprint: string;
     name: string;
+    profile?: string;
 };
 export type EnrollmentPolicy = {
     pollIntervalSeconds: Count;
@@ -312,9 +313,11 @@ export type SessionInfo = {
     scopes: string[];
     replica: ReplicaEligibility;
     governance?: GovernanceCapability;
+    enrollmentProfile?: EnrollmentProfileReceipt;
 };
 export type SessionDataArgs = {
     data: JSONValue;
+    expectedProfile?: EnrollmentProfileExpectation;
 };
 export type SessionReply = {
     status: Count;
@@ -324,6 +327,7 @@ export type SessionReply = {
 export type EnrollmentPollArgs = {
     reply: SessionReply;
     expectedFingerprint: string;
+    expectedProfile?: EnrollmentProfileExpectation;
 };
 export type EnrollmentPollState = "pending" | "approved";
 export type EnrollmentPollResult = {
@@ -381,6 +385,7 @@ export type HubCapabilities = {
     conditional_patch?: "revision-v1";
     subscription_features?: "scalar-lifecycle-v1";
     governance?: GovernanceCapability;
+    rowCreation?: RowCreationCapability;
 };
 export type HubSession = {
     name: string;
@@ -646,6 +651,48 @@ export type GovernanceCapability = {
     deploymentId: string;
     sessionId: string;
 };
+export type EnrollmentProfileReceipt = {
+    id: string;
+    revision: string;
+};
+export type EnrollmentProfileExpectation = {
+    id: string;
+    scopes: string[];
+};
+export type CreationPolicyRef = {
+    id: string;
+    revision: string;
+};
+export type RowCreationCapability = {
+    protocol: "atomic-origin-v1";
+    policies: CreationPolicyRef[];
+};
+export type RowCreationTarget = {
+    kind: "generated" | "adopted";
+    id: string;
+};
+export type RowCreationRequest = {
+    policy: CreationPolicyRef;
+    sourceId: string;
+    occurrenceKey: CreationOccurrenceKey;
+    target: RowCreationTarget;
+    updatedAt: string;
+    values: Record<string, FilterValue>;
+};
+export type RowCreatedReceipt = {
+    kind: "created";
+    policy: CreationPolicyRef;
+    id: string;
+    revision: Revision;
+    originId: string;
+};
+export type RowExistingReceipt = {
+    kind: "existing";
+    policy: CreationPolicyRef;
+    id: string;
+};
+export type RowCreationReceipt = RowCreatedReceipt | RowExistingReceipt;
+export type CreationOccurrenceKey = string | number;
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;

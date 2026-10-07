@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { savedUndoShortcut } from '$lib/undo-shortcut';
 	import { prepareDuplicate } from '$lib/record-duplicate';
 	import { markdownPatch } from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
@@ -1358,7 +1359,7 @@
 			if (workspace !== database || table !== target || version !== viewVersion) return;
 			chosenView = saved;
 			viewBaseline = JSON.stringify(definition);
-			await loadViews();
+			await refresh();
 			await reflectLocation();
 			notice = 'View saved on this device';
 		} finally {
@@ -1383,7 +1384,7 @@
 			await workspace.request('deleteView', { id, expectedUpdatedAt: selectedView.updated_at });
 			if (workspace !== database || table !== target || version !== viewVersion) return;
 			applyView(null);
-			await Promise.all([loadRows(), loadViews()]);
+			await refresh();
 			await reflectLocation();
 			notice = 'View deleted; records kept';
 		} finally {
@@ -1511,6 +1512,12 @@
 		try {
 			const receipt = await workspace.request('undo', { receiptId: action.receiptId });
 			if (database !== workspace || editorVersion !== version) return;
+			if (action.table === 'views') {
+				await loadViews();
+				if (database !== workspace || editorVersion !== version) return;
+				if (chosenView?.id === action.rowId)
+					applyView(savedViews.find((view) => view.id === action.rowId) ?? null);
+			}
 			if (gridDraft && table === action.table && gridDraft.cell.rowId === action.rowId) {
 				const cell = gridDraft;
 				gridDraft = null;
@@ -1860,6 +1867,7 @@
 	<button
 		type="button"
 		class="secondary"
+		aria-keyshortcuts="Meta+Z Control+Z"
 		onclick={undoLastSavedChange}
 		disabled={!undoAction || busy || navigationLoading}
 		title={undoAction
@@ -1872,6 +1880,11 @@
 <svelte:head><title>Workspace | Life UI</title></svelte:head>
 <svelte:window
 	onkeydown={(event) => {
+		if (savedUndoShortcut(event) && undoAction && !busy && !navigationLoading && !bodySaving) {
+			event.preventDefault();
+			void undoLastSavedChange();
+			return;
+		}
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && opened) {
 			event.preventDefault();
 			if (!busy && !findVisible && !onlineBrowser) showFind(true);
