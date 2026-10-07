@@ -25,6 +25,7 @@ test('grid exposes labeled cells by identity and a guarded bottom creation actio
 		}
 	}).body;
 	expect(window.document.querySelector('[role="grid"]')).not.toBeNull();
+	expect(window.document.querySelector('input[type="checkbox"]')).toBeNull();
 	expect(
 		window.document.querySelector('[role="gridcell"][data-row="a"][data-column="qty"]')?.textContent
 	).toContain('0');
@@ -98,9 +99,11 @@ test('configured action columns reorder data and keep the first visible data cel
 			onduplicate: async () => false
 		} as never
 	}).body;
-	expect(
-		[...window.document.querySelectorAll('th:not(.selection)')].map((e) => e.textContent?.trim())
-	).toEqual(['Close item', 'State', 'Title']);
+	expect([...window.document.querySelectorAll('th')].map((e) => e.textContent?.trim())).toEqual([
+		'Close item',
+		'State',
+		'Title'
+	]);
 	expect(window.document.querySelector('[data-column="state"]')?.getAttribute('tabindex')).toBe(
 		'0'
 	);
