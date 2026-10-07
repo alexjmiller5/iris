@@ -477,7 +477,7 @@ private final class FixtureState: @unchecked Sendable {
         })
       for name in [
         "notes", "topics", "catalog_tables", "catalog_properties", "catalog_rules", "history",
-        "views", "sidebar_pins", "provenance", "collated",
+        "views", "view_defaults", "sidebar_pins", "catalog_log", "provenance", "collated",
       ] where existing.contains(name) {
         tables[name] = try records("SELECT * FROM \(name)")
       }
