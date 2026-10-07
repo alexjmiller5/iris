@@ -102,6 +102,13 @@ try {
     named("button", "widgets", element('nav[aria-label="Tables"]')),
   );
   await cdp.until(`document.body.innerText.includes('Fixture record')`);
+  await choose("Filter property", "starts");
+  expect(
+    await cdp.evaluate(
+      `Array.from((${select("Filter operator")}).options, option => option.value)`,
+    ),
+  ).toEqual(["eq", "ne", "empty", "not_empty", "gt", "lt"]);
+  await choose("Filter property", "");
   // Calendar uses catalog-selected fields and displays every spanned civil date.
   await choose("View layout", "calendar");
   await choose("Calendar date property", "starts");

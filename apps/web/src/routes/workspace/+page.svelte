@@ -2560,7 +2560,7 @@
 									><option value="eq">is</option><option value="ne">is not</option><option
 										value="empty">is empty</option
 									><option value="not_empty">is not empty</option
-									>{#if ['number', 'int', 'date', 'datetime'].includes(filterType)}<option
+									>{#if ['number', 'int', 'date', 'datetime', 'date_or_datetime'].includes(filterType)}<option
 											value="gt">greater than</option
 										><option value="lt">less than</option>{:else if filterType !== 'bool'}<option
 											value="contains">contains</option
