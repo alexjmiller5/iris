@@ -28,6 +28,8 @@ final class WorkspaceModel {
         linkError = nil
         recents?.cancel()
         recents = nil
+        pins?.cancel()
+        pins = nil
         workspaceGeneration += 1
         undoAction = nil
         undoing = false
@@ -296,8 +298,25 @@ final class WorkspaceModel {
           violations: [])
       }
       undoAction = nil
+      // The inverse is already committed. A presentation refresh failure must
+      // not prevent automatic upload of that durable local change.
       recordLocalChange()
-      await reloadAfterCommit(workspace: context.workspace, generation: generation, query: query)
+      if action.table == "views", query == queryKey {
+        try await refreshSavedViews(context: context)
+        guard context.workspace === client, generation == workspaceGeneration,
+          context.table == table
+        else {
+          throw WorkspaceError(
+            message: "The workspace changed while refreshing Undo.", violations: [])
+        }
+        if appliedView?.id.utf8.elementsEqual(action.rowId.utf8) == true {
+          let restored = savedViews.first { $0.id.utf8.elementsEqual(action.rowId.utf8) }
+          try installSavedView(restored, context: context)
+        }
+      }
+      await reloadAfterCommit(
+        workspace: context.workspace, generation: generation,
+        query: action.table == "views" ? queryKey : query)
       guard context.workspace === client, generation == workspaceGeneration, context.table == table
       else {
         throw WorkspaceError(
@@ -317,6 +336,7 @@ final class WorkspaceModel {
   var groups: [String: String] = [:]
   private(set) var recoverableDrafts: [StoredEditorDraft] = []
   private(set) var recents: NativeRecentsModel?
+  private(set) var pins: NativePinsModel?
   private var draftStore: EditorDraftStore?
   let services = HubServicesModel()
   private var groupsURL: URL?
@@ -691,6 +711,12 @@ final class WorkspaceModel {
     guard !savingView, !undoing else {
       throw WorkspaceError(message: "Wait for the saved view to finish saving.", violations: [])
     }
+    try installSavedView(saved, context: context)
+  }
+
+  private func installSavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext)
+    throws
+  {
     if let saved {
       guard saved.tbl == context.table, saved.deletedAt == nil,
         saved.unavailable == nil, let definition = saved.definition, saved.view != nil
@@ -1036,7 +1062,10 @@ final class WorkspaceModel {
       let workspace = try NativeWorkspace(path: path)
       do {
         if seed { try await workspace.createSample() }
-        if !demo, url == nil { try await workspace.prepareLocalViews() }
+        if !demo, url == nil {
+          try await workspace.prepareLocalViews()
+          try await workspace.prepareLocalPins()
+        }
         catalog = try await workspace.catalog()
       } catch {
         try? await workspace.close()
@@ -1073,7 +1102,8 @@ final class WorkspaceModel {
   func reload(more: Bool = false) async {
     // A retained prefix is usable only while its successful read context is current.
     // A stale or in-flight prefix requires an ordinary first-page replacement.
-    let append = more && !loading && !writingRecord && !undoing && !savingView
+    let append =
+      more && !loading && !writingRecord && !undoing && !savingView
       && loadedRowsContext == currentRowsContext
     // A failed next page may retry its valid prefix. A full refresh (including
     // post-write reconciliation) invalidates that prefix before awaiting anything.
@@ -1130,6 +1160,59 @@ final class WorkspaceModel {
     }
   }
 
+  func resolveDerived(column: String, original: WorkspaceRecord, context: WorkspaceEditingContext?)
+    async throws -> RecordResolution
+  {
+    guard let client, let transport, let context, context.workspace === client,
+      context.table == table, !syncing, !writingRecord, !undoing,
+      let id = original["id"]?.text, let revision = original["updated_at"]?.text
+    else {
+      throw WorkspaceError(
+        message: "Connect to the hub and finish the current operation before resolving.",
+        violations: [])
+    }
+    let generation = workspaceGeneration
+    let outgoingRevision = localSyncRevision
+    let current = {
+      self.client === client && self.workspaceGeneration == generation
+        && self.table == context.table
+    }
+    writingRecord = true
+    syncing = true
+    defer {
+      if client === self.client, generation == workspaceGeneration {
+        writingRecord = false
+        syncing = false
+        syncProgress = nil
+        scheduleAutomaticSync()
+      }
+    }
+    let result = try await client.resolveDerived(
+      using: transport, table: context.table,
+      id: id, column: column, expectedUpdatedAt: revision)
+    guard current() else { throw CancellationError() }
+    let sync = try await client.sync(
+      using: transport, maxRows: downloadPreferences.maxRows,
+      tables: downloadPreferences.tables)
+    guard current() else { throw CancellationError() }
+    syncResult = sync
+    uploadedSyncRevision = max(uploadedSyncRevision, outgoingRevision)
+    let resolved = try await NativeDestinationResolver(workspace: client).resolve(
+      NativeDestination(table: context.table, rowID: id), isCurrent: current)
+    guard let record = resolved.row?.record,
+      record["deleted_at"] == nil || record["deleted_at"] == .null,
+      result.derived == 0 || record["updated_at"] != original["updated_at"]
+    else {
+      throw WorkspaceError(
+        message: "The resolved record is not available locally yet. Sync and reopen it.",
+        violations: [])
+    }
+    catalog = resolved.catalog
+    await reload()
+    guard current() else { throw CancellationError() }
+    return RecordResolution(record: record, failures: result.failed)
+  }
+
   @discardableResult
   func save(_ patch: WorkspaceRecord, original: WorkspaceRecord?, context: WorkspaceEditingContext?)
     async throws -> WorkspaceRecord
@@ -1182,6 +1265,16 @@ final class WorkspaceModel {
     // Forgetting a credential keeps this database open. Its local history
     // remains usable; replacing/closing the client cancels the old model.
     let current = { [weak self] in self?.client === client }
+    pins = NativePinsModel(
+      list: { try await client.listSidebarPins() },
+      pin: { try await client.pinTable($0) },
+      unpin: { try await client.unpinTable($0) },
+      move: { try await client.moveTablePin($0) }, isCurrent: current,
+      didCommit: { [weak self] in
+        guard let self, self.client === client else { return }
+        self.recordLocalChange()
+        await self.reload()
+      })
     recents = NativeRecentsModel(
       store: store,
       resolve: { try await resolver.resolve($0, isCurrent: current) }, isCurrent: current)

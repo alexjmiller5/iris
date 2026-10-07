@@ -124,3 +124,18 @@ test('native rejection dispatch preserves canonical payloads, exact IDs and boun
   await expect(request('rejections', { limit: 1 })).rejects.toThrow('Invalid stored rejection data');
   expect(db.query('SELECT count(*) AS n FROM _core_rejected').get()).toEqual({ n: 2 });
 }));
+
+test('local pins are provisioned from the canonical manifest and written through native dispatch',()=>withNative(async(request,db)=>{
+ await request('sample');
+ expect(await request('prepareLocalPins')).toBe(false);
+ const state=await request('listSidebarPins') as core.SidebarPinList;expect(state.unavailable).toBeNull();
+ const pinned=await request('pinTable',{table:'notes',expectedUpdatedAt:null}) as core.SidebarPinList;
+ expect(pinned.pins.map(pin=>pin.tbl)).toEqual(['notes']);
+ expect(db.query('SELECT tbl,position FROM sidebar_pins').all()).toEqual([{tbl:'notes',position:0}]);
+}));
+test('local pins never adopt a foreign table or remaining catalog identity',()=>withNative(async(request,db)=>{
+ await request('sample');db.exec('DROP TRIGGER sidebar_pins_updated_at; DROP TABLE sidebar_pins; CREATE TABLE sidebar_pins(content TEXT)');
+ const before=db.query('SELECT type,name,sql FROM sqlite_master').all();
+ expect(await request('prepareLocalPins')).toBe(false);
+ expect(db.query('SELECT type,name,sql FROM sqlite_master').all()).toEqual(before);
+}));

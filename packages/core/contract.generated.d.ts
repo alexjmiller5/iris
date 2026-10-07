@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "6ee3fbe74b1f35e0b2b02daabd568704e2ce5c1fcd37b6902e3128e358da5c82";
+export declare const CORE_CONTRACT_HASH = "5700d06e4e01d32cf143730c7254992bc208a1d3a8baf242bf52c6c0ec916ee0";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -210,6 +210,7 @@ export type SavedViewDefinition = {
     dayStartMinutes?: number;
     actions?: RowAction[];
     layout?: ViewLayoutItem[];
+    presentation?: ViewPresentation;
 };
 export type SavedViewRecord = {
     id: string;
@@ -678,7 +679,7 @@ export type RowCreationTarget = {
 export type RowCreationRequest = {
     policy: CreationPolicyRef;
     sourceId: string;
-    occurrenceKey: CreationOccurrenceKey;
+    occurrenceKey?: CreationOccurrenceKey;
     target: RowCreationTarget;
     updatedAt: string;
     values: Record<string, FilterValue>;
@@ -697,6 +698,101 @@ export type RowExistingReceipt = {
 };
 export type RowCreationReceipt = RowCreatedReceipt | RowExistingReceipt;
 export type CreationOccurrenceKey = string | number;
+export type ResolveDerivedArgs = {
+    endpoint: string;
+    table: string;
+    id: string;
+    column: string;
+    expectedUpdatedAt: string;
+};
+export type DerivationFailure = {
+    id: string;
+    col: string;
+    error: string;
+    status?: number;
+    retry_after?: number;
+};
+export type ResolveDerivedResult = {
+    derived: number;
+    failed: DerivationFailure[];
+};
+export type ViewPresentation = {
+    kind: "table" | "calendar" | "gallery" | "board";
+    dateColumn?: string;
+    endDateColumn?: string;
+    coverColumn?: string;
+    groupColumn?: string;
+};
+export type CalendarRowsArgs = {
+    rows: Row[];
+    dateColumn: string;
+    endDateColumn?: string;
+    days: CalendarContext[];
+};
+export type CalendarDayRows = {
+    date: string;
+    rowIds: string[];
+};
+export type CalendarRowsResult = {
+    days: CalendarDayRows[];
+    undated: string[];
+};
+export type BoardRowsArgs = {
+    rows: Row[];
+    column: string;
+    options: string[];
+};
+export type BoardColumnRows = {
+    value: string | null;
+    rowIds: string[];
+};
+export type BoardRowsResult = {
+    columns: BoardColumnRows[];
+};
+export type SidebarPinList = {
+    pins: SidebarPin[];
+    unavailable: string | null;
+};
+export type SidebarPin = {
+    id: string;
+    tbl: string;
+    position: number;
+    updated_at: string;
+    deleted_at: string | null;
+    unavailable: string | null;
+};
+export type PinTableArgs = {
+    table: string;
+    expectedUpdatedAt: string | null;
+};
+export type UnpinTableArgs = {
+    id: string;
+    expectedUpdatedAt: string;
+};
+export type PinRevision = {
+    id: string;
+    updated_at: string;
+};
+export type MoveTablePinArgs = {
+    id: string;
+    direction: "up" | "down";
+    expected: PinRevision[];
+};
+export type GetViewDefaultArgs = {
+    table: string;
+};
+export type SetViewDefaultArgs = {
+    table: string;
+    viewId: string | null;
+    expectedUpdatedAt: string | null;
+};
+export type ViewDefault = {
+    table: string;
+    viewId: string | null;
+    updated_at: string | null;
+    view: SavedViewRecord | null;
+    unavailable: string | null;
+};
 export type PushAppProfile = {
     id: string;
     platform: PushPlatform;
@@ -882,6 +978,42 @@ export interface CoreOperations {
     rejectProposal: {
         args: RejectProposalArgs;
         result: ProposalMutationResult;
+    };
+    resolveDerived: {
+        args: ResolveDerivedArgs;
+        result: ResolveDerivedResult;
+    };
+    calendarRows: {
+        args: CalendarRowsArgs;
+        result: CalendarRowsResult;
+    };
+    boardRows: {
+        args: BoardRowsArgs;
+        result: BoardRowsResult;
+    };
+    pinTable: {
+        args: PinTableArgs;
+        result: SidebarPinList;
+    };
+    listSidebarPins: {
+        args: EmptyArgs;
+        result: SidebarPinList;
+    };
+    unpinTable: {
+        args: UnpinTableArgs;
+        result: SidebarPinList;
+    };
+    moveTablePin: {
+        args: MoveTablePinArgs;
+        result: SidebarPinList;
+    };
+    getViewDefault: {
+        args: GetViewDefaultArgs;
+        result: ViewDefault;
+    };
+    setViewDefault: {
+        args: SetViewDefaultArgs;
+        result: ViewDefault;
     };
 }
 export type CoreMethod = keyof CoreOperations;

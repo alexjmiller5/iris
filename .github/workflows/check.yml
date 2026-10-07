@@ -40,9 +40,52 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun test scripts/release-macos.test.ts scripts/ios-ci.test.ts scripts/ios-ota.test.ts
+      - run: python3 scripts/test-nix-migration.py
       - run: python3 scripts/macos_signing_test.py
       - run: python3 scripts/sign_ios_test.py
       - run: brew install xcodegen just
       - run: swift test --package-path packages/LifeKit
-      - run: just --justfile apps/macos/justfile check
+      - name: Catalog record XCUI acceptance (clean runner)
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          fixture_dir="$(mktemp -d "$RUNNER_TEMP/catalog-ui.XXXXXX")"
+          fixture="$fixture_dir/catalog-acceptance.sqlite"
+          LIFE_UI_TEST_CATALOG_DATABASE="$fixture" swift test \
+            --package-path packages/LifeKit --skip-build \
+            --filter CatalogRecordAcceptanceTests.prepareCatalogRecordUIFixture \
+            2>&1 | tee "$RUNNER_TEMP/catalog-fixture.log"
+          test -s "$fixture"
+          (cd apps/macos && xcodegen generate --spec project.yml)
+          TEST_RUNNER_LIFE_UI_TEST_CATALOG_DATABASE="$fixture" \
+          TEST_RUNNER_LIFE_UI_TEST_CATALOG_CLEAN_HOST=1 \
+            xcodebuild -project apps/macos/LifeUI.xcodeproj -scheme LifeUI \
+              -derivedDataPath "$RUNNER_TEMP/catalog-derived" -destination 'platform=macOS' \
+              -resultBundlePath "$RUNNER_TEMP/catalog-ui.xcresult" \
+              -only-testing:LifeUIUITests/CatalogRecordUITests/testCatalogRuleFailureRetainsDraftAndReadOnlyMetadata \
+              -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
+              CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/catalog-xcui.log"
+          xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/catalog-ui.xcresult" \
+            > "$RUNNER_TEMP/catalog-xcui-summary.json"
+          python3 - "$RUNNER_TEMP/catalog-xcui-summary.json" <<'PYVERIFY'
+          import json
+          import pathlib
+          import sys
+
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          if (result.get("passedTests"), result.get("failedTests"), result.get("skippedTests")) != (1, 0, 0):
+              raise SystemExit(f"Expected one executed passing XCUI test: {result}")
+          print("Verified one real catalog XCUI test; no skipped or zero-test success")
+          PYVERIFY
+      - name: Preserve synthetic catalog failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-xcui-failure
+          path: |
+            ${{ runner.temp }}/catalog-xcui.log
+            ${{ runner.temp }}/catalog-fixture.log
+            ${{ runner.temp }}/catalog-ui.xcresult
+          retention-days: 3
+          if-no-files-found: ignore
       - run: just --justfile apps/ios/justfile check
