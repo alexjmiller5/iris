@@ -88,10 +88,12 @@
 			aria-label="Bulk property"
 			bind:value={column}
 			disabled={disabled || running || !selectedIds.length}
-			onchange={() => {
+			onchange={(event) => {
+				column = event.currentTarget.value;
 				raw = '';
 				clear = false;
-				if (property) onsearch(property, '');
+				const selected = properties.find((p) => p.col === column);
+				if (selected) onsearch(selected, '');
 			}}
 		>
 			<option value="">Choose a property</option>

@@ -6,6 +6,17 @@ import Testing
 @MainActor
 struct RecordExportPresentationTests {
 
+  @Test func selectedExportRetainsExactIdentityAndSelectionMetadata() async throws {
+    let model = RecordExportPresentation(snapshot: exportTestSnapshot(), selectedIDs: ["\u{e9}"])
+    let file = try #require(await prepare(model))
+    let json = try #require(JSONSerialization.jsonObject(with: file.data) as? [String: Any])
+    let rows = try #require(json["rows"] as? [[String: Any]])
+    #expect(rows.count == 1)
+    #expect((rows.first?["id"] as? String).map { Data($0.utf8) } == Data("\u{e9}".utf8))
+    let scope = try #require(json["scope"] as? [String: Any])
+    #expect(scope["kind"] as? String == "selection")
+  }
+
   private func presentation(_ snapshot: RecordExportSnapshot = exportTestSnapshot()) throws
     -> RecordExportPresentation
   {

@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 @Observable @MainActor
 final class RecordExportPresentation {
   let snapshot: RecordExportSnapshot
+  let selectedIDs: [String]?
   var format = RecordExportFormat.json
   private(set) var preparing = false
   private(set) var metadata: RecordExportFile?
@@ -16,14 +17,17 @@ final class RecordExportPresentation {
 
   init(
     snapshot: RecordExportSnapshot,
+    selectedIDs: [String]? = nil,
     serialize:
-      @escaping @Sendable (RecordExportSnapshot, RecordExportFormat) async throws ->
-      RecordExportArtifact = {
-        try await RecordExportSerializer().serialize($0, format: $1)
-      }
+      (@Sendable (RecordExportSnapshot, RecordExportFormat) async throws -> RecordExportArtifact)? =
+      nil
   ) {
     self.snapshot = snapshot
-    self.serialize = serialize
+    self.selectedIDs = selectedIDs
+    self.serialize =
+      serialize ?? {
+        try await RecordExportSerializer().serialize($0, format: $1, selectedIDs: selectedIDs)
+      }
   }
 
   /// Own the action synchronously, before its task can be queued behind dismissal.
@@ -104,8 +108,9 @@ struct RecordExportView: View {
   @State private var contentType = UTType.json
   @State private var saving = false
 
-  init(snapshot: RecordExportSnapshot) {
-    _model = State(initialValue: RecordExportPresentation(snapshot: snapshot))
+  init(snapshot: RecordExportSnapshot, selectedIDs: [String]? = nil) {
+    _model = State(
+      initialValue: RecordExportPresentation(snapshot: snapshot, selectedIDs: selectedIDs))
   }
 
   var body: some View {
@@ -114,6 +119,9 @@ struct RecordExportView: View {
         Section {
           LabeledContent("Table", value: model.snapshot.table)
           LabeledContent("Loaded rows", value: model.snapshot.rows.count.formatted())
+          if let selected = model.selectedIDs {
+            LabeledContent("Selected rows", value: selected.count.formatted())
+          }
         } footer: {
           Text("Table completeness and freshness unknown.")
         }

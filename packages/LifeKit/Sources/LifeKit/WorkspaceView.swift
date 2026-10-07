@@ -7,6 +7,7 @@ public struct WorkspaceView: View {
   @State private var importing = false
   @State private var settings = false
   @State private var recordExport: RecordExportTarget?
+  @State private var rowSelection: RecordSelectionTarget?
   @State private var options = false
   @State private var filterColumn: String?
   @State private var savedViews = false
@@ -227,6 +228,11 @@ public struct WorkspaceView: View {
     .sheet(item: $recordExport) { target in
       RecordExportView(snapshot: target.snapshot)
     }
+    .sheet(item: $rowSelection) { target in
+      RecordSelectionView(
+        snapshot: target.snapshot, rows: target.rows, workspace: target.workspace,
+        writable: target.writable, isCurrent: target.isCurrent, prepare: target.prepare)
+    }
     .sheet(isPresented: $options, onDismiss: { filterColumn = nil }) {
       WorkspaceOptionsView(model: model, filterColumn: filterColumn)
     }
@@ -344,6 +350,7 @@ public struct WorkspaceView: View {
       && pendingSearchEditor == nil && pendingDuplicateEditor == nil
       && pendingReferenceEditor == nil && rejectionInbox == nil && pendingRejection == nil
       && !settings && !options && !savedViews && !importing && recordExport == nil
+      && rowSelection == nil
   }
 
   private var canExportLoadedRows: Bool {
@@ -362,6 +369,36 @@ public struct WorkspaceView: View {
       Label("Export loaded rows", systemImage: "square.and.arrow.up")
     }
     .disabled(!canExportLoadedRows).accessibilityIdentifier("export-loaded-rows")
+  }
+
+  private var selectLoadedRowsAction: some View {
+    Button {
+      guard canExportLoadedRows, let workspace = model.client else { return }
+      do {
+        let snapshot = try model.captureLoadedRowsForExport(at: Date())
+        let generation = model.workspaceGeneration
+        let query = model.queryKey.map { Data($0.utf8) }
+        let catalog = model.catalog
+        let current = {
+          model.client === workspace && model.workspaceGeneration == generation
+            && model.queryKey.map { Data($0.utf8) } == query
+            && recordExportCatalogsMatch(catalog, model.catalog)
+        }
+        rowSelection = RecordSelectionTarget(
+          snapshot: snapshot, rows: model.rows, workspace: workspace,
+          writable: model.canWrite && !model.trash, isCurrent: current,
+          prepare: { ids in
+            guard current() else {
+              throw WorkspaceError(
+                message: "The workspace changed. Select rows again.", violations: [])
+            }
+            return try model.prepareBulkRows(ids: ids)
+          })
+      } catch { model.error = error.localizedDescription }
+    } label: {
+      Label("Select loaded rows", systemImage: "checklist")
+    }.disabled(!canExportLoadedRows || model.rows.isEmpty).accessibilityIdentifier(
+      "select-loaded-rows")
   }
 
   private func recordNavigationSucceeded(_ destination: NativeDestination) {
@@ -1032,6 +1069,7 @@ public struct WorkspaceView: View {
           Label("Hub connection", systemImage: "gearshape")
         }.disabled(editor != nil)
         exportLoadedRowsAction
+        selectLoadedRowsAction
         Button(action: showRejections) { Label("Issues", systemImage: "exclamationmark.bubble") }
           .disabled(!canFind).accessibilityIdentifier("workspace-issues")
         Divider()
@@ -1214,6 +1252,7 @@ public struct WorkspaceView: View {
                 Label("Hub connection", systemImage: "gearshape")
               }.disabled(!canFind)
               exportLoadedRowsAction
+              selectLoadedRowsAction
             } label: {
               Label("Workspace actions", systemImage: "ellipsis").labelStyle(.iconOnly)
             }
@@ -1243,6 +1282,16 @@ public struct WorkspaceView: View {
 private struct RecordExportTarget: Identifiable {
   let id = UUID()
   let snapshot: RecordExportSnapshot
+}
+
+private struct RecordSelectionTarget: Identifiable {
+  let id = UUID()
+  let snapshot: RecordExportSnapshot
+  let rows: [WorkspaceRow]
+  let workspace: NativeWorkspace
+  let writable: Bool
+  let isCurrent: () -> Bool
+  let prepare: ([String]) throws -> BulkRecordModel
 }
 
 private struct EditorTarget: Identifiable {
