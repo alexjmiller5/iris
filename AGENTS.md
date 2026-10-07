@@ -478,6 +478,9 @@ it in JavaScriptCore as well as the core's own tests.
 and `just build` cover web and Apple targets. `just fmt` formats owned source.
 The README documents browser smoke commands and a real Worker synthetic hub.
 Fixtures are synthetic only; never copy live personal data into tests or docs.
+Run the package suite with `swift test --no-parallel`: independent MainActor/JSC
+fixtures otherwise starve each other’s admission watchdogs. Keep explicit
+concurrent tasks inside tests and their assertions unchanged.
 
 `project.yml` is authoritative; generated Xcode projects and Info.plists are
 ignored. Child justfiles expose platform run/test/check/build. Caches and derived
