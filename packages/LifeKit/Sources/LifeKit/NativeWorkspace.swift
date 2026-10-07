@@ -360,6 +360,12 @@ public final class NativeWorkspace {
     }
     return created
   }
+  func resolveViewDefinition(table: String, definition: WorkspaceRecord) async throws -> CoreResolvedViewDefinition {
+    let args: WorkspaceRecord = ["table": .string(table), "definition": .object(definition)]
+    let json = String(decoding: try JSONEncoder().encode(args), as: UTF8.self)
+    let result = try await call("resolveViewDefinition", arguments: json)
+    return try JSONDecoder().decode(CoreResolvedViewDefinition.self, from: JSONEncoder().encode(result))
+  }
   public func listViews(table: String) async throws -> CoreSavedViewList {
     try await decode(CoreRequests.ListViews(CoreListViewsArgs(table: table)))
   }

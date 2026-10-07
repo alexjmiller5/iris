@@ -6,6 +6,32 @@ import Testing
 
 @MainActor
 struct WorkspaceLinkTests {
+  @Test func transientLinkAppliesQueryAndKeepsTheDisplayedSavedRevision() async throws {
+    let root = try directory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let model = WorkspaceModel(localURL: { root.appendingPathComponent("local.sqlite") })
+    await model.open()
+    let workspace = try #require(model.client)
+    let context = try #require(model.editingContext)
+    let saved = try await workspace.saveView(CoreSaveViewArgs(table: context.table, name: "Stored",
+      definition: CoreSavedViewDefinition(version: 1, columns: ["title"])))
+    try model.applySavedView(saved, context: context)
+    model.search = "Synthetic query"
+    let link = try NativeDeepLink(url: model.linkURL(
+      for: NativeDestination(table: context.table, viewID: saved.id), context: context))
+    #expect(link.destination.state != nil)
+    let before = try await workspace.status()
+    let resolved = try await NativeDestinationResolver(workspace: workspace).resolve(
+      link.destination, isCurrent: { true })
+    _ = try model.activateDestination(resolved, workspace: workspace, generation: model.workspaceGeneration)
+    #expect(model.search == "Synthetic query")
+    #expect(model.appliedView == saved)
+    #expect(model.viewModified)
+    #expect(try await workspace.listViews(table: context.table).views == [saved])
+    #expect(try await workspace.status() == before)
+    await model.close()
+  }
+
   @Test func sourceLinkUsesPreservedMappingAndNativeDestinationGuards() async throws {
     let runtime = try LifeCoreRuntime()
     let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)

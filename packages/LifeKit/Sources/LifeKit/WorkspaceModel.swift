@@ -109,6 +109,17 @@ final class WorkspaceModel {
     }
     do {
       if let linkIdentityStore { linkBinding = try linkIdentityStore.create() }
+      var destination = destination
+      var definition = try currentViewDefinition()
+      if destination.viewID == appliedView?.id, destination.state == nil,
+        definition != (appliedView?.definition ?? CoreSavedViewDefinition(version: 1)) {
+        definition.actions = nil
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let state = String(decoding: try encoder.encode(definition), as: UTF8.self)
+        destination = NativeDestination(table: destination.table, viewID: destination.viewID,
+          rowID: destination.rowID, state: state)
+      }
       let url = try NativeDeepLink(destination: destination, workspace: linkBinding).url
       linkError = nil
       return url
@@ -783,24 +794,26 @@ final class WorkspaceModel {
     await reloadAfterCommit(workspace: context.workspace, generation: generation, query: queryKey)
   }
 
-  func applySavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?) throws {
+  func applySavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?, definition: CoreSavedViewDefinition? = nil) throws {
     let context = try requireViewContext(context)
     guard !savingView, !undoing else {
       throw WorkspaceError(message: "Wait for the saved view to finish saving.", violations: [])
     }
-    try installSavedView(saved, context: context)
+    try installSavedView(saved, context: context, transient: definition)
   }
 
-  private func installSavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext)
+  private func installSavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext, transient: CoreSavedViewDefinition? = nil)
     throws
   {
     if let saved {
       guard saved.tbl == context.table, saved.deletedAt == nil,
-        saved.unavailable == nil, let definition = saved.definition, saved.view != nil
+        saved.unavailable == nil, saved.definition != nil, saved.view != nil
       else {
         throw WorkspaceError(
           message: saved.unavailable ?? "This saved view is unavailable.", violations: [])
       }
+    }
+    if let definition = transient ?? saved?.definition {
       appliedView = saved
       visibleRecordColumns = definition.columns
       search = definition.search ?? ""
@@ -983,7 +996,7 @@ final class WorkspaceModel {
     if table == target { resetView() } else { table = target }
     let context = WorkspaceEditingContext(
       workspace: workspace, table: target, draftStore: draftStore)
-    try applySavedView(resolved.view, context: context)
+    try applySavedView(resolved.view, context: context, definition: resolved.definition)
     defaultViewNotice = resolved.defaultNotice
     if resolved.row != nil { trash = resolved.isTrashed }
     return context

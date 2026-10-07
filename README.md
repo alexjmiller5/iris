@@ -118,7 +118,7 @@ receive it through schema sync from their operator; the client never adopts an
 unrelated table named `views`. Column visibility changes the grid only, so
 editing still reads all of a record's fields.
 
-**Copy link** shares the current table, saved view and saved record. Links use
+**Copy link** shares the current table, saved view and saved record. Unsaved filters, sorting, visible columns and presentation follow the link too; this does not save or modify a view. View settings are limited to 16 KiB; save larger configurations as a named view before sharing. Links use
 `/workspace?table=<table-id>&view=<view-id>&row=<record-id>` with optional view
 and row identifiers. Renaming a saved view does not change its link. Open the
 matching workspace on the receiving device, and sync if the target is not yet
