@@ -1073,7 +1073,8 @@ final class WorkspaceModel {
   func reload(more: Bool = false) async {
     // A retained prefix is usable only while its successful read context is current.
     // A stale or in-flight prefix requires an ordinary first-page replacement.
-    let append = more && !loading && !writingRecord && !undoing && !savingView
+    let append =
+      more && !loading && !writingRecord && !undoing && !savingView
       && loadedRowsContext == currentRowsContext
     // A failed next page may retry its valid prefix. A full refresh (including
     // post-write reconciliation) invalidates that prefix before awaiting anything.
@@ -1128,6 +1129,59 @@ final class WorkspaceModel {
       self.error = error.localizedDescription
       if !append { rows = [] }
     }
+  }
+
+  func resolveDerived(column: String, original: WorkspaceRecord, context: WorkspaceEditingContext?)
+    async throws -> RecordResolution
+  {
+    guard let client, let transport, let context, context.workspace === client,
+      context.table == table, !syncing, !writingRecord, !undoing,
+      let id = original["id"]?.text, let revision = original["updated_at"]?.text
+    else {
+      throw WorkspaceError(
+        message: "Connect to the hub and finish the current operation before resolving.",
+        violations: [])
+    }
+    let generation = workspaceGeneration
+    let outgoingRevision = localSyncRevision
+    let current = {
+      self.client === client && self.workspaceGeneration == generation
+        && self.table == context.table
+    }
+    writingRecord = true
+    syncing = true
+    defer {
+      if client === self.client, generation == workspaceGeneration {
+        writingRecord = false
+        syncing = false
+        syncProgress = nil
+        scheduleAutomaticSync()
+      }
+    }
+    let result = try await client.resolveDerived(
+      using: transport, table: context.table,
+      id: id, column: column, expectedUpdatedAt: revision)
+    guard current() else { throw CancellationError() }
+    let sync = try await client.sync(
+      using: transport, maxRows: downloadPreferences.maxRows,
+      tables: downloadPreferences.tables)
+    guard current() else { throw CancellationError() }
+    syncResult = sync
+    uploadedSyncRevision = max(uploadedSyncRevision, outgoingRevision)
+    let resolved = try await NativeDestinationResolver(workspace: client).resolve(
+      NativeDestination(table: context.table, rowID: id), isCurrent: current)
+    guard let record = resolved.row?.record,
+      record["deleted_at"] == nil || record["deleted_at"] == .null,
+      result.derived == 0 || record["updated_at"] != original["updated_at"]
+    else {
+      throw WorkspaceError(
+        message: "The resolved record is not available locally yet. Sync and reopen it.",
+        violations: [])
+    }
+    catalog = resolved.catalog
+    await reload()
+    guard current() else { throw CancellationError() }
+    return RecordResolution(record: record, failures: result.failed)
   }
 
   @discardableResult
