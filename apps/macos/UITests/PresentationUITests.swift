@@ -29,6 +29,10 @@ final class PresentationUITests: XCTestCase {
     let table = app.buttons["sidebar-table-notes"]
     XCTAssertTrue(table.waitForExistence(timeout: 10))
     table.click()
+    let navigationFinished = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == false"),
+      object: app.buttons["cancel-destination"])
+    XCTAssertEqual(XCTWaiter.wait(for: [navigationFinished], timeout: 10), .completed)
     func layout(_ name: String) {
       app.buttons["view-options"].click()
       let picker = app.popUpButtons["view-layout"]
