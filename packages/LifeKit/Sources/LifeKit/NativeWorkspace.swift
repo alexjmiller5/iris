@@ -369,6 +369,20 @@ public final class NativeWorkspace {
   public func setViewDefault(_ args: CoreSetViewDefaultArgs) async throws -> CoreViewDefault {
     try await decode(CoreRequests.SetViewDefault(args))
   }
+  func saveCatalogProperty(_ args: CoreSaveCatalogPropertyArgs) async throws -> WorkspaceRecord {
+    let result = try await decode(CoreRequests.SaveCatalogProperty(args))
+    return try JSONDecoder().decode(WorkspaceRecord.self, from: JSONEncoder().encode(result))
+  }
+  func saveCatalogRule(_ args: CoreSaveCatalogRuleArgs) async throws -> WorkspaceRecord {
+    try await decode(CoreRequests.SaveCatalogRule(args))
+  }
+  @discardableResult
+  func prepareLocalCatalog() async throws -> Bool {
+    guard case .bool(let created) = try await call("prepareLocalCatalog") else {
+      throw WorkspaceError(message: "Invalid catalog setup response.", violations: [])
+    }
+    return created
+  }
   public func saveView(_ args: CoreSaveViewArgs) async throws -> CoreSavedViewRecord {
     try await decode(CoreRequests.SaveView(args))
   }

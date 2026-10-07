@@ -734,6 +734,34 @@ final class WorkspaceModel {
     return context
   }
 
+  func editCatalog(
+    context: WorkspaceEditingContext,
+    operation: (NativeWorkspace) async throws -> WorkspaceRecord
+  ) async throws -> WorkspaceRecord {
+    _ = try requireViewContext(context)
+    guard !savingView, !undoing, !writingRecord, !loading else {
+      throw WorkspaceError(
+        message: "Finish the active operation before editing the catalog.", violations: [])
+    }
+    let workspace = workspaceGeneration
+    let generation = viewGeneration
+    savingView = true
+    defer { if generation == viewGeneration { savingView = false } }
+    let result = try await operation(context.workspace)
+    _ = try requireViewContext(context, generation: workspace)
+    guard generation == viewGeneration else {
+      throw WorkspaceError(
+        message: "The view changed. Reopen the catalog to see the saved result.", violations: [])
+    }
+    let updated = try await context.workspace.catalog()
+    _ = try requireViewContext(context, generation: workspace)
+    guard generation == viewGeneration else { throw CancellationError() }
+    catalog = updated
+    recordLocalChange()
+    await reloadAfterCommit(workspace: context.workspace, generation: workspace, query: queryKey)
+    return result
+  }
+
   func refreshSavedViews(context: WorkspaceEditingContext?) async throws {
     let context = try requireViewContext(context)
     await refreshWriteability()
@@ -1145,6 +1173,7 @@ final class WorkspaceModel {
         localObserver = demo ? nil : try LocalDatabaseObserver(path: path)
         if seed { try await workspace.createSample() }
         if !demo, url == nil {
+          try await workspace.prepareLocalCatalog()
           try await workspace.prepareLocalViews()
           try await workspace.prepareLocalPins()
         }

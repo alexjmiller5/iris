@@ -98,3 +98,8 @@ test('recents fixture reset requires its exact reserved host and port',()=>{
  expect(disposableOrigin('http://life-ui-creation.localhost:5242/workspace?review')).toBe('http://life-ui-creation.localhost:5242');
  for(const address of ['http://life-ui-creation.localhost:5243/workspace?review','https://life-ui-creation.localhost:5242/workspace?review','http://life-ui-creation.localhost:5242/workspace','http://life-ui-creation.localhost.evil.test:5242/workspace?review']) expect(()=>disposableOrigin(address)).toThrow('Refusing reset');
 });
+
+test('catalog editor fixture reset is limited to its exact origin',()=>{
+ expect(disposableOrigin('http://life-ui-catalog.localhost:5282/workspace?review')).toBe('http://life-ui-catalog.localhost:5282');
+ for(const address of ['http://life-ui-catalog.localhost:5283/workspace?review','https://life-ui-catalog.localhost:5282/workspace?review','http://life-ui-catalog.localhost:5282/workspace'])expect(()=>disposableOrigin(address)).toThrow('Refusing reset');
+});

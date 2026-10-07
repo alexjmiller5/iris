@@ -636,3 +636,12 @@ alter generated core code to implement host observation.
 checks precede application publication and the exact non-zap cask removal precedes
 Homebrew cleanup. Keep the cask publisher available for Homebrew consumers.
 Migration receipts and runtime data never belong in source.
+
+Catalog editing uses canonical `saveCatalogProperty` and `saveCatalogRule` requests
+with the displayed metadata revision. Both record an atomic `catalog_log` entry;
+new properties also log nullable physical column DDL. Preserve existing record
+values, select-option descriptions and ordering metadata. Failed edits retain the
+form. Only explicitly app-owned local/demo setup provisions the canonical audit
+manifest; imported replicas receive operator-provisioned logged schema through
+sync. Schema changes invalidate old coverage, and enforced record rules remain
+fail-closed until the ordinary sync establishes their validation dependencies.

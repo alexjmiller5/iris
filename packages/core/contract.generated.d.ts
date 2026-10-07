@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "b2f2389bb98d8a3c74cfd1c077ea79f7c50378421fe04e8144fb6e1a2a7e07aa";
+export declare const CORE_CONTRACT_HASH = "8f429c330ff1c9acf42371e2a662d6ea4a8b20c38a513299801a7cdd20441045";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -56,6 +56,7 @@ export type Property = {
     source?: string | null;
     source_ref?: string | null;
     id?: string;
+    updated_at?: string | null;
 };
 export type Violation = {
     col: string;
@@ -1047,6 +1048,19 @@ export type ReadPlan = {
     calendarPolicy: ReadPlanCalendarPolicy | null;
     guards: ReadPlanGuard[];
 };
+export type SaveCatalogPropertyArgs = {
+    table: string;
+    column: string;
+    expectedUpdatedAt: string | null;
+    fields: Row;
+    addColumn?: boolean;
+};
+export type SaveCatalogRuleArgs = {
+    table: string;
+    id: string;
+    expectedUpdatedAt: string | null;
+    fields: Row;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -1235,6 +1249,14 @@ export interface CoreOperations {
     prepareReadPlan: {
         args: PrepareReadPlanArgs;
         result: ReadPlan;
+    };
+    saveCatalogProperty: {
+        args: SaveCatalogPropertyArgs;
+        result: Property;
+    };
+    saveCatalogRule: {
+        args: SaveCatalogRuleArgs;
+        result: Row;
     };
 }
 export type CoreMethod = keyof CoreOperations;
