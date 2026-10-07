@@ -1,9 +1,39 @@
 import Foundation
+import JavaScriptCore
 import Testing
 
 @testable import LifeKit
 
 @MainActor struct PresentationTests {
+  @Test(
+    .enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_PRESENTATION_DATABASE"] != nil))
+  func preparePresentationUIFixture() async throws {
+    let path = try #require(
+      ProcessInfo.processInfo.environment["LIFE_UI_TEST_PRESENTATION_DATABASE"])
+    try #require(URL(fileURLWithPath: path).lastPathComponent == "presentation-acceptance.sqlite")
+    try #require(!FileManager.default.fileExists(atPath: path))
+    let runtime = try LifeCoreRuntime()
+    let workspace = try NativeWorkspace(path: path, runtime: runtime)
+    try await workspace.createSample()
+    let month = try calendarContext(timeZone: TimeZone.current.identifier).today.prefix(7)
+    let statements = [
+      "ALTER TABLE notes ADD COLUMN starts TEXT", "ALTER TABLE notes ADD COLUMN ends TEXT",
+    ]
+    for ddl in statements {
+      let encoded = String(data: try JSONEncoder().encode(ddl), encoding: .utf8)!
+      runtime.context.evaluateScript(
+        "LifeSql.run(\(encoded)); LifeSql.run('INSERT INTO _schema_log(ddl) VALUES (?)',[\(encoded)])"
+      )
+      try #require(runtime.context.exception == nil)
+    }
+    runtime.context.evaluateScript(
+      """
+      LifeSql.run("INSERT INTO catalog_properties(id,tbl,col,label,sort,type) VALUES ('notes.starts','notes','starts','Starts',10,'date'),('notes.ends','notes','ends','Ends',11,'date')");
+      LifeSql.run("UPDATE notes SET starts='\(month)-10',ends='\(month)-12'");
+      """)
+    try #require(runtime.context.exception == nil)
+    try await workspace.close()
+  }
   @Test func explicitCoverAcceptsExtensionlessImagesButRejectsUnsafeURLs() throws {
     #expect(
       try #require(ImageReference.cover(type: "url", value: "https://images.invalid/cover?id=1"))

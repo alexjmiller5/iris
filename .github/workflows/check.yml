@@ -56,13 +56,21 @@ jobs:
             --filter CatalogRecordAcceptanceTests.prepareCatalogRecordUIFixture \
             2>&1 | tee "$RUNNER_TEMP/catalog-fixture.log"
           test -s "$fixture"
+          presentation="$fixture_dir/presentation-acceptance.sqlite"
+          LIFE_UI_TEST_PRESENTATION_DATABASE="$presentation" swift test \
+            --package-path packages/LifeKit --skip-build \
+            --filter PresentationTests.preparePresentationUIFixture \
+            2>&1 | tee "$RUNNER_TEMP/presentation-fixture.log"
+          test -s "$presentation"
           (cd apps/macos && xcodegen generate --spec project.yml)
           TEST_RUNNER_LIFE_UI_TEST_CATALOG_DATABASE="$fixture" \
+          TEST_RUNNER_LIFE_UI_TEST_PRESENTATION_DATABASE="$presentation" \
           TEST_RUNNER_LIFE_UI_TEST_CATALOG_CLEAN_HOST=1 \
             xcodebuild -project apps/macos/LifeUI.xcodeproj -scheme LifeUI \
               -derivedDataPath "$RUNNER_TEMP/catalog-derived" -destination 'platform=macOS' \
               -resultBundlePath "$RUNNER_TEMP/catalog-ui.xcresult" \
               -only-testing:LifeUIUITests/CatalogRecordUITests/testCatalogRuleFailureRetainsDraftAndReadOnlyMetadata \
+              -only-testing:LifeUIUITests/PresentationUITests/testCalendarRangesGalleryAndBoardMove \
               -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
               CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/catalog-xcui.log"
           xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/catalog-ui.xcresult" \
@@ -73,9 +81,9 @@ jobs:
           import sys
 
           result = json.loads(pathlib.Path(sys.argv[1]).read_text())
-          if (result.get("passedTests"), result.get("failedTests"), result.get("skippedTests")) != (1, 0, 0):
-              raise SystemExit(f"Expected one executed passing XCUI test: {result}")
-          print("Verified one real catalog XCUI test; no skipped or zero-test success")
+          if (result.get("passedTests"), result.get("failedTests"), result.get("skippedTests")) != (2, 0, 0):
+              raise SystemExit(f"Expected two executed passing XCUI tests: {result}")
+          print("Verified real catalog and presentation XCUI tests; no skipped or zero-test success")
           PYVERIFY
       - name: Preserve synthetic catalog failure evidence
         if: failure()
@@ -85,6 +93,7 @@ jobs:
           path: |
             ${{ runner.temp }}/catalog-xcui.log
             ${{ runner.temp }}/catalog-fixture.log
+            ${{ runner.temp }}/presentation-fixture.log
             ${{ runner.temp }}/catalog-ui.xcresult
           retention-days: 3
           if-no-files-found: ignore
