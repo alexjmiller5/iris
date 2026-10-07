@@ -1603,7 +1603,7 @@ private struct RecordEditor: View {
     }
   }
 
-  private var editorContent: some View {
+  private var editorToolbarContent: some View {
     editorFields
       .onChange(of: scenePhase) { _, phase in
         if phase == .inactive { flushInBackground() }
@@ -1673,6 +1673,10 @@ private struct RecordEditor: View {
         }
       }
       .disabled(saving || editor.undoing || referenceNavigation?.loading == true)
+  }
+
+  private var editorContent: some View {
+    editorToolbarContent
       .sheet(item: $pageCapture) { capture in PageCaptureView(model: capture) }
       .alert(
         "Cannot open page capture",

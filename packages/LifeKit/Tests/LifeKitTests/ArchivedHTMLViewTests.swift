@@ -6,9 +6,52 @@ import WebKit
 @testable import LifeKit
 
 #if os(macOS)
+import AppKit
+
 @Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_CAPTURE_HTML"] == "1"))
 @MainActor
 struct ArchivedHTMLViewTests {
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_CAPTURE_GESTURES"] == "1"))
+  func nativeContextAndClickActionsRemainInsideTheArchive() async throws {
+    try #require(Bundle.main.bundleURL.pathExtension == "app", "Use the application-hosted test target")
+    let sink = try ArchiveNetworkSink()
+    defer { sink.close() }
+    let origin = try await sink.start()
+    let html = """
+      <style>a{display:block;margin:12px;font:20px system-ui}</style>
+      <a href="\(origin)/native-link">Native capture link</a>
+      <a href="\(origin)/native-download" download="fixture.txt">Native capture download</a>
+      """
+    let control = ArchiveProbeView()
+    defer { control.close() }
+    try await control.load(html)
+    let permissive = ArchiveNativeInteractionProbe(view: control.view, phase: "control")
+    defer { permissive.close() }
+    try await permissive.run()
+    #expect(permissive.contextEvents > 0, "A real native contextual gesture is required")
+    #expect(permissive.menuTitles.contains { !$0.isEmpty }, "Control must expose a native context menu")
+    #expect(permissive.clickEvents > 0, "A native click is required")
+    try #require(await sink.waitFor("/native-link"), "The permissive click must reach the synthetic sink")
+    permissive.close()
+    control.close()
+    sink.reset()
+
+    let renderer = try await ArchivedHTMLRenderer.make()
+    defer { renderer.close() }
+    let file = try await verifiedHTML(html)
+    defer { file.dispose() }
+    try await renderer.load(file)
+    let protected = ArchiveNativeInteractionProbe(view: renderer.webView, phase: "protected")
+    defer { protected.close() }
+    try await protected.run()
+    #expect(protected.contextEvents > 0)
+    #expect(protected.clickEvents >= 2, "Click both the link and download-attributed link")
+    #expect(protected.menuTitles.allSatisfy { $0.isEmpty }, "An archive must not offer native external actions")
+    try await Task.sleep(for: .milliseconds(250))
+    #expect(sink.paths.isEmpty)
+    #expect(renderer.webView.url?.absoluteString == "about:blank")
+  }
+
   @Test func nativeLinkPreviewsAreDisabledBeforeLoadingAnArchive() async throws {
     let renderer = try await ArchivedHTMLRenderer.make()
     defer { renderer.close() }
@@ -280,6 +323,74 @@ struct ArchivedHTMLViewTests {
     return try await attempt.loadArtifact(.html, maximumBytes: PageCapture.previewLimit) { _, _ in
       try RetainedFile(data: bytes, contentType: "text/html", name: "page.html")
     }
+  }
+}
+
+/// Application-hosted native gesture fixture. Its buttons and permissive control
+/// are test-only; no app launch flag or permissive production renderer is added.
+@MainActor private final class ArchiveNativeInteractionProbe: NSObject {
+  let window: NSWindow
+  private let view: WKWebView
+  private var monitor: Any?
+  private var trackedMenus: [NSMenu] = []
+  private var finished = false
+  private(set) var menuTitles: [[String]] = []
+  private(set) var clickEvents = 0
+  private(set) var contextEvents = 0
+  private let phase: String
+
+  init(view: WKWebView, phase: String) {
+    self.view = view
+    self.phase = phase
+    window = NSWindow(contentRect: NSRect(x: 120, y: 120, width: 640, height: 520),
+                      styleMask: [.titled, .closable], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.title = "Archive gesture " + phase
+    super.init()
+    let finish = NSButton(title: "Finish " + phase, target: self, action: #selector(finishPhase))
+    let stack = NSStackView(views: [view, finish])
+    stack.orientation = .vertical
+    stack.alignment = .centerX
+    view.widthAnchor.constraint(equalToConstant: 640).isActive = true
+    view.heightAnchor.constraint(equalToConstant: 480).isActive = true
+    window.contentView = stack
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(menuOpened(_:)), name: NSMenu.didBeginTrackingNotification, object: nil)
+    monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+      guard let self, event.window === self.window,
+        self.view.bounds.contains(self.view.convert(event.locationInWindow, from: nil))
+      else { return event }
+      if event.type == .rightMouseDown || event.modifierFlags.contains(.control) {
+        self.contextEvents += 1
+      } else { self.clickEvents += 1 }
+      return event
+    }
+  }
+
+  func run() async throws {
+    window.makeKeyAndOrderFront(nil)
+    NSApplication.shared.activate(ignoringOtherApps: true)
+    FileHandle.standardError.write(Data("CAPTURE_GESTURE_READY=\(phase) WINDOW=\(window.windowNumber)\n".utf8))
+    let deadline = ContinuousClock.now.advanced(by: .seconds(90))
+    while !finished && ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    FileHandle.standardError.write(Data("CAPTURE_GESTURE_RESULT=\(phase) clicks=\(clickEvents) contextual=\(contextEvents) menus=\(menuTitles)\n".utf8))
+    try #require(finished, "Complete the synthetic native gesture phase")
+  }
+
+  @objc private func finishPhase() { finished = true }
+  @objc private func menuOpened(_ notification: Notification) {
+    guard let menu = notification.object as? NSMenu else { return }
+    menuTitles.append(menu.items.map(\.title))
+    trackedMenus.append(menu)
+  }
+  func close() {
+    NotificationCenter.default.removeObserver(self)
+    if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+    trackedMenus.forEach { $0.cancelTracking() }
+    trackedMenus.removeAll()
+    window.close()
   }
 }
 
