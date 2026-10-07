@@ -348,6 +348,14 @@ public final class NativeWorkspace {
   public func prepareReadPlan(_ args: CorePrepareReadPlanArgs) async throws -> CoreReadPlan {
     try await decode(CoreRequests.PrepareReadPlan(args), cancellableRead: true)
   }
+  public func exportWidgetSnapshot(to url: URL) async throws {
+    guard url.isFileURL else {
+      throw WorkspaceError(message: "Widget snapshot requires a file destination.", violations: [])
+    }
+    _ = try await call(
+      "widgetBackup", arguments: String(decoding: JSONEncoder().encode(url.path), as: UTF8.self),
+      cancellableRead: true)
+  }
   public func pinTable(_ args: CorePinTableArgs) async throws -> CoreSidebarPinList {
     try await decode(CoreRequests.PinTable(args))
   }
@@ -534,7 +542,9 @@ public final class NativeWorkspace {
         }
         onDiagnosticID?(diagnosticID)
         var insertion = requests.endIndex
-        if !referenceRead, transport == nil, method != "sync", method != "close" {
+        if !referenceRead, transport == nil, method != "sync", method != "close",
+          method != "widgetBackup"
+        {
           // Local foreground work may pass only trailing passive-label reads.
           // Foreground FIFO, transport, sync, close and HTTP resumptions stay ordered.
           while insertion > requests.startIndex {
@@ -614,6 +624,18 @@ public final class NativeWorkspace {
     }
     do { try database.prepareForRequests() } catch {
       complete(.failure(error))
+      return
+    }
+    if request.method == "widgetBackup" {
+      do {
+        let path = try JSONDecoder().decode(String.self, from: Data(request.arguments.utf8))
+        Task { [self] in
+          do {
+            try await database.exportWidgetSnapshot(to: URL(fileURLWithPath: path))
+            complete(.success(.null))
+          } catch { complete(.failure(error)) }
+        }
+      } catch { complete(.failure(error)) }
       return
     }
     if request.method == "sync", path != ":memory:" {
