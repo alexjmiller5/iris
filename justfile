@@ -6,7 +6,7 @@ dev:
 
 test:
     bun run test
-    swift test --package-path packages/LifeKit --scratch-path "{{swift_cache}}"
+    swift test --no-parallel --package-path packages/LifeKit --scratch-path "{{swift_cache}}"
 
 check:
     bun run check

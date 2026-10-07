@@ -5,6 +5,53 @@ import Testing
 
 @Suite(.serialized) @MainActor
 struct EnrollmentConnectionTests {
+  #if os(macOS)
+    @Test(arguments: ["selection", "keychain"])
+    func failedConnectionPreservesSelectedDatabaseAndCredential(reason: String) async throws {
+      let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        UUID().uuidString)
+      let bookmark = directory.appendingPathComponent("selected-database.bookmark")
+      defer {
+        try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: bookmark.path)
+        try? FileManager.default.removeItem(at: directory)
+      }
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      let file = directory.appendingPathComponent("selected.sqlite")
+      let seed = try NativeWorkspace(path: file.path)
+      try await seed.createSample()
+      try await seed.close()
+      let old = HubCredentials(endpoint: "https://saved.invalid", token: "saved-fixture")
+      let store = MemoryHubCredentials(old)
+      let model = makeModel(directory, store: store)
+      await model.open(url: file)
+      do {
+        let before = try #require(model.client)
+        let bytes = try Data(contentsOf: bookmark)
+        if reason == "selection" {
+          try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: bookmark.path)
+        } else {
+          store.failSave = true
+        }
+        await #expect(throws: Error.self) {
+          try await model.connect(
+            HubCredentials(endpoint: "https://full.invalid", token: "candidate-fixture"),
+            synchronizeAfter: false)
+        }
+        #expect(model.client === before)
+        #expect(store.value == old)
+        #expect(store.saves == (reason == "keychain" ? 1 : 0))
+        #expect(try Data(contentsOf: bookmark) == bytes)
+        #expect(
+          try LocalDatabaseSelection(root: directory).load()?.resolvingSymlinksInPath().path
+            == file.resolvingSymlinksInPath().path)
+      } catch {
+        await model.close()
+        throw error
+      }
+      await model.close()
+    }
+  #endif
+
   @Test(arguments: ["admin", "restricted", "offline", "keychain"])
   func rejectedCandidatePreservesTheOpenWorkspaceAndSavedCredential(reason: String) async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -851,3 +851,24 @@ and reopen. `scripts/test-view-options.ts` also covers policy persistence, typed
 filter changes, live action choices and stale displayed-view rejection.
 The native `WorkflowViewsUITests` uses `SavedViewsTests.prepareSavedViewsUIFixture`
 on the exact disposable simulator selected by `LIFE_UI_TEST_SAVED_VIEWS_SIMULATOR`.
+
+### Share a Mac database with the Life CLI
+
+On the Mac, close the current workspace, choose **Open a local database…**, and
+select the file printed by `life path`. Life UI remembers that file for the next
+launch. Both clients now read and write the same SQLite database, including while
+offline. Foreground windows observe committed changes every 250 ms; commits refresh
+catalog and grid data without replacing unsaved editor drafts. A conflicting save
+keeps the draft for review instead of silently overwriting the other writer.
+
+The CLI's configured background sync owns hub synchronization for this shared
+workspace. Life UI does not borrow its credential or run a second replica sync
+against the file. Keep the CLI background service enabled for cross-device sync;
+local UI/CLI visibility works without it or a network connection. The existing
+hub connection mode remains an independent app replica for devices without a
+shared file. Connecting a hub explicitly switches back to that mode.
+
+Opening an existing database never seeds a sample, copies a replica over it, or
+replaces a missing selected file. Existing replicas and recovery drafts are kept.
+Before changing from a separate replica, finish its pending sync and preserve any
+unsaved drafts; switching files does not merge separate local write queues.

@@ -489,6 +489,9 @@ it in JavaScriptCore as well as the core's own tests.
 and `just build` cover web and Apple targets. `just fmt` formats owned source.
 The README documents browser smoke commands and a real Worker synthetic hub.
 Fixtures are synthetic only; never copy live personal data into tests or docs.
+Run the package suite with `swift test --no-parallel`: independent MainActor/JSC
+fixtures otherwise starve each other’s admission watchdogs. Keep explicit
+concurrent tasks inside tests and their assertions unchanged.
 
 `project.yml` is authoritative; generated Xcode projects and Info.plists are
 ignored. Child justfiles expose platform run/test/check/build. Caches and derived
@@ -543,6 +546,20 @@ Native graph changes must regenerate the bundled island.
 `islands.css` explicitly scopes Tailwind sources to the embedded components;
 unrelated web files must not change native artifacts. Verify this with
 `bun scripts/test-island-builds.ts` before publishing regenerated resources.
+
+## Shared local Mac workspace
+
+An explicitly opened database is remembered in a private security-scoped bookmark.
+Reopening a missing selection fails visibly rather than creating a replacement or
+falling back to a different replica. The supported Life CLI file contract shares
+SQLite data/schema and its existing write validation; the CLI background service
+owns hub sync in this mode, with its own credential. No consumer credentials are
+shared. App hub mode remains an independent replica and clears the local choice.
+A separate canonical-path read connection observes PRAGMA data_version while the
+window is active. External commits refresh catalog/rows without resetting editor
+drafts; optimistic saved revisions still reject conflicting commits. Cancel old
+observation on workspace/scene changes. Never poll inside a core transaction or
+alter generated core code to implement host observation.
 
 ## Nix distribution
 
