@@ -63,7 +63,7 @@ jobs:
           bun run bundle:editor
           bun run bundle:native
           git diff --exit-code -- packages/LifeKit/Sources/LifeKit/Resources
-          swift test --package-path packages/LifeKit
+          swift test --no-parallel --package-path packages/LifeKit
 
       - name: Generate macOS project
         run: |

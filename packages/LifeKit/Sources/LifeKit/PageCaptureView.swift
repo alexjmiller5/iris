@@ -15,6 +15,7 @@ final class PageCapturePresentation: Identifiable {
   private(set) var unavailableReason: String?
   private(set) var error: String?
   private(set) var previewData: Data?
+  private(set) var htmlRenderer: ArchivedHTMLRenderer?
   private(set) var isSaving = false
   @ObservationIgnored private let fetch: @Sendable (String, Int) async throws -> RetainedFile
   @ObservationIgnored private var request = 0
@@ -27,9 +28,9 @@ final class PageCapturePresentation: Identifiable {
   }
 
   @discardableResult
-  func startPreview() -> Task<Void, Never>? {
+  func startPreview(_ kind: PageCapture.Kind = .png) -> Task<Void, Never>? {
     guard !isLoading, !isSaving, !Task.isCancelled else { return nil }
-    return start(.png, maximumBytes: PageCapture.previewLimit, preview: true)
+    return start(kind, maximumBytes: PageCapture.previewLimit, preview: true)
   }
 
   @discardableResult
@@ -70,8 +71,13 @@ final class PageCapturePresentation: Identifiable {
     onReady: ((PageCaptureDocument) -> Void)? = nil
   ) -> Task<Void, Never> {
     let previousPreview = previewData
+    let previousHTML = htmlRenderer
+    if onReady != nil { htmlRenderer = nil }
     cancel()
-    if onReady != nil { previewData = previousPreview }
+    if onReady != nil {
+      previewData = previousPreview
+      htmlRenderer = previousHTML
+    }
     let current = request
     self.kind = kind
     isLoading = true
@@ -97,6 +103,21 @@ final class PageCapturePresentation: Identifiable {
         }
         self.file = received
         if preview {
+          if kind == .html {
+            let renderer = try await ArchivedHTMLRenderer.make()
+            do {
+              try await renderer.load(received)
+              guard current == self.request, !Task.isCancelled else {
+                renderer.close()
+                return
+              }
+              self.htmlRenderer = renderer
+            } catch {
+              renderer.close()
+              throw error
+            }
+            return
+          }
           do {
             let data = try await received.imagePreview()
             guard current == self.request, !Task.isCancelled else { return }
@@ -150,6 +171,8 @@ final class PageCapturePresentation: Identifiable {
     file?.dispose()
     file = nil
     previewData = nil
+    htmlRenderer?.close()
+    htmlRenderer = nil
     isLoading = false
     isSaving = false
   }
@@ -182,6 +205,7 @@ struct PageCaptureView: View {
   @State private var document: PageCaptureDocument?
   @State private var saving = false
   @State private var retrySave: PageCapture.Kind?
+  @State private var previewKind = PageCapture.Kind.png
 
   var body: some View {
     NavigationStack {
@@ -189,7 +213,22 @@ struct PageCaptureView: View {
         PageCaptureDetails(attempt: model.attempt)
         if model.attempt.status == .succeeded || model.attempt.status == .partial {
           Section("Preview") {
-            if let data = model.previewData,
+            Picker("Preview format", selection: $previewKind) {
+              Text("Screenshot").tag(PageCapture.Kind.png)
+              Text("Archived HTML").tag(PageCapture.Kind.html)
+            }
+            .pickerStyle(.segmented)
+            .disabled(model.isLoading || model.isSaving)
+            .accessibilityIdentifier("capture-preview-format")
+            .onChange(of: previewKind) { _, kind in
+              retrySave = nil
+              model.startPreview(kind)
+            }
+            if let renderer = model.htmlRenderer {
+              ArchivedHTMLView(renderer: renderer)
+                .frame(minHeight: 400, idealHeight: 480)
+                .accessibilityIdentifier("capture-html-preview")
+            } else if let data = model.previewData,
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
             {
@@ -223,7 +262,7 @@ struct PageCaptureView: View {
           Section {
             Text(error).foregroundStyle(.red).accessibilityIdentifier("capture-error")
             Button("Retry") {
-              if let retrySave { save(retrySave) } else { model.startPreview() }
+              if let retrySave { save(retrySave) } else { model.startPreview(previewKind) }
             }.disabled(model.isLoading || model.isSaving).accessibilityIdentifier("capture-retry")
           }
         }
