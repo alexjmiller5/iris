@@ -85,7 +85,7 @@ public struct WidgetPlanReader: Sendable {
         case SQLITE_FUNCTION:
           guard let second else { return SQLITE_DENY }
           return [
-            "length", "date", "julianday", "substr", "instr", "lower", "json_valid", "json_type",
+            "length", "date", "julianday", "glob", "substr", "instr", "lower", "json_valid", "json_type",
             "json_array_length", "json_extract", "count", "sum",
           ].contains(String(cString: second).lowercased()) ? SQLITE_OK : SQLITE_DENY
         default: return SQLITE_DENY

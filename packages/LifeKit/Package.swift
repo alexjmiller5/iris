@@ -4,10 +4,11 @@ import PackageDescription
 let package = Package(
   name: "LifeKit",
   platforms: [.macOS(.v14), .iOS(.v17)],
-  products: [.library(name: "LifeKit", targets: ["LifeKit"]), .library(name: "LifeExtensionSupport", targets: ["LifeExtensionSupport"])],
+  products: [.library(name: "LifeKit", targets: ["LifeKit"]), .library(name: "LifeExtensionSupport", targets: ["LifeExtensionSupport"]), .library(name: "LifeWidgets", targets: ["LifeWidgets"])],
   dependencies: [.package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0")],
   targets: [
     .target(name: "LifeExtensionSupport", linkerSettings: [.linkedLibrary("sqlite3")]),
+    .target(name: "LifeWidgets", dependencies: ["LifeExtensionSupport"]),
     .target(
       name: "LifeKit", dependencies: ["LifeExtensionSupport", .product(name: "GRDB", package: "GRDB.swift")],
       resources: [
@@ -15,6 +16,6 @@ let package = Package(
         .copy("Resources/editor.html"),
         .copy("Resources/record-export.js"),
       ]),
-    .testTarget(name: "LifeKitTests", dependencies: ["LifeKit", "LifeExtensionSupport"], resources: [.copy("Fixtures")]),
+    .testTarget(name: "LifeKitTests", dependencies: ["LifeKit", "LifeExtensionSupport", "LifeWidgets"], resources: [.copy("Fixtures")]),
   ]
 )

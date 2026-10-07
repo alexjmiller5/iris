@@ -51,6 +51,8 @@ targets:
     dependencies:
       - target: LifeUI
       - package: LifeKit
+      - package: LifeKit
+        product: LifeWidgets
   LifeUIUITests:
     type: bundle.ui-testing
     platform: macOS

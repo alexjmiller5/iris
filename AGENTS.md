@@ -14,6 +14,9 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   calendar policy and bounded read-only SQLite extension reader. No JavaScriptCore,
   network, credentials or database writer. LifeKit reexports the portable types;
   `bundle-core.ts` generates their single canonical Swift source there.
+- `packages/LifeKit/Sources/LifeWidgets`: App Intents widget configuration queries
+  over authorized publications, depending only on LifeExtensionSupport. Calendar
+  choices require tagged calendar bindings from the canonical core plan.
 - Widget source opt-ins are durable private host preferences, separate from
   regenerable App Group publications. NativeWidgetSettings publishes paired list
   and count plans from the opened database; the library scopes them by workspace
