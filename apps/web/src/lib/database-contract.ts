@@ -61,6 +61,10 @@ export interface DatabaseOperations {
 		args: CoreArgs<'resolveDerived'> & { token: string };
 		result: CoreResult<'resolveDerived'>;
 	};
+	resolveViewDefinition: {
+		args: CoreArgs<'resolveViewDefinition'>;
+		result: CoreResult<'resolveViewDefinition'>;
+	};
 	listViews: { args: CoreArgs<'listViews'>; result: CoreResult<'listViews'> };
 	getViewDefault: { args: CoreArgs<'getViewDefault'>; result: CoreResult<'getViewDefault'> };
 	setViewDefault: { args: CoreArgs<'setViewDefault'>; result: CoreResult<'setViewDefault'> };

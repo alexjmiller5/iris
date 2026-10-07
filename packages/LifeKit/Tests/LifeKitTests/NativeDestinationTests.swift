@@ -16,6 +16,27 @@ struct NativeDestinationTests {
       view: CoreView(table: "notes"), unavailable: nil)
   }
 
+  @Test func transientDefinitionUsesRealCoreWithoutChangingSavedRowsOrHistory() async throws {
+    let workspace = try NativeWorkspace(path: ":memory:")
+    try await workspace.createSample()
+    let saved = try await workspace.saveView(CoreSaveViewArgs(table: "notes", name: "Stored",
+      definition: CoreSavedViewDefinition(version: 1, columns: ["title"])))
+    let before = try await workspace.status()
+    let destination = NativeDestination(table: "notes", viewID: saved.id,
+      state: #"{"version":2,"columns":["title"],"search":"Synthetic","sort":[{"column":"title","direction":"desc"}]}"#)
+    let resolved = try await NativeDestinationResolver(workspace: workspace).resolve(destination, isCurrent: { true })
+    #expect(resolved.view == saved)
+    #expect(resolved.definition?.search == "Synthetic")
+    #expect(resolved.definition?.sort == [CoreSort(column: "title", direction: .desc)])
+    #expect(try await workspace.listViews(table: "notes").views == [saved])
+    #expect(try await workspace.status() == before)
+    let invalid = NativeDestination(table: "notes", state: #"{"version":2,"columns":["missing"]}"#)
+    await #expect(throws: (any Error).self) {
+      try await NativeDestinationResolver(workspace: workspace).resolve(invalid, isCurrent: { true })
+    }
+    try await workspace.close()
+  }
+
   @Test func identityAndPersistenceKeepExactOpaqueIDsWithoutLabels() throws {
     let first = NativeDestination(table: "notes", viewID: "\u{00E9}", rowID: "e\u{0301}")
     let otherRow = NativeDestination(table: "notes", viewID: "\u{00E9}", rowID: "\u{00E9}")

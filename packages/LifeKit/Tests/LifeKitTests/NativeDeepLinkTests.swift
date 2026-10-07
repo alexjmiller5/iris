@@ -6,6 +6,21 @@ import Testing
 struct NativeDeepLinkTests {
   private let local = NativeWorkspaceBinding.local(UUID(uuidString: "01234567-89AB-4CDE-8012-3456789ABCDE")!)
 
+  @Test func transientQueryLinkRoundTripsWithoutSavedViewWrites() throws {
+    let state = #"{"version":2,"columns":["title"],"filters":[{"column":"title","op":"eq","value":"Synthetic"}],"sort":[{"column":"title","direction":"desc"}]}"#
+    let base = try NativeDeepLink(destination: NativeDestination(table: "notes"), workspace: local)
+    var parts = try #require(URLComponents(url: base.url, resolvingAgainstBaseURL: false))
+    parts.queryItems!.append(URLQueryItem(name: "state", value: state))
+    let link = try NativeDeepLink(url: #require(parts.url))
+    let returned = try #require(URLComponents(url: link.url, resolvingAgainstBaseURL: false))
+    #expect(returned.queryItems?.first(where: { $0.name == "state" })?.value == state)
+    for invalid in ["{", #"{"version":2,"actions":[]}"#, String(repeating: "x", count: 16_385)] {
+      parts.queryItems = parts.queryItems?.filter { $0.name != "state" }
+      parts.queryItems!.append(URLQueryItem(name: "state", value: invalid))
+      #expect(throws: (any Error).self) { try NativeDeepLink(url: #require(parts.url)) }
+    }
+  }
+
   @Test func tableViewAndRowRoundTripOpaqueUTF8WithoutNormalization() throws {
     let identifiers = ["r /?#&=%+", "café", "cafe\u{301}", "  exact  ", "\u{0000}"]
     for row in identifiers {

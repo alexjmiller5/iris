@@ -332,11 +332,18 @@
 		return {
 			table: table || null,
 			view: chosenView?.id ?? null,
-			row: editing && selected ? String(selected.id) : null
+			row: editing && selected ? String(selected.id) : null,
+			...(!chosenView || viewModified ? { state: viewDefinition() } : {})
 		};
 	}
 	async function reflectLocation(replace = false) {
-		const url = destinationURL(new URL(window.location.href), currentDestination());
+		let url: URL;
+		try {
+			url = destinationURL(new URL(window.location.href), currentDestination());
+		} catch (e) {
+			error = message(e);
+			return;
+		}
 		if (url.href === window.location.href) return;
 		reflectingURL = url.href;
 		try {
@@ -360,7 +367,7 @@
 			catalog = resolved.catalog;
 			table = resolved.table;
 			graphVisible = false;
-			applyView(resolved.view);
+			applyView(resolved.view, resolved.definition ?? undefined);
 			defaultViewNotice = resolved.defaultNotice;
 			if (resolved.row) trash = !!resolved.row.deleted_at;
 			if (resolved.row) edit(resolved.row, false);
@@ -687,6 +694,7 @@
 			];
 		}
 		widths = sizes;
+		void reflectLocation(true);
 		void loadRows().catch((e) => (error = message(e)));
 	}
 	const rules = $derived(catalog.rules.filter((r) => r.tbl === table || r.scope === 'estate'));
@@ -1436,7 +1444,7 @@
 		}
 		return true;
 	}
-	function applyView(view: SavedViewRecord | null) {
+	function applyView(view: SavedViewRecord | null, transient?: SavedViewDefinition) {
 		gridDraft = null;
 		gridContext++;
 		editorVersion++;
@@ -1447,7 +1455,7 @@
 		draft = {};
 		savedDraft = '';
 		bodyFailure = '';
-		const definition = view?.definition;
+		const definition = transient ?? view?.definition;
 		columns = definition?.columns?.filter((col) => col !== (display ?? 'id')) ?? null;
 		widths = { ...definition?.widths };
 		filters = definition?.filters?.map((filter) => ({ ...filter })) ?? [];
@@ -1469,7 +1477,9 @@
 		filterColumn = '';
 		filterValue = '';
 		chosenView = view ?? null;
-		viewBaseline = JSON.stringify(viewDefinition());
+		viewBaseline = transient
+			? JSON.stringify(view?.definition ?? {})
+			: JSON.stringify(viewDefinition());
 		error = '';
 	}
 	async function setDefaultView(id: string | null) {
@@ -1918,6 +1928,7 @@
 	}
 	async function find() {
 		offset = 0;
+		await reflectLocation(true);
 		try {
 			await loadRows();
 		} catch (e) {
@@ -2031,7 +2042,7 @@
 		catalog = resolved.catalog;
 		table = resolved.table;
 		graphVisible = false;
-		applyView(resolved.view);
+		applyView(resolved.view, resolved.definition ?? undefined);
 		defaultViewNotice = resolved.defaultNotice;
 		if (resolved.row) {
 			trash = !!resolved.row.deleted_at;
@@ -2449,6 +2460,7 @@
 								onclick={() => {
 									if (!closeRecord()) return;
 									trash = !trash;
+									void reflectLocation(true);
 									offset = 0;
 									loadRows().catch((e) => (error = message(e)));
 								}}><IconTrash size={16} />{trash ? 'All records' : 'Trash'}</button
@@ -2493,6 +2505,7 @@
 							onchange={(value) => {
 								if (!closeRecord()) return;
 								presentation = value;
+								void reflectLocation(true);
 								loadBoardOptions();
 							}}
 						/>
@@ -2519,6 +2532,7 @@
 								if (patch.layout) actionLayout = patch.layout;
 								if (patch.timeZone !== undefined) timeZone = patch.timeZone;
 								if (patch.dayStartMinutes !== undefined) dayStartMinutes = patch.dayStartMinutes;
+								void reflectLocation(true);
 								offset = 0;
 								loadRows().catch((e) => (error = message(e)));
 							}}

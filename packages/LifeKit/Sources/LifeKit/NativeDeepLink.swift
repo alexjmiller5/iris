@@ -26,6 +26,7 @@ struct NativeDeepLink: Equatable, Sendable {
         digest.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) })
       else { throw Self.invalid }
     }
+    if let state = destination.state { _ = try Self.viewState(state) }
     binding = workspace
     self.destination = destination
   }
@@ -36,7 +37,7 @@ struct NativeDeepLink: Equatable, Sendable {
       parts.path == "/v1", parts.user == nil, parts.password == nil,
       parts.port == nil, parts.fragment == nil, let items = parts.queryItems
     else { throw Self.invalid }
-    let allowed: Set<String> = ["replica", "local", "table", "view", "row"]
+    let allowed: Set<String> = ["replica", "local", "table", "view", "row", "state"]
     var values: [String: String] = [:]
     for item in items {
       guard allowed.contains(item.name), values[item.name] == nil,
@@ -55,7 +56,7 @@ struct NativeDeepLink: Equatable, Sendable {
       workspace = .local(id)
     }
     try self.init(
-      destination: NativeDestination(table: table, viewID: values["view"], rowID: values["row"]),
+      destination: NativeDestination(table: table, viewID: values["view"], rowID: values["row"], state: values["state"]),
       workspace: workspace)
   }
 
@@ -72,6 +73,7 @@ struct NativeDeepLink: Equatable, Sendable {
     items.append(URLQueryItem(name: "table", value: destination.table))
     if let view = destination.viewID { items.append(URLQueryItem(name: "view", value: view)) }
     if let row = destination.rowID { items.append(URLQueryItem(name: "row", value: row)) }
+    if let state = destination.state { items.append(URLQueryItem(name: "state", value: state)) }
     parts.queryItems = items
     // The constructor validates structure; URLComponents escapes all opaque values.
     return parts.url!
@@ -82,6 +84,13 @@ struct NativeDeepLink: Equatable, Sendable {
       throw WorkspaceError(message: "Open the workspace that this link belongs to.", violations: [])
     }
     return destination
+  }
+
+  static func viewState(_ text: String) throws -> WorkspaceRecord {
+    guard text.utf8.count <= 16_384,
+      case .object(let value) = try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8)),
+      value["actions"] == nil else { throw invalid }
+    return value
   }
 
   private static var invalid: WorkspaceError {
