@@ -422,13 +422,14 @@ final class WorkspaceModel {
   }
 
   var queryKey: [String] {
-    [table ?? "", search, String(trash), appliedView?.id ?? "", String(viewGeneration)]
-      + [
-        viewTimeZone, String(viewDayStartMinutes), calendarDay,
-        String(describing: try? filterGroups.map { try $0.core(fields: viewFields) }),
-      ]
-      + sortRules.flatMap { [$0.column, $0.direction.rawValue, $0.mode?.rawValue ?? ""] }
-      + filters.flatMap { [$0.column, $0.operation.rawValue, $0.value, String($0.today)] }
+    let groups = try? filterGroups.map { try $0.core(fields: viewFields) }
+    var key: [String] = [
+      table ?? "", search, String(trash), appliedView?.id ?? "", String(viewGeneration),
+      viewTimeZone, String(viewDayStartMinutes), calendarDay, String(describing: groups),
+    ]
+    key += sortRules.flatMap { [$0.column, $0.direction.rawValue, $0.mode?.rawValue ?? ""] }
+    key += filters.flatMap { [$0.column, $0.operation.rawValue, $0.value, String($0.today)] }
+    return key
   }
 
   private func resetView() {
