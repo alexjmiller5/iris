@@ -132,6 +132,13 @@ public struct WorkspaceView: View {
       guard scenePhase == .active else { return }
       await model.services.poll()
     }
+    .task(
+      id:
+        "\(model.client.map(ObjectIdentifier.init).map(String.init(describing:)) ?? "none")|\(scenePhase == .active)"
+    ) {
+      guard scenePhase == .active else { return }
+      await model.runLocalObservation()
+    }
     .task(id: model.queryKey) { await model.reload() }
     .task(id: model.calendarRefreshKey + [String(scenePhase == .active)]) {
       guard scenePhase == .active else { return }
@@ -341,7 +348,8 @@ public struct WorkspaceView: View {
       guard canExportLoadedRows else { return }
       do {
         // Freeze persisted values before presentation or any asynchronous preparation.
-        recordExport = RecordExportTarget(snapshot: try model.captureLoadedRowsForExport(at: Date()))
+        recordExport = RecordExportTarget(
+          snapshot: try model.captureLoadedRowsForExport(at: Date()))
       } catch { model.error = error.localizedDescription }
     } label: {
       Label("Export loaded rows", systemImage: "square.and.arrow.up")
@@ -617,6 +625,10 @@ public struct WorkspaceView: View {
           .accessibilityIdentifier("open-sample")
         #if os(macOS)
           Button("Open a local database…") { importing = true }
+          Text(
+            "Choose the file shown by life path to share offline edits with the CLI. This choice is remembered."
+          )
+          .font(.caption).foregroundStyle(.secondary)
         #endif
         Text("A new local workspace includes a sample note. The sample preview is temporary.")
           .font(.caption).foregroundStyle(.secondary)

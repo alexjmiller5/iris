@@ -342,6 +342,10 @@ final class WorkspaceModel {
   }
   private var revision = 0
   private var scopedURL: URL?
+  private var localObserver: LocalDatabaseObserver?
+  private var localSelection: LocalDatabaseSelection {
+    get throws { LocalDatabaseSelection(root: try resolveLocalURL().deletingLastPathComponent()) }
+  }
   private let resolveLocalURL: @MainActor () throws -> URL
   private let makeTransport: @MainActor (HubCredentials) throws -> HubTransport
   private let credentialStore: any HubCredentialStorage
@@ -1004,6 +1008,7 @@ final class WorkspaceModel {
     loading = true
     error = nil
     transport = nil
+    localObserver = nil
     services.configure(workspace: nil, transport: nil)
     isReplica = false
     downloadStore = nil
@@ -1022,6 +1027,11 @@ final class WorkspaceModel {
       } else {
         let file = try url ?? resolveLocalURL()
         if url != nil, file.startAccessingSecurityScopedResource() { scopedURL = file }
+        guard url == nil || FileManager.default.fileExists(atPath: file.path) else {
+          throw WorkspaceError(
+            message: "The selected database is unavailable. Reopen its file to continue.",
+            violations: [])
+        }
         path = file.path
         seed = url == nil && !FileManager.default.fileExists(atPath: path)
       }
@@ -1035,9 +1045,13 @@ final class WorkspaceModel {
           workspace: URL(fileURLWithPath: path))
       let workspace = try NativeWorkspace(path: path)
       do {
+        localObserver = demo ? nil : try LocalDatabaseObserver(path: path)
         if seed { try await workspace.createSample() }
         if !demo, url == nil { try await workspace.prepareLocalViews() }
         catalog = try await workspace.catalog()
+        if !demo {
+          if let url { try localSelection.save(url) } else { try localSelection.clear() }
+        }
       } catch {
         try? await workspace.close()
         throw error
@@ -1066,6 +1080,7 @@ final class WorkspaceModel {
     } catch {
       self.error = error.localizedDescription
       client = nil
+      localObserver = nil
     }
     loading = false
   }
@@ -1073,7 +1088,8 @@ final class WorkspaceModel {
   func reload(more: Bool = false) async {
     // A retained prefix is usable only while its successful read context is current.
     // A stale or in-flight prefix requires an ordinary first-page replacement.
-    let append = more && !loading && !writingRecord && !undoing && !savingView
+    let append =
+      more && !loading && !writingRecord && !undoing && !savingView
       && loadedRowsContext == currentRowsContext
     // A failed next page may retry its valid prefix. A full refresh (including
     // post-write reconciliation) invalidates that prefix before awaiting anything.
@@ -1237,8 +1253,41 @@ final class WorkspaceModel {
     } catch { self.error = "Could not save table groups: " + error.localizedDescription }
   }
 
+  func runLocalObservation(interval: Duration = .milliseconds(250)) async {
+    guard let observer = localObserver, let workspace = client else { return }
+    let generation = workspaceGeneration
+    while !Task.isCancelled, generation == workspaceGeneration, client === workspace {
+      do {
+        let version = try observer.currentVersion()
+        if version != observer.version, !loading, !writingRecord, !undoing, !savingView {
+          let next = try await workspace.catalog()
+          guard !Task.isCancelled, generation == workspaceGeneration, client === workspace else {
+            return
+          }
+          catalog = next
+          if !tables.contains(where: { $0["id"]?.text == table }) {
+            table = tables.first?["id"]?.text
+          }
+          await reload()
+          guard !Task.isCancelled, generation == workspaceGeneration, client === workspace else {
+            return
+          }
+          if error == nil { observer.acknowledge(version) }
+        }
+      } catch is CancellationError { return } catch {
+        guard generation == workspaceGeneration, client === workspace else { return }
+        self.error = error.localizedDescription
+      }
+      do { try await Task.sleep(for: interval) } catch { return }
+    }
+  }
+
   func resumeConnection() async {
     do {
+      if let selected = try localSelection.load() {
+        await open(url: selected)
+        return
+      }
       guard let saved = try credentialStore.load() else { return }
       // An established replica must open even when the hub is unreachable.
       let hub = try makeTransport(saved)
@@ -1318,11 +1367,13 @@ final class WorkspaceModel {
       at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
     let prepared = try NativeWorkspace(path: path.path)
     let nextCatalog: WorkspaceCatalog
+    let nextObserver: LocalDatabaseObserver
     let nextGroups: [String: String]
     let groupsKey = SHA256.hash(data: Data(path.path.utf8)).map { String(format: "%02x", $0) }
       .joined()
     let nextGroupsURL = root.appendingPathComponent("groups-" + groupsKey + ".json")
     do {
+      nextObserver = try LocalDatabaseObserver(path: path.path)
       nextCatalog = try await prepared.catalog()
       nextGroups =
         FileManager.default.fileExists(atPath: nextGroupsURL.path)
@@ -1333,6 +1384,7 @@ final class WorkspaceModel {
       }
       // All fallible preparation precedes the synchronous Keychain+workspace commit.
       if remember { try credentialStore.save(canonical) }
+      try localSelection.clear()
     } catch {
       try? await prepared.close()
       throw error
@@ -1341,6 +1393,7 @@ final class WorkspaceModel {
     services.configure(workspace: nil, transport: nil)
     scopedURL?.stopAccessingSecurityScopedResource()
     scopedURL = nil
+    localObserver = nextObserver
     client = prepared
     linkBinding = .replica(canonicalEndpoint: hub.endpoint)
     configureRecents(store: NativeRecentsStore(root: root, workspace: path))
@@ -1520,6 +1573,7 @@ final class WorkspaceModel {
       return
     }
     client = nil
+    localObserver = nil
     transport = nil
     isReplica = false
     downloadStore = nil
