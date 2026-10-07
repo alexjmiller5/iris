@@ -32,6 +32,10 @@ final class SidebarPinsUITests: XCTestCase {
       },
       object: nil)
     XCTAssertEqual(XCTWaiter.wait(for: [moved], timeout: 5), .completed)
+    let sidebar = XCTAttachment(screenshot: app.screenshot())
+    sidebar.name = "reordered-sidebar-pins"
+    sidebar.lifetime = .keepAlways
+    add(sidebar)
     app.buttons["Pin actions for notes"].tap()
     app.buttons["Unpin"].tap()
     XCTAssertTrue(app.buttons["sidebar-table-notes"].waitForExistence(timeout: 5))

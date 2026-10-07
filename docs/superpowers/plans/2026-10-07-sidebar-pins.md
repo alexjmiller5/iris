@@ -84,4 +84,4 @@
 
 ## Verification scope
 
-Core: 1,260 tests; Python: 636 tests; web: 357 tests; native: 542 tests with two preexisting known issues. Real browser pin/order/unpin/restore, dirty navigation, OPFS reopen and fresh-replica sync passed. Native model/file-reopen tests passed; actual iOS sidebar interaction is in progress. Whole-view VoiceOver and physical-device acceptance remain separate, unverified scope.
+Core: 1,260 tests; Python: 636 tests; web: 357 tests; native: 542 tests with two preexisting known issues. Real browser pin/order/unpin/restore, dirty navigation, OPFS reopen and fresh-replica sync passed. Native model/file-reopen tests passed; actual iOS pin/move/unpin/open passed (1 test, 28.233 seconds). A screenshot-only repeat after the unrelated upstream Undo merge was interrupted when disk fell below the reserve; it is not a test failure. Whole-view VoiceOver and physical-device acceptance remain separate, unverified scope.
