@@ -439,6 +439,14 @@ public final class NativeWorkspace {
           expectedUpdatedAt: expectedUpdatedAt)), transport: transport)
   }
 
+  func calendarRows(_ args: CoreCalendarRowsArgs) async throws -> CoreCalendarRowsResult {
+    try await decode(CoreRequests.CalendarRows(args))
+  }
+
+  func boardRows(_ args: CoreBoardRowsArgs) async throws -> CoreBoardRowsResult {
+    try await decode(CoreRequests.BoardRows(args))
+  }
+
   func remoteRows(
     using transport: HubTransport, table: String, limit: Int = 50, cursor: String? = nil
   )

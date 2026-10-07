@@ -172,6 +172,7 @@ final class WorkspaceModel {
   var viewLayout: [CoreViewLayoutItem]?
   var viewTimeZone = TimeZone.current.identifier
   var viewDayStartMinutes = 0
+  var viewPresentation = CoreViewPresentation(kind: "table")
   private(set) var calendarDay = ""
   var viewFields: [CatalogField] {
     properties.map(CatalogField.init)
@@ -448,6 +449,7 @@ final class WorkspaceModel {
     viewLayout = nil
     viewTimeZone = TimeZone.current.identifier
     viewDayStartMinutes = 0
+    viewPresentation = CoreViewPresentation(kind: "table")
     calendarDay = ""
     rows = []
     canLoadMore = false
@@ -474,7 +476,7 @@ final class WorkspaceModel {
   func applyWorkflowOptions(
     sorts: [CoreSort], filters: [WorkspaceFilter], groups: [WorkspaceFilterGroup],
     actions: [CoreRowAction], layout: [CoreViewLayoutItem]?, timeZone: String,
-    dayStartMinutes: Int = 0,
+    dayStartMinutes: Int = 0, presentation: CoreViewPresentation? = nil,
     context: WorkspaceEditingContext?
   ) throws {
     _ = try requireViewContext(context)
@@ -495,6 +497,7 @@ final class WorkspaceModel {
     viewLayout = layout
     viewTimeZone = timeZone
     viewDayStartMinutes = dayStartMinutes
+    if let presentation { viewPresentation = presentation }
     try refreshCalendar()
   }
 
@@ -657,7 +660,11 @@ final class WorkspaceModel {
       definition.layout = viewLayout
       definition.version = 2
     }
-    if hasRelativeFilters || definition.timeZone != nil {
+    if viewPresentation.kind != "table" || definition.presentation != nil {
+      definition.presentation = viewPresentation
+      definition.version = 2
+    }
+    if hasRelativeFilters || viewPresentation.kind == "calendar" || definition.timeZone != nil {
       definition.timeZone = viewTimeZone
       definition.version = 2
     }
@@ -740,6 +747,7 @@ final class WorkspaceModel {
       viewLayout = definition.layout
       viewTimeZone = definition.timeZone ?? TimeZone.current.identifier
       viewDayStartMinutes = definition.dayStartMinutes ?? 0
+      viewPresentation = definition.presentation ?? CoreViewPresentation(kind: "table")
       filters = (definition.filters ?? []).map { filter in
         WorkspaceFilter(filter, field: fields.first { $0.id == filter.column })
       }
@@ -755,6 +763,7 @@ final class WorkspaceModel {
       viewLayout = nil
       viewTimeZone = TimeZone.current.identifier
       viewDayStartMinutes = 0
+      viewPresentation = CoreViewPresentation(kind: "table")
     }
     viewGeneration += 1
   }
