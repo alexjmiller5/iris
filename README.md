@@ -250,11 +250,13 @@ receipts advance the editor's revision without replacing those changes. A failed
 identical edit waits for a change or explicit retry. The status says **Saved on
 this device** only after the write succeeds; hub synchronization is separate.
 
-**Undo last saved change** reverses the last successful record write in the open
-workspace, including creation, edits, trash and restore. Each Markdown autosave
+**Undo last saved change** and **Cmd-Z** (Ctrl-Z on non-Mac browsers) reverse
+human changes in the open workspace, including record creation, edits, trash,
+restore, row actions and saved-view creation, edits and deletion. Repeat Undo to
+step back through up to 100 saved changes. Each Markdown autosave
 is a separate saved change. Undo revalidates the inverse and creates fresh history;
-it does not restore old timestamps. Success consumes the action, with no redo,
-and closing the workspace forgets it. Text-editor undo remains separate.
+it does not restore old timestamps. Success reveals the preceding action, with no redo. Closing the workspace clears
+this session stack. While typing, Cmd-Z keeps the text editor's normal undo.
 An open editor's newer draft stays intact, including when Undo affects another
 record. Its autosave pauses
 until an explicit **Save**, also after a failed Undo. While paused, Markdown
@@ -806,11 +808,12 @@ The browser SQLite build is pinned and reproducible through Nix. See
 [vendor/wa-sqlite](vendor/wa-sqlite/README.md) for regeneration and the real OPFS
 FTS5 regression fixture. Normal app builds consume the committed JS/WASM pair.
 
-Undo last saved change reverses the latest successful row create, edit, trash or
-restore in the current workspace session. It uses the same rules and revision
+Undo last saved change reverses successful row creation, edits, trash, restore,
+row actions and saved-view changes, one at a time from a session stack of 100.
+Cmd-Z uses the same action outside text fields. It uses the same rules and revision
 checks as an ordinary edit. Newer unsaved drafts stay visible and body autosave
 pauses until you review and save them. Undoing creation moves the record to Trash;
-Restore makes its retained draft editable again. Reopening clears this action.
+Restore makes its retained draft editable again. Reopening clears this stack.
 The Markdown editor's text Undo is separate.
 
 Run the real OPFS Undo checks against a reserved fixture origin:

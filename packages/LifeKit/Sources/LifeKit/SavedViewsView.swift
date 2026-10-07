@@ -6,6 +6,7 @@ struct SavedViewsView: View {
   private let context: WorkspaceEditingContext?
   private let generation: Int
   @Environment(\.dismiss) private var dismiss
+  @FocusState private var editingName: Bool
   @State private var name: String
   @State private var error: String?
   @State private var notice: String?
@@ -83,6 +84,7 @@ struct SavedViewsView: View {
         } else if writable {
           Section {
             TextField("Name", text: $name).accessibilityIdentifier("saved-view-name")
+              .focused($editingName)
             Button("Save as new view") { save(update: false) }
               .accessibilityIdentifier("save-view-copy")
             if model.appliedView != nil {
@@ -96,6 +98,15 @@ struct SavedViewsView: View {
         } else if let reason = model.savedViewEditingUnavailable {
           Section { Text(reason).foregroundStyle(.secondary) }
         }
+        if let action = model.undoAction {
+          Section {
+            Button {
+              undo(action)
+            } label: {
+              Label("Undo last saved change", systemImage: "arrow.uturn.backward")
+            }.accessibilityIdentifier("undo-saved-view")
+          }
+        }
         if let error { Section { Text(error).foregroundStyle(.red).textSelection(.enabled) } }
         if let notice {
           Section { Text(notice).accessibilityIdentifier("saved-view-receipt") }
@@ -104,14 +115,20 @@ struct SavedViewsView: View {
       }
       .formStyle(.grouped)
       .accessibilityIdentifier("saved-views-form")
-      .disabled(model.savingView || !current)
+      .disabled(model.savingView || model.undoing || !current)
       .navigationTitle("Saved views")
       .toolbar {
         ToolbarItem(placement: .confirmationAction) {
-          Button("Done") { dismiss() }.disabled(model.savingView)
+          Button("Done") { dismiss() }.disabled(model.savingView || model.undoing)
         }
       }
-      .interactiveDismissDisabled(model.savingView)
+      .interactiveDismissDisabled(model.savingView || model.undoing)
+      .savedUndoShortcut(
+        enabled: current && !loading && !editingName && deleting == nil
+          && !model.savingView && !model.undoing && model.undoAction != nil
+      ) {
+        if let action = model.undoAction { undo(action) }
+      }
       .task { await refresh() }
       .onChange(of: name) { notice = nil }
       .onChange(of: model.workspaceGeneration) { dismiss() }
@@ -143,6 +160,18 @@ struct SavedViewsView: View {
     #if os(macOS)
       .frame(minWidth: 460, idealWidth: 560, minHeight: 480, idealHeight: 620)
     #endif
+  }
+
+  private func undo(_ action: CoreUndoAction) {
+    notice = nil
+    Task {
+      do {
+        try await model.undo(action, context: context)
+        guard current else { return }
+        error = nil
+        notice = "Saved change undone."
+      } catch { if current { self.error = error.localizedDescription } }
+    }
   }
 
   private func choose(_ saved: CoreSavedViewRecord?) {

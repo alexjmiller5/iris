@@ -317,7 +317,7 @@ struct UndoTests {
     let result = try await workspace.undo(receiptID: action.receiptId)
     #expect(result["body"] == .string("Before"))
     #expect((result["deleted_at"] != .null) == (kind == .create || kind == .restore))
-    #expect(try await workspace.undoStatus().action == nil)
+    #expect((try await workspace.undoStatus().action == nil) == (kind == .create))
     await #expect(throws: WorkspaceError.self) {
       try await workspace.undo(receiptID: action.receiptId)
     }
@@ -344,11 +344,13 @@ struct WorkspaceUndoTests {
     #expect(receipt["title"] == .string("Model Undo fixture"))
     #expect(receipt["updated_at"] != changed["updated_at"])
     #expect(model.rows.contains { $0.record["title"] == .string("Model Undo fixture") })
+    #expect(model.undoAction == first)
+    _ = try await model.undo(first, context: context)
     #expect(model.undoAction == nil)
     await model.close()
   }
 
-  @Test func rejectedInverseKeepsCoreActionAndSavedViewMutationClearsIt() async throws {
+  @Test func rejectedInverseKeepsCoreActionAndSavedViewsJoinTheUndoStack() async throws {
     let runtime = try LifeCoreRuntime()
     let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
@@ -369,7 +371,12 @@ struct WorkspaceUndoTests {
     #expect(model.undoAction == shown)
     #expect(try await client.undoStatus().action == shown)
     try await model.saveCurrentView(name: "Undo test view", update: false, context: context)
-    #expect(model.undoAction == nil)
+    let viewUndo = try #require(model.undoAction)
+    #expect(viewUndo.table == "views")
+    _ = try await model.undo(viewUndo, context: context)
+    #expect(model.appliedView == nil)
+    #expect(model.savedViews.isEmpty)
+    #expect(model.undoAction == shown)
     await model.close()
   }
 
