@@ -17,6 +17,10 @@ final class PresentationUITests: XCTestCase {
       app.menuBars.menuBarItems["File"].click()
       app.menuItems["New Window"].click()
     }
+    // The clean runner can retain the preceding test's synthetic file selection.
+    // Close it through the supported UI before choosing this test's own fixture.
+    let previous = app.buttons["Close workspace"]
+    if previous.waitForExistence(timeout: 3) { previous.click() }
     let open = app.buttons["Open a local database…"]
     XCTAssertTrue(open.waitForExistence(timeout: 10))
     open.click()

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import CatalogEditor from '$lib/CatalogEditor.svelte';
+	import type { SaveCatalogPropertyArgs, SaveCatalogRuleArgs } from 'life-ui-core/client';
 	import PresentationControls from '$lib/PresentationControls.svelte';
 	import RecordPresentations from '$lib/RecordPresentations.svelte';
 	import type { ViewPresentation, ViewDefault } from 'life-ui-core/client';
@@ -240,6 +242,7 @@
 			onlineBrowser = null;
 	});
 	let writing = $state(false);
+	let catalogEditing = $state(false);
 	let undoAction = $state<UndoAction | null>(null);
 	let undoPaused = $state(false);
 	let bodySaving = $state(false),
@@ -294,7 +297,12 @@
 			gridDirty
 	);
 	function confirmDiscard() {
-		if (writing || bodySaving || (dirty && !confirm('Discard unsaved changes to this record?')))
+		if (
+			catalogEditing ||
+			writing ||
+			bodySaving ||
+			(dirty && !confirm('Discard unsaved changes to this record?'))
+		)
 			return false;
 		return true;
 	}
@@ -1314,6 +1322,28 @@
 		});
 	}
 	const viewModified = $derived(!!chosenView && JSON.stringify(viewDefinition()) !== viewBaseline);
+	async function editCatalog<M extends 'saveCatalogProperty' | 'saveCatalogRule'>(
+		method: M,
+		args: M extends 'saveCatalogProperty' ? SaveCatalogPropertyArgs : SaveCatalogRuleArgs
+	) {
+		const workspace = database,
+			target = table;
+		if (!workspace || busy || writing || bodySaving || navigationLoading || args.table !== target)
+			throw new Error('Finish the active operation before editing the catalog.');
+		writing = true;
+		try {
+			const result =
+				method === 'saveCatalogProperty'
+					? await workspace.request('saveCatalogProperty', args as SaveCatalogPropertyArgs)
+					: await workspace.request('saveCatalogRule', args as SaveCatalogRuleArgs);
+			if (database !== workspace || table !== target)
+				throw new Error('The workspace changed. Reopen the catalog to see the saved result.');
+			await refresh();
+			return result;
+		} finally {
+			if (database === workspace) writing = false;
+		}
+	}
 	async function loadViews() {
 		if (!database || !table) return;
 		const workspace = database,
@@ -2114,6 +2144,15 @@
 			onnavigate={openSearchDestination}
 		/>
 	{/if}
+	{#if catalogEditing}
+		<CatalogEditor
+			{table}
+			{catalog}
+			onclose={() => (catalogEditing = false)}
+			onproperty={async (args) => (await editCatalog('saveCatalogProperty', args)) as Property}
+			onrule={async (args) => await editCatalog('saveCatalogRule', args)}
+		/>
+	{/if}
 	<fieldset class="workspace-controls" disabled={writing} aria-label="Workspace controls">
 		<div class="data-shell">
 			<aside class="tables">
@@ -2278,6 +2317,13 @@
 								{String(current?.purpose ?? 'Browse your records and keep their rules in view.')}
 							</p>
 						</div>
+						<button
+							class="secondary"
+							disabled={busy || writing || bodySaving || navigationLoading || !table || readOnly}
+							onclick={() => {
+								if (discard()) catalogEditing = true;
+							}}>Edit catalog</button
+						>
 						<button
 							onclick={newGridRecord}
 							disabled={busy || navigationLoading || !table || readOnly || blocked || trash}

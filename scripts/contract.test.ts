@@ -150,3 +150,43 @@ test('local pins never adopt a foreign table or remaining catalog identity',()=>
  expect(await request('prepareLocalPins')).toBe(false);
  expect(db.query('SELECT type,name,sql FROM sqlite_master').all()).toEqual(before);
 }));
+
+test('native catalog mutations preserve descriptions and logs while unbound rule writes fail closed', () => withNative(async (request, db) => {
+  await request('sample');
+  const catalog=await request('catalog') as core.Catalog;
+  const property=catalog.properties.find(p=>p.tbl==='notes'&&p.col==='status')!;
+  const args={table:'notes',column:'status',expectedUpdatedAt:property.updated_at??null,fields:{options:[{v:'Draft',d:'Work in progress'},{v:'Ready',d:'Reviewed'}]}};
+  const saved=await request('saveCatalogProperty',args) as core.Property;
+  expect(saved.options?.[0].d).toBe('Work in progress');expect(saved.updated_at).toBeString();
+  await expect(request('saveCatalogProperty',args)).rejects.toThrow(/changed/);
+  await request('saveCatalogRule',{table:'notes',id:'draft-only',expectedUpdatedAt:null,fields:{scope:'table',kind:'invariant',text:'Keep this synthetic record in draft.',sql:"SELECT id FROM changed WHERE status='Ready'",enforce:1}});
+  const row=(await request('rows',{table:'notes'}) as core.WorkspaceRow[])[0].record;
+  // This sample is deliberately unbound: creating a rule does not invent replication trust.
+  await expect(request('write',{table:'notes',patch:{id:row.id,status:'Ready'},expectedUpdatedAt:row.updated_at})).rejects.toThrow('Replication coverage is unverified');
+  expect(db.query('SELECT text FROM catalog_rules WHERE id=?').get('draft-only')).toEqual({text:'Keep this synthetic record in draft.'});
+  expect(db.query('SELECT status FROM notes WHERE id=?').get(String(row.id))).toEqual({status:row.status});
+  expect(db.query('SELECT action FROM catalog_log').all()).toEqual([{action:'set'},{action:'set'}]);
+}));
+
+test('local catalog audit setup backfills once and preserves records', () => withNative(async(request, db) => {
+  await request('sample');
+  db.exec('DROP TRIGGER catalog_log_updated_at; DROP TABLE catalog_log');
+  db.query("DELETE FROM catalog_tables WHERE id='catalog_log'").run();
+  db.query("DELETE FROM catalog_properties WHERE tbl='catalog_log'").run();
+  const notes=db.query('SELECT * FROM notes').all();
+  expect(await request('prepareLocalCatalog')).toBe(true);
+  const schema=db.query('SELECT ddl FROM _schema_log').all();
+  expect(await request('prepareLocalCatalog')).toBe(false);
+  expect(db.query('SELECT ddl FROM _schema_log').all()).toEqual(schema);
+  expect(db.query('SELECT * FROM notes').all()).toEqual(notes);
+}));
+
+test('local catalog audit setup leaves foreign storage untouched', () => withNative(async(request, db) => {
+  await request('sample');
+  db.exec('DROP TRIGGER catalog_log_updated_at; DROP TABLE catalog_log; CREATE TABLE catalog_log(content TEXT)');
+  db.query("INSERT INTO catalog_log VALUES ('foreign fixture')").run();
+  const before=db.query('SELECT type,name,sql FROM sqlite_master').all();
+  expect(await request('prepareLocalCatalog')).toBe(false);
+  expect(db.query('SELECT type,name,sql FROM sqlite_master').all()).toEqual(before);
+  expect(db.query('SELECT * FROM catalog_log').all()).toEqual([{content:'foreign fixture'}]);
+}));

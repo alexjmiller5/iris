@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "2d2a3d08e6cdcb17799bba5afcf41be1989a96a5c35e5a59f739d8e4e9539662";
+export declare const CORE_CONTRACT_HASH = "8f429c330ff1c9acf42371e2a662d6ea4a8b20c38a513299801a7cdd20441045";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -56,6 +56,7 @@ export type Property = {
     source?: string | null;
     source_ref?: string | null;
     id?: string;
+    updated_at?: string | null;
 };
 export type Violation = {
     col: string;
@@ -315,6 +316,8 @@ export type SessionInfo = {
     replica: ReplicaEligibility;
     governance?: GovernanceCapability;
     enrollmentProfile?: EnrollmentProfileReceipt;
+    pushRegistration?: PushRegistrationCapability;
+    pushProfiles?: PushAppProfile[];
 };
 export type SessionDataArgs = {
     data: JSONValue;
@@ -387,6 +390,9 @@ export type HubCapabilities = {
     subscription_features?: "scalar-lifecycle-v1";
     governance?: GovernanceCapability;
     rowCreation?: RowCreationCapability;
+    push_registration?: PushRegistrationCapability;
+    push_profiles?: PushAppProfile[];
+    changesets?: ChangesetCapability;
 };
 export type HubSession = {
     name: string;
@@ -789,6 +795,272 @@ export type ViewDefault = {
     view: SavedViewRecord | null;
     unavailable: string | null;
 };
+export type PushAppProfile = {
+    id: string;
+    platform: PushPlatform;
+};
+export type PushRegistrationCapability = {
+    protocol: string;
+    deploymentIdentity: string;
+    sessionBinding: string;
+    profiles: PushAppProfile[];
+};
+export type PushRegistrationState = {
+    installationId: string;
+    revision: string;
+    state: PushRegistrationStatus;
+    deploymentIdentity: string;
+    sessionBinding: string;
+    appProfile: string;
+    activatedAfterSeq: Count;
+    updatedAt: string;
+};
+export type PushRegistrationRequest = {
+    appProfile: string;
+    deviceToken: string;
+    expectedRevision: string | null;
+    requestId: string;
+};
+export type PushRevocationRequest = {
+    appProfile: string;
+    expectedRevision: string | null;
+    requestId: string;
+};
+export type PushRegistrationReceipt = {
+    requestId: string;
+    registration: PushRegistrationState;
+};
+export type PushPlatform = "ios" | "macos";
+export type PushRegistrationStatus = "active" | "revoked";
+export type ChangesetCreate = {
+    kind: "create";
+    table: string;
+    id: string;
+    expected_revision: null;
+    values: Row;
+};
+export type ChangesetPatch = {
+    kind: "patch";
+    table: string;
+    id: string;
+    expected_revision: Revision;
+    values: Row;
+};
+export type ChangesetSoftDelete = {
+    kind: "soft_delete";
+    table: string;
+    id: string;
+    expected_revision: Revision;
+};
+export type ChangesetOperation = ChangesetCreate | ChangesetPatch | ChangesetSoftDelete;
+export type ChangesetReadSet = {
+    table: string;
+    where: Record<string, FilterValue>;
+    expected: ChangesetReadMember[];
+};
+export type ChangesetInput = {
+    operations: ChangesetOperation[];
+    reads: ChangesetReadSet[];
+};
+export type ChangesetChange = {
+    table: string;
+    id: string;
+    kind: "create" | "patch" | "soft_delete";
+    before: Row | null;
+    after: Row | null;
+};
+export type ChangesetPreview = {
+    changes: ChangesetChange[];
+    previewToken: string;
+    expiresAt: string;
+};
+export type ChangesetProposal = {
+    id: string;
+    version: string;
+    state: ProposalState;
+    input: ChangesetInput;
+    changes: ChangesetChange[];
+    dependencies: string;
+    proposedBy: Actor;
+    claimedOrigin: string | null;
+    createdAt: string;
+    updatedAt: string;
+};
+export type ChangesetRowReceipt = {
+    table: string;
+    id: string;
+    kind: "create" | "patch" | "soft_delete";
+    revision: Revision;
+};
+export type ChangesetApproval = {
+    operationId: string;
+    proposalId: string;
+    proposalVersion: string;
+    rows: ChangesetRowReceipt[];
+    historyEventIds: string[];
+    approvedBy: Actor;
+    committedAt: string;
+};
+export type ChangesetPreviewSuccess = {
+    kind: "success";
+    value: ChangesetPreview;
+};
+export type ChangesetPreviewResult = ChangesetPreviewSuccess | UnavailableResult | PurgedResult | MutationError | TransportError;
+export type ChangesetProposalSuccess = {
+    kind: "success";
+    value: ChangesetProposal;
+};
+export type ChangesetProposalResult = ChangesetProposalSuccess | UnavailableResult | PurgedResult | MutationError | TransportError;
+export type ChangesetApprovalSuccess = {
+    kind: "success";
+    value: ChangesetApproval;
+};
+export type ChangesetApprovalResult = ChangesetApprovalSuccess | UnavailableResult | PurgedResult | MutationError | TransportError;
+export type ChangesetLimits = {
+    maxOperations: number;
+    maxTables: number;
+    maxBytes: number;
+    maxReadSets: number;
+    maxMembershipRows: number;
+    maxReadRows: number;
+    previewTtlSeconds: number;
+};
+export type ChangesetCapability = {
+    protocol: "bounded-changeset-proposals-v1";
+    principal: Actor;
+    authority: GovernanceAuthority;
+    limits: ChangesetLimits;
+    deploymentId: string;
+    sessionId: string;
+};
+export type ChangesetReadMember = {
+    id: string;
+    revision: Revision;
+};
+export type ConsumerConfig = {
+    version: number;
+    namespace: string;
+    bindings: Record<string, unknown>;
+};
+export type ConsumerConfigReply = {
+    profile: EnrollmentProfileReceipt;
+    config: ConsumerConfig;
+};
+export type CatalogProjectionRequest = {
+    table: string;
+    columns: string[];
+};
+export type CatalogProjectionOption = {
+    v: string;
+    d?: string;
+    sort?: number;
+};
+export type CatalogProjectedProperty = {
+    column: string;
+    type: string;
+    description: string | null;
+    required: boolean;
+    readOnly: boolean;
+    options?: CatalogProjectionOption[];
+};
+export type CatalogProjectionReply = {
+    table: string;
+    properties: CatalogProjectedProperty[];
+};
+export type RowsQueryOrder = {
+    column: string;
+    direction: "asc" | "desc";
+};
+export type RowsQueryRequest = {
+    table: string;
+    columns: string[];
+    filter?: unknown;
+    order?: RowsQueryOrder[];
+    limit?: number;
+    cursor?: string;
+};
+export type RowsQueryReply = {
+    rows: Row[];
+    next_cursor: string | null;
+};
+export type CaptureInput = {
+    text?: string;
+    url?: string;
+};
+export type CaptureItem = {
+    kind: string;
+    id: string;
+};
+export type CaptureRequest = {
+    request_id: string;
+    input: CaptureInput;
+    intent: "save" | "record_consumption";
+    fields?: Record<string, unknown>;
+};
+export type CaptureReceipt = {
+    request_id: string;
+    state: "received" | "processing" | "saved" | "needs_review" | "failed" | "uncertain";
+    item?: CaptureItem;
+};
+export type SQLScalar = string | number | null;
+export type CalendarSlot = "today" | "start" | "end";
+export type ReadPlanLiteral = {
+    kind: "literal";
+    value: SQLScalar;
+};
+export type ReadPlanCalendar = {
+    kind: "calendar";
+    slot: CalendarSlot;
+};
+export type ReadPlanParameter = ReadPlanLiteral | ReadPlanCalendar;
+export type ReadPlanKind = "list" | "count";
+export type ReadPlanCalendarPolicy = {
+    timeZone: string;
+    dayStartMinutes: Count;
+};
+export type ReadPlanGuard = {
+    kind: "schema" | "catalog" | "view" | "identity";
+    sql: string;
+    parameters: SQLScalar[];
+    expectedRows: Row[];
+};
+export type PrepareReadPlanArgs = {
+    workspaceID: string;
+    replicaID: string;
+    table: string;
+    kind: ReadPlanKind;
+    viewID?: string;
+    expectedViewUpdatedAt?: string;
+};
+export type ReadPlan = {
+    version: Count;
+    workspaceID: string;
+    replicaID: string;
+    table: string;
+    viewID: string | null;
+    viewUpdatedAt: string | null;
+    kind: ReadPlanKind;
+    sql: string;
+    parameters: ReadPlanParameter[];
+    columns: string[];
+    displayColumn: string | null;
+    maximumRows: Count;
+    calendarPolicy: ReadPlanCalendarPolicy | null;
+    guards: ReadPlanGuard[];
+};
+export type SaveCatalogPropertyArgs = {
+    table: string;
+    column: string;
+    expectedUpdatedAt: string | null;
+    fields: Row;
+    addColumn?: boolean;
+};
+export type SaveCatalogRuleArgs = {
+    table: string;
+    id: string;
+    expectedUpdatedAt: string | null;
+    fields: Row;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -973,6 +1245,18 @@ export interface CoreOperations {
     setViewDefault: {
         args: SetViewDefaultArgs;
         result: ViewDefault;
+    };
+    prepareReadPlan: {
+        args: PrepareReadPlanArgs;
+        result: ReadPlan;
+    };
+    saveCatalogProperty: {
+        args: SaveCatalogPropertyArgs;
+        result: Property;
+    };
+    saveCatalogRule: {
+        args: SaveCatalogRuleArgs;
+        result: Row;
     };
 }
 export type CoreMethod = keyof CoreOperations;

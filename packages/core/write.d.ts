@@ -9,6 +9,9 @@ export declare class ValidationError extends Error {
 /** UI and write boundary share this contract: service-owned tables carry
  * catalog_tables.kind='system'. Free-form owner text is not a permission. */
 export declare function isReadOnlyTable(table: string, catalogEntry?: Row): boolean;
+type Fail = (col: string, rule: string, message: string) => never;
+export declare function prepareWriteStorage(db: SqlDriver, table: string, fail: Fail): Promise<string[]>;
+export declare function assertCatalogCoverage(db: SqlDriver, fail: Fail): Promise<void>;
 /** Advisory table guards only; writeRow rechecks in its own transaction and
  * still validates the actual patch, selected revision and stored values. */
 export declare function writeability(db: SqlDriver, args: WriteabilityArgs): Promise<Writeability>;

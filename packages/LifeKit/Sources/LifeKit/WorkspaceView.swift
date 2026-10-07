@@ -8,6 +8,7 @@ public struct WorkspaceView: View {
   @State private var settings = false
   @State private var recordExport: RecordExportTarget?
   @State private var options = false
+  @State private var catalogEditor: CatalogEditorModel?
   @State private var filterColumn: String?
   @State private var savedViews = false
   @State private var showingGraph = false
@@ -217,6 +218,7 @@ public struct WorkspaceView: View {
       .sheet(isPresented: $showingStatus) { WorkspaceStatusSheet(model: model) }
     #endif
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
+    .sheet(item: $catalogEditor) { CatalogEditorView(model: $0) }
     .sheet(item: $recordExport) { target in
       RecordExportView(snapshot: target.snapshot)
     }
@@ -337,10 +339,24 @@ public struct WorkspaceView: View {
       && pendingSearchEditor == nil && pendingDuplicateEditor == nil
       && pendingReferenceEditor == nil && rejectionInbox == nil && pendingRejection == nil
       && !settings && !options && !savedViews && !importing && recordExport == nil
+      && catalogEditor == nil
   }
 
   private var canExportLoadedRows: Bool {
     canFind && !showingGraph && !showingStatus && model.canExportLoadedRows
+  }
+
+  private var catalogEditorButton: some View {
+    Button {
+      guard canFind, let context = model.editingContext else { return }
+      catalogEditor = CatalogEditorModel(workspace: model, context: context)
+    } label: {
+      Label("Edit catalog", systemImage: "list.bullet.rectangle")
+    }
+    .disabled(
+      !canFind || model.tables.first { $0["id"]?.text == model.table }?["readOnly"] != .bool(false)
+    )
+    .accessibilityIdentifier("edit-catalog")
   }
 
   private var exportLoadedRowsAction: some View {
@@ -1022,6 +1038,7 @@ public struct WorkspaceView: View {
           Label("Hub connection", systemImage: "gearshape")
         }.disabled(editor != nil)
         exportLoadedRowsAction
+        catalogEditorButton
         Button(action: showRejections) { Label("Issues", systemImage: "exclamationmark.bubble") }
           .disabled(!canFind).accessibilityIdentifier("workspace-issues")
         Divider()
@@ -1106,6 +1123,7 @@ public struct WorkspaceView: View {
                   if !model.filters.isEmpty { Text("\(model.filters.count) active") }
                 }
               }.disabled(editor != nil).accessibilityIdentifier("view-options")
+              catalogEditorButton
               Spacer()
               Button {
                 guard let table = model.table else { return }

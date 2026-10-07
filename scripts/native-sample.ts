@@ -1,3 +1,4 @@
+import { prepareLocalCatalog } from './local-catalog';
 import { prepareLocalViews, prepareLocalPins } from './local-views';
 import { initCore, writeRow } from '../packages/core/client.js';
 import type { SqlDriver } from '../packages/core/index.d.ts';
@@ -43,6 +44,7 @@ export async function createSample(db: SqlDriver) {
       await db.run('INSERT INTO catalog_properties (id,tbl,col,type) VALUES (?,?,?,?)', [`history.${col}`,'history',col,'text']);
     }
   });
+  await prepareLocalCatalog(db);
   await prepareLocalViews(db);
   await prepareLocalPins(db);
   await writeRow(db, 'topics', { title: 'Field notes' }, {origin:'life-ui'});

@@ -14,7 +14,7 @@ export async function prepareLocalViews(db: SqlDriver): Promise<boolean> {
 }
 export const prepareLocalPins = (db: SqlDriver) => prepareLocalTable(db, pinStorage);
 
-async function prepareLocalTable(db: SqlDriver, storage: {ddl:string[];table:Row;properties:Row[]}): Promise<boolean> {
+export async function prepareLocalTable(db: SqlDriver, storage: {ddl:string[];table:Row;properties:Row[]}): Promise<boolean> {
   return db.transaction(async () => {
     // A name collision is user data, even when only its catalog entry remains.
     // Do not adopt, rewrite or repair it, or change any accompanying metadata.

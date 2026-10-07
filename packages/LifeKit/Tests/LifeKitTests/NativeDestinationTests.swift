@@ -244,7 +244,7 @@ extension NativeDestinationTests {
   @Test func preferredViewUsesIdentityAndExplicitDestinationsWin() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
-    let note = try #require(try await workspace.rows(CoreView(table: "notes")).first)
+    let note = try #require(try await workspace.rows(view: CoreView(table: "notes")).first)
     let saved = try await workspace.saveView(
       CoreSaveViewArgs(
         table: "notes", name: "Preferred",

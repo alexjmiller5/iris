@@ -1,3 +1,4 @@
+import { prepareLocalCatalog } from './local-catalog';
 import { CORE_CONTRACT_HASH, createCoreHandlers, validateRow } from '../packages/core/client.js';
 import type { CoreArgs, CoreMethod, CoreResult, Row, SqlDriver, Value, ServiceHub, SqlReadStatement, SqlReadContext } from '../packages/core/index.d.ts';
 import { createSample } from './native-sample';
@@ -69,6 +70,7 @@ function invoke<M extends CoreMethod>(method: M, args: CoreArgs<M>): CoreResult<
 async function dispatch(method: string, args: unknown) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Invalid workspace arguments.');
   if (method === 'prepareLocalPins') return prepareLocalPins(db);
+  if (method === 'prepareLocalCatalog') return prepareLocalCatalog(db);
   if (method === 'prepareLocalViews') return prepareLocalViews(db);
   if (method === 'sample') { await createSample(db); return null; }
   if (!Object.hasOwn(handlers, method)) throw new Error('Unknown workspace operation.');
