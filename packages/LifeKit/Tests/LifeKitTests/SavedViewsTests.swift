@@ -355,13 +355,10 @@ extension SavedViewsTests {
     #expect(model.savingView)
     model.table = "topics"
     model.table = "notes"
-    // A later operation owns the current view's busy state.
-    model.savingView = true
     runtime.context.evaluateScript("__lifeFinish = originalFinish; originalFinish(...heldReceipt);")
     await #expect(throws: WorkspaceError.self) { try await saving.value }
     #expect(model.viewDefault == nil)
-    #expect(model.savingView)
-    model.savingView = false
+    #expect(!model.savingView)
     try await client.close()
   }
 }
