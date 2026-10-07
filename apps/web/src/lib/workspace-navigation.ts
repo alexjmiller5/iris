@@ -35,8 +35,20 @@ export function readDestination(url: URL): Destination {
 		throw new Error('This link needs a table. Copy a new link from the workspace.');
 	return destination;
 }
-export function destinationURL(url: URL, destination: Destination): URL {
+export function destinationURL(url: URL, destination: Destination, retainProposal = false): URL {
 	const result = new URL(url.pathname, url.origin);
+	if (retainProposal) {
+		const proposals = url.searchParams.getAll('proposal');
+		if (
+			proposals.length > 1 ||
+			(proposals.length === 1 &&
+				(proposals[0] === '' ||
+					new TextEncoder().encode(proposals[0]).length > 256 ||
+					/[\u0000-\u001f\u007f]/.test(proposals[0])))
+		)
+			throw new Error('This review link is invalid. Copy a new proposal link.');
+		if (proposals.length === 1) result.searchParams.set('proposal', proposals[0]);
+	}
 	for (const key of ['table', 'view', 'row'] as const) {
 		if (destination[key] !== null) result.searchParams.set(key, destination[key]);
 	}

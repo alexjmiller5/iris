@@ -339,7 +339,7 @@
 	async function reflectLocation(replace = false) {
 		let url: URL;
 		try {
-			url = destinationURL(new URL(window.location.href), currentDestination());
+			url = destinationURL(new URL(window.location.href), currentDestination(), true);
 		} catch (e) {
 			error = message(e);
 			return;

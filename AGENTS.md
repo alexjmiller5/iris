@@ -190,12 +190,16 @@ as results arrive, and keep unavailable choices visible with their reason.
 Resolve every choice freshly before host activation. Closing disposes both reads;
 record navigation is recorded only after the pending editor actually installs.
 
-Web destination URLs carry only table, stable saved-view and record identifiers.
+Shared web destination URLs carry table, stable saved-view and record identifiers
+and bounded transient presentation state. Internal location reflection also keeps
+one nonempty proposal identity bounded to 256 UTF-8 bytes, without control characters.
+Copied destinations omit the proposal and unknown parameters. A proposal link carries
+no approval authority; review still requires the current enrolled user connection.
 Resolve them against the explicitly opened workspace's fresh catalog, saved view
 and full row. Use SvelteKit navigation hooks for browser history so cancelling
 Back restores the URL as well as the draft. Do not use shallow history entries
 that bypass those hooks. Ignore superseded lookup replies and block writes while
-resolving a linked record. Unsaved view settings and credentials stay out of URLs.
+resolving a linked record. Credentials and action authority stay out of URLs.
 
 Native `life://open/v1` links follow `docs/native-deep-links.md`. Receiving a URL
 only fills the single pending-link banner; it never opens, enrolls or switches a
