@@ -82,6 +82,7 @@ struct SavedViewsView: View {
         Section("Default for this table") {
           if let preferred = model.viewDefault {
             Text(preferred.view?.name ?? "Catalog default")
+              .accessibilityIdentifier("default-view-name")
             if let reason = preferred.unavailable {
               Text(reason).font(.caption).foregroundStyle(.secondary)
             }
@@ -94,6 +95,28 @@ struct SavedViewsView: View {
             Button("Use catalog default") { setDefault(nil) }
               .disabled(model.defaultWriteability?.writable != true || preferred.viewId == nil)
               .accessibilityIdentifier("clear-default-view")
+          }
+        }
+        Section("View for related records") {
+          if let preferred = model.relatedViewDefault {
+            Text(preferred.view?.name ?? "All live links")
+              .accessibilityIdentifier("related-view-name")
+            if let reason = preferred.unavailable {
+              Text(reason).font(.caption).foregroundStyle(.secondary)
+            }
+            Button("Use current view for related records") {
+              setDefault(model.appliedView, related: true)
+            }
+            .disabled(
+              model.relatedDefaultWriteability?.writable != true || model.appliedView == nil
+                || model.viewModified
+            )
+            .accessibilityIdentifier("set-related-view")
+            Button("Use all live related records") { setDefault(nil, related: true) }
+              .disabled(
+                model.relatedDefaultWriteability?.writable != true || preferred.viewId == nil
+              )
+              .accessibilityIdentifier("clear-related-view")
           }
         }
         if let unavailable = model.savedViewsUnavailable {
@@ -191,13 +214,16 @@ struct SavedViewsView: View {
     }
   }
 
-  private func setDefault(_ saved: CoreSavedViewRecord?) {
+  private func setDefault(_ saved: CoreSavedViewRecord?, related: Bool = false) {
     Task {
       do {
-        try await model.setDefaultView(saved, context: context)
+        try await model.setDefaultView(saved, context: context, related: related)
         if current {
           error = nil
-          notice = "Default view saved. It applies when opening this table."
+          notice =
+            related
+            ? "Related-record view saved."
+            : "Default view saved. It applies when opening this table."
         }
       } catch { if current { self.error = error.localizedDescription } }
     }

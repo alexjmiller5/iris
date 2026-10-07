@@ -5,6 +5,8 @@
 	import RecordPresentations from '$lib/RecordPresentations.svelte';
 	import type { ViewPresentation, ViewDefault } from 'life-ui-core/client';
 	let presentation = $state<ViewPresentation>({ kind: 'table' });
+	let relatedView = $state<ViewDefault | null>(null);
+	let relatedPermission = $state<Writeability | null>(null);
 	let preferredView = $state<ViewDefault | null>(null);
 	let defaultPermission = $state<Writeability | null>(null);
 	let defaultViewNotice = $state<string | null>(null);
@@ -1286,6 +1288,8 @@
 		savedViews = [];
 		viewsUnavailable = null;
 		preferredView = null;
+		relatedView = null;
+		relatedPermission = null;
 		defaultPermission = null;
 		defaultViewNotice = null;
 		viewVersion++;
@@ -1418,11 +1422,17 @@
 			request = ++viewsRequest;
 		const result = await workspace.request('listViews', { table: target });
 		const preferred = await workspace.request('getViewDefault', { table: target });
+		const related = await workspace.request('getRelatedViewDefault', { table: target });
+		const relatedWritable = await workspace
+			.request('writeability', { table: 'related_view_defaults' })
+			.catch(() => null);
 		const permission = await workspace
 			.request('writeability', { table: 'view_defaults' })
 			.catch(() => null);
 		if (database !== workspace || table !== target || request !== viewsRequest) return;
 		preferredView = preferred;
+		relatedView = related;
+		relatedPermission = relatedWritable;
 		defaultPermission = permission;
 		savedViews = result.views;
 		viewsUnavailable = result.unavailable;
@@ -1482,25 +1492,30 @@
 			: JSON.stringify(viewDefinition());
 		error = '';
 	}
-	async function setDefaultView(id: string | null) {
-		if (!database || busy || !preferredView || !defaultPermission?.writable) return;
+	async function setDefaultView(id: string | null, related = false) {
+		const displayed = related ? relatedView : preferredView;
+		const permission = related ? relatedPermission : defaultPermission;
+		if (!database || busy || !displayed || !permission?.writable) return;
 		const workspace = database,
 			target = table,
 			version = viewVersion;
-		const expectedUpdatedAt = preferredView.updated_at;
+		const expectedUpdatedAt = displayed.updated_at;
 		busy = true;
 		writing = true;
 		try {
-			const saved = await workspace.request('setViewDefault', {
+			const saved = await workspace.request(related ? 'setRelatedViewDefault' : 'setViewDefault', {
 				table: target,
 				viewId: id,
 				expectedUpdatedAt
 			});
 			if (database !== workspace || table !== target || version !== viewVersion) return;
-			preferredView = saved;
+			if (related) relatedView = saved;
+			else preferredView = saved;
 			defaultViewNotice = saved.unavailable;
 			await refresh();
-			notice = 'Default view saved. It applies when opening this table.';
+			notice = related
+				? 'Related-record view saved.'
+				: 'Default view saved. It applies when opening this table.';
 		} catch (e) {
 			if (database === workspace && table === target) error = message(e);
 		} finally {
@@ -2436,6 +2451,20 @@
 										onclick={() => setDefaultView(null)}>Use catalog default</button
 									>
 									{#if preferredView?.unavailable}<p>{preferredView.unavailable}</p>{/if}
+									<span>Related records: {relatedView?.view?.name ?? 'All live links'}</span>
+									<button
+										type="button"
+										onclick={() => setDefaultView(chosenView?.id ?? null, true)}
+										disabled={busy || !relatedPermission?.writable || !chosenView || viewModified}
+										>Use current view for related records</button
+									>
+									<button
+										type="button"
+										onclick={() => setDefaultView(null, true)}
+										disabled={busy || !relatedPermission?.writable || !relatedView?.viewId}
+										>Use all live related records</button
+									>
+									{#if relatedView?.unavailable}<p>{relatedView.unavailable}</p>{/if}
 								</div>
 								{#if defaultViewNotice}<p role="status">{defaultViewNotice}</p>{/if}
 							</div>

@@ -135,12 +135,14 @@ final class WorkspaceModel {
       var destination = destination
       var definition = try currentViewDefinition()
       if destination.viewID == appliedView?.id, destination.state == nil,
-        definition != (appliedView?.definition ?? CoreSavedViewDefinition(version: 1)) {
+        definition != (appliedView?.definition ?? CoreSavedViewDefinition(version: 1))
+      {
         definition.actions = nil
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let state = String(decoding: try encoder.encode(definition), as: UTF8.self)
-        destination = NativeDestination(table: destination.table, viewID: destination.viewID,
+        destination = NativeDestination(
+          table: destination.table, viewID: destination.viewID,
           rowID: destination.rowID, state: state)
       }
       let url = try NativeDeepLink(destination: destination, workspace: linkBinding).url
@@ -280,6 +282,8 @@ final class WorkspaceModel {
   private(set) var savedViews: [CoreSavedViewRecord] = []
   private(set) var appliedView: CoreSavedViewRecord?
   private(set) var savedViewsUnavailable: String?
+  private(set) var relatedViewDefault: CoreViewDefault?
+  private(set) var relatedDefaultWriteability: CoreWriteability?
   private(set) var viewDefault: CoreViewDefault?
   private(set) var defaultWriteability: CoreWriteability?
   private(set) var defaultViewNotice: String?
@@ -339,7 +343,9 @@ final class WorkspaceModel {
       // The inverse is already committed. A presentation refresh failure must
       // not prevent automatic upload of that durable local change.
       recordLocalChange()
-      if ["views", "view_defaults"].contains(action.table), query == queryKey {
+      if ["views", "view_defaults", "related_view_defaults"].contains(action.table),
+        query == queryKey
+      {
         try await refreshSavedViews(context: context)
         guard context.workspace === client, generation == workspaceGeneration,
           context.table == table
@@ -476,6 +482,7 @@ final class WorkspaceModel {
     visibleRecordColumns = nil
     savedViewsUnavailable = nil
     viewDefault = nil
+    relatedViewDefault = nil
     defaultViewNotice = nil
     savingView = false
     search = ""
@@ -597,6 +604,7 @@ final class WorkspaceModel {
     writeability = nil
     viewsWriteability = nil
     defaultWriteability = nil
+    relatedDefaultWriteability = nil
     writeabilityError = nil
   }
 
@@ -612,12 +620,14 @@ final class WorkspaceModel {
       let current = try await client.writeability(table: table)
       let views = table == "views" ? current : try await client.writeability(table: "views")
       let defaults = try? await client.writeability(table: "view_defaults")
+      let related = try? await client.writeability(table: "related_view_defaults")
       guard self.client === client, self.table == table,
         generation == workspaceGeneration, request == writeabilityRequest
       else { return }
       writeability = current
       viewsWriteability = views
       defaultWriteability = defaults
+      relatedDefaultWriteability = related
       writeabilityError = nil
     } catch {
       guard self.client === client, self.table == table,
@@ -626,6 +636,7 @@ final class WorkspaceModel {
       writeability = nil
       viewsWriteability = nil
       defaultWriteability = nil
+      relatedDefaultWriteability = nil
       writeabilityError = error.localizedDescription
     }
   }
@@ -783,19 +794,22 @@ final class WorkspaceModel {
     let workspace = workspaceGeneration
     let result = try await context.workspace.listViews(table: context.table)
     let preferred = try await context.workspace.getViewDefault(table: context.table)
+    let related = try await context.workspace.getRelatedViewDefault(table: context.table)
     _ = try requireViewContext(context, generation: workspace)
     guard request == viewsRequest, generation == viewGeneration else { return }
     viewDefault = preferred
+    relatedViewDefault = related
     savedViews = result.views
     savedViewsUnavailable = result.unavailable
     // The list is current; an applied view retains the revision the user opened.
   }
 
-  func setDefaultView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?) async throws
-  {
+  func setDefaultView(
+    _ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?, related: Bool = false
+  ) async throws {
     let context = try requireViewContext(context)
-    guard !savingView, !undoing, let displayed = viewDefault,
-      defaultWriteability?.writable == true
+    guard !savingView, !undoing, let displayed = related ? relatedViewDefault : viewDefault,
+      (related ? relatedDefaultWriteability : defaultWriteability)?.writable == true
     else {
       throw WorkspaceError(
         message: "Refresh default-view editing availability first.", violations: [])
@@ -804,20 +818,28 @@ final class WorkspaceModel {
     let selectedView = viewGeneration
     savingView = true
     defer { if selectedView == viewGeneration { savingView = false } }
-    let result = try await context.workspace.setViewDefault(
-      CoreSetViewDefaultArgs(
-        table: context.table, viewId: saved?.id, expectedUpdatedAt: displayed.updatedAt))
+    let args = CoreSetViewDefaultArgs(
+      table: context.table, viewId: saved?.id, expectedUpdatedAt: displayed.updatedAt)
+    let result: CoreViewDefault
+    if related {
+      result = try await context.workspace.setRelatedViewDefault(args)
+    } else {
+      result = try await context.workspace.setViewDefault(args)
+    }
     _ = try requireViewContext(context, generation: generation)
     guard selectedView == viewGeneration else {
       throw WorkspaceError(message: "The view changed. Reopen saved views.", violations: [])
     }
-    viewDefault = result
+    if related { relatedViewDefault = result } else { viewDefault = result }
     defaultViewNotice = result.unavailable
     recordLocalChange()
     await reloadAfterCommit(workspace: context.workspace, generation: generation, query: queryKey)
   }
 
-  func applySavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?, definition: CoreSavedViewDefinition? = nil) throws {
+  func applySavedView(
+    _ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext?,
+    definition: CoreSavedViewDefinition? = nil
+  ) throws {
     let context = try requireViewContext(context)
     guard !savingView, !undoing else {
       throw WorkspaceError(message: "Wait for the saved view to finish saving.", violations: [])
@@ -825,7 +847,10 @@ final class WorkspaceModel {
     try installSavedView(saved, context: context, transient: definition)
   }
 
-  private func installSavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext, transient: CoreSavedViewDefinition? = nil)
+  private func installSavedView(
+    _ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext,
+    transient: CoreSavedViewDefinition? = nil
+  )
     throws
   {
     if let saved {

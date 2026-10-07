@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { IconArrowUpRight, IconRefresh } from '@tabler/icons-svelte';
 	import type { WorkspaceDatabase } from './database';
+	import { calendarContext } from './calendar-context';
 	import { createIncomingReferences } from './incoming-references';
 	let {
 		core,
@@ -18,15 +19,22 @@
 	} = $props();
 	const model = createIncomingReferences(
 		() => core.request('referenceSources', { table }),
-		(source, offset) =>
-			core.request('referencedBy', {
+		async (source, offset) => {
+			const preference = await core.request('getRelatedViewDefault', { table: source.table });
+			const definition = preference.view?.definition;
+			return core.request('referencedBy', {
 				table,
 				rowId,
 				sourceTable: source.table,
 				column: source.column,
 				limit: 20,
-				offset
-			})
+				offset,
+				expectedViewUpdatedAt: preference.view?.updated_at ?? undefined,
+				calendar: definition?.timeZone
+					? calendarContext(definition.timeZone, new Date(), definition.dayStartMinutes ?? 0)
+					: undefined
+			});
+		}
 	);
 	onMount(() => {
 		void model.refresh();
@@ -59,6 +67,7 @@
 			{#if group.source.incomplete}<p class="partial" role="status">
 					Local relationships may be incomplete. Some tables are not fully downloaded.
 				</p>{/if}
+			{#if group.viewUnavailable}<p role="status">{group.viewUnavailable}</p>{/if}
 			{#if group.error}<p role="alert">{group.error}</p>
 				<button
 					type="button"

@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "3d7d3586ca2ae7383b377c7d686c3a34936eaaf8058e3a27a05efe17f233b9f0";
+export declare const CORE_CONTRACT_HASH = "dd24dd6ecbb094bf0ea9d391be40fb3ed008fd107b106d925ea05ab4c4aa39e2";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -360,11 +360,14 @@ export type ReferencedByArgs = {
     column: string;
     limit?: Count;
     offset?: Count;
+    calendar?: CalendarContext;
+    expectedViewUpdatedAt?: string;
 };
 export type ReferencedByPage = {
     source: ReferenceSource;
     rows: WorkspaceRow[];
     nextOffset: Count | null;
+    viewUnavailable?: string;
 };
 export type RejectedEdit = {
     table: string;
@@ -1269,6 +1272,14 @@ export interface CoreOperations {
     resolveViewDefinition: {
         args: ResolveViewDefinitionArgs;
         result: ResolvedViewDefinition;
+    };
+    getRelatedViewDefault: {
+        args: GetViewDefaultArgs;
+        result: ViewDefault;
+    };
+    setRelatedViewDefault: {
+        args: SetViewDefaultArgs;
+        result: ViewDefault;
     };
 }
 export type CoreMethod = keyof CoreOperations;

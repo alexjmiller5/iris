@@ -63,6 +63,9 @@ private struct IncomingReferenceGroupView: View {
         .accessibilityLabel("Open \(row.label)")
         .disabled(!canOpen)
       }
+      if let reason = group.viewUnavailable {
+        Text(reason).font(.caption).foregroundStyle(.secondary)
+      }
       if group.loading {
         ProgressView("Loading records")
       } else if let error = group.error {

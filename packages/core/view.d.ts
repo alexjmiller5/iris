@@ -11,6 +11,17 @@ export declare function compileView(view: View, properties: Property[]): {
     sql: string;
     params: (string | number | null)[];
 };
+type IncomingReference = {
+    table: string;
+    rowId: string;
+    column: string;
+    type: 'ref' | 'multi_ref';
+};
+/** The same view compiler with a catalog-checked incoming relation predicate. */
+export declare function compileReferenceView(view: View, properties: Property[], reference: IncomingReference): {
+    sql: string;
+    params: import("./contract.generated.ts").SQLScalar[];
+};
 /** Same compiler, tagged at binding sites. The caller supplies explicit title/id
  * projection and validates the saved definition before count drops its ordering. */
 export declare function compileReadQuery(view: View, properties: Property[], kind: ReadPlanKind): {

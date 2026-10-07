@@ -412,6 +412,10 @@ async function dispatch(request: DatabaseRequest) {
 			return local.resolveViewDefinition(args);
 		case 'listViews':
 			return local.listViews(args);
+		case 'getRelatedViewDefault':
+			return local.getRelatedViewDefault(args);
+		case 'setRelatedViewDefault':
+			return local.setRelatedViewDefault(args);
 		case 'getViewDefault':
 			return local.getViewDefault(args);
 		case 'setViewDefault':
@@ -499,6 +503,7 @@ scope.onmessage = ({ data }) => {
 					'saveView',
 					'deleteView',
 					'setViewDefault',
+					'setRelatedViewDefault',
 					'saveCatalogProperty',
 					'saveCatalogRule',
 					'pinTable',

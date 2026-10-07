@@ -136,6 +136,15 @@ test('local defaults use real core persistence and leave all named views intact'
   expect(preferred.view?.id).toBe(saved.id);
   expect(db.query('SELECT * FROM views').all()).toEqual(before);
 }));
+test('local related preferences use their own canonical store without changing table defaults',()=>withNative(async(request,db)=>{
+ await request('sample');
+ const view=await request('saveView',{table:'notes',name:'Related fixture',definition:{version:1}}) as core.SavedViewRecord;
+ expect((await request('getRelatedViewDefault',{table:'notes'}) as core.ViewDefault).unavailable).toBeNull();
+ const related=await request('setRelatedViewDefault',{table:'notes',viewId:view.id,expectedUpdatedAt:null}) as core.ViewDefault;
+ expect(related.viewId).toBe(view.id);
+ expect((await request('getViewDefault',{table:'notes'}) as core.ViewDefault).viewId).toBeNull();
+ expect(db.query('SELECT view_id FROM related_view_defaults').get()).toEqual({view_id:view.id});
+}));
 test('local pins are provisioned from the canonical manifest and written through native dispatch',()=>withNative(async(request,db)=>{
  await request('sample');
  expect(await request('prepareLocalPins')).toBe(false);

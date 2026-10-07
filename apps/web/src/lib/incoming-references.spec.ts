@@ -31,6 +31,27 @@ const deferred = <T>() => {
 	return { promise, resolve, reject };
 };
 
+test('an unavailable related view remains visible without discarding fallback rows or blocking later pages', async () => {
+	const model = create(
+		async () => [source],
+		async () => ({
+			source,
+			rows: [row('one')],
+			nextOffset: 20,
+			viewUnavailable: 'Related view unavailable; showing all live links.'
+		})
+	);
+	await model.refresh();
+	await model.load(get(model).groups[0].key);
+	expect(get(model).groups[0]).toMatchObject({
+		rows: [row('one')],
+		nextOffset: 20,
+		loaded: true,
+		error: '',
+		viewUnavailable: 'Related view unavailable; showing all live links.'
+	});
+});
+
 test('discovery loads only metadata until a relationship group is opened', async () => {
 	const reads: number[] = [];
 	const model = create(

@@ -35,6 +35,7 @@ struct IncomingReferenceGroup: Identifiable {
   var loaded = false
   var loading = false
   var error: String?
+  var viewUnavailable: String?
 }
 
 @Observable @MainActor
@@ -113,6 +114,7 @@ final class IncomingReferencesModel {
         }
       }
       groups[index].source = page.source
+      groups[index].viewUnavailable = page.viewUnavailable
       groups[index].rows = rows
       groups[index].nextOffset = page.nextOffset
       groups[index].loaded = true
