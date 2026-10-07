@@ -844,7 +844,7 @@ test.skipIf(process.platform !== "darwin")(
 // Exercise the release verifier against real universal Mach-O signatures.
 // Removing either architecture inspection must accept a broken fixture and fail.
 test.skipIf(process.platform !== "darwin")(
-  "private Keychain identity is required in each signed architecture",
+  "private identity and production push are required in each signed architecture",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "life-ui-signing-test-"));
     try {
@@ -858,7 +858,7 @@ test.skipIf(process.platform !== "darwin")(
       const empty = join(root, "empty.plist");
       await writeFile(
         valid,
-        `<?xml version="1.0"?><plist version="1.0"><dict><key>com.apple.application-identifier</key><string>TESTTEAM01.org.example.fixture</string><key>com.apple.developer.team-identifier</key><string>TESTTEAM01</string></dict></plist>`,
+        `<?xml version="1.0"?><plist version="1.0"><dict><key>com.apple.application-identifier</key><string>TESTTEAM01.org.example.fixture</string><key>com.apple.developer.team-identifier</key><string>TESTTEAM01</string><key>com.apple.developer.aps-environment</key><string>production</string></dict></plist>`,
       );
       await writeFile(
         empty,
@@ -914,7 +914,7 @@ test.skipIf(process.platform !== "darwin")(
           `
 import datetime,runpy,sys
 module=runpy.run_path(sys.argv[1])
-profile={"ApplicationIdentifierPrefix":["TESTTEAM01"],"TeamIdentifier":["TESTTEAM01"],"Platform":["OSX"],"ProvisionsAllDevices":True,"ExpirationDate":datetime.datetime(2099,1,1),"DeveloperCertificates":[b"fixture"],"Entitlements":{"com.apple.application-identifier":"TESTTEAM01.org.example.fixture","com.apple.developer.team-identifier":"TESTTEAM01"}}
+profile={"ApplicationIdentifierPrefix":["TESTTEAM01"],"TeamIdentifier":["TESTTEAM01"],"Platform":["OSX"],"ProvisionsAllDevices":True,"ExpirationDate":datetime.datetime(2099,1,1),"DeveloperCertificates":[b"fixture"],"Entitlements":{"com.apple.application-identifier":"TESTTEAM01.org.example.fixture","com.apple.developer.team-identifier":"TESTTEAM01","com.apple.developer.aps-environment":"production"}}
 for arch, claims in module["read_claims"](sys.argv[2]):
     module["verify_claims"](claims,profile,"TESTTEAM01","org.example.fixture",b"fixture")
 `,
