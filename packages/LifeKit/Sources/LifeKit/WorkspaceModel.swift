@@ -296,8 +296,23 @@ final class WorkspaceModel {
           violations: [])
       }
       undoAction = nil
+      if action.table == "views", query == queryKey {
+        try await refreshSavedViews(context: context)
+        guard context.workspace === client, generation == workspaceGeneration,
+          context.table == table
+        else {
+          throw WorkspaceError(
+            message: "The workspace changed while refreshing Undo.", violations: [])
+        }
+        if appliedView?.id.utf8.elementsEqual(action.rowId.utf8) == true {
+          let restored = savedViews.first { $0.id.utf8.elementsEqual(action.rowId.utf8) }
+          try installSavedView(restored, context: context)
+        }
+      }
       recordLocalChange()
-      await reloadAfterCommit(workspace: context.workspace, generation: generation, query: query)
+      await reloadAfterCommit(
+        workspace: context.workspace, generation: generation,
+        query: action.table == "views" ? queryKey : query)
       guard context.workspace === client, generation == workspaceGeneration, context.table == table
       else {
         throw WorkspaceError(
@@ -691,6 +706,12 @@ final class WorkspaceModel {
     guard !savingView, !undoing else {
       throw WorkspaceError(message: "Wait for the saved view to finish saving.", violations: [])
     }
+    try installSavedView(saved, context: context)
+  }
+
+  private func installSavedView(_ saved: CoreSavedViewRecord?, context: WorkspaceEditingContext)
+    throws
+  {
     if let saved {
       guard saved.tbl == context.table, saved.deletedAt == nil,
         saved.unavailable == nil, let definition = saved.definition, saved.view != nil

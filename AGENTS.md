@@ -253,14 +253,17 @@ and use explicit UTC for datetimes; invalid values never silently become today.
 Link actions require explicit taps and supported schemes. Core remains the only
 validator and writer.
 
-Session Undo uses the core's one volatile receipt. Display the action as
+Human Undo uses the core's bounded session stack of 100 validated receipts. Display the action as
 "Undo last saved change" and submit that displayed receipt ID; never reconstruct
 inverses or expose history as undo. Pause body autosave before the request without
 flushing the draft. Merge unchanged fields from the returned row while preserving
 newer drafts; those drafts require an explicit Save before autosave resumes.
 Failures retain the draft and action. A returned tombstone stays read-only until
 explicit Restore, which also preserves the retained draft. Text-editor Undo stays
-separate. Reopening a workspace clears the session action.
+separate. Cmd-Z/Ctrl-Z outside typing controls dispatches the current receipt; never
+steal text-input or Markdown undo. Successful Undo exposes the preceding action.
+Saved-view changes join the stack and explicit Undo refreshes their list and applied
+revision. Reopening a workspace clears the stack.
 
 An affected dirty grid cell moves into the record review panel after Undo,
 using the receipt's full baseline plus only the newer raw cell value. Clear an
