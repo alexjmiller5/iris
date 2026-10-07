@@ -241,6 +241,10 @@ facts or signing credentials belong in the client. Readiness is volatile, bound
 to the current token and exact UTF-8 deployment/session/profile identifiers. The
 existing alert preference remains authoritative across windows. Server revision
 checks own retries and installation state; do not add a parallel client store.
+Before a registration write, retain an attempted-registration hint in the existing
+alert checkpoint. Forget resolves server state whenever that hint is present;
+disabled local alerts alone do not prove revocation. Never-enabled connections
+remain forgettable offline.
 Usage is deployment-scoped; provider-wide billing APIs do not belong in clients.
 Registered push owns banners; polling continues to update the inbox. Suppress
 local banners only after an authenticated registration receipt matches the current

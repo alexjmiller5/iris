@@ -219,7 +219,12 @@ import Observation
             return (try? self.alerts.state(endpoint: transport.endpoint).enabled) == true
           },
           isCurrentToken: { [weak self] in self?.pushDevice.token == $0 },
-          exchange: { try await transport.pushRegistration($0) })
+          exchange: { [alerts] operation in
+            if case .register = operation {
+              try alerts.markPushRegistrationAttempted(endpoint: transport.endpoint)
+            }
+            return try await transport.pushRegistration(operation)
+          })
       }
       if pushObserver == nil {
         pushObserver = pushDevice.observe { [weak self] token in
@@ -253,6 +258,8 @@ import Observation
     let current = generation
     var retiring = push
     if retiring == nil {
+      let state = try alerts.state(endpoint: transport.endpoint)
+      guard state.enabled || state.pushRegistrationAttempted == true else { return }
       // Local disable is persisted before the server acknowledges revocation.
       // After relaunch, resolve the server binding even when that preference is off.
       guard let session = try await pushSession(transport) else {

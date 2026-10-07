@@ -14,7 +14,27 @@ import Testing
     let alerts = NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery())
     // Disable persists before its server revoke finishes. A relaunched services
     // model has no in-memory registration object, but the server may still send.
-    try alerts.disable(endpoint: hub.endpoint)
+    let workspace = try NativeWorkspace(path: ":memory:")
+    let device = ServicePushDevice()
+    let original = HubServicesModel(
+      alerts: alerts, pushDevice: device,
+      pushSession: { _ in
+        CoreSessionInfo(
+          name: "fixture", scopes: ["full"], replica: .init(allowed: true, reason: nil),
+          pushRegistration: .init(
+            protocol: "apns-registration-v1", deploymentIdentity: "deployment",
+            sessionBinding: "session", profiles: [.init(id: "desktop", platform: .macos)]))
+      })
+    original.configure(workspace: workspace, transport: hub)
+    await original.enableAlerts()
+    device.deliver(Data([0xaa]))
+    for _ in 0..<500 where !original.pushReady { try await Task.sleep(for: .milliseconds(1)) }
+    try #require(original.pushReady)
+    original.disableAlerts()
+    // The synthetic server has no revoke route: revocation cannot be confirmed.
+    await #expect(throws: Error.self) { try await original.revokePushBeforeForgetting() }
+    original.configure(workspace: nil, transport: nil)
+    try await workspace.close()
     let reopened = HubServicesModel(
       alerts: alerts, pushDevice: ServicePushDevice(),
       pushSession: { _ in
@@ -33,6 +53,7 @@ import Testing
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let alerts = NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery())
+    _ = try await alerts.enable(endpoint: hub.endpoint)
     var sessionReads = 0
     let model = HubServicesModel(
       alerts: alerts, pushDevice: ServicePushDevice(),
@@ -46,6 +67,19 @@ import Testing
     try await model.revokePushBeforeForgetting()
     #expect(sessionReads == 1)
     #expect(model.connected)
+  }
+
+  @Test func neverEnabledPushCanBeForgottenOffline() async throws {
+    let hub = try ServiceFixture.transport()
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = HubServicesModel(
+      alerts: NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery()),
+      pushDevice: ServicePushDevice(),
+      pushSession: { _ in throw URLError(.notConnectedToInternet) })
+    model.configure(workspace: nil, transport: hub)
+    defer { model.configure(workspace: nil, transport: nil) }
+    try await model.revokePushBeforeForgetting()
   }
 
   @Test func confirmedPushSuppressesPollingButKeepsInboxAndReadState() async throws {

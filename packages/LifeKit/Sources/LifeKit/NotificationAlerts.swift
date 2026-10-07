@@ -13,6 +13,8 @@ import UserNotifications
 struct NotificationAlertState: Codable {
   var enabled = false
   var baseline: Int?
+  // Recovery hint only: local disable cannot prove an attempted server write was revoked.
+  var pushRegistrationAttempted: Bool?
   // Keep the existing JSON array format without String Set's Unicode folding.
   var deliveredIDs: [String] = []
 }
@@ -44,6 +46,12 @@ struct NotificationAlertState: Codable {
   func disable(endpoint: String) throws {
     var next = try state(endpoint: endpoint)
     next.enabled = false
+    try save(next, endpoint: endpoint)
+  }
+  func markPushRegistrationAttempted(endpoint: String) throws {
+    var next = try state(endpoint: endpoint)
+    guard next.pushRegistrationAttempted != true else { return }
+    next.pushRegistrationAttempted = true
     try save(next, endpoint: endpoint)
   }
   func apply(
