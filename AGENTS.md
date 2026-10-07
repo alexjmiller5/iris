@@ -516,3 +516,11 @@ Native graph changes must regenerate the bundled island.
 `islands.css` explicitly scopes Tailwind sources to the embedded components;
 unrelated web files must not change native artifacts. Verify this with
 `bun scripts/test-island-builds.ts` before publishing regenerated resources.
+
+## Nix distribution
+
+`nix/package.nix` preserves the published signed archive without fixup or stripping.
+`nix/darwin.nix` exports generic enable/package/migrateFromHomebrew options; early
+checks precede application publication and the exact non-zap cask removal precedes
+Homebrew cleanup. Keep the cask publisher available for Homebrew consumers.
+Migration receipts and runtime data never belong in source.
