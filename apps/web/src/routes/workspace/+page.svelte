@@ -335,8 +335,12 @@
 	}
 	async function reflectLocation(replace = false) {
 		let url: URL;
-        try { url = destinationURL(new URL(window.location.href), currentDestination()); }
-        catch (e) { error = message(e); return; }
+		try {
+			url = destinationURL(new URL(window.location.href), currentDestination());
+		} catch (e) {
+			error = message(e);
+			return;
+		}
 		if (url.href === window.location.href) return;
 		reflectingURL = url.href;
 		try {
