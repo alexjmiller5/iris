@@ -32,7 +32,40 @@ let
     url = "https://example.invalid/releases/app.zip";
     hash = lib.fakeHash;
   };
+  darwinEvaluate = settings: lib.evalModules {
+    specialArgs = { inherit pkgs; };
+    modules = [
+      ./darwin.nix
+      {
+        options = {
+          environment.systemPackages = lib.mkOption { type = lib.types.listOf lib.types.package; default = []; };
+          assertions = lib.mkOption { type = lib.types.listOf lib.types.attrs; default = []; };
+          homebrew = {
+            enable = lib.mkOption { type = lib.types.bool; default = true; };
+            user = lib.mkOption { type = lib.types.str; default = "fixture-user"; };
+            prefix = lib.mkOption { type = lib.types.str; default = "/fixture/brew"; };
+            casks = lib.mkOption { type = lib.types.listOf lib.types.attrs; default = []; };
+          };
+          system.checks.text = lib.mkOption { type = lib.types.lines; default = ""; };
+          system.activationScripts.homebrew.text = lib.mkOption { type = lib.types.lines; default = ""; };
+        };
+      }
+      settings
+    ];
+  };
+  darwinEnabled = (darwinEvaluate { programs.life-ui = { enable = true; package = fixturePackage; }; }).config;
+  darwinDisabled = (darwinEvaluate {}).config;
+  duplicateOwner = (darwinEvaluate {
+    programs.life-ui.enable = true;
+    homebrew.casks = [{ name = "alexjmiller5/tap/life-ui"; }];
+  }).config;
 in {
+  darwin-module = assert darwinDisabled.environment.systemPackages == [];
+    assert darwinDisabled.system.checks.text == "";
+    assert darwinEnabled.environment.systemPackages == [ fixturePackage ];
+    assert lib.all (entry: entry.assertion) darwinEnabled.assertions;
+    assert !(lib.all (entry: entry.assertion) duplicateOwner.assertions);
+    pkgs.runCommand "life-ui-darwin-module-check" {} "touch $out";
   home-module = assert disabled.home.packages == [];
     assert enabled.home.packages == [ fixturePackage ];
     assert (builtins.head defaultEnabled.home.packages).drvPath == package.drvPath;

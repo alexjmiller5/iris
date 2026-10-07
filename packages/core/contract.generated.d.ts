@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "dbcc4af633c8aa0bad93f082d3a2a8b7d94d189fa868ba15aed30d99ad0a658b";
+export declare const CORE_CONTRACT_HASH = "60ef49df41290118bfe4dc2e147cee534aca4f9d9a84e063e462f93a7cab947c";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -675,7 +675,7 @@ export type RowCreationTarget = {
 export type RowCreationRequest = {
     policy: CreationPolicyRef;
     sourceId: string;
-    occurrenceKey: CreationOccurrenceKey;
+    occurrenceKey?: CreationOccurrenceKey;
     target: RowCreationTarget;
     updatedAt: string;
     values: Record<string, FilterValue>;
