@@ -26,7 +26,10 @@ struct NativeWidgetSourceRequest: Sendable {
     self.store = store
   }
 
-  func publish(_ requests: [NativeWidgetSourceRequest], partial: Bool) async throws {
+  func publish(
+    _ requests: [NativeWidgetSourceRequest], partial: Bool,
+    permit: WidgetPublicationPermit? = nil
+  ) async throws {
     try Task.checkCancellation()
     guard let first = requests.first, requests.count <= 64,
       requests.allSatisfy({
@@ -38,7 +41,8 @@ struct NativeWidgetSourceRequest: Sendable {
     }
     // Revocation during preparation or the queue wait invalidates this entire
     // request, not just the final disk copy. A new explicit refresh may retry.
-    let permit = try store.beginPublication()
+    let permit = try permit ?? store.beginPublication()
+    guard store.isCurrent(permit) else { throw CancellationError() }
     var sources: [WidgetSource] = []
     for request in requests {
       try Task.checkCancellation()

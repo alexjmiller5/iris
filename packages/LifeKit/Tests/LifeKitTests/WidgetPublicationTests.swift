@@ -167,4 +167,38 @@ struct WidgetPublicationTests {
           == .unavailable)
     }
   }
+
+  @Test func pickerSourcesStayBoundToWorkspaceAndDisappearAfterRevocation() throws {
+    try fixture { base, database, sources in
+      let library = WidgetLibrary(root: base.root)
+      for workspaceID in ["workspace", "other-workspace"] {
+        var plan = sources[0].plan
+        plan.workspaceID = workspaceID
+        let source = WidgetSource(
+          id: WidgetLibrary.sourceID(
+            workspaceID: workspaceID,
+            table: plan.table, viewID: nil, kind: .list), title: "Synthetic table", plan: plan)
+        try library.store(workspaceID: workspaceID).publish(
+          workspaceID: workspaceID,
+          replicaID: "replica", dataAsOf: Date(), partial: false, sources: [source]
+        ) {
+          try FileManager.default.copyItem(at: database, to: $0)
+        }
+      }
+      let choices = try library.sources()
+      #expect(choices.count == 2)
+      #expect(Set(choices.map(\.id)).count == 2)
+      #expect(choices.allSatisfy { $0.table == "items" && $0.title == "Synthetic table" })
+      try library.store(workspaceID: "other-workspace").revoke()
+      #expect(try library.sources().map(\.workspaceID) == ["workspace"])
+      #expect(
+        WidgetLibrary.sourceID(workspaceID: "workspace", table: "café", viewID: nil, kind: .list)
+          != WidgetLibrary.sourceID(
+            workspaceID: "workspace", table: "cafe\u{301}", viewID: nil, kind: .list))
+      #expect(
+        WidgetLibrary.sourceID(workspaceID: "workspace", table: "items", viewID: nil, kind: .list)
+          != WidgetLibrary.sourceID(
+            workspaceID: "workspace", table: "items", viewID: nil, kind: .count))
+    }
+  }
 }

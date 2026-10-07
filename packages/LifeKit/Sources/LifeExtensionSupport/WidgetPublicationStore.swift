@@ -45,7 +45,7 @@ public struct WidgetReadResult: Sendable {
 }
 
 /// Capture before any asynchronous preparation. Only this store can issue one.
-public struct WidgetPublicationPermit: Sendable {
+public struct WidgetPublicationPermit: Codable, Sendable {
   fileprivate let root: URL
   fileprivate let generation: String
 }
@@ -65,6 +65,20 @@ public struct WidgetPublicationStore: Sendable {
     try privateDirectory(fallback)
     return try withLock(exclusive: true) {
       WidgetPublicationPermit(root: root.standardizedFileURL, generation: try revocationToken())
+    }
+  }
+
+  public func isCurrent(_ permit: WidgetPublicationPermit) -> Bool {
+    (try? withLock(exclusive: false) {
+      guard permit.root == root.standardizedFileURL else { return false }
+      return bytesEqual(permit.generation, try revocationToken())
+    }) ?? false
+  }
+
+  public func recordRefreshFailure() throws {
+    try withLock(exclusive: true) {
+      let current: Pointer = try decode(pointer, limit: 4096)
+      try write(current, to: root.appendingPathComponent("refresh-failed.json"), limit: 4096)
     }
   }
 
@@ -173,7 +187,10 @@ public struct WidgetPublicationStore: Sendable {
             partial: metadata.partial, effectiveDay: result.effectiveDay,
             nextBoundary: result.nextBoundary, calendarPolicy: source.plan.calendarPolicy)
           if saveSuccess { try? write(content, to: cache, limit: 1_048_576) }
-          return WidgetReadResult(state: .current, content: content)
+          let failed: Pointer? = try? decode(
+            root.appendingPathComponent("refresh-failed.json"), limit: 4096)
+          return WidgetReadResult(
+            state: failed?.generation == metadata.generation ? .stale : .current, content: content)
         } catch {
           // Authorization and source membership were checked in the current
           // publication first. Missing/protected/revoked metadata never falls back.
