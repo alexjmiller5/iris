@@ -163,17 +163,17 @@ export function generateContract(contract: Contract) {
     return lines.concat('  }', '}').join('\n');
   }
   function union(name: string, types: string[]): string {
-    const cases: Record<string, [string, string]> = { string: ['string', 'String'], number: ['number', 'Double'], boolean: ['bool', 'Bool'], array: ['array', '[CoreJSONValue]'], object: ['object', '[String: CoreJSONValue]'] };
+    const cases: Record<string, [string, string]> = { string: ['string', 'String'], number: ['number', 'Double'], integer: ['integer', 'Int'], boolean: ['bool', 'Bool'], array: ['array', '[CoreJSONValue]'], object: ['object', '[String: CoreJSONValue]'] };
     const lines = [`public enum Core${name}: Codable, Hashable, Sendable {`,
       ...types.map(t => t === 'null' ? '  case null' : `  case ${cases[t][0]}(${cases[t][1]})`),
       '  public init(from decoder: Decoder) throws {', '    let container = try decoder.singleValueContainer()'];
     if (types.includes('null')) lines.push('    if container.decodeNil() { self = .null; return }');
     for (const t of types.filter(t => t !== 'null')) {
-      const [c, type] = cases[t]; lines.push(`    if let value = try? container.decode(${type}.self) { self = .${c}(value); return }`);
+      const [c, type] = cases[t]; lines.push(`    if let value = try? container.decode(${type}.self) { ${t === 'integer' ? 'try CoreContract.checkInteger(value); ' : ''}self = .${c}(value); return }`);
     }
     lines.push('    throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid contract value")', '  }',
       '  public func encode(to encoder: Encoder) throws {', '    var container = encoder.singleValueContainer()', '    switch self {');
-    for (const t of types) lines.push(t === 'null' ? '    case .null: try container.encodeNil()' : `    case .${cases[t][0]}(let value): try container.encode(value)`);
+    for (const t of types) lines.push(t === 'null' ? '    case .null: try container.encodeNil()' : `    case .${cases[t][0]}(let value): ${t === 'integer' ? 'try CoreContract.checkInteger(value); ' : ''}try container.encode(value)`);
     return lines.concat('    }', '  }', '}').join('\n');
   }
   function taggedUnion(name:string,s:Exclude<Schema,true>):string {
@@ -226,6 +226,11 @@ if (import.meta.main) {
     [option('--ts', resolve(root, 'core/src/contract.generated.ts')), result.typescript],
     [option('--swift', resolve(root, 'core/generated/CoreContract.generated.swift')), result.swift],
   ];
+  // Python wheels need a regular packaged resource; the core manifest remains canonical.
+  if (schema === resolve(root, 'core/contract/core.json')) outputs.push([
+    resolve(root, 'src/life_data/schema/sidebar-pins.json'),
+    await readFile(resolve(root, 'core/schema/sidebar-pins.json'), 'utf8'),
+  ]);
   for (const [path, content] of outputs) {
     if (args.includes('--check')) {
       if (await readFile(path, 'utf8').catch(() => '') !== content) throw new Error(`Stale generated contract: ${path}`);

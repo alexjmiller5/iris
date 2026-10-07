@@ -1,5 +1,7 @@
 <script lang="ts">
 	import PageCaptureViewer from '$lib/PageCaptureViewer.svelte';
+	import { savedUndoShortcut } from '$lib/undo-shortcut';
+	import { resolveDerivedRecord } from '$lib/resolve-derived';
 	import { prepareDuplicate } from '$lib/record-duplicate';
 	import { markdownPatch } from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
@@ -78,6 +80,23 @@
 	import type { FilterGroup, RowAction, ViewLayoutItem } from 'life-ui-core/client';
 	import SidebarTables from '$lib/SidebarTables.svelte';
 	import SidebarRecents from '$lib/SidebarRecents.svelte';
+	import SidebarPinsView from '$lib/SidebarPins.svelte';
+	import { SidebarPins, unpinnedTables, type PinState } from '$lib/sidebar-pins';
+	let pinState = $state<PinState>({ snapshot: null, loading: false, busy: false, error: null });
+	const pins = new SidebarPins((state) => {
+		pinState = state;
+	});
+	const activePins = $derived(pinState.snapshot?.pins.filter((pin) => !pin.deleted_at) ?? []);
+	const pinsDisabled = $derived(
+		pinState.loading ||
+			pinState.busy ||
+			!!pinState.error ||
+			!pinState.snapshot ||
+			!!pinState.snapshot.unavailable
+	);
+	async function mutatePins(action: () => Promise<boolean>) {
+		if (await action()) await refresh();
+	}
 	import {
 		describeRecent,
 		loadRecentEntries,
@@ -327,7 +346,7 @@
 			if (resolved.row) trash = !!resolved.row.deleted_at;
 			if (resolved.row) edit(resolved.row, false);
 			version = editorVersion;
-			await Promise.all([loadRows(), loadViews(), loadWriteability()]);
+			await Promise.all([loadRows(), loadViews(), loadWriteability(), pins.refresh()]);
 			await tick();
 			if (current()) {
 				if (resolved.row) recordHeading?.focus();
@@ -1129,7 +1148,7 @@
 			skipped = state.skipped ?? [];
 			if (!table && catalog.tables.length)
 				table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
-			await Promise.all([loadRows(), loadViews(), loadWriteability()]);
+			await Promise.all([loadRows(), loadViews(), loadWriteability(), pins.refresh()]);
 			if (database === workspace) refreshRecentLabels();
 		} finally {
 			exportRefreshes--;
@@ -1190,6 +1209,13 @@
 		try {
 			database?.close();
 			database = new WorkspaceDatabase();
+			const pinWorkspace = database;
+			pins.setWorkspace({
+				list: () => pinWorkspace.request('listSidebarPins'),
+				pin: (args) => pinWorkspace.request('pinTable', args),
+				unpin: (args) => pinWorkspace.request('unpinTable', args),
+				move: (args) => pinWorkspace.request('moveTablePin', args)
+			});
 			await database.request('open', { demo: sample });
 			demo = sample;
 			readRecents();
@@ -1359,7 +1385,7 @@
 			if (workspace !== database || table !== target || version !== viewVersion) return;
 			chosenView = saved;
 			viewBaseline = JSON.stringify(definition);
-			await loadViews();
+			await refresh();
 			await reflectLocation();
 			notice = 'View saved on this device';
 		} finally {
@@ -1384,7 +1410,7 @@
 			await workspace.request('deleteView', { id, expectedUpdatedAt: selectedView.updated_at });
 			if (workspace !== database || table !== target || version !== viewVersion) return;
 			applyView(null);
-			await Promise.all([loadRows(), loadViews()]);
+			await refresh();
 			await reflectLocation();
 			notice = 'View deleted; records kept';
 		} finally {
@@ -1460,6 +1486,64 @@
 		}
 		return values;
 	}
+	async function resolveField(property: Property) {
+		if (
+			!database ||
+			!selected ||
+			!connectedHub ||
+			busy ||
+			writing ||
+			bodySaving ||
+			navigationLoading
+		)
+			return;
+		if (dirty) {
+			error = 'Save or discard your changes before resolving. Your draft has been kept.';
+			return;
+		}
+		const workspace = database,
+			version = editorVersion,
+			target = table,
+			original = $state.snapshot(selected),
+			connection = connectedHub;
+		const current = () =>
+			database === workspace &&
+			editorVersion === version &&
+			table === target &&
+			connectedHub === connection;
+		busy = true;
+		writing = true;
+		error = '';
+		try {
+			const { record, result } = await resolveDerivedRecord(
+				workspace,
+				connection,
+				target,
+				original,
+				property.col,
+				{ maxRows, tables: $state.snapshot(included) },
+				current
+			);
+			if (!current()) return;
+			const reconciled = reconcileUndo(draft, rowDraft(original), rowDraft(record));
+			selected = record;
+			draft = reconciled.values;
+			savedDraft = reconciled.baseline;
+			undoPaused = reconciled.dirty;
+			error = result.failed.map((failure) => failure.error).join(' ');
+			notice = result.failed.length
+				? 'Some derived values could not be resolved.'
+				: 'Resolved and synced';
+			await refresh();
+		} catch (failure) {
+			if (current()) error = message(failure);
+		} finally {
+			if (database === workspace) {
+				busy = false;
+				writing = false;
+			}
+		}
+	}
 	async function save() {
 		if (!database || busy || navigationLoading || !editing || selected?.deleted_at != null) return;
 		const workspace = database,
@@ -1512,6 +1596,12 @@
 		try {
 			const receipt = await workspace.request('undo', { receiptId: action.receiptId });
 			if (database !== workspace || editorVersion !== version) return;
+			if (action.table === 'views') {
+				await loadViews();
+				if (database !== workspace || editorVersion !== version) return;
+				if (chosenView?.id === action.rowId)
+					applyView(savedViews.find((view) => view.id === action.rowId) ?? null);
+			}
 			if (gridDraft && table === action.table && gridDraft.cell.rowId === action.rowId) {
 				const cell = gridDraft;
 				gridDraft = null;
@@ -1853,6 +1943,7 @@
 		editorVersion++;
 		database?.close();
 		database = null;
+		pins.setWorkspace(null);
 		recentsRequest++;
 	});
 </script>
@@ -1861,6 +1952,7 @@
 	<button
 		type="button"
 		class="secondary"
+		aria-keyshortcuts="Meta+Z Control+Z"
 		onclick={undoLastSavedChange}
 		disabled={!undoAction || busy || navigationLoading}
 		title={undoAction
@@ -1871,8 +1963,18 @@
 {/snippet}
 
 <svelte:head><title>Workspace | Life UI</title></svelte:head>
+<svelte:document
+	onvisibilitychange={() => {
+		if (opened && document.visibilityState === 'visible') void pins.refresh();
+	}}
+/>
 <svelte:window
 	onkeydown={(event) => {
+		if (savedUndoShortcut(event) && undoAction && !busy && !navigationLoading && !bodySaving) {
+			event.preventDefault();
+			void undoLastSavedChange();
+			return;
+		}
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && opened) {
 			event.preventDefault();
 			if (!busy && !findVisible && !onlineBrowser) showFind(true);
@@ -1956,12 +2058,6 @@
 				<button class="secondary" onclick={() => showFind(true)} disabled={busy}
 					><IconSearch size={16} /> Find records <kbd>⌘K</kbd></button
 				>
-				<SidebarTables
-					tables={catalog.tables}
-					current={table}
-					disabled={busy || writing || bodySaving}
-					onchoose={changeTable}
-				/>
 				<SidebarRecents
 					entries={recentEntries}
 					current={currentDestination()}
@@ -1969,6 +2065,25 @@
 					storageError={[recentReadError, recentStorageError].filter(Boolean).join(' ')}
 					onchoose={openRecent}
 					onremove={removeRecent}
+				/>
+				<SidebarPinsView
+					pins={activePins}
+					current={table}
+					disabled={busy || writing || bodySaving}
+					mutationDisabled={pinsDisabled}
+					error={pinState.error || pinState.snapshot?.unavailable || null}
+					onchoose={changeTable}
+					onunpin={(id) => mutatePins(() => pins.unpin(id))}
+					onmove={(id, direction) => mutatePins(() => pins.move(id, direction))}
+					onretry={() => pins.refresh()}
+				/>
+				<SidebarTables
+					tables={unpinnedTables(catalog.tables, activePins)}
+					current={table}
+					disabled={busy || writing || bodySaving}
+					pinDisabled={pinsDisabled}
+					onchoose={changeTable}
+					onpin={(table) => mutatePins(() => pins.pin(table))}
 				/>
 				<button
 					class="secondary"
@@ -2022,6 +2137,7 @@
 						if (!discard()) return;
 						database?.close();
 						database = null;
+						pins.setWorkspace(null);
 						recentsRequest++;
 						recentDestinations = [];
 						recentEntries = [];
@@ -2440,6 +2556,24 @@
 												>{/if}
 										{/each}
 									</div>
+								{/if}
+								{#if p.derived_by?.startsWith('http:') && !p.deprecated}
+									<button
+										type="button"
+										class="secondary"
+										aria-label={`Resolve ${label(p)}`}
+										disabled={!selected ||
+											selected.deleted_at != null ||
+											!connectedHub ||
+											busy ||
+											writing ||
+											bodySaving ||
+											navigationLoading ||
+											readOnly ||
+											blocked}
+										onclick={() => resolveField(p)}>Resolve</button
+									>
+									{#if !connectedHub}<span class="hint">Connect to the hub to resolve.</span>{/if}
 								{/if}
 								<p class="field-note">
 									{p.description || p.type}{p.derived_by

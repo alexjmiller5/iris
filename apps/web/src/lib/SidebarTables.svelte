@@ -1,27 +1,44 @@
 <script lang="ts">
-	import { IconDatabase } from '@tabler/icons-svelte';
+	import { IconDatabase, IconPin } from '@tabler/icons-svelte';
 	import type { Row } from 'life-ui-core/client';
 	let {
 		tables,
 		current,
 		disabled,
-		onchoose
-	}: { tables: Row[]; current: string; disabled: boolean; onchoose: (table: string) => unknown } =
-		$props();
+		onchoose,
+		onpin,
+		pinDisabled = false
+	}: {
+		tables: Row[];
+		current: string;
+		disabled: boolean;
+		onchoose: (table: string) => unknown;
+		onpin?: (table: string) => unknown;
+		pinDisabled?: boolean;
+	} = $props();
 	const ordinary = $derived(tables.filter((table) => table.readOnly !== true));
 	const system = $derived(tables.filter((table) => table.readOnly === true));
 </script>
 
 {#snippet choices(items: Row[])}
 	{#each items as table (table.id)}
-		<button
-			type="button"
-			class:active={String(table.id) === current}
-			aria-current={String(table.id) === current ? 'page' : undefined}
-			{disabled}
-			onclick={() => onchoose(String(table.id))}
-			><IconDatabase size={16} /><span>{String(table.id)}</span></button
-		>
+		<div class="table-row">
+			<button
+				type="button"
+				class:active={String(table.id) === current}
+				aria-current={String(table.id) === current ? 'page' : undefined}
+				{disabled}
+				onclick={() => onchoose(String(table.id))}
+				><IconDatabase size={16} /><span>{String(table.id)}</span></button
+			>
+			{#if onpin}<button
+					class="pin-action"
+					aria-label={`Pin ${String(table.id)}`}
+					title="Pin table"
+					disabled={disabled || pinDisabled}
+					onclick={() => onpin?.(String(table.id))}><IconPin size={16} /></button
+				>{/if}
+		</div>
 	{/each}
 {/snippet}
 <div class="table-groups">
@@ -35,6 +52,18 @@
 </div>
 
 <style>
+	.table-row {
+		display: flex;
+		min-width: 0;
+	}
+	.table-row > button:first-child {
+		flex: 1;
+	}
+	button.pin-action {
+		flex: none;
+		padding: 8px;
+		min-width: 36px;
+	}
 	.table-groups {
 		min-width: 0;
 		display: grid;

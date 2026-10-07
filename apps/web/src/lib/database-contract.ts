@@ -12,6 +12,11 @@ export interface WorkspaceSnapshot {
 	undo: CoreResult<'undoStatus'>['action'];
 }
 export interface DatabaseOperations {
+	listSidebarPins: { args: CoreArgs<'listSidebarPins'>; result: CoreResult<'listSidebarPins'> };
+	pinTable: { args: CoreArgs<'pinTable'>; result: CoreResult<'pinTable'> };
+	unpinTable: { args: CoreArgs<'unpinTable'>; result: CoreResult<'unpinTable'> };
+	moveTablePin: { args: CoreArgs<'moveTablePin'>; result: CoreResult<'moveTablePin'> };
+
 	runRowAction: { args: CoreArgs<'runRowAction'>; result: CoreResult<'runRowAction'> };
 	enrollmentEndpoint: { args: { endpoint: string }; result: string };
 	enrollmentApproval: {
@@ -47,6 +52,10 @@ export interface DatabaseOperations {
 		result: CoreResult<'remoteRows'>;
 	};
 	remoteRow: { args: CoreArgs<'remoteRow'> & { token: string }; result: CoreResult<'remoteRow'> };
+	resolveDerived: {
+		args: CoreArgs<'resolveDerived'> & { token: string };
+		result: CoreResult<'resolveDerived'>;
+	};
 	listViews: { args: CoreArgs<'listViews'>; result: CoreResult<'listViews'> };
 	saveView: { args: CoreArgs<'saveView'>; result: CoreResult<'saveView'> };
 	deleteView: { args: CoreArgs<'deleteView'>; result: CoreResult<'deleteView'> };
