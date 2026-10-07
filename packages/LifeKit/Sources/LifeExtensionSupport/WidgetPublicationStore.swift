@@ -42,6 +42,10 @@ public struct WidgetReadResult: Sendable {
   public enum State: Sendable { case current, stale, unavailable }
   public let state: State
   public let content: WidgetContent?
+  public init(state: State, content: WidgetContent?) {
+    self.state = state
+    self.content = content
+  }
 }
 
 /// Capture before any asynchronous preparation. Only this store can issue one.
