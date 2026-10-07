@@ -22,6 +22,7 @@ class SigningTests(unittest.TestCase):
         self.claims = {
             "com.apple.application-identifier": "PREFIX0001.org.example.fixture",
             "com.apple.developer.team-identifier": self.team,
+            "com.apple.developer.aps-environment": "production",
         }
         self.profile = {
             "ExpirationDate": datetime.datetime(2099, 1, 1),
@@ -48,6 +49,16 @@ class SigningTests(unittest.TestCase):
         certificate = signing.extract_certificate("/usr/bin/codesign", platform.machine())
         result = subprocess.run(["openssl", "x509", "-inform", "DER", "-noout"], input=certificate, capture_output=True)
         self.assertEqual(result.returncode, 0)
+
+    def test_push_claim_and_profile_must_both_authorize_production(self):
+        for value in [None, "development"]:
+            with self.subTest(value=value):
+                allowed = self.profile["Entitlements"]
+                allowed["com.apple.developer.aps-environment"] = value
+                with self.assertRaises(ValueError): self.verify()
+        self.profile["Entitlements"]["com.apple.developer.aps-environment"] = "production"
+        del self.claims["com.apple.developer.aps-environment"]
+        with self.assertRaises(ValueError): self.verify()
 
     def test_private_identity_accepts_distinct_profile_prefix(self):
         self.verify()

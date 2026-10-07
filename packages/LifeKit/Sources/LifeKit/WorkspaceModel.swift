@@ -1654,7 +1654,8 @@ final class WorkspaceModel {
     }
   }
 
-  func forgetConnection() throws {
+  func forgetConnection() async throws {
+    try await services.revokePushBeforeForgetting()
     try credentialStore.remove()
     stopAutomaticSync()
     workspaceGeneration += 1

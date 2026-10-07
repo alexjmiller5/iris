@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct LifeUIApp: App {
+  @NSApplicationDelegateAdaptor(LifePushAppDelegate.self) private var pushDelegate
   var body: some Scene {
     WindowGroup {
       WorkspaceView(
