@@ -320,6 +320,10 @@ final class RecordEditorModel {
       resumeDraft(saved)
       return
     }
+    guard store != nil else {
+      throw WorkspaceError(
+        message: "Open a persistent workspace before preparing a capture.", violations: [])
+    }
     captureID = id
     do {
       try installDuplicateDraft(from: column.map { [$0: .string(text!)] } ?? [:])

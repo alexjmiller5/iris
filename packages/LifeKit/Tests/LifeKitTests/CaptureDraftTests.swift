@@ -111,9 +111,27 @@ import Testing
     #expect(try store.all().count == 1 && first.draft.values["title"] == "Live edit")
   }
 
-  @Test func anotherCaptureCannotReplaceAnExistingDirtyEditor() throws {
+  @Test func captureRequiresARecoverableStore() throws {
     let editor = RecordEditorModel(
       properties: properties, original: nil, table: "notes", store: nil
+    ) {
+      _, _ in
+      Issue.record("An unrecoverable capture must not write")
+      return [:]
+    }
+    #expect(throws: WorkspaceError.self) {
+      try editor.installCaptureDraft(id: UUID(), text: "Incoming", column: "title")
+    }
+    #expect(!editor.dirty)
+  }
+
+  @Test func anotherCaptureCannotReplaceAnExistingDirtyEditor() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = EditorDraftStore(
+      root: root, workspace: root.appendingPathComponent("sample.sqlite"))
+    let editor = RecordEditorModel(
+      properties: properties, original: nil, table: "notes", store: store
     ) {
       _, _ in
       Issue.record("Preparing a capture must not write a row")
@@ -128,8 +146,12 @@ import Testing
 
   @Test(arguments: ["id", "retired", "qty", "missing"])
   func captureRefusesNonTextOrUnavailableColumns(_ column: String) throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = EditorDraftStore(
+      root: root, workspace: root.appendingPathComponent("sample.sqlite"))
     let editor = RecordEditorModel(
-      properties: properties, original: nil, table: "notes", store: nil
+      properties: properties, original: nil, table: "notes", store: store
     ) {
       _, _ in
       Issue.record("An invalid capture must not write")
