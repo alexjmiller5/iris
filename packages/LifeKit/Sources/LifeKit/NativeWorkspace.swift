@@ -345,6 +345,9 @@ public final class NativeWorkspace {
   public func listSidebarPins() async throws -> CoreSidebarPinList {
     try await decode(CoreRequests.ListSidebarPins(CoreEmptyArgs()))
   }
+  public func prepareReadPlan(_ args: CorePrepareReadPlanArgs) async throws -> CoreReadPlan {
+    try await decode(CoreRequests.PrepareReadPlan(args), cancellableRead: true)
+  }
   public func pinTable(_ args: CorePinTableArgs) async throws -> CoreSidebarPinList {
     try await decode(CoreRequests.PinTable(args))
   }

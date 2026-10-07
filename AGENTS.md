@@ -10,6 +10,10 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   FTS5-enabled JS/WASM pair is in `vendor/wa-sqlite`; regenerate through its Nix
   package and `scripts/build-wa-sqlite.ts`, preserving the matching API/VFS pin.
 - `apps/ios`, `apps/macos`: XcodeGen SwiftUI targets consuming LifeKit.
+- `packages/LifeKit/Sources/LifeExtensionSupport`: portable generated DTOs, shared
+  calendar policy and bounded read-only SQLite extension reader. No JavaScriptCore,
+  network, credentials or database writer. LifeKit reexports the portable types;
+  `bundle-core.ts` generates their single canonical Swift source there.
 - `packages/LifeKit`: serialized JavaScriptCore facade, GRDB adapter, native
   workspace, URLSession transport, Keychain storage and bundled graph island.
 - `packages/core`: generated TypeScript declarations and JS artifacts. Core

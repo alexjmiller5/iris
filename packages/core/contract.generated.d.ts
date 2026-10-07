@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "8f37229188ef68933aee8f4bc79b8fd5ce8ac4c76ffbc8bf947af1b6d413c49f";
+export declare const CORE_CONTRACT_HASH = "1635e7bf3ab2d8c8e273ce86adf889783741e8ce867ec92ff4f7ef9311c8ffa8";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -774,6 +774,52 @@ export type MoveTablePinArgs = {
     direction: "up" | "down";
     expected: PinRevision[];
 };
+export type SQLScalar = string | number | null;
+export type CalendarSlot = "today" | "start" | "end";
+export type ReadPlanLiteral = {
+    kind: "literal";
+    value: SQLScalar;
+};
+export type ReadPlanCalendar = {
+    kind: "calendar";
+    slot: CalendarSlot;
+};
+export type ReadPlanParameter = ReadPlanLiteral | ReadPlanCalendar;
+export type ReadPlanKind = "list" | "count";
+export type ReadPlanCalendarPolicy = {
+    timeZone: string;
+    dayStartMinutes: Count;
+};
+export type ReadPlanGuard = {
+    kind: "schema" | "catalog" | "view" | "identity";
+    sql: string;
+    parameters: SQLScalar[];
+    expectedRows: Row[];
+};
+export type PrepareReadPlanArgs = {
+    workspaceID: string;
+    replicaID: string;
+    table: string;
+    kind: ReadPlanKind;
+    viewID?: string;
+    expectedViewUpdatedAt?: string;
+};
+export type ReadPlan = {
+    version: Count;
+    workspaceID: string;
+    replicaID: string;
+    table: string;
+    viewID: string | null;
+    viewUpdatedAt: string | null;
+    kind: ReadPlanKind;
+    sql: string;
+    parameters: ReadPlanParameter[];
+    columns: string[];
+    displayColumn: string | null;
+    maximumRows: Count;
+    calendarPolicy: ReadPlanCalendarPolicy | null;
+    guards: ReadPlanGuard[];
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -950,6 +996,10 @@ export interface CoreOperations {
     moveTablePin: {
         args: MoveTablePinArgs;
         result: SidebarPinList;
+    };
+    prepareReadPlan: {
+        args: PrepareReadPlanArgs;
+        result: ReadPlan;
     };
 }
 export type CoreMethod = keyof CoreOperations;
