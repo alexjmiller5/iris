@@ -38,6 +38,7 @@ struct NativePresentationControls: View {
       if value.kind == "calendar" {
         property("Date", selection: $value.dateColumn, choices: dates, empty: nil)
         property("End date", selection: $value.endDateColumn, choices: dates, empty: "Single date")
+          .accessibilityIdentifier("calendar-end-date")
       } else if value.kind == "gallery" {
         property("Cover", selection: $value.coverColumn, choices: covers, empty: "No cover")
       } else if value.kind == "board" {
