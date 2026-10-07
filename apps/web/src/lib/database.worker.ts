@@ -18,7 +18,7 @@ import {
 	type SqlReadContext,
 	type Value
 } from 'life-ui-core/client';
-import { prepareLocalViews } from '../../../../scripts/local-views';
+import { prepareLocalViews, prepareLocalPins } from '../../../../scripts/local-views';
 import type { DatabaseRequest, WorkspaceSnapshot } from './database-contract';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -322,7 +322,10 @@ async function dispatch(request: DatabaseRequest) {
 				if (args.demo && isNew) await seedDemo();
 				if (args.demo) await migrateDemo();
 			});
-			if (args.demo) await prepareLocalViews(db);
+			if (args.demo) {
+				await prepareLocalViews(db);
+				await prepareLocalPins(db);
+			}
 		} catch {
 			if (connection !== undefined) await sqlite.close(connection);
 			connection = undefined;
@@ -385,6 +388,23 @@ async function dispatch(request: DatabaseRequest) {
 				fetch(url, { ...init, signal: AbortSignal.timeout(30_000) })
 			);
 			return createCoreHandlers(db, () => hub, 'life-ui').remoteRow(input);
+		}
+		case 'listSidebarPins':
+			return local.listSidebarPins(args);
+		case 'pinTable':
+			return local.pinTable(args);
+		case 'unpinTable':
+			return local.unpinTable(args);
+		case 'moveTablePin':
+			return local.moveTablePin(args);
+		case 'resolveDerived': {
+			if (databaseName === 'life-ui-demo')
+				throw new Error('Connect a workspace to resolve derived fields.');
+			const { token, ...input } = args;
+			const hub = createHttpHub(input.endpoint, token, (url, init) =>
+				fetch(url, { ...init, signal: AbortSignal.timeout(90_000) })
+			);
+			return createCoreHandlers(db, () => hub, 'life-ui').resolveDerived(input);
 		}
 		case 'listViews':
 			return local.listViews(args);
@@ -459,7 +479,17 @@ scope.onmessage = ({ data }) => {
 			);
 			respond({ id: data.id, result });
 			if (
-				['write', 'runRowAction', 'undo', 'sync', 'saveView', 'deleteView'].includes(data.method)
+				[
+					'write',
+					'runRowAction',
+					'undo',
+					'sync',
+					'saveView',
+					'deleteView',
+					'pinTable',
+					'unpinTable',
+					'moveTablePin'
+				].includes(data.method)
 			) {
 				channel?.postMessage({ changed: true });
 				respond({ changed: true });

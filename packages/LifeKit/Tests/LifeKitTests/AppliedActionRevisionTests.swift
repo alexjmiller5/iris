@@ -30,11 +30,12 @@ struct AppliedActionRevisionTests {
         id: displayed.id, expectedUpdatedAt: displayed.updatedAt))
     try await model.refreshSavedViews(context: context)
     #expect(model.savedViews.first?.updatedAt == latest.updatedAt)
+    let previousUndo = model.undoAction
     await #expect(throws: (any Error).self) {
       try await model.runRowAction("finish", row: target, context: context)
     }
     #expect(model.appliedView?.updatedAt == displayed.updatedAt)
-    #expect(model.undoAction == nil)
+    #expect(model.undoAction == previousUndo)
     try model.applySavedView(latest, context: context)
     await model.reload()
     try await model.runRowAction("finish", row: target, context: context)

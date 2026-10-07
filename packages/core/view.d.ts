@@ -1,5 +1,5 @@
 import { type Property, type Row } from "./validate.ts";
-import type { View } from './contract.generated.ts';
+import type { View, CalendarContext } from './contract.generated.ts';
 export type { Filter, View } from './contract.generated.ts';
 /** Compile a catalog-scoped view. Equality is null-safe; contains is literal
  * (ASCII case-insensitive text, exact JSON array membership). Empty includes
@@ -13,5 +13,6 @@ export declare function compileView(view: View, properties: Property[]): {
 };
 /** Saved definitions validate without a host clock; executing a relative query requires one. */
 export declare function validateView(view: View, properties: Property[]): void;
+export declare function validateCalendarContext(value: CalendarContext | undefined): CalendarContext | undefined;
 /** Use only the configured scalar label, then id; never infer a schema. */
 export declare function displayName(row: Row, displayColumn?: string | null): string;

@@ -21,6 +21,12 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   bundle hash without writes. Change the schema in life-data and regenerate the
   bundle; never hand-edit DTOs. Swift `CoreRequests` and TS operation pairs share
   these shapes. Native and Worker boundaries reject a local contract hash mismatch.
+- Sidebar table pins use core's ordinary synced `sidebar_pins` rows. NativePinsModel
+  and the web SidebarPins controller retain only acknowledged display state;
+  never add localStorage/UserDefaults pin authority. Pin controls use selected
+  revisions and existing guarded navigation. App-owned sample/local databases
+  may install the packaged manifest; enrolled replicas receive logged schema
+  through sync. Web refreshes pins on visibility return, not dialog focus.
 - `scripts/native-core.ts`: native adapter over the generated shared core.
   It must not become a second validator, view compiler or sync implementation.
 - `apps/web/vite.graph.config.ts`: self-contained native graph HTML built from
@@ -55,6 +61,14 @@ request stamp; full refreshes invalidate the prefix before awaiting work. Native
 workspace menus open the system destination picker, with CSV metadata saved
 separately from the same capture. Exports contain no attachment bytes and provide
 no restore operation.
+
+Web row checkboxes select exact IDs on the loaded page. Bulk property changes and
+soft-deletes use fresh full rows and revision-checked shared writes, one row at a
+time. Preserve separate succeeded/failed/unattempted receipts; cancellation stops
+new work but cannot revoke a committed receipt. Do not flush active drafts or
+describe this as atomic/whole-batch undo. Workspace/query/catalog changes stop
+admission, while the batch's own row-refresh broadcasts retain its frozen IDs.
+Selected exports reuse the loaded-row serializer and its coverage metadata.
 
 Native record actions can explicitly open a saved row as a Page Archiver attempt.
 The viewer validates canonical metadata without table-name inference, keeps the
@@ -174,6 +188,13 @@ identity persistence succeed. Native Duplicate reads a fresh full active row int
 a new prepared editor, confirms discard only for a dirty source, and removes the
 unused copy's journal when the user keeps editing.
 
+Manual Resolve uses the core's revision-checked `resolveDerived` operation on the
+bound hub, followed by ordinary replica sync and a fresh full-row readback.
+HTTP-derived fields remain read-only. Require a saved, clean record before the
+request, collect retained native Markdown first, and preserve late input against
+the readback baseline. Display provider failures without claiming success.
+Never write provider results directly into the replica or implicitly save a draft.
+
 Saved views use the core contract and the canonical `core/schema/saved-views.json`
 manifest vendored by `bundle-core.ts`. Only explicit app-owned local/sample
 initialization may create missing storage; replicas receive logged DDL through
@@ -266,14 +287,17 @@ and use explicit UTC for datetimes; invalid values never silently become today.
 Link actions require explicit taps and supported schemes. Core remains the only
 validator and writer.
 
-Session Undo uses the core's one volatile receipt. Display the action as
+Human Undo uses the core's bounded session stack of 100 validated receipts. Display the action as
 "Undo last saved change" and submit that displayed receipt ID; never reconstruct
 inverses or expose history as undo. Pause body autosave before the request without
 flushing the draft. Merge unchanged fields from the returned row while preserving
 newer drafts; those drafts require an explicit Save before autosave resumes.
 Failures retain the draft and action. A returned tombstone stays read-only until
 explicit Restore, which also preserves the retained draft. Text-editor Undo stays
-separate. Reopening a workspace clears the session action.
+separate. Cmd-Z/Ctrl-Z outside typing controls dispatches the current receipt; never
+steal text-input or Markdown undo. Successful Undo exposes the preceding action.
+Saved-view changes join the stack and explicit Undo refreshes their list and applied
+revision. Reopening a workspace clears the stack.
 
 An affected dirty grid cell moves into the record review panel after Undo,
 using the receipt's full baseline plus only the newer raw cell value. Clear an
@@ -536,3 +560,11 @@ Native graph changes must regenerate the bundled island.
 `islands.css` explicitly scopes Tailwind sources to the embedded components;
 unrelated web files must not change native artifacts. Verify this with
 `bun scripts/test-island-builds.ts` before publishing regenerated resources.
+
+## Nix distribution
+
+`nix/package.nix` preserves the published signed archive without fixup or stripping.
+`nix/darwin.nix` exports generic enable/package/migrateFromHomebrew options; early
+checks precede application publication and the exact non-zap cask removal precedes
+Homebrew cleanup. Keep the cask publisher available for Homebrew consumers.
+Migration receipts and runtime data never belong in source.

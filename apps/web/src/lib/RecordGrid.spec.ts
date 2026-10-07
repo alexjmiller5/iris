@@ -99,6 +99,7 @@ test('configured action columns reorder data and keep the first visible data cel
 		} as never
 	}).body;
 	expect([...window.document.querySelectorAll('th')].map((e) => e.textContent?.trim())).toEqual([
+		'', // The loaded-page selection checkbox precedes configured data/action columns.
 		'Close item',
 		'State',
 		'Title'
