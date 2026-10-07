@@ -1,6 +1,8 @@
 import CryptoKit
 import Foundation
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 
 @testable import LifeKit
 
@@ -42,7 +44,95 @@ func captureWithBytes(_ bytes: Data, kind: String = "html") throws -> PageCaptur
   return try PageCapture(record: row)
 }
 
+/// Small synthetic raster; exercises the existing retained-image path without
+/// allocating a large screenshot or introducing another preview implementation.
+func capturePNGBytes() throws -> Data {
+  let context = try #require(
+    CGContext(
+      data: nil, width: 2, height: 1, bitsPerComponent: 8, bytesPerRow: 8,
+      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+  )
+  context.setFillColor(CGColor(red: 0.1, green: 0.4, blue: 0.9, alpha: 1))
+  context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+  context.setFillColor(CGColor(red: 0.1, green: 0.8, blue: 0.3, alpha: 1))
+  context.fill(CGRect(x: 1, y: 0, width: 1, height: 1))
+  let bytes = NSMutableData()
+  let destination = try #require(
+    CGImageDestinationCreateWithData(bytes, UTType.png.identifier as CFString, 1, nil))
+  CGImageDestinationAddImage(destination, try #require(context.makeImage()), nil)
+  try #require(CGImageDestinationFinalize(destination))
+  return bytes as Data
+}
+
 struct PageCaptureTests {
+  private static let sizeCases: [(Int, Bool, Bool)] = [
+    (8 * 1024 * 1024, true, true),
+    (8 * 1024 * 1024 + 1, false, true),
+    (128 * 1024 * 1024, false, true),
+    (128 * 1024 * 1024 + 1, false, false),
+    (250 * 1024 * 1024, false, false),
+  ]
+  @Test(arguments: sizeCases)
+  func validCaptureSizeIsIndependentOfPreviewAndDownloadEligibility(
+    bytes: Int, previewAllowed: Bool, downloadAllowed: Bool
+  ) async throws {
+    var row = try captureRecord()
+    row["png_bytes"] = .number(Double(bytes))
+    let attempt = try PageCapture(record: row)
+    #expect(try attempt.artifact(.png).bytes == bytes)
+    #expect(attempt.canDownload(.png) == downloadAllowed)
+    // Reaching the transport boundary is sufficient here; do not allocate the
+    // declared 128/250 MiB just to check policy admission.
+    for (limit, allowed) in [
+      (8 * 1024 * 1024, previewAllowed), (128 * 1024 * 1024, downloadAllowed),
+    ] {
+      if allowed {
+        await #expect(throws: CapturePolicyProbe.reachedTransport) {
+          _ = try await attempt.loadArtifact(.png, maximumBytes: limit) { _, _ in
+            throw CapturePolicyProbe.reachedTransport
+          }
+        }
+      } else {
+        await #expect(throws: PageCaptureError.previewUnavailable) {
+          _ = try await attempt.loadArtifact(.png, maximumBytes: limit) { _, _ in
+            Issue.record("Refused request must not reach transport")
+            throw CapturePolicyProbe.reachedTransport
+          }
+        }
+      }
+    }
+  }
+
+  @Test func bytesAboveCaptureValidityCeilingAreNotJustPreviewRefusal() throws {
+    var row = try captureRecord()
+    row["png_bytes"] = .number(Double(250 * 1024 * 1024 + 1))
+    #expect(throws: PageCaptureError.invalidMetadata) { try PageCapture(record: row) }
+  }
+
+  @Test func cancelledRequestDoesNotFetchAndLateFetchedBytesAreDisposed() async throws {
+    let bytes = try capturePNGBytes()
+    let attempt = try captureWithBytes(bytes, kind: "png")
+    let beforeFetch = Task {
+      withUnsafeCurrentTask { $0?.cancel() }
+      return try await attempt.loadArtifact(.png, maximumBytes: 1024) { _, _ in
+        Issue.record("Already cancelled request must not fetch")
+        throw CapturePolicyProbe.reachedTransport
+      }
+    }
+    await #expect(throws: CancellationError.self) { _ = try await beforeFetch.value }
+
+    let file = try RetainedFile(data: bytes, contentType: "image/png", name: "page.png")
+    defer { file.dispose() }
+    let afterFetch = Task {
+      try await attempt.loadArtifact(.png, maximumBytes: 1024) { _, _ in
+        withUnsafeCurrentTask { $0?.cancel() }
+        return file
+      }
+    }
+    await #expect(throws: CancellationError.self) { _ = try await afterFetch.value }
+    #expect(!FileManager.default.fileExists(atPath: file.url.path))
+  }
+
   // Catches normalizing IDs or re-deriving keys from a table/prefix convention.
   @Test func explicitAttemptPreservesOpaqueIdentityAndHistoricalSource() throws {
     var row = try captureRecord()
@@ -231,3 +321,5 @@ struct PageCaptureTests {
     }
   }
 }
+
+private enum CapturePolicyProbe: Error, Equatable { case reachedTransport }
