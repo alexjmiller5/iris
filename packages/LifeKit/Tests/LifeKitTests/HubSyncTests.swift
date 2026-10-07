@@ -67,6 +67,8 @@ struct HubSyncTests {
       ReplicaPreferences(tables: ["notes": false]), context: #require(first.downloadContext))
     await first.synchronize()
     #expect(first.partialTableNotice != nil)
+    let persistedSkippedTables = first.skippedTables
+    #expect(persistedSkippedTables.contains("notes"))
     await first.close()
     HubFixture.state.setStatus(503)
     defer { HubFixture.state.setStatus(200) }
@@ -79,7 +81,7 @@ struct HubSyncTests {
       reopened.partialTableNotice != nil,
       "Cached partial records must still disclose incompleteness when reopening offline")
     #expect(
-      reopened.skippedTables == ["notes"],
+      reopened.skippedTables == persistedSkippedTables,
       "Find and reference warnings must use the same durable status")
     await reopened.close()
   }

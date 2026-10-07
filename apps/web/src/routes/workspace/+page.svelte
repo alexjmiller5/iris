@@ -8,6 +8,7 @@
 	let preferredView = $state<ViewDefault | null>(null);
 	let defaultPermission = $state<Writeability | null>(null);
 	let defaultViewNotice = $state<string | null>(null);
+	import PageCaptureViewer from '$lib/PageCaptureViewer.svelte';
 	import { savedUndoShortcut } from '$lib/undo-shortcut';
 	import { resolveDerivedRecord } from '$lib/resolve-derived';
 	import { prepareDuplicate } from '$lib/record-duplicate';
@@ -2754,6 +2755,11 @@
 						{/each}
 						{#if error}<p role="status" class="failure">{error}</p>{/if}
 						<div class="editor-actions">
+							{#if selected}{#key `${editorVersion}:${selected.id}:${connectedHub?.endpoint}:${connectedHub?.token}`}<PageCaptureViewer
+										row={selected}
+										resolveFile={resolveRetainedFile}
+										disabled={busy || navigationLoading}
+									/>{/key}{/if}
 							{@render undoButton()}
 							{#if selected && selected.deleted_at == null}<button
 									type="button"
