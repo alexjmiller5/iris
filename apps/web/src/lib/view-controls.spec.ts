@@ -93,3 +93,12 @@ test('switching from an unvalued rule to numeric or boolean comparisons produces
 	}
 	expect(() => parseFilter('changed', 'eq', '', 'number', false)).toThrow();
 });
+
+test('mixed all-day and timed fields accept the same Today comparison', () => {
+	expect(parseFilter('due', 'lte', '', 'date_or_datetime', true)).toEqual({
+		column: 'due',
+		op: 'lte',
+		relative: 'today'
+	});
+	expect(() => parseFilter('due', 'contains', '', 'date_or_datetime', true)).toThrow();
+});

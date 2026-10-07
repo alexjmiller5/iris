@@ -35,6 +35,13 @@ struct WorkspaceQueryTests {
     await model.close()
   }
 
+  @Test func mixedAllDayAndTimedFieldAcceptsToday() throws {
+    let field = CatalogField(property: ["col": .string("due"), "type": .string("date_or_datetime")])
+    var filter = WorkspaceFilter(column: "due", operation: .lte)
+    filter.today = true
+    #expect(try filter.coreFilter(field: field) == CoreFilter(column: "due", op: .lte, relative: .today))
+  }
+
   @Test func typedFilterValuesAndEmptyOperatorsPreserveMeaning() throws {
     let number = CatalogField(property: ["col": .string("quantity"), "type": .string("int")])
     let boolean = CatalogField(property: ["col": .string("done"), "type": .string("bool")])

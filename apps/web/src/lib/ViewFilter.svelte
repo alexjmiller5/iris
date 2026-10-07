@@ -70,7 +70,7 @@
 		>{#each Object.entries(ops) as [value, label]}<option {value}>{label}</option>{/each}</select
 	>
 	{#if !['empty', 'not_empty'].includes(filter.op)}
-		{#if ['date', 'datetime'].includes(type)}<select
+		{#if ['date', 'datetime', 'date_or_datetime'].includes(type)}<select
 				aria-label="Date comparison"
 				value={filter.relative ?? 'value'}
 				onchange={(e) => change(filter.column, filter.op, '', e.currentTarget.value === 'today')}

@@ -51,7 +51,7 @@ struct WorkspaceFilter: Identifiable, Equatable {
       return CoreFilter(column: column, op: operation)
     }
     if today {
-      guard ["date", "datetime"].contains(field?.type ?? ""), operation != .contains else {
+      guard ["date", "datetime", "date_or_datetime"].contains(field?.type ?? ""), operation != .contains else {
         throw WorkspaceError(message: "Today requires a date comparison.", violations: [])
       }
       return CoreFilter(column: column, op: operation, relative: .today)

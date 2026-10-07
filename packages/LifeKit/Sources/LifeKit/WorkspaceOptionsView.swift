@@ -272,7 +272,7 @@ private struct WorkflowFilterRow: View {
         }
       }.accessibilityIdentifier("filter-operation")
       if filter.operation != .empty && filter.operation != .notEmpty {
-        if ["date", "datetime"].contains(field?.type ?? "") {
+        if ["date", "datetime", "date_or_datetime"].contains(field?.type ?? "") {
           Toggle("Today", isOn: $filter.today)
         }
         if !filter.today {
