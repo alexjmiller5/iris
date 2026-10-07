@@ -48,14 +48,16 @@
 		const owner = outbox;
 		try {
 			const entry = await owner.stage(file);
-			if (active && outbox === owner && !disabled)
+			if (outbox === owner && !disabled)
 				onchange(property ? '/v1/files/' + entry.key : attachmentMarkdown(entry, value));
 		} catch {
 			if (!active) return;
 			error = 'The file could not be kept. Check its size and available storage, then retry.';
 		} finally {
-			staging = false;
-			input.value = '';
+			if (active) {
+				staging = false;
+				input.value = '';
+			}
 		}
 	}
 </script>

@@ -82,6 +82,11 @@ db.db
   .run();
 const cdp = await sourceNavigationCDP(url);
 const { command, evaluate, until, click, fill, navigate } = cdp;
+const editorErrors: string[] = [];
+cdp.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
+  const detail = JSON.stringify(exceptionDetails);
+  if (detail.includes("AttachmentControl.svelte")) editorErrors.push(detail);
+});
 const button = (name: string, root = "document") => named("button", name, root);
 const editor = element('[aria-label="Record editor"]');
 async function connect() {
@@ -158,7 +163,9 @@ try {
   await open();
   const after = await sourceText();
   expect(
-    await evaluate<string>(`(${editor}).querySelector("#field-quantity").value`),
+    await evaluate<string>(
+      `(${editor}).querySelector("#field-quantity").value`,
+    ),
   ).toBe(propertyReference);
   await click(button("Download file", editor));
 
@@ -198,8 +205,28 @@ try {
     "property synthetic bytes",
   );
   expect(objects.get(key)?.data.toString()).toBe("exact synthetic bytes ☃");
+  // A completed copy belongs to its original editor, even after that editor closes.
+  const reopenedSource = await sourceText();
+  await until(
+    `!${editor}.textContent.includes('Body changes pending') && !${editor}.textContent.includes('Saving body')`,
+  );
+  cdp.on("Page.javascriptDialogOpening", ({ message }: { message: string }) => {
+    if (message === "Discard unsaved changes to this record?")
+      void command("Page.handleJavaScriptDialog", { accept: true });
+  });
+  await evaluate(
+    `(()=>{const original=FileSystemDirectoryHandle.prototype.getFileHandle;window.__releaseAttachment=null;window.__attachmentHeld=false;FileSystemDirectoryHandle.prototype.getFileHandle=async function(name,options){if(options?.create&&name.startsWith('.stage-')){window.__attachmentHeld=true;await new Promise(resolve=>window.__releaseAttachment=resolve);}return original.call(this,name,options);};const input=${editor}.querySelector('input[type=file]');const transfer=new DataTransfer();transfer.items.add(new File(['held synthetic bytes'],'late-selection.txt',{type:'text/plain'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));window.__restoreAttachment=()=>FileSystemDirectoryHandle.prototype.getFileHandle=original;})()`,
+  );
+  await until("window.__attachmentHeld===true");
+  await click(button("Close record", editor));
+  await until(`!${editor}`, "original attachment editor actually closed");
+  await open();
+  await evaluate("window.__releaseAttachment();window.__restoreAttachment()");
+  await expect.poll(() => uploaded.length, { timeout: 10000 }).toBe(3);
+  expect(await sourceText()).toBe(reopenedSource);
+  expect(editorErrors).toEqual([]);
   console.log(
-    "PASS mounted attachment selection, offline failure, exact source/bytes after restart, same-key reconnect upload",
+    "PASS mounted attachment selection, offline failure, exact source/bytes after restart, same-key reconnect upload, closed-editor late selection",
   );
 } catch (error) {
   console.error(await evaluate("document.body.innerText"));
