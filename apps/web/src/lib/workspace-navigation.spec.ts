@@ -127,3 +127,53 @@ describe('workspace destinations', () => {
 		expect(reads).toEqual([false, true]);
 	});
 });
+
+it('uses the preferred ID only for plain table destinations and preserves fallback notices', async () => {
+	const saved = {
+		id: 'opaque-preferred',
+		tbl: 'things',
+		name: 'Last alphabetically',
+		definition: { version: 1 },
+		view: { table: 'things' },
+		unavailable: null
+	};
+	const calls: string[] = [];
+	let unavailable: string | null = null;
+	const workspace = {
+		request: async (method: string) => {
+			calls.push(method);
+			if (method === 'snapshot')
+				return { catalog: { tables: [{ id: 'things' }], properties: [], rules: [] } };
+			if (method === 'getViewDefault')
+				return {
+					table: 'things',
+					viewId: saved.id,
+					updated_at: 'revision',
+					view: unavailable ? null : saved,
+					unavailable
+				};
+			if (method === 'listViews') return { views: [saved], unavailable: null };
+			if (method === 'rows') return [{ id: 'row' }];
+			throw Error(method);
+		}
+	};
+	const normal = await resolveDestination(
+		workspace as never,
+		{ table: 'things', view: null, row: null },
+		''
+	);
+	expect(normal.view).toBe(saved);
+	expect(normal.defaultNotice).toBeNull();
+	unavailable = 'Preferred view unavailable. Showing catalog default.';
+	const fallback = await resolveDestination(
+		workspace as never,
+		{ table: 'things', view: null, row: null },
+		''
+	);
+	expect(fallback.view).toBeNull();
+	expect(fallback.defaultNotice).toBe(unavailable);
+	calls.length = 0;
+	await resolveDestination(workspace as never, { table: 'things', view: saved.id, row: null }, '');
+	await resolveDestination(workspace as never, { table: 'things', view: null, row: 'row' }, '');
+	expect(calls).not.toContain('getViewDefault');
+});

@@ -397,6 +397,10 @@ async function dispatch(request: DatabaseRequest) {
 		}
 		case 'listViews':
 			return local.listViews(args);
+		case 'getViewDefault':
+			return local.getViewDefault(args);
+		case 'setViewDefault':
+			return local.setViewDefault(args);
 		case 'saveView':
 			return local.saveView(args);
 		case 'deleteView':
@@ -468,7 +472,15 @@ scope.onmessage = ({ data }) => {
 			);
 			respond({ id: data.id, result });
 			if (
-				['write', 'runRowAction', 'undo', 'sync', 'saveView', 'deleteView'].includes(data.method)
+				[
+					'write',
+					'runRowAction',
+					'undo',
+					'sync',
+					'saveView',
+					'deleteView',
+					'setViewDefault'
+				].includes(data.method)
 			) {
 				channel?.postMessage({ changed: true });
 				respond({ changed: true });

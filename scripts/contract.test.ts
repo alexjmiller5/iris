@@ -124,3 +124,15 @@ test('native rejection dispatch preserves canonical payloads, exact IDs and boun
   await expect(request('rejections', { limit: 1 })).rejects.toThrow('Invalid stored rejection data');
   expect(db.query('SELECT count(*) AS n FROM _core_rejected').get()).toEqual({ n: 2 });
 }));
+
+
+test('local defaults use real core persistence and leave all named views intact', () => withNative(async (request, db) => {
+  await request('sample');
+  const saved = await request('saveView', {table:'notes',name:'Chosen',definition:{version:1}}) as core.SavedViewRecord;
+  const before=db.query('SELECT * FROM views').all();
+  const initial=await request('getViewDefault',{table:'notes'}) as core.ViewDefault;
+  expect(initial.unavailable).toBeNull();
+  const preferred=await request('setViewDefault',{table:'notes',viewId:saved.id,expectedUpdatedAt:null}) as core.ViewDefault;
+  expect(preferred.view?.id).toBe(saved.id);
+  expect(db.query('SELECT * FROM views').all()).toEqual(before);
+}));

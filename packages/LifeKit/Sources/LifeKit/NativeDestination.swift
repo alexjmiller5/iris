@@ -30,6 +30,7 @@ struct NativeResolvedDestination: Sendable {
   let catalog: WorkspaceCatalog
   let view: CoreSavedViewRecord?
   let row: WorkspaceRow?
+  var defaultNotice: String? = nil
   var label: String { row?.label ?? view?.name ?? destination.table }
   var isTrashed: Bool {
     guard let deleted = row?.record["deleted_at"] else { return false }
@@ -41,19 +42,25 @@ struct NativeResolvedDestination: Sendable {
 struct NativeDestinationResolver {
   private let catalog: () async throws -> WorkspaceCatalog
   private let listViews: (String) async throws -> CoreSavedViewList
+  private let preferred: ((String) async throws -> CoreViewDefault)?
   private let rows: (CoreView) async throws -> [WorkspaceRow]
 
   init(workspace: NativeWorkspace) {
-    self.init(catalog: workspace.catalog, listViews: workspace.listViews, rows: workspace.rows)
+    self.init(
+      catalog: workspace.catalog, listViews: workspace.listViews, rows: workspace.rows,
+      preferred: workspace.getViewDefault)
   }
 
-  init(catalog: @escaping () async throws -> WorkspaceCatalog,
+  init(
+    catalog: @escaping () async throws -> WorkspaceCatalog,
     listViews: @escaping (String) async throws -> CoreSavedViewList,
-    rows: @escaping (CoreView) async throws -> [WorkspaceRow]
+    rows: @escaping (CoreView) async throws -> [WorkspaceRow],
+    preferred: ((String) async throws -> CoreViewDefault)? = nil
   ) {
     self.catalog = catalog
     self.listViews = listViews
     self.rows = rows
+    self.preferred = preferred
   }
 
   func resolve(_ destination: NativeDestination, isCurrent: () -> Bool) async throws
@@ -78,18 +85,30 @@ struct NativeDestinationResolver {
           found.tbl == destination.table, found.deletedAt == nil,
           found.unavailable == nil, found.definition != nil, found.view != nil
         else {
-          let reason = listed.views.first(where: { Data($0.id.utf8) == Data(viewID.utf8) })?.unavailable
-          throw WorkspaceError(message: reason ?? listed.unavailable ?? "Saved view is no longer available",
+          let reason = listed.views.first(where: { Data($0.id.utf8) == Data(viewID.utf8) })?
+            .unavailable
+          throw WorkspaceError(
+            message: reason ?? listed.unavailable ?? "Saved view is no longer available",
             violations: [])
         }
         view = found
+      }
+      var defaultNotice: String?
+      if destination.viewID == nil, destination.rowID == nil, let preferred {
+        let selection = try await preferred(destination.table)
+        try checkCurrent()
+        view = selection.view
+        defaultNotice = selection.unavailable
       }
       var row: WorkspaceRow?
       if let rowID = destination.rowID {
         let firstTrash = view?.definition?.trash ?? false
         for trash in [firstTrash, !firstTrash] {
-          let found = try await rows(CoreView(table: destination.table,
-            filters: [CoreFilter(column: "id", op: .eq, value: .string(rowID))], limit: 1, trash: trash))
+          let found = try await rows(
+            CoreView(
+              table: destination.table,
+              filters: [CoreFilter(column: "id", op: .eq, value: .string(rowID))], limit: 1,
+              trash: trash))
           try checkCurrent()
           if let first = found.first, Data(first.id.utf8) == Data(rowID.utf8) {
             row = first
@@ -100,7 +119,9 @@ struct NativeDestinationResolver {
           throw WorkspaceError(message: "Record is no longer available", violations: [])
         }
       }
-      return NativeResolvedDestination(destination: destination, catalog: catalog, view: view, row: row)
+      return NativeResolvedDestination(
+        destination: destination, catalog: catalog, view: view, row: row,
+        defaultNotice: defaultNotice)
     } catch {
       try checkCurrent()
       throw error

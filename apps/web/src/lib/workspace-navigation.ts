@@ -39,6 +39,7 @@ export async function resolveDestination(
 			'The linked table is not available in this workspace. Open the matching workspace or include the table and sync.'
 		);
 	let view: SavedViewRecord | null = null;
+	let defaultNotice: string | null = null;
 	if (destination.view) {
 		const result = await workspace.request('listViews', { table });
 		view = result.views.find((v) => v.id === destination.view) ?? null;
@@ -49,6 +50,11 @@ export async function resolveDestination(
 					'The linked view is not available in this table. Sync or choose another saved view.'
 			);
 		}
+	}
+	if (table && !destination.view && !destination.row) {
+		const preferred = await workspace.request('getViewDefault', { table });
+		view = preferred.view;
+		defaultNotice = preferred.unavailable;
 	}
 	let row: Row | null = null;
 	if (destination.row) {
@@ -70,5 +76,5 @@ export async function resolveDestination(
 				'The linked record is not available locally. It may be missing or outside this replica. Include its table and sync, or choose another record.'
 			);
 	}
-	return { catalog, table, view, row };
+	return { catalog, table, view, row, defaultNotice };
 }

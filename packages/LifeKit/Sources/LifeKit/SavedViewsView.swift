@@ -79,6 +79,23 @@ struct SavedViewsView: View {
             "Views keep a table's search, filters, sorting and layout. They are shared through your workspace."
           )
         }
+        Section("Default for this table") {
+          if let preferred = model.viewDefault {
+            Text(preferred.view?.name ?? "Catalog default")
+            if let reason = preferred.unavailable {
+              Text(reason).font(.caption).foregroundStyle(.secondary)
+            }
+            Button("Use current view by default") { setDefault(model.appliedView) }
+              .disabled(
+                model.defaultWriteability?.writable != true || model.appliedView == nil
+                  || model.viewModified
+              )
+              .accessibilityIdentifier("set-default-view")
+            Button("Use catalog default") { setDefault(nil) }
+              .disabled(model.defaultWriteability?.writable != true || preferred.viewId == nil)
+              .accessibilityIdentifier("clear-default-view")
+          }
+        }
         if let unavailable = model.savedViewsUnavailable {
           Section { Text(unavailable).foregroundStyle(.secondary) }
         } else if writable {
@@ -170,6 +187,18 @@ struct SavedViewsView: View {
         guard current else { return }
         error = nil
         notice = "Saved change undone."
+      } catch { if current { self.error = error.localizedDescription } }
+    }
+  }
+
+  private func setDefault(_ saved: CoreSavedViewRecord?) {
+    Task {
+      do {
+        try await model.setDefaultView(saved, context: context)
+        if current {
+          error = nil
+          notice = "Default view saved. It applies when opening this table."
+        }
       } catch { if current { self.error = error.localizedDescription } }
     }
   }

@@ -81,9 +81,8 @@ for (const name of readdirSync(resolve(source, "core/src"))
   coreHash
     .update(`${name}\0`)
     .update(readFileSync(resolve(source, "core/src", name)));
-coreHash
-  .update("schema/saved-views.json\0")
-  .update(readFileSync(resolve(source, "core/schema/saved-views.json")));
+for (const name of readdirSync(resolve(source, "core/schema")).filter(name => name.endsWith(".json")).sort())
+  coreHash.update(`schema/${name}\0`).update(readFileSync(resolve(source, "core/schema", name)));
 const expectedBanner = `// Generated from life-core. SHA-256: ${coreHash.digest("hex")}`;
 if (
   readFileSync(resolve(root, "packages/core/client.js"), "utf8").split(
