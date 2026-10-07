@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "5e7a5b7753042b64b8906e616a9f046cdc63473d35d768adf4aef3ca326c8190";
+export declare const CORE_CONTRACT_HASH = "b2f2389bb98d8a3c74cfd1c077ea79f7c50378421fe04e8144fb6e1a2a7e07aa";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -936,6 +936,117 @@ export type ChangesetReadMember = {
     id: string;
     revision: Revision;
 };
+export type ConsumerConfig = {
+    version: number;
+    namespace: string;
+    bindings: Record<string, unknown>;
+};
+export type ConsumerConfigReply = {
+    profile: EnrollmentProfileReceipt;
+    config: ConsumerConfig;
+};
+export type CatalogProjectionRequest = {
+    table: string;
+    columns: string[];
+};
+export type CatalogProjectionOption = {
+    v: string;
+    d?: string;
+    sort?: number;
+};
+export type CatalogProjectedProperty = {
+    column: string;
+    type: string;
+    description: string | null;
+    required: boolean;
+    readOnly: boolean;
+    options?: CatalogProjectionOption[];
+};
+export type CatalogProjectionReply = {
+    table: string;
+    properties: CatalogProjectedProperty[];
+};
+export type RowsQueryOrder = {
+    column: string;
+    direction: "asc" | "desc";
+};
+export type RowsQueryRequest = {
+    table: string;
+    columns: string[];
+    filter?: unknown;
+    order?: RowsQueryOrder[];
+    limit?: number;
+    cursor?: string;
+};
+export type RowsQueryReply = {
+    rows: Row[];
+    next_cursor: string | null;
+};
+export type CaptureInput = {
+    text?: string;
+    url?: string;
+};
+export type CaptureItem = {
+    kind: string;
+    id: string;
+};
+export type CaptureRequest = {
+    request_id: string;
+    input: CaptureInput;
+    intent: "save" | "record_consumption";
+    fields?: Record<string, unknown>;
+};
+export type CaptureReceipt = {
+    request_id: string;
+    state: "received" | "processing" | "saved" | "needs_review" | "failed" | "uncertain";
+    item?: CaptureItem;
+};
+export type SQLScalar = string | number | null;
+export type CalendarSlot = "today" | "start" | "end";
+export type ReadPlanLiteral = {
+    kind: "literal";
+    value: SQLScalar;
+};
+export type ReadPlanCalendar = {
+    kind: "calendar";
+    slot: CalendarSlot;
+};
+export type ReadPlanParameter = ReadPlanLiteral | ReadPlanCalendar;
+export type ReadPlanKind = "list" | "count";
+export type ReadPlanCalendarPolicy = {
+    timeZone: string;
+    dayStartMinutes: Count;
+};
+export type ReadPlanGuard = {
+    kind: "schema" | "catalog" | "view" | "identity";
+    sql: string;
+    parameters: SQLScalar[];
+    expectedRows: Row[];
+};
+export type PrepareReadPlanArgs = {
+    workspaceID: string;
+    replicaID: string;
+    table: string;
+    kind: ReadPlanKind;
+    viewID?: string;
+    expectedViewUpdatedAt?: string;
+};
+export type ReadPlan = {
+    version: Count;
+    workspaceID: string;
+    replicaID: string;
+    table: string;
+    viewID: string | null;
+    viewUpdatedAt: string | null;
+    kind: ReadPlanKind;
+    sql: string;
+    parameters: ReadPlanParameter[];
+    columns: string[];
+    displayColumn: string | null;
+    maximumRows: Count;
+    calendarPolicy: ReadPlanCalendarPolicy | null;
+    guards: ReadPlanGuard[];
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -1120,6 +1231,10 @@ export interface CoreOperations {
     setViewDefault: {
         args: SetViewDefaultArgs;
         result: ViewDefault;
+    };
+    prepareReadPlan: {
+        args: PrepareReadPlanArgs;
+        result: ReadPlan;
     };
 }
 export type CoreMethod = keyof CoreOperations;

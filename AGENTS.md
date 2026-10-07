@@ -45,7 +45,9 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   image metadata before decoding. Browser decoder allocation remains platform-owned.
   External images stay inert. File viewing never rewrites Markdown.
   Source links resolve through core `resolveSourceLink` and whole-record import
-  provenance, then ordinary fresh-row navigation. Unmapped URLs retain an explicit
+  provenance, then ordinary fresh-row navigation. Text fields containing explicit
+  `table/id` identities offer Open record through the same guarded resolver;
+  unavailable targets preserve the field and never become external navigation. Unmapped URLs retain an explicit
   original-link action. Cancel or close disposes requests and file resources.
 - `scripts`: build and fixture test operations. No credentials or data exports.
 

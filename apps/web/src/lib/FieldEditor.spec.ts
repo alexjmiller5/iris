@@ -137,3 +137,27 @@ test.each(['text', 'number', 'int', 'date', 'datetime', 'email', 'phone', 'url',
 		window.close();
 	}
 );
+
+test('a text record identity offers guarded local navigation without changing the field', () => {
+	const window = field({
+		property: { col: 'value', type: 'text' },
+		value: 'items/exact-id',
+		onopenlink: async () => true
+	});
+	expect(window.document.querySelector('button.field-link')?.textContent).toContain('Open record');
+	expect(window.document.querySelector('input')?.value).toBe('items/exact-id');
+	expect(window.document.querySelector('a')).toBeNull();
+	window.close();
+});
+test.each(['ordinary text', 'items/', '/items/id', 'https://example.test/path', 'items/id/extra'])(
+	'text %s is not offered as a local record identity',
+	(value) => {
+		const window = field({
+			property: { col: 'value', type: 'text' },
+			value,
+			onopenlink: async () => true
+		});
+		expect(window.document.querySelector('button.field-link')).toBeNull();
+		window.close();
+	}
+);
