@@ -25,6 +25,7 @@ test('grid exposes labeled cells by identity and a guarded bottom creation actio
 		}
 	}).body;
 	expect(window.document.querySelector('[role="grid"]')).not.toBeNull();
+	expect(window.document.querySelector('input[type="checkbox"]')).toBeNull();
 	expect(
 		window.document.querySelector('[role="gridcell"][data-row="a"][data-column="qty"]')?.textContent
 	).toContain('0');

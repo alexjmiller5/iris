@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import ChangesetReview from './governance/ChangesetReview.svelte';
 	import { IconBell, IconSettings, IconX, IconRefresh } from '@tabler/icons-svelte';
 	import {
 		createHttpHub,
@@ -11,7 +12,10 @@
 		type NotificationFeed
 	} from 'life-ui-core/client';
 
-	let { connection }: { connection: { endpoint: string; token: string } | null } = $props();
+	let {
+		connection,
+		canReview = false
+	}: { connection: { endpoint: string; token: string } | null; canReview?: boolean } = $props();
 	let section = $state<'notifications' | 'settings' | null>(null);
 	let dialog: HTMLDialogElement;
 	let feed = $state<NotificationFeed | null>(null);
@@ -133,6 +137,7 @@
 </script>
 
 <div class="service-actions">
+	<ChangesetReview {connection} {canReview} />
 	<button
 		disabled={!connection}
 		aria-label={feed ? `Notifications, ${unread} unread` : 'Notifications'}

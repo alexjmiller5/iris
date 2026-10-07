@@ -62,6 +62,26 @@ workspace menus open the system destination picker, with CSV metadata saved
 separately from the same capture. Exports contain no attachment bytes and provide
 no restore operation.
 
+Native record actions can explicitly open a saved row as a Page Archiver attempt.
+The viewer validates canonical metadata without table-name inference, keeps the
+selected historical attempt immutable, and uses the current enrolled host's file
+reader. Verify declared size, MIME and SHA-256 before preview or save. PNG is the
+default bounded preview; partial warnings and unsupported original URL text remain
+visible. Preview refusal does not invalidate the retained capture. Save PNG/HTML
+uses the system destination picker with exact original bytes, cancel and retry;
+opening the viewer never flushes an editor draft. Workspace changes cancel its
+requests. Archived HTML uses a separate nonpersistent WKWebView, an opaque sandboxed
+child document, restrictive CSP, a content rule list and navigation denial. Native
+context gestures are intercepted before WebKit's internal content view can offer
+external actions. Saving HTML never automatically opens it.
+
+The web saved-row action mounts PageCaptureViewer with an immutable explicit row
+and the existing enrolled file resolver. Each action reauthorizes and verifies MIME,
+bytes and SHA before use. HTML is previewed only in an empty-sandbox iframe with an
+early restrictive CSP; inert template parsing removes navigation surfaces before
+mounting. Never grant same-origin/scripts, rebase links or forward credentials into
+the archive. Closing or replacing the host invalidates all outstanding work.
+
 The supported service dependency is the life-data hub API with independently
 minted client credentials. Never bind its D1/R2 or borrow infrastructure tokens.
 Life UI owns its Worker, Access application, vault and deployment credentials
@@ -292,6 +312,19 @@ client previews or writes. Keep the original approval request/key after an uncer
 response; only a matching committed receipt, purged result or authenticated durable
 `not_committed` result can settle it. HTTP classification belongs to the core adapter.
 
+Web related-change review uses the separate `bounded-changeset-proposals-v1`
+capability and canonical core client. Only an enrolled USER approval connection
+can open it; drafts and pending local edits must be resolved/synced first. The
+panel reads a supplied proposal ID, displays the entire frozen set and never
+writes SQL or edits its operations. Its journal captures endpoint, deployment,
+session, principal, full proposal and original request before dispatch. Closing,
+auth failure or an uncertain response retains the same key; only a validated
+whole-set receipt, purge or durable negative result clears it. A completed hub
+approval requires ordinary sync to update local rows. Shared IndexedDB storage
+uses strict durability and compare-delete, with immutable captured scope codecs.
+Native multi-row review is not mounted. Single-row presentation retains its
+separate existing boundary.
+
 Native recovery journals are private, atomic and isolated per editor. Persist
 the latest draft and any unacknowledged write before awaiting its receipt.
 Keep new-record defaults omitted until a field is explicitly edited. An explicit
@@ -487,6 +520,9 @@ it in JavaScriptCore as well as the core's own tests.
 and `just build` cover web and Apple targets. `just fmt` formats owned source.
 The README documents browser smoke commands and a real Worker synthetic hub.
 Fixtures are synthetic only; never copy live personal data into tests or docs.
+Run the package suite with `swift test --no-parallel`: independent MainActor/JSC
+fixtures otherwise starve each other’s admission watchdogs. Keep explicit
+concurrent tasks inside tests and their assertions unchanged.
 
 `project.yml` is authoritative; generated Xcode projects and Info.plists are
 ignored. Child justfiles expose platform run/test/check/build. Caches and derived
@@ -541,6 +577,20 @@ Native graph changes must regenerate the bundled island.
 `islands.css` explicitly scopes Tailwind sources to the embedded components;
 unrelated web files must not change native artifacts. Verify this with
 `bun scripts/test-island-builds.ts` before publishing regenerated resources.
+
+## Shared local Mac workspace
+
+An explicitly opened database is remembered in a private security-scoped bookmark.
+Reopening a missing selection fails visibly rather than creating a replacement or
+falling back to a different replica. The supported Life CLI file contract shares
+SQLite data/schema and its existing write validation; the CLI background service
+owns hub sync in this mode, with its own credential. No consumer credentials are
+shared. App hub mode remains an independent replica and clears the local choice.
+A separate canonical-path read connection observes PRAGMA data_version while the
+window is active. External commits refresh catalog/rows without resetting editor
+drafts; optimistic saved revisions still reject conflicting commits. Cancel old
+observation on workspace/scene changes. Never poll inside a core transaction or
+alter generated core code to implement host observation.
 
 ## Nix distribution
 

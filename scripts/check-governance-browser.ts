@@ -58,6 +58,13 @@ try {
     assert.equal(await b!.evaluate(`${h}.retain(${h}.entry,'new').then(()=>false,()=>true)`), true); assert.equal(await b!.evaluate(`${h}.resolve(${h}.entry,'new').then(()=>false,()=>true)`), true);
     assert.deepEqual(await a!.evaluate(`${h}.load()`), original); await a!.evaluate(`${h}.resolve()`);
   });
+  await check('caller mutation cannot change an opened journal binding', async () => {
+    await a!.evaluate(`(window.mutableJournalScope={...${h}.entry.scope},${h}.open('mutable',window.mutableJournalScope))`);
+    await a!.evaluate(`${h}.retain(${h}.entry,'mutable')`);
+    await a!.evaluate("(window.mutableJournalScope.principalId='different',true)");
+    assert.deepEqual(await a!.evaluate(`${h}.load('mutable')`), original);
+    await a!.evaluate(`${h}.resolve(${h}.entry,'mutable')`);
+  });
   await check('quota failure leaves no dispatchable retained entry', async () => { assert.equal(await a!.evaluate(`${h}.fault('quota').then(()=>false,()=>true)`), true); assert.equal(await a!.evaluate(`${h}.load()`), null); });
   await check('unsupported strict durability rejects opening', async () => { assert.equal(await a!.evaluate(`${h}.fault('durability').then(()=>false,()=>true)`), true); });
   await check('corrupt and unknown-version entries cannot be overwritten or deleted', async () => {

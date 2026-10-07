@@ -79,7 +79,8 @@ public struct WorkspaceView: View {
               Label("Schema graph", systemImage: "point.3.connected.trianglepath.dotted")
             }.disabled(!canFind).accessibilityIdentifier("schema-graph-sidebar")
             WorkspaceSidebar(
-              tables: NativeSidebarTables(model.tables, pins: model.pins?.active ?? []), recents: model.recents, pins: model.pins,
+              tables: NativeSidebarTables(model.tables, pins: model.pins?.active ?? []),
+              recents: model.recents, pins: model.pins,
               selectedTable: model.table, disabled: !canFind,
               error: navigationError,
               onOpen: { openDestination($0) })
@@ -134,6 +135,13 @@ public struct WorkspaceView: View {
     .task(id: "\(model.services.generation)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
       await model.services.poll()
+    }
+    .task(
+      id:
+        "\(model.client.map(ObjectIdentifier.init).map(String.init(describing:)) ?? "none")|\(scenePhase == .active)"
+    ) {
+      guard scenePhase == .active else { return }
+      await model.runLocalObservation()
     }
     .task(id: model.queryKey) { await model.reload() }
     .task(id: model.calendarRefreshKey + [String(scenePhase == .active)]) {
@@ -624,6 +632,10 @@ public struct WorkspaceView: View {
           .accessibilityIdentifier("open-sample")
         #if os(macOS)
           Button("Open a local database…") { importing = true }
+          Text(
+            "Choose the file shown by life path to share offline edits with the CLI. This choice is remembered."
+          )
+          .font(.caption).foregroundStyle(.secondary)
         #endif
         Text("A new local workspace includes a sample note. The sample preview is temporary.")
           .font(.caption).foregroundStyle(.secondary)
@@ -1255,6 +1267,8 @@ private struct RecordEditor: View {
   @State private var duplicating = false
   @State private var preparedCopy: RecordEditorModel?
   @State private var confirmDuplicate = false
+  @State private var pageCapture: PageCapturePresentation?
+  @State private var captureFailure: String?
   @State private var emptyColumns: Set<Data>
   @State private var backgroundFlush: Task<Void, Never>?
   #if os(iOS)
@@ -1386,6 +1400,31 @@ private struct RecordEditor: View {
         .onAppear { focusedField = inlineField }
       } else {
         Form {
+          if editor.draft.original != nil, let context {
+            Menu {
+              Button("Open as page capture") {
+                guard editorIsCurrent(), let original = editor.draft.original else { return }
+                do {
+                  let attempt = try PageCapture(record: original)
+                  let generation = model.workspaceGeneration
+                  pageCapture = PageCapturePresentation(attempt: attempt) { key, limit in
+                    guard await model.workspaceGeneration == generation else {
+                      throw CancellationError()
+                    }
+                    return try await model.retainedFile(
+                      key, context: context, maximumBytes: limit)
+                  }
+                  actionFailure = nil
+                } catch { captureFailure = error.localizedDescription }
+              }
+              .disabled(editor.saving || editor.recovery != nil || editor.needsReview)
+              .accessibilityIdentifier("open-page-capture")
+            } label: {
+              Label("Record actions", systemImage: "ellipsis")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }.accessibilityIdentifier("record-menu")
+          }
           if linkWaiting {
             Section {
               Text("A link is waiting. Save or close this record to open it.")
@@ -1607,7 +1646,7 @@ private struct RecordEditor: View {
     }
   }
 
-  private var editorContent: some View {
+  private var editorToolbarContent: some View {
     editorFields
       .savedUndoShortcut(
         enabled: focusedField == nil && !editor.saving && !saving
@@ -1683,7 +1722,27 @@ private struct RecordEditor: View {
           }
         }
       }
-      .disabled(saving || editor.undoing || editor.resolving || referenceNavigation?.loading == true)
+      .disabled(
+        saving || editor.undoing || editor.resolving || referenceNavigation?.loading == true)
+  }
+
+  private var editorContent: some View {
+    editorToolbarContent
+      .sheet(item: $pageCapture) { capture in PageCaptureView(model: capture) }
+      .alert(
+        "Cannot open page capture",
+        isPresented: Binding(
+          get: { captureFailure != nil }, set: { if !$0 { captureFailure = nil } })
+      ) {
+        Button("OK") { captureFailure = nil }
+      } message: {
+        Text(captureFailure ?? "")
+      }
+      .onChange(of: model.workspaceGeneration) {
+        pageCapture?.cancel()
+        pageCapture = nil
+        captureFailure = nil
+      }
       .interactiveDismissDisabled(
         saving || editor.saving || editor.dirty || editor.recovery != nil
           || editor.draft.fields.contains(where: { $0.type == "markdown" })
