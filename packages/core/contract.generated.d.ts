@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "40ce1fb59bfe27a26bc878b193d694414c3b491fdc365cb421a96000b6b1c3a0";
+export declare const CORE_CONTRACT_HASH = "cb45e00f68cd4cc4e8743ed76df07a09ae5fbcabc33862a71d753da2783532f6";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -693,6 +693,24 @@ export type RowExistingReceipt = {
 };
 export type RowCreationReceipt = RowCreatedReceipt | RowExistingReceipt;
 export type CreationOccurrenceKey = string | number;
+export type ResolveDerivedArgs = {
+    endpoint: string;
+    table: string;
+    id: string;
+    column: string;
+    expectedUpdatedAt: string;
+};
+export type DerivationFailure = {
+    id: string;
+    col: string;
+    error: string;
+    status?: number;
+    retry_after?: number;
+};
+export type ResolveDerivedResult = {
+    derived: number;
+    failed: DerivationFailure[];
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -841,6 +859,10 @@ export interface CoreOperations {
     rejectProposal: {
         args: RejectProposalArgs;
         result: ProposalMutationResult;
+    };
+    resolveDerived: {
+        args: ResolveDerivedArgs;
+        result: ResolveDerivedResult;
     };
 }
 export type CoreMethod = keyof CoreOperations;

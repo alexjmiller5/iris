@@ -47,6 +47,10 @@ export interface DatabaseOperations {
 		result: CoreResult<'remoteRows'>;
 	};
 	remoteRow: { args: CoreArgs<'remoteRow'> & { token: string }; result: CoreResult<'remoteRow'> };
+	resolveDerived: {
+		args: CoreArgs<'resolveDerived'> & { token: string };
+		result: CoreResult<'resolveDerived'>;
+	};
 	listViews: { args: CoreArgs<'listViews'>; result: CoreResult<'listViews'> };
 	saveView: { args: CoreArgs<'saveView'>; result: CoreResult<'saveView'> };
 	deleteView: { args: CoreArgs<'deleteView'>; result: CoreResult<'deleteView'> };

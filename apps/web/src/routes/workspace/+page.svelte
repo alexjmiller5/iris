@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { savedUndoShortcut } from '$lib/undo-shortcut';
+	import { resolveDerivedRecord } from '$lib/resolve-derived';
 	import { prepareDuplicate } from '$lib/record-duplicate';
 	import { markdownPatch } from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
@@ -1460,6 +1461,64 @@
 		}
 		return values;
 	}
+	async function resolveField(property: Property) {
+		if (
+			!database ||
+			!selected ||
+			!connectedHub ||
+			busy ||
+			writing ||
+			bodySaving ||
+			navigationLoading
+		)
+			return;
+		if (dirty) {
+			error = 'Save or discard your changes before resolving. Your draft has been kept.';
+			return;
+		}
+		const workspace = database,
+			version = editorVersion,
+			target = table,
+			original = $state.snapshot(selected),
+			connection = connectedHub;
+		const current = () =>
+			database === workspace &&
+			editorVersion === version &&
+			table === target &&
+			connectedHub === connection;
+		busy = true;
+		writing = true;
+		error = '';
+		try {
+			const { record, result } = await resolveDerivedRecord(
+				workspace,
+				connection,
+				target,
+				original,
+				property.col,
+				{ maxRows, tables: $state.snapshot(included) },
+				current
+			);
+			if (!current()) return;
+			const reconciled = reconcileUndo(draft, rowDraft(original), rowDraft(record));
+			selected = record;
+			draft = reconciled.values;
+			savedDraft = reconciled.baseline;
+			undoPaused = reconciled.dirty;
+			error = result.failed.map((failure) => failure.error).join(' ');
+			notice = result.failed.length
+				? 'Some derived values could not be resolved.'
+				: 'Resolved and synced';
+			await refresh();
+		} catch (failure) {
+			if (current()) error = message(failure);
+		} finally {
+			if (database === workspace) {
+				busy = false;
+				writing = false;
+			}
+		}
+	}
 	async function save() {
 		if (!database || busy || navigationLoading || !editing || selected?.deleted_at != null) return;
 		const workspace = database,
@@ -2452,6 +2511,24 @@
 												>{/if}
 										{/each}
 									</div>
+								{/if}
+								{#if p.derived_by?.startsWith('http:') && !p.deprecated}
+									<button
+										type="button"
+										class="secondary"
+										aria-label={`Resolve ${label(p)}`}
+										disabled={!selected ||
+											selected.deleted_at != null ||
+											!connectedHub ||
+											busy ||
+											writing ||
+											bodySaving ||
+											navigationLoading ||
+											readOnly ||
+											blocked}
+										onclick={() => resolveField(p)}>Resolve</button
+									>
+									{#if !connectedHub}<span class="hint">Connect to the hub to resolve.</span>{/if}
 								{/if}
 								<p class="field-note">
 									{p.description || p.type}{p.derived_by
