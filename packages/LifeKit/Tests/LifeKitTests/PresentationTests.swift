@@ -92,3 +92,21 @@ import Testing
     try await workspace.close()
   }
 }
+
+
+extension PresentationTests {
+  @Test func presentationConfigurationIdentityIgnoresDictionaryInsertionOrder() {
+    let pairs: [(String, JSONValue)] = [("id", .string("items.state")), ("tbl", .string("items")),
+      ("col", .string("state")), ("type", .string("select")), ("options", .string("[\"Draft\",\"Ready\"]"))]
+    let a = Dictionary(uniqueKeysWithValues: pairs)
+    let b = Dictionary(uniqueKeysWithValues: pairs.reversed())
+    let bytes = RecordPresentationView.configurationBytes([a])
+    for _ in 0..<100 {
+      #expect(RecordPresentationView.configurationBytes([b]) == bytes)
+      #expect(RecordPresentationView.configurationBytes([a]) == bytes)
+    }
+    var changed = a
+    changed["options"] = .string("[\"Ready\"]")
+    #expect(RecordPresentationView.configurationBytes([changed]) != bytes)
+  }
+}

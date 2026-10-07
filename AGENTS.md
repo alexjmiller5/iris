@@ -69,6 +69,17 @@ workspace menus open the system destination picker, with CSV metadata saved
 separately from the same capture. Exports contain no attachment bytes and provide
 no restore operation.
 
+Native record actions can explicitly open a saved row as a Page Archiver attempt.
+The viewer validates canonical metadata without table-name inference, keeps the
+selected historical attempt immutable, and uses the current enrolled host's file
+reader. Verify declared size, MIME and SHA-256 before preview or save. PNG is the
+default bounded preview; partial warnings and unsupported original URL text remain
+visible. Preview refusal does not invalidate the retained capture. Save PNG/HTML
+uses the system destination picker with exact original bytes, cancel and retry;
+opening the viewer never flushes an editor draft. Workspace changes cancel its
+requests. Archived HTML rendering remains unmounted pending native interaction
+acceptance; saving HTML does not automatically open it.
+
 The supported service dependency is the life-data hub API with independently
 minted client credentials. Never bind its D1/R2 or borrow infrastructure tokens.
 Life UI owns its Worker, Access application, vault and deployment credentials
