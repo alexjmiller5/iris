@@ -1,7 +1,7 @@
 #if os(macOS)
   import AppKit
   import Foundation
-  import GRDB
+  import JavaScriptCore
   import SwiftUI
   import Testing
   @testable import LifeKit
@@ -76,15 +76,17 @@
       let (root, file, model) = try await fixture()
       defer { try? FileManager.default.removeItem(at: root) }
       #expect(try await sql(file, "PRAGMA journal_mode") == "wal")
-      var configuration = Configuration()
-      configuration.allowsUnsafeTransactions = true
-      let transaction = try DatabaseQueue(path: file.path, configuration: configuration)
-      try await transaction.writeWithoutTransaction { try $0.execute(sql: "BEGIN IMMEDIATE") }
+      let transaction = try SQLiteBridge(path: file.path)
+      let context = try #require(JSContext())
+      try transaction.install(in: context)
+      context.evaluateScript("LifeSql.begin()")
+      try #require(context.exception == nil)
       // The app must be able to finish an admitted transaction while the real
       // external process waits for SQLite's writer lock.
       let release = Task { @MainActor in
         try await Task.sleep(for: .milliseconds(100))
-        try await transaction.writeWithoutTransaction { try $0.execute(sql: "COMMIT") }
+        context.evaluateScript("LifeSql.commit()")
+        try #require(context.exception == nil)
       }
       _ = try await sql(file, "UPDATE notes SET title='Concurrent CLI commit'")
       try await release.value
