@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageCaptureViewer from '$lib/PageCaptureViewer.svelte';
 	import { prepareDuplicate } from '$lib/record-duplicate';
 	import { markdownPatch } from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
@@ -2451,6 +2452,11 @@
 						{/each}
 						{#if error}<p role="status" class="failure">{error}</p>{/if}
 						<div class="editor-actions">
+							{#if selected}{#key `${editorVersion}:${selected.id}:${connectedHub?.endpoint}:${connectedHub?.token}`}<PageCaptureViewer
+										row={selected}
+										resolveFile={resolveRetainedFile}
+										disabled={busy || navigationLoading}
+									/>{/key}{/if}
 							{@render undoButton()}
 							{#if selected && selected.deleted_at == null}<button
 									type="button"

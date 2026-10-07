@@ -64,8 +64,17 @@ default bounded preview; partial warnings and unsupported original URL text rema
 visible. Preview refusal does not invalidate the retained capture. Save PNG/HTML
 uses the system destination picker with exact original bytes, cancel and retry;
 opening the viewer never flushes an editor draft. Workspace changes cancel its
-requests. Archived HTML rendering remains unmounted pending native interaction
-acceptance; saving HTML does not automatically open it.
+requests. Archived HTML uses a separate nonpersistent WKWebView, an opaque sandboxed
+child document, restrictive CSP, a content rule list and navigation denial. Native
+context gestures are intercepted before WebKit's internal content view can offer
+external actions. Saving HTML never automatically opens it.
+
+The web saved-row action mounts PageCaptureViewer with an immutable explicit row
+and the existing enrolled file resolver. Each action reauthorizes and verifies MIME,
+bytes and SHA before use. HTML is previewed only in an empty-sandbox iframe with an
+early restrictive CSP; inert template parsing removes navigation surfaces before
+mounting. Never grant same-origin/scripts, rebase links or forward credentials into
+the archive. Closing or replacing the host invalidates all outstanding work.
 
 The supported service dependency is the life-data hub API with independently
 minted client credentials. Never bind its D1/R2 or borrow infrastructure tokens.
