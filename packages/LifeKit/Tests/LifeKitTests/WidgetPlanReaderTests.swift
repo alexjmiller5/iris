@@ -65,6 +65,35 @@ struct WidgetPlanReaderTests {
     }
   }
 
+  @Test func publishedTimelineRebindsWithoutHostAndFutureEntryDoesNotReplaceFallback() throws {
+    try database { url, _ in
+      let store = WidgetPublicationStore(
+        root: url.deletingLastPathComponent().appendingPathComponent("widgets"))
+      let before = Date(timeIntervalSince1970: 1_791_428_399)
+      try store.publish(
+        workspaceID: "workspace", replicaID: "replica", dataAsOf: before,
+        partial: false,
+        sources: [WidgetSource(id: "source", title: "Synthetic source", plan: plan())]
+      ) {
+        try FileManager.default.copyItem(at: url, to: $0)
+      }
+      let timeline = WidgetTimeline.load(
+        store: store, sourceID: "source", workspaceID: "workspace",
+        replicaID: "replica", now: before)
+      #expect(timeline.entries.count == 2)
+      #expect(timeline.entries[0].result.content?.rows.first?["id"] == .string("a"))
+      #expect(timeline.entries[1].result.content?.rows.first?["id"] == .string("b"))
+      #expect(timeline.entries[1].date == Date(timeIntervalSince1970: 1_791_428_400))
+      #expect(timeline.refreshAfter == timeline.entries[1].date)
+      try store.withCurrentPublication { _, snapshot in try Data("invalid".utf8).write(to: snapshot)
+      }
+      let fallback = store.read(
+        sourceID: "source", workspaceID: "workspace", replicaID: "replica", now: before)
+      #expect(fallback.state == .stale)
+      #expect(fallback.content?.rows.first?["id"] == .string("a"))
+    }
+  }
+
   @Test func guardStringsUseExactBytesAndIdentityIsRequired() throws {
     try database { url, _ in
       let reader = WidgetPlanReader(databaseURL: url)
