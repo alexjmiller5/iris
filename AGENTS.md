@@ -446,6 +446,11 @@ Keep active drafts and their action controls mounted through catalog/row refresh
 measure editor height before retiling the row. Disable workspace replacement and
 new-record actions while an inline editor is active. Property help popovers belong
 to their individual buttons.
+RecordEditorModel capture preparation retains its handoff UUID in the ordinary
+recoverable creation journal. Pending delivery retries preserve edits and refuse
+to fork another live editor. Empty captures stay recoverable; only explicit Save
+creates a row. Entry-point navigation and workspace/writeability checks remain
+the host's responsibility.
 Markdown previews parse a bounded prefix off the main actor and never rewrite
 source. Only the active cell mounts a rich editor. Its prepared record model owns
 the live WebKit view across table recycling; dismantling a cell is not an editor
