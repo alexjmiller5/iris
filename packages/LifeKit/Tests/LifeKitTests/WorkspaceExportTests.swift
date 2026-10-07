@@ -494,7 +494,7 @@ struct WorkspaceExportTests {
     defer { watchdog.cancel() }
     do {
       var iterator = stream.makeAsyncIterator()
-      let started = await iterator.next()
+      let started: Void? = await iterator.next()
       try #require(
         started != nil,
         Comment(

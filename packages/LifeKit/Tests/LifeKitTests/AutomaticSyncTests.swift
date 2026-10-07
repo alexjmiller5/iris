@@ -1,4 +1,5 @@
 import Foundation
+import JavaScriptCore
 import Observation
 import Testing
 
@@ -24,6 +25,46 @@ struct AutomaticSyncTests {
       #expect(AutoSyncHub.rounds == 2)
       #expect(model.rows.first?.record["title"] == .string("Edit while uploading"))
       #expect(AutoSyncHub.uploadedTitles == ["Second edit", "Edit while uploading"])
+      #expect(try await model.client?.status().pendingUiEdits == 0)
+    }
+  }
+
+  @Test func committedViewUndoStillUploadsWhenRefreshingViewsFails() async throws {
+    let runtime = try LifeCoreRuntime()
+    try await withFixture(runtime: runtime) { model, loops in
+      let context = try #require(model.editingContext)
+      try await model.saveCurrentView(name: "Undo sync fixture", update: false, context: context)
+      await model.synchronize()
+      try #require(model.error == nil)
+      let action = try #require(model.undoAction)
+      try #require(action.table == "views")
+      AutoSyncHub.reset()
+      let started = AutoSyncHub.holdNextPush()
+      let loop = Task { await model.runAutomaticSync(debounce: .milliseconds(20)) }
+      loops.append(loop)
+      await Task.yield()
+      runtime.context.evaluateScript(
+        """
+        const beforeRefreshFailure = LifeNative.request;
+        LifeNative.request = (id, method, args) => {
+          if (method === 'listViews') {
+            LifeNative.request = beforeRefreshFailure;
+            __lifeFinish(id, JSON.stringify({error:'Synthetic view refresh failure',violations:[]}));
+          } else beforeRefreshFailure(id, method, args);
+        };
+        """)
+      try #require(runtime.context.exception == nil)
+      do {
+        _ = try await model.undo(action, context: context)
+        Issue.record("The post-commit view refresh must fail")
+      } catch {
+        #expect(error.localizedDescription.contains("Synthetic view refresh failure"))
+      }
+      #expect(try await model.client?.status().pendingUiEdits == 1)
+      try #require(await started.wait(), "Committed Undo must upload despite view refresh failure")
+      AutoSyncHub.release()
+      try await waitUntil(model) { AutoSyncHub.rounds >= 1 && !model.syncing }
+      #expect(AutoSyncHub.rounds == 1)
       #expect(try await model.client?.status().pendingUiEdits == 0)
     }
   }
@@ -170,10 +211,11 @@ struct AutomaticSyncTests {
   }
 
   private func withFixture(
+    runtime: LifeCoreRuntime? = nil,
     _ body: (WorkspaceModel, inout [Task<Void, Never>]) async throws -> Void,
     sourceLocation: SourceLocation = #_sourceLocation
   ) async throws {
-    let (model, directory) = try await fixture()
+    let (model, directory) = try await fixture(runtime: runtime)
     var loops: [Task<Void, Never>] = []
     do {
       try await body(model, &loops)
@@ -218,7 +260,7 @@ struct AutomaticSyncTests {
     await cleanup.value
   }
 
-  private func fixture() async throws -> (WorkspaceModel, URL) {
+  private func fixture(runtime: LifeCoreRuntime? = nil) async throws -> (WorkspaceModel, URL) {
     AutoSyncHub.reset()
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -232,6 +274,11 @@ struct AutomaticSyncTests {
       try await model.connect(
         HubCredentials(endpoint: hub.endpoint, token: "fixture"), remember: false,
         synchronizeAfter: false)
+      if let runtime {
+        try await #require(model.client).close()
+        model.client = try NativeWorkspace(
+          path: directory.appendingPathComponent("local.sqlite").path, runtime: runtime)
+      }
       try await #require(model.client).createSample()
       model.catalog = try await #require(model.client).catalog()
       model.table = "notes"
