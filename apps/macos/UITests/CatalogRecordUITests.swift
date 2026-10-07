@@ -74,7 +74,14 @@ final class CatalogRecordUITests: XCTestCase {
     replace(title, with: "Blocked")
     let detail = app.textFields["field-detail"]
     replace(detail, with: "Retained second edit")
-    app.buttons["catalog-rules"].click()
+    let form = app.scrollViews["record-form"]
+    let rules = app.buttons["catalog-rules"]
+    // macOS XCUI click can hit the sheet toolbar when a Form row is clipped.
+    form.scroll(byDeltaX: 0, deltaY: -400)
+    XCTAssertTrue(rules.isHittable)
+    XCTAssertTrue(
+      form.frame.contains(rules.frame), "Rules must be visible inside the form before clicking")
+    rules.click()
     XCTAssertTrue(app.staticTexts["Fixture title is blocked."].waitForExistence(timeout: 5))
     app.buttons["Back"].firstMatch.click()
     app.buttons["save-record"].click()
@@ -88,6 +95,7 @@ final class CatalogRecordUITests: XCTestCase {
     XCTAssertEqual(title.value as? String, "Blocked")
     XCTAssertEqual(detail.value as? String, "Retained second edit")
     capture(app, "catalog-rejected-draft")
+    form.scroll(byDeltaX: 0, deltaY: 400)
     replace(title, with: "Allowed")
     app.buttons["save-record"].click()
     let saved = app.buttons["Open Allowed"]
