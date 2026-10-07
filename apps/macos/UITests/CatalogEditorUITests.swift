@@ -17,6 +17,7 @@ final class CatalogEditorUITests: XCTestCase {
       app.menuItems["New Window"].click()
     }
     defer { app.terminate() }
+    XCTAssertTrue(app.buttons["Open A place to start"].waitForExistence(timeout: 15))
     let edit = app.buttons["edit-catalog"]
     XCTAssertTrue(edit.waitForExistence(timeout: 10))
     edit.click()

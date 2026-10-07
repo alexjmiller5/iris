@@ -355,13 +355,14 @@ public struct WorkspaceView: View {
 
   private var catalogEditorButton: some View {
     Button {
-      guard canFind, let context = model.editingContext else { return }
+      guard canFind, !model.loading, let context = model.editingContext else { return }
       catalogEditor = CatalogEditorModel(workspace: model, context: context)
     } label: {
       Label("Edit catalog", systemImage: "list.bullet.rectangle")
     }
     .disabled(
-      !canFind || model.tables.first { $0["id"]?.text == model.table }?["readOnly"] != .bool(false)
+      !canFind || model.loading
+        || model.tables.first { $0["id"]?.text == model.table }?["readOnly"] != .bool(false)
     )
     .accessibilityIdentifier("edit-catalog")
   }
