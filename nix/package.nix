@@ -1,7 +1,7 @@
 { lib, stdenvNoCC, fetchurl, unzip
-, version ? "0.4.0"
+, version ? "0.5.0"
 , url ? "https://github.com/alexjmiller5/life-ui/releases/download/v${version}/LifeUI-v${version}.zip"
-, hash ? "sha256-VktjQ6WiW/5pGM8PJpAe9T4FqjAWljrWjHT5WSY893Q="
+, hash ? "sha256-6aNOwe6PBtYMXjJfC8AtMjcc38cy3HFRLsv+62F3uKI="
 }:
 stdenvNoCC.mkDerivation {
   pname = "life-ui";
