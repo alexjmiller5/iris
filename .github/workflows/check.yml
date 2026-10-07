@@ -45,6 +45,9 @@ jobs:
       - run: python3 scripts/sign_ios_test.py
       - run: brew install xcodegen just
       - run: swift test --no-parallel --package-path packages/LifeKit
+      - name: Interrupted native attachment staging
+        timeout-minutes: 2
+        run: python3 scripts/test-attachment-staging.py
       - name: Catalog record XCUI acceptance (clean runner)
         timeout-minutes: 12
         run: |
