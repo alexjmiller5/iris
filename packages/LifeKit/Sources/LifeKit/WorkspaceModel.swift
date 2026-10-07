@@ -734,12 +734,16 @@ final class WorkspaceModel {
         message: "Refresh default-view editing availability first.", violations: [])
     }
     let generation = workspaceGeneration
+    let selectedView = viewGeneration
     savingView = true
-    defer { savingView = false }
+    defer { if selectedView == viewGeneration { savingView = false } }
     let result = try await context.workspace.setViewDefault(
       CoreSetViewDefaultArgs(
         table: context.table, viewId: saved?.id, expectedUpdatedAt: displayed.updatedAt))
     _ = try requireViewContext(context, generation: generation)
+    guard selectedView == viewGeneration else {
+      throw WorkspaceError(message: "The view changed. Reopen saved views.", violations: [])
+    }
     viewDefault = result
     defaultViewNotice = result.unavailable
     recordLocalChange()
