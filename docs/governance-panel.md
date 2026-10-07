@@ -38,13 +38,68 @@ cached display content and invalidates late page/preview responses.
 `contract.ts` re-exports the canonical generated Life Data wire types; `api.ts`
 uses generated argument and result types for every method. The generic read
 envelope remains only for local presentation helpers. The bundle is generated from
-Life Data `f0ed465d230c96dd63c2610691274034c34c79e9`, contract hash
-`323ba793aeb8962d9555f48d80ccf486bf1010116f1f1b89d8c33f9491c26d12`.
-This is the generated DTO source prerequisite, separate from the proposed transport
-routes/capability in its `docs/governance-transport-contract.md`. It adds no advertised
-governance HTTP API or CoreOperations. The foundation's inverse
+Life Data `cd9af7a9398e95844d85c7e6dc8052c9e91c49c4`, contract hash
+`e935ee9223797c2910128fcaef91cce70acfeb0baa329dc848074f45b9bf4ff3`.
+It includes nine canonical governance operations, which remain unavailable without
+an injected service adapter. Bundling these operations does not activate the host
+or verify the configured live service capability. The foundation's inverse
 planner requires trusted complete ordered typed evidence; clients must not supply
 untrusted evidence to manufacture an authorized preview.
+
+## Service integration
+
+The integration uses `createGovernanceAPI` and `createHttpHub` from
+`life-ui-core/client`. The service owns route selection, capability/authority
+validation, exact request/result shapes and HTTP response classification. Its
+`governancePost` transport preserves status, JSON data and Retry-After; ordinary
+`hub.post` is not interchangeable because it throws away the typed error response.
+No client classifier, fallback endpoint, local writer or automatic retry is added.
+
+Before constructing a production binding, the host must obtain a validated
+capability and stable non-secret deployment/session identity for the exact active
+connection. A principal ID, token display name, full scope or replica eligibility
+alone is insufficient. Do not derive journal identity from the URL or a credential
+hash. The required canonical source for this integration is Life Data
+`cd9af7a9398e95844d85c7e6dc8052c9e91c49c4`, contract hash
+`e935ee9223797c2910128fcaef91cce70acfeb0baa329dc848074f45b9bf4ff3`.
+It includes required `GovernanceCapability.deploymentId` and `sessionId` fields.
+This is a source
+prerequisite, not a deployment receipt. Until the configured live capability and
+identity are verified, API and journal injection remain null.
+
+The dedicated `scripts/governance-service-binding.test.ts` composes the real
+canonical HTTP adapter with the existing proposal model. Synthetic HTTP responses
+exercise lost-response recovery followed by authentication/scope/cap errors,
+malformed resolution, status-mismatched success and mismatched actor/target.
+Positive cases settle the captured journal after navigation, including older
+receipt revisions and empty history IDs. Construction tests check server identity
+copying, immutable connection/scope/authority, session replacement and agent
+proposal authority without user approval authority. They require the root-owned
+canonical bundle above. Synthetic scope values do not authorize a production
+identity convention or host activation.
+
+`bindGovernanceService(connection, session.governance, fetcher)` returns null for
+an unsupported capability or invalid connection/transport. Otherwise it returns
+`{api, scope, authority}`, with immutable scope/authority copied from the canonical
+advertisement and credentials captured only inside the canonical HTTP transport.
+The host must tie that advertisement to the same authenticated connection; the
+constructor performs no session request, storage access or network operation.
+
+Only `authority.approve` permits the host to offer approval with a journal; proposal
+authority does not grant user approval. This is an authority check, not an activation
+flag. The service still reauthorizes every operation. Verified browser enrollment
+establishes user authority; operator-created agents and legacy unrecorded credentials
+must not be promoted by token name or full/table-write scopes.
+
+The binding snapshots the supported connection and canonical scope.
+Replacing a connection must leave the old journal parked and cannot redirect an
+old request to replacement credentials. Server identity stays stable for the same
+credential through reopen and reauthorization; enrollment with a replacement
+credential receives a new session identity. An in-flight old response may settle
+only its captured journal; it cannot update the replacement workspace. Root owns
+generated dependencies and host mounting; this slice owns only the isolated binding,
+its tests and this section. Browser real-flow acceptance and a native transport remain
+separate handoffs. No host starts using this binding merely because it is imported.
 
 ## Durable approval journal
 

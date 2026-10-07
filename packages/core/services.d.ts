@@ -1,6 +1,8 @@
+import type { GovernanceTransport } from './governance-service.ts';
 import type { Hub } from "./driver.ts";
 /** Native hosts implement GET with the same credential/redirect rules as POST. */
 export interface ServiceHub extends Hub {
+    governancePost?: GovernanceTransport;
     get(route: string): Promise<{
         data: unknown;
         date?: string;

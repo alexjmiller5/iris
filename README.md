@@ -432,6 +432,12 @@ include XCTest polling and interaction overhead, and do not replace phone accept
 queued-read cancellation, preserved visible state and reconciliation after committed
 edits. Passive reference labels yield to queued local foreground work without
 interrupting an active database operation or crossing transport/close barriers.
+Only one passive label read per workspace enters the database queue at a time;
+the remaining callers wait outside it and can cancel before admission. This keeps
+a queued service request from trapping navigation behind the entire label backlog.
+`LIFE_UI_REFERENCE_BARRIER=1` enables the real-core synthetic catalog measurement
+with 300 labels followed by a service request and table navigation in
+`ReferenceAdmissionPerformanceTests.measureNavigationWithQueuedServiceBarrier`.
 For an opt-in synthetic measurement with a large catalog and 70, 100 or 300
 pending reference labels, run in an otherwise idle build window:
 

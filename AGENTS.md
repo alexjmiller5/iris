@@ -287,10 +287,20 @@ file share request admission, including initial schema repair; independent
 files and memory databases keep separate admission. Foreground local operations
 may pass only a trailing run of passive reference-label reads, preserving order
 among foreground operations. Sync, close, transport-bearing requests and
-transport continuations remain ordering barriers. Canceled queued
+transport continuations remain ordering barriers. Passive label callers wait
+outside the database queue, with at most one submitted
+reference read per workspace. This prevents a service or sync barrier from trapping
+foreground navigation behind a whole label backlog. Canceling an unsubmitted label
+releases its waiter; an admitted label keeps its transaction ownership. Canceled queued
 catalog/row reads release their reserved file turn without entering SQLite;
 an admitted request always finishes its transaction and callback. Resolve symbolic links before
 opening and refuse hard-linked database files so journals have one identity.
+Native workspace diagnostics are bounded in-memory timing records, copied only by
+explicit user action. Use fixed operation enums, process-local IDs, durations,
+counts and byte totals; never record SQL, arguments, table names, errors, URLs,
+credentials or content. Snapshotting must not enqueue database work or observe
+per-statement updates in SwiftUI. Network suspension remains distinct from local
+execution, and post-request DTO decoding attaches to the same retained receipt.
 Native requests retain SQLite ownership
 across every transaction and local await. HTTP outside a transaction suspends
 its request owner so complete foreground requests can run; the HTTP continuation

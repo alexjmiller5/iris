@@ -27,7 +27,7 @@ struct AppliedActionRevisionTests {
     let latest = try await context.workspace.saveView(
       CoreSaveViewArgs(
         table: "notes", name: "Action fixture", definition: changed,
-        id: displayed.id, expectedUpdatedAt: try #require(displayed.updatedAt)))
+        id: displayed.id, expectedUpdatedAt: displayed.updatedAt))
     try await model.refreshSavedViews(context: context)
     #expect(model.savedViews.first?.updatedAt == latest.updatedAt)
     await #expect(throws: (any Error).self) {
