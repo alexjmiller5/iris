@@ -5,6 +5,13 @@ web page. Selection is explicit and clears when that page reloads. **Export** sa
 the selected committed rows as JSON or CSV, with a separate CSV metadata download.
 The export retains the loaded-page coverage and freshness caveats.
 
+On iOS and macOS, open the existing workspace actions menu and choose **Select
+loaded rows**. The selection sheet offers individual toggles, select all, property
+changes, trash and export without adding permanent toolbar controls. Its export
+uses the committed capture from when the sheet opened. Reopen the sheet to export
+changes made by a completed batch. Leaving the sheet cancels remaining work while
+retaining the receipt and refresh for any write already admitted.
+
 Open **Selection**, choose a property and value, then **Apply to selected**. Empty
 text stays empty text; **Clear value (null)** explicitly clears a value. The same
 property editors and catalog options used by individual records are available.

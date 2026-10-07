@@ -69,6 +69,12 @@ new work but cannot revoke a committed receipt. Do not flush active drafts or
 describe this as atomic/whole-batch undo. Workspace/query/catalog changes stop
 admission, while the batch's own row-refresh broadcasts retain its frozen IDs.
 Selected exports reuse the loaded-row serializer and its coverage metadata.
+Native selection lives in the existing workspace menu's loaded-row sheet. Freeze
+the displayed capture before presentation; selected exports retain that capture.
+BulkRecordModel checks exact UTF-8 identities and revisions, and ordinary model
+saves own reconciliation and sync scheduling. Keep cancellation separate from an
+admitted write's receipt; closing the sheet stops only remaining work. Do not
+invalidate its query/catalog guard on the batch's own successful row refresh.
 
 Native record actions can explicitly open a saved row as a Page Archiver attempt.
 The viewer validates canonical metadata without table-name inference, keeps the
