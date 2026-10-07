@@ -13,6 +13,8 @@ import UserNotifications
 struct NotificationAlertState: Codable {
   var enabled = false
   var baseline: Int?
+  // Recovery hint only: local disable cannot prove an attempted server write was revoked.
+  var pushRegistrationAttempted: Bool?
   // Keep the existing JSON array format without String Set's Unicode folding.
   var deliveredIDs: [String] = []
 }
@@ -46,12 +48,19 @@ struct NotificationAlertState: Codable {
     next.enabled = false
     try save(next, endpoint: endpoint)
   }
+  func markPushRegistrationAttempted(endpoint: String) throws {
+    var next = try state(endpoint: endpoint)
+    guard next.pushRegistrationAttempted != true else { return }
+    next.pushRegistrationAttempted = true
+    try save(next, endpoint: endpoint)
+  }
   func apply(
-    _ presentation: NotificationPresentation, endpoint: String, isCurrent: () -> Bool = { true }
+    _ presentation: NotificationPresentation, endpoint: String, isCurrent: () -> Bool = { true },
+    pushRegistered: () -> Bool = { false }
   ) async throws {
     var next = try state(endpoint: endpoint)
     var delivered = Set(next.deliveredIDs.map { Data($0.utf8) })
-    if next.enabled, !isPushRegistered(endpoint) {
+    if next.enabled, !isPushRegistered(endpoint), !pushRegistered() {
       for notification in presentation.notifications
       where !delivered.contains(Data(notification.id.utf8)) {
         try Task.checkCancellation()
@@ -61,7 +70,7 @@ struct NotificationAlertState: Codable {
           shouldPresent: {
             guard isCurrent() else { throw CancellationError() }
             let current = try state(endpoint: endpoint)
-            return current.enabled && !isPushRegistered(endpoint)
+            return current.enabled && !isPushRegistered(endpoint) && !pushRegistered()
               && !current.deliveredIDs.contains { Data($0.utf8) == Data(notification.id.utf8) }
           })
         try Task.checkCancellation()

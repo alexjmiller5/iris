@@ -104,6 +104,7 @@ struct HubUsageView: View {
 }
 
 struct HubNotificationsView: View {
+  @Environment(\.openURL) private var openURL
   let services: HubServicesModel
   var body: some View {
     List {
@@ -123,11 +124,18 @@ struct HubNotificationsView: View {
           Button("Enable alerts") { Task { await services.enableAlerts() } }
         }
         if let error = services.alertError { Text(error).foregroundStyle(.red) }
+        if let url = services.pushApprovalURL {
+          Button("Approve push for this device") { openURL(url) }
+            .accessibilityIdentifier("approve-push-notifications")
+        }
+        if let error = services.pushError { Text(error).foregroundStyle(.red) }
       } header: {
         Text("Alerts on this device")
       } footer: {
         Text(
-          "Check for new notifications every minute while Life UI is active. Existing history is quiet. Background push notifications are not available."
+          services.pushReady
+            ? "Push alerts are enabled. The inbox updates every minute while Life UI is active."
+            : "Check for new notifications every minute while Life UI is active. Existing history is quiet. Push delivery is not confirmed."
         )
       }
       .disabled(services.refreshing || services.changingAlerts)

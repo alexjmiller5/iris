@@ -12,7 +12,7 @@ struct TableNavigationUIFixtureTests {
       let env = ProcessInfo.processInfo.environment
       try #require(env["LIFE_UI_TEST_TABLE_NAV_SIMULATOR"] == env["SIMULATOR_UDID"])
       let model = WorkspaceModel()
-      try model.forgetConnection()
+      try await model.forgetConnection()
       await model.open()
       try #require(model.client != nil)
       await model.close()

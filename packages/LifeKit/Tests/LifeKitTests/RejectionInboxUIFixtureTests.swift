@@ -16,7 +16,7 @@ struct RejectionInboxUIFixtureTests {
     func prepareRejectionInboxUIFixture() async throws {
       try requirePrivateSimulator()
       let model = WorkspaceModel()
-      try model.forgetConnection()
+      try await model.forgetConnection()
       await model.open()
       try #require(model.client != nil)
       let store = try #require(model.editingContext?.draftStore)

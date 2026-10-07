@@ -29,6 +29,8 @@ def run(*args, env=None):
 
 def validate_profile(profile, bundle, device):
     entitlements = profile.get('Entitlements', {})
+    if entitlements.get('aps-environment') != 'production':
+        raise ValueError('Production Apple push entitlement required')
     expiration = profile.get('ExpirationDate')
     teams = profile.get('TeamIdentifier', [])
     identifier = entitlements.get('application-identifier', '')
@@ -129,7 +131,8 @@ def verify_app(app, bundle, team, fingerprint, device, expected_uuid=None):
     prefix = profile['Entitlements']['application-identifier'].partition('.')[0]
     if (entitlements.get('application-identifier') != f'{prefix}.{bundle}'
             or entitlements.get('com.apple.developer.team-identifier') != team
-            or entitlements.get('get-task-allow', False) is not False):
+            or entitlements.get('get-task-allow', False) is not False
+            or entitlements.get('aps-environment') != 'production'):
         raise ValueError('Exported signing entitlements do not match distribution identity')
     validate_entitlements(entitlements, profile['Entitlements'])
     with tempfile.TemporaryDirectory(prefix='ios-cert-') as temporary:

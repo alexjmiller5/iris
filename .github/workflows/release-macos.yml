@@ -20,7 +20,7 @@ env:
 
 jobs:
   submit:
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     timeout-minutes: 60
     outputs:
       artifact_id: ${{ steps.artifact.outputs.artifact-id }}
@@ -215,7 +215,7 @@ jobs:
   # never rebuild/resubmit as a fallback. Rerun-all is not a recovery operation.
   release:
     needs: submit
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     timeout-minutes: 45
     permissions:
       contents: write
@@ -400,7 +400,7 @@ jobs:
   # Separate job: a tap failure can be retried without republishing immutable assets.
   cask:
     needs: release
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     timeout-minutes: 10
     env:
       RELEASE_VERSION: ${{ needs.release.outputs.version }}

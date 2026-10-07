@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
@@ -26,6 +26,7 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+      - uses: oven-sh/setup-bun@v2
       - name: Install build tools
         run: brew install xcodegen age
       - name: Generate project
@@ -51,8 +52,31 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           IOS_CERTIFICATE_P12_BASE64: op://Apple Signing/Apple Distribution Cert/p12_base64
           IOS_CERTIFICATE_PASSWORD: op://Apple Signing/Apple Distribution Cert/password
-          IOS_PROFILE_BASE64: op://Apple Signing/Wildcard Ad Hoc Profile/mobileprovision_base64
+          ASC_KEY_P8_BASE64: op://Apple Signing/App Store Connect API Key/p8_base64
+          ASC_KEY_ID: op://Apple Signing/App Store Connect API Key/key_id
+          ASC_ISSUER_ID: op://Apple Signing/App Store Connect API Key/issuer_id
           IOS_DEVICE_ID: op://Life UI/Life UI ENV/IOS_DEVICE_ID
+      - name: Download app-specific Ad Hoc profile
+        env:
+          PROFILE_ID: ${{ vars.IOS_PROVISIONING_PROFILE_ID }}
+        run: |
+          bun - <<'JS'
+          const {createPrivateKey,sign}=require('node:crypto');
+          const {appendFileSync}=require('node:fs');
+          if(!/^[A-Z0-9]+$/.test(process.env.PROFILE_ID??''))throw Error('App-specific profile ID required');
+          const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
+          const now=Math.floor(Date.now()/1000);
+          const input=encode({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'})+'.'+encode({iss:process.env.ASC_ISSUER_ID,iat:now,exp:now+120,aud:'appstoreconnect-v1'});
+          const key=createPrivateKey(Buffer.from(process.env.ASC_KEY_P8_BASE64,'base64'));
+          const jwt=input+'.'+sign('sha256',Buffer.from(input),{key,dsaEncoding:'ieee-p1363'}).toString('base64url');
+          const response=await fetch('https://api.appstoreconnect.apple.com/v1/profiles/'+encodeURIComponent(process.env.PROFILE_ID),{headers:{Authorization:'Bearer '+jwt}});
+          if(!response.ok)throw Error('Profile download HTTP '+response.status);
+          const profile=(await response.json()).data.attributes;
+          if(profile.profileType!=='IOS_APP_ADHOC'||profile.profileState!=='ACTIVE'||Date.parse(profile.expirationDate)<=Date.now()
+            || !/^[A-Za-z0-9+/]+=*$/.test(profile.profileContent??''))throw Error('Active app-specific Ad Hoc profile required');
+          console.log('::add-mask::'+profile.profileContent);
+          appendFileSync(process.env.GITHUB_ENV,'IOS_PROFILE_BASE64='+profile.profileContent+'\n');
+          JS
       - name: Sign and verify Ad Hoc IPA
         run: |
           test -n "$IOS_DEVICE_ID" || { echo 'Set IOS_DEVICE_ID in the project ENV item.' >&2; exit 1; }

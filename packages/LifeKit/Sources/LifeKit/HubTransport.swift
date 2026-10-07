@@ -116,12 +116,87 @@ struct HubTransport: Sendable {
   /// endpoint receives the candidate credential; large sync replies use their own path.
   func sessionReply(revoking: Bool = false, maxResponseBytes: Int) async throws -> CoreSessionReply
   {
+    try await boundedReply(
+      route: "/v1/session", method: revoking ? "POST" : "GET", body: nil,
+      maxResponseBytes: maxResponseBytes, decodeStatuses: [200])
+  }
+
+  @MainActor func pushApprovalURL(profile: String) async throws -> URL {
+    let core = try EnrollmentCore()
+    let approval = try await core.request(
+      CoreRequests.EnrollmentApproval(
+        CoreEnrollmentApprovalArgs(
+          fingerprint: DeviceCandidate(token: token).fingerprint, name: "Life UI")))
+    guard var parts = URLComponents(string: endpoint + approval.path) else {
+      throw URLError(.badURL)
+    }
+    parts.queryItems =
+      (parts.queryItems ?? []) + [URLQueryItem(name: "pushProfile", value: profile)]
+    guard let url = parts.url else { throw URLError(.badURL) }
+    return url
+  }
+
+  @MainActor func pushRegistration(_ operation: PushRegistration.Operation) async throws
+    -> PushRegistration.Reply
+  {
+    let route: String
+    let body: Data?
+    switch operation {
+    case .read(let profile):
+      guard !profile.isEmpty, profile.utf8.count <= 512,
+        let query = profile.addingPercentEncoding(withAllowedCharacters: .alphanumerics)
+      else { throw WorkspaceError(message: "Invalid push profile.", violations: []) }
+      route = "/v1/push/registration?appProfile=" + query
+      body = nil
+    case .register(let request):
+      route = "/v1/push/registration"
+      body = try JSONEncoder().encode(request)
+    case .revoke(let request):
+      route = "/v1/push/registration/revoke"
+      body = try JSONEncoder().encode(request)
+    }
+    let reply = try await boundedReply(
+      route: route, method: body == nil ? "GET" : "POST", body: body,
+      maxResponseBytes: 65536, decodeStatuses: [200, 409])
+    guard case .object(let object) = reply.data else {
+      throw WorkspaceError(message: "Push registration was not confirmed.", violations: [])
+    }
+    if reply.status == 409, object["kind"] == .string("conflict"),
+      object["code"] == .string("registration_changed")
+    {
+      return .conflict
+    }
+    if reply.status == 200, object["kind"] == .string("unavailable") { return .unavailable }
+    if reply.status == 200, object["kind"] == .string("available"), case .read = operation,
+      let state = object["registration"]
+    {
+      if state == .null { return .baseline(nil) }
+      return .baseline(
+        try JSONDecoder().decode(CorePushRegistrationState.self, from: JSONEncoder().encode(state)))
+    }
+    if reply.status == 200, object["kind"] == .string("confirmed"), let receipt = object["receipt"]
+    {
+      return .confirmed(
+        try JSONDecoder().decode(
+          CorePushRegistrationReceipt.self, from: JSONEncoder().encode(receipt)))
+    }
+    throw WorkspaceError(message: "Invalid push registration response.", violations: [])
+  }
+
+  private func boundedReply(
+    route: String, method: String, body: Data?, maxResponseBytes: Int,
+    decodeStatuses: Set<Int>
+  ) async throws -> CoreSessionReply {
     try Task.checkCancellation()
-    guard maxResponseBytes > 0, let url = URL(string: endpoint + "/v1/session") else {
+    guard maxResponseBytes > 0, let url = URL(string: endpoint + route) else {
       throw WorkspaceError(message: "Invalid session request.", violations: [])
     }
     var request = URLRequest(url: url)
-    request.httpMethod = revoking ? "POST" : "GET"
+    request.httpMethod = method
+    if let body {
+      request.httpBody = body
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    }
     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     do {
@@ -131,7 +206,7 @@ struct HubTransport: Sendable {
         throw WorkspaceError(message: "Invalid session response.", violations: [])
       }
       let retry = Self.retryAfter(response.value(forHTTPHeaderField: "Retry-After"), now: Date())
-      guard response.statusCode == 200 else {
+      guard decodeStatuses.contains(response.statusCode) else {
         return CoreSessionReply(status: response.statusCode, data: .null, retryAfterSeconds: retry)
       }
       let mime = response.mimeType?.lowercased() ?? ""

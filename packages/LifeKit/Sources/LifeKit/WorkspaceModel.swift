@@ -95,6 +95,29 @@ final class WorkspaceModel {
       && (linkBinding != nil || linkIdentityStore != nil)
   }
 
+  func prepareBulkRows(ids: [String]) throws -> BulkRecordModel {
+    let captured = try captureLoadedRowsForExport(at: Date())
+    let loaded = Set(captured.rows.compactMap { $0["id"]?.text }.map { Data($0.utf8) })
+    guard let context = editingContext, canWrite, !trash, !ids.isEmpty,
+      Set(ids.map { Data($0.utf8) }).count == ids.count,
+      ids.allSatisfy({ loaded.contains(Data($0.utf8)) })
+    else {
+      throw WorkspaceError(
+        message: "Select editable records from the loaded table.", violations: [])
+    }
+    let capturedContext = currentRowsContext
+    return BulkRecordModel(
+      workspace: context.workspace, table: context.table, ids: ids,
+      isCurrent: { [weak self] in
+        guard let self else { return false }
+        return self.client === context.workspace && self.currentRowsContext == capturedContext
+      },
+      write: { [self] patch, revision in
+        // Ordinary model saves own reconciliation and automatic sync scheduling.
+        try await save(patch, original: ["updated_at": .string(revision)], context: context)
+      })
+  }
+
   func linkURL(for destination: NativeDestination, context: WorkspaceEditingContext?) throws -> URL
   {
     guard let context, context.workspace === client,
@@ -1731,7 +1754,8 @@ final class WorkspaceModel {
     }
   }
 
-  func forgetConnection() throws {
+  func forgetConnection() async throws {
+    try await services.revokePushBeforeForgetting()
     try credentialStore.remove()
     stopAutomaticSync()
     workspaceGeneration += 1

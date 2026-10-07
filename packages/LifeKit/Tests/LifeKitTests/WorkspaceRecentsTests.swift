@@ -112,7 +112,7 @@ struct WorkspaceRecentsTests {
       credentialStore: MemoryHubCredentials(nil))
     await model.open(demo: true)
     let recents = try #require(model.recents)
-    try model.forgetConnection()
+    try await model.forgetConnection()
     await recents.navigationSucceeded(NativeDestination(table: "notes"))
     #expect(model.recents === recents)
     #expect(recents.entries.first?.label == "notes")

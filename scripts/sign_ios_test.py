@@ -22,10 +22,18 @@ def profile():
             'ProvisionedDevices': ['synthetic-device'], 'DeveloperCertificates': [b'certificate'],
             'Entitlements': {'application-identifier': 'TESTTEAM.com.example.*',
                              'com.apple.developer.team-identifier': 'TESTTEAM',
-                             'get-task-allow': False}}
+                             'get-task-allow': False, 'aps-environment': 'production'}}
 
 
 class SigningTests(unittest.TestCase):
+    def test_push_profile_requires_production_entitlement(self):
+        m = load()
+        for value in [None, 'development']:
+            p = profile()
+            p['Entitlements']['aps-environment'] = value
+            with self.assertRaises(ValueError):
+                m.validate_profile(p, 'com.example.App', 'synthetic-device')
+
     def test_ad_hoc_profile_matches_bundle_and_selected_device(self):
         m = load()
         self.assertEqual(m.validate_profile(profile(), 'com.example.App', 'synthetic-device'),
