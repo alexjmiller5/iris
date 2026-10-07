@@ -1,20 +1,26 @@
 import Foundation
 import Testing
+
 @testable import LifeKit
 
 @MainActor
 struct NativePinsTests {
   private func list(_ names: [String]) -> CoreSidebarPinList {
-    CoreSidebarPinList(pins: names.enumerated().map { index, name in
-      CoreSidebarPin(id: "pin:\(name)", tbl: name, position: index,
-        updatedAt: "2026-01-01T00:00:00.000Z", deletedAt: nil, unavailable: nil)
-    }, unavailable: nil)
+    CoreSidebarPinList(
+      pins: names.enumerated().map { index, name in
+        CoreSidebarPin(
+          id: "pin:\(name)", tbl: name, position: index,
+          updatedAt: "2026-01-01T00:00:00.000Z", deletedAt: nil, unavailable: nil)
+      }, unavailable: nil)
   }
 
   @Test func failedWriteAndReadRetainTheLastAcknowledgedPins() async {
     var failRead = false
     let model = NativePinsModel(
-      list: { if failRead { throw CocoaError(.fileReadUnknown) }; return list(["zeta", "alpha"]) },
+      list: {
+        if failRead { throw CocoaError(.fileReadUnknown) }
+        return list(["zeta", "alpha"])
+      },
       pin: { _ in throw CocoaError(.fileWriteUnknown) },
       unpin: { _ in throw CocoaError(.fileWriteUnknown) },
       move: { _ in throw CocoaError(.fileWriteUnknown) })
@@ -34,9 +40,17 @@ struct NativePinsTests {
     snapshot.pins[1].deletedAt = snapshot.pins[1].updatedAt
     var pinned: CorePinTableArgs?
     var moved: CoreMoveTablePinArgs?
-    let model = NativePinsModel(list: { snapshot },
-      pin: { args in pinned = args; return list(["zeta", "alpha"]) },
-      unpin: { _ in list([]) }, move: { args in moved = args; return list(["alpha", "zeta"]) })
+    let model = NativePinsModel(
+      list: { snapshot },
+      pin: { args in
+        pinned = args
+        return list(["zeta", "alpha"])
+      },
+      unpin: { _ in list([]) },
+      move: { args in
+        moved = args
+        return list(["alpha", "zeta"])
+      })
     await model.refresh()
     #expect(model.active.count == 1)
     #expect(await model.pin("alpha"))
@@ -48,7 +62,8 @@ struct NativePinsTests {
 
   @Test func cancelledWorkspaceCannotPublishLateRead() async {
     var pending: CheckedContinuation<CoreSidebarPinList, Never>?
-    let model = NativePinsModel(list: { await withCheckedContinuation { pending = $0 } },
+    let model = NativePinsModel(
+      list: { await withCheckedContinuation { pending = $0 } },
       pin: { _ in list([]) }, unpin: { _ in list([]) }, move: { _ in list([]) })
     let read = Task { await model.refresh() }
     while pending == nil { await Task.yield() }
@@ -59,11 +74,12 @@ struct NativePinsTests {
   }
 
   @Test func pinningRemovesOnlyExactTargetsFromBothTableGroups() {
-    let tables = NativeSidebarTables([
-      ["id": .string("notes"), "readOnly": .bool(false)],
-      ["id": .string("history"), "readOnly": .bool(true)],
-      ["id": .string("topics"), "readOnly": .bool(false)],
-    ], pins: list(["history", "notes"]).pins)
+    let tables = NativeSidebarTables(
+      [
+        ["id": .string("notes"), "readOnly": .bool(false)],
+        ["id": .string("history"), "readOnly": .bool(true)],
+        ["id": .string("topics"), "readOnly": .bool(false)],
+      ], pins: list(["history", "notes"]).pins)
     #expect(tables.ordinary.map(\.id) == ["topics"] && tables.system.isEmpty)
   }
 }
@@ -100,7 +116,8 @@ struct WorkspacePinsTests {
     let path = root.appendingPathComponent("pins.sqlite").path
     let original = try NativeWorkspace(path: path)
     try await original.createSample()
-    let saved = try await original.pinTable(CorePinTableArgs(table: "notes", expectedUpdatedAt: nil))
+    let saved = try await original.pinTable(
+      CorePinTableArgs(table: "notes", expectedUpdatedAt: nil))
     try await original.close()
     let reopened = try NativeWorkspace(path: path)
     #expect(try await reopened.listSidebarPins() == saved)

@@ -61,7 +61,7 @@ private struct PinnedTableRow: View {
         Button("Move down", systemImage: "chevron.down") { onMove("down") }.disabled(last)
         Button("Unpin", systemImage: "pin.slash", action: onUnpin)
       } label: {
-        Image(systemName: "ellipsis").frame(minWidth: 32, minHeight: 36)
+        Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
       }
       .disabled(disabled || mutationDisabled)
       .accessibilityLabel("Pin actions for \(pin.tbl)")

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { savedUndoShortcut } from '$lib/undo-shortcut';
+	import { resolveDerivedRecord } from '$lib/resolve-derived';
 	import { prepareDuplicate } from '$lib/record-duplicate';
 	import { markdownPatch } from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
@@ -1382,7 +1384,7 @@
 			if (workspace !== database || table !== target || version !== viewVersion) return;
 			chosenView = saved;
 			viewBaseline = JSON.stringify(definition);
-			await loadViews();
+			await refresh();
 			await reflectLocation();
 			notice = 'View saved on this device';
 		} finally {
@@ -1407,7 +1409,7 @@
 			await workspace.request('deleteView', { id, expectedUpdatedAt: selectedView.updated_at });
 			if (workspace !== database || table !== target || version !== viewVersion) return;
 			applyView(null);
-			await Promise.all([loadRows(), loadViews()]);
+			await refresh();
 			await reflectLocation();
 			notice = 'View deleted; records kept';
 		} finally {
@@ -1483,6 +1485,64 @@
 		}
 		return values;
 	}
+	async function resolveField(property: Property) {
+		if (
+			!database ||
+			!selected ||
+			!connectedHub ||
+			busy ||
+			writing ||
+			bodySaving ||
+			navigationLoading
+		)
+			return;
+		if (dirty) {
+			error = 'Save or discard your changes before resolving. Your draft has been kept.';
+			return;
+		}
+		const workspace = database,
+			version = editorVersion,
+			target = table,
+			original = $state.snapshot(selected),
+			connection = connectedHub;
+		const current = () =>
+			database === workspace &&
+			editorVersion === version &&
+			table === target &&
+			connectedHub === connection;
+		busy = true;
+		writing = true;
+		error = '';
+		try {
+			const { record, result } = await resolveDerivedRecord(
+				workspace,
+				connection,
+				target,
+				original,
+				property.col,
+				{ maxRows, tables: $state.snapshot(included) },
+				current
+			);
+			if (!current()) return;
+			const reconciled = reconcileUndo(draft, rowDraft(original), rowDraft(record));
+			selected = record;
+			draft = reconciled.values;
+			savedDraft = reconciled.baseline;
+			undoPaused = reconciled.dirty;
+			error = result.failed.map((failure) => failure.error).join(' ');
+			notice = result.failed.length
+				? 'Some derived values could not be resolved.'
+				: 'Resolved and synced';
+			await refresh();
+		} catch (failure) {
+			if (current()) error = message(failure);
+		} finally {
+			if (database === workspace) {
+				busy = false;
+				writing = false;
+			}
+		}
+	}
 	async function save() {
 		if (!database || busy || navigationLoading || !editing || selected?.deleted_at != null) return;
 		const workspace = database,
@@ -1535,6 +1595,12 @@
 		try {
 			const receipt = await workspace.request('undo', { receiptId: action.receiptId });
 			if (database !== workspace || editorVersion !== version) return;
+			if (action.table === 'views') {
+				await loadViews();
+				if (database !== workspace || editorVersion !== version) return;
+				if (chosenView?.id === action.rowId)
+					applyView(savedViews.find((view) => view.id === action.rowId) ?? null);
+			}
 			if (gridDraft && table === action.table && gridDraft.cell.rowId === action.rowId) {
 				const cell = gridDraft;
 				gridDraft = null;
@@ -1885,6 +1951,7 @@
 	<button
 		type="button"
 		class="secondary"
+		aria-keyshortcuts="Meta+Z Control+Z"
 		onclick={undoLastSavedChange}
 		disabled={!undoAction || busy || navigationLoading}
 		title={undoAction
@@ -1895,9 +1962,18 @@
 {/snippet}
 
 <svelte:head><title>Workspace | Life UI</title></svelte:head>
-<svelte:document onvisibilitychange={() => { if (opened && document.visibilityState === 'visible') void pins.refresh(); }} />
+<svelte:document
+	onvisibilitychange={() => {
+		if (opened && document.visibilityState === 'visible') void pins.refresh();
+	}}
+/>
 <svelte:window
 	onkeydown={(event) => {
+		if (savedUndoShortcut(event) && undoAction && !busy && !navigationLoading && !bodySaving) {
+			event.preventDefault();
+			void undoLastSavedChange();
+			return;
+		}
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && opened) {
 			event.preventDefault();
 			if (!busy && !findVisible && !onlineBrowser) showFind(true);
@@ -2479,6 +2555,24 @@
 												>{/if}
 										{/each}
 									</div>
+								{/if}
+								{#if p.derived_by?.startsWith('http:') && !p.deprecated}
+									<button
+										type="button"
+										class="secondary"
+										aria-label={`Resolve ${label(p)}`}
+										disabled={!selected ||
+											selected.deleted_at != null ||
+											!connectedHub ||
+											busy ||
+											writing ||
+											bodySaving ||
+											navigationLoading ||
+											readOnly ||
+											blocked}
+										onclick={() => resolveField(p)}>Resolve</button
+									>
+									{#if !connectedHub}<span class="hint">Connect to the hub to resolve.</span>{/if}
 								{/if}
 								<p class="field-note">
 									{p.description || p.type}{p.derived_by

@@ -428,6 +428,17 @@ public final class NativeWorkspace {
         CoreNotificationPresentationArgs(feed: feed, baseline: baseline)))
   }
 
+  func resolveDerived(
+    using transport: HubTransport, table: String, id: String,
+    column: String, expectedUpdatedAt: String
+  ) async throws -> CoreResolveDerivedResult {
+    try await decode(
+      CoreRequests.ResolveDerived(
+        CoreResolveDerivedArgs(
+          endpoint: transport.endpoint, table: table, id: id, column: column,
+          expectedUpdatedAt: expectedUpdatedAt)), transport: transport)
+  }
+
   func remoteRows(
     using transport: HubTransport, table: String, limit: Int = 50, cursor: String? = nil
   )

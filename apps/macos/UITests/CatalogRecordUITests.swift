@@ -4,6 +4,10 @@ import XCTest
 final class CatalogRecordUITests: XCTestCase {
   func testCatalogRuleFailureRetainsDraftAndReadOnlyMetadata() throws {
     continueAfterFailure = false
+    try XCTSkipUnless(
+      ProcessInfo.processInfo.environment["LIFE_UI_TEST_CATALOG_CLEAN_HOST"] == "1",
+      "Use a disposable clean host; normal startup must never inspect an enrolled user's credentials."
+    )
     let path = ProcessInfo.processInfo.environment["LIFE_UI_TEST_CATALOG_DATABASE"]
     try XCTSkipUnless(
       path != nil, "Prepare a fresh CatalogRecordAcceptanceTests external fixture first.")
@@ -14,6 +18,10 @@ final class CatalogRecordUITests: XCTestCase {
     app.launchArguments = ["--normal-startup", "-ApplePersistenceIgnoreState", "YES"]
     app.launch()
     app.activate()
+    if !app.windows.firstMatch.waitForExistence(timeout: 3) {
+      app.menuBars.menuBarItems["File"].click()
+      app.menuItems["New Window"].click()
+    }
     defer { app.terminate() }
     // Use the supported external-file picker, never replace the app's local replica.
     let open = app.buttons["Open a local database…"]
@@ -26,7 +34,9 @@ final class CatalogRecordUITests: XCTestCase {
     XCTAssertTrue(location.waitForExistence(timeout: 5))
     location.typeText(file.path)
     location.typeKey(.return, modifierFlags: [])
-    app.buttons["Open"].firstMatch.click()
+    let confirmOpen = app.sheets.buttons["Open"].firstMatch
+    XCTAssertTrue(confirmOpen.waitForExistence(timeout: 5))
+    confirmOpen.click()
     let table = app.buttons["sidebar-table-record_examples"]
     XCTAssertTrue(table.waitForExistence(timeout: 10))
     table.click()
@@ -64,7 +74,14 @@ final class CatalogRecordUITests: XCTestCase {
     replace(title, with: "Blocked")
     let detail = app.textFields["field-detail"]
     replace(detail, with: "Retained second edit")
-    app.buttons["catalog-rules"].click()
+    let form = app.scrollViews["record-form"]
+    let rules = app.buttons["catalog-rules"]
+    // macOS XCUI click can hit the sheet toolbar when a Form row is clipped.
+    form.scroll(byDeltaX: 0, deltaY: -400)
+    XCTAssertTrue(rules.isHittable)
+    XCTAssertTrue(
+      form.frame.contains(rules.frame), "Rules must be visible inside the form before clicking")
+    rules.click()
     XCTAssertTrue(app.staticTexts["Fixture title is blocked."].waitForExistence(timeout: 5))
     app.buttons["Back"].firstMatch.click()
     app.buttons["save-record"].click()
@@ -78,6 +95,7 @@ final class CatalogRecordUITests: XCTestCase {
     XCTAssertEqual(title.value as? String, "Blocked")
     XCTAssertEqual(detail.value as? String, "Retained second edit")
     capture(app, "catalog-rejected-draft")
+    form.scroll(byDeltaX: 0, deltaY: 400)
     replace(title, with: "Allowed")
     app.buttons["save-record"].click()
     let saved = app.buttons["Open Allowed"]

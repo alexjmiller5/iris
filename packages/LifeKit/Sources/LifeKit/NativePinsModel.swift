@@ -24,24 +24,37 @@ final class NativePinsModel {
     move: @escaping (CoreMoveTablePinArgs) async throws -> CoreSidebarPinList,
     isCurrent: @escaping () -> Bool = { true }, didCommit: @escaping () async -> Void = {}
   ) {
-    read = list; writePin = pin; writeUnpin = unpin; writeMove = move
-    self.isCurrent = isCurrent; self.didCommit = didCommit
+    read = list
+    writePin = pin
+    writeUnpin = unpin
+    writeMove = move
+    self.isCurrent = isCurrent
+    self.didCommit = didCommit
   }
   var active: [CoreSidebarPin] { snapshot?.pins.filter { $0.deletedAt == nil } ?? [] }
   private var current: Bool { valid && isCurrent() }
   var disabled: Bool {
     !current || busy || loading || error != nil || snapshot == nil || snapshot?.unavailable != nil
   }
-  func cancel() { valid = false; revision += 1; loading = false; busy = false; snapshot = nil }
+  func cancel() {
+    valid = false
+    revision += 1
+    loading = false
+    busy = false
+    snapshot = nil
+  }
 
   func refresh() async {
     guard current, !busy else { return }
-    revision += 1; let request = revision; loading = true
+    revision += 1
+    let request = revision
+    loading = true
     defer { if request == revision { loading = false } }
     do {
       let receipt = try await read()
       guard current, request == revision else { return }
-      snapshot = receipt; error = nil
+      snapshot = receipt
+      error = nil
     } catch {
       guard current, request == revision else { return }
       self.error = error.localizedDescription
@@ -49,12 +62,15 @@ final class NativePinsModel {
   }
   private func mutate(_ write: () async throws -> CoreSidebarPinList) async -> Bool {
     guard !disabled else { return false }
-    revision += 1; let request = revision; busy = true
+    revision += 1
+    let request = revision
+    busy = true
     defer { if request == revision { busy = false } }
     do {
       let receipt = try await write()
       guard current, request == revision else { return false }
-      snapshot = receipt; error = nil
+      snapshot = receipt
+      error = nil
       await didCommit()
       return true
     } catch {
@@ -64,7 +80,8 @@ final class NativePinsModel {
     }
   }
   @discardableResult func pin(_ table: String) async -> Bool {
-    let args = CorePinTableArgs(table: table, expectedUpdatedAt: snapshot?.pins.first { $0.tbl == table }?.updatedAt)
+    let args = CorePinTableArgs(
+      table: table, expectedUpdatedAt: snapshot?.pins.first { $0.tbl == table }?.updatedAt)
     return await mutate { try await writePin(args) }
   }
   @discardableResult func unpin(_ id: String) async -> Bool {
@@ -73,7 +90,8 @@ final class NativePinsModel {
     return await mutate { try await writeUnpin(args) }
   }
   @discardableResult func move(_ id: String, direction: String) async -> Bool {
-    let args = CoreMoveTablePinArgs(id: id, direction: direction,
+    let args = CoreMoveTablePinArgs(
+      id: id, direction: direction,
       expected: active.map { CorePinRevision(id: $0.id, updatedAt: $0.updatedAt) })
     return await mutate { try await writeMove(args) }
   }

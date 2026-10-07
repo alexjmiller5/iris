@@ -1,6 +1,11 @@
 import Foundation
 import Observation
 
+struct RecordResolution {
+  let record: WorkspaceRecord
+  let failures: [CoreDerivationFailure]
+}
+
 @Observable @MainActor
 final class RecordEditorModel {
   @ObservationIgnored private var markdownEditors: [Data: InlineMarkdownEditor] = [:]
@@ -74,10 +79,68 @@ final class RecordEditorModel {
   private(set) var failure: String?
   private(set) var violations: [Violation] = []
   private(set) var saving = false
+  private(set) var resolving = false
   private(set) var autosavePaused = false
   private var undoUnconfirmed = false
   private(set) var undoing = false
   var isTrashed: Bool { draft.original?["deleted_at"]?.text.nonempty != nil }
+
+  func resolveDerived(
+    isCurrent: @MainActor () -> Bool = { true },
+    collect: @MainActor () async throws -> Void = {},
+    operation: @MainActor (WorkspaceRecord) async throws -> RecordResolution
+  ) async throws {
+    guard !saving, !isNew, !isTrashed, !needsReview, isCurrent(),
+      let original = draft.original
+    else {
+      throw WorkspaceError(
+        message: "Open a saved record and finish its current operation before resolving.",
+        violations: [])
+    }
+    debounceTask?.cancel()
+    autosavePaused = true
+    saving = true
+    resolving = true
+    defer {
+      resolving = false
+      saving = false
+      resumeMarkdownEditors()
+    }
+    do {
+      try await collectMarkdownEditors(lock: true)
+      try await collect()
+      guard isCurrent(), !Task.isCancelled else {
+        throw WorkspaceError(
+          message: "The editor changed. Your draft has been kept.", violations: [])
+      }
+      try persist()
+      guard !dirty else {
+        throw WorkspaceError(
+          message: "Save or discard your changes before resolving. Your draft has been kept.",
+          violations: [])
+      }
+      let result = try await operation(original)
+      guard isCurrent(), !Task.isCancelled,
+        (result.record["id"]?.text).map({ Data($0.utf8) })
+          == (original["id"]?.text).map({ Data($0.utf8) }),
+        result.record["deleted_at"] == nil || result.record["deleted_at"] == .null
+      else {
+        throw WorkspaceError(
+          message: "The editor changed. Your draft has been kept.", violations: [])
+      }
+      // Preserve any input delivered while the request was pending. The readback
+      // becomes the new baseline; Resolve never sends this draft to the writer.
+      draft.reconcileUndo(result.record)
+      autosavePaused = dirty
+      failure = result.failures.isEmpty ? nil : result.failures.map(\.error).joined(separator: " ")
+      violations = []
+      try persist()
+    } catch {
+      failure = error.localizedDescription
+      try? persist()
+      throw error
+    }
+  }
 
   func performUndo(
     _ action: CoreUndoAction,

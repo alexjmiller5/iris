@@ -1,6 +1,6 @@
 # Configurable iOS widgets and capture controls
 
-Status: feature lineup approved; detailed design ready for review.
+Status: approved for implementation.
 
 ## Outcome and scope
 

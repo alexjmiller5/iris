@@ -23,8 +23,10 @@ struct WorkspaceSidebar: View {
     }
     Section("Tables") {
       ForEach(tables.ordinary) { table in
-        SidebarTableRow(table: table, selected: selectedTable == table.id, disabled: disabled,
-          pinDisabled: pins?.disabled ?? true, onPin: { Task { await pins?.pin(table.id) } }) {
+        SidebarTableRow(
+          table: table, selected: selectedTable == table.id, disabled: disabled,
+          pinDisabled: pins?.disabled ?? true, onPin: { Task { await pins?.pin(table.id) } }
+        ) {
           onOpen(NativeDestination(table: table.id))
         }
       }
@@ -32,8 +34,10 @@ struct WorkspaceSidebar: View {
     if !tables.system.isEmpty {
       DisclosureGroup("System tables", isExpanded: $systemExpanded) {
         ForEach(tables.system) { table in
-          SidebarTableRow(table: table, selected: selectedTable == table.id, disabled: disabled,
-          pinDisabled: pins?.disabled ?? true, onPin: { Task { await pins?.pin(table.id) } }) {
+          SidebarTableRow(
+            table: table, selected: selectedTable == table.id, disabled: disabled,
+            pinDisabled: pins?.disabled ?? true, onPin: { Task { await pins?.pin(table.id) } }
+          ) {
             onOpen(NativeDestination(table: table.id))
           }
         }
@@ -55,28 +59,28 @@ private struct SidebarTableRow: View {
 
   var body: some View {
     HStack {
-    Button(action: onOpen) {
-      Label {
-        VStack(alignment: .leading, spacing: 3) {
-          Text(table.id).foregroundStyle(.primary)
-          if let purpose = table.purpose {
-            Text(purpose).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-          }
-        }.frame(maxWidth: .infinity, alignment: .leading)
-      } icon: {
-        Image(systemName: "tablecells")
-      }.contentShape(.rect)
-    }
-    .buttonStyle(.plain)
-    .disabled(disabled)
-    .listRowBackground(selected ? Color.accentColor.opacity(0.12) : Color.clear)
-    .accessibilityAddTraits(selected ? .isSelected : [])
-    .accessibilityIdentifier("sidebar-table-" + table.id)
-    if let onPin {
-      Button(action: onPin) { Image(systemName: "pin").frame(minWidth: 32, minHeight: 36) }
-        .buttonStyle(.borderless).disabled(disabled || pinDisabled)
-        .accessibilityLabel("Pin \(table.id)").help("Pin table")
-    }
+      Button(action: onOpen) {
+        Label {
+          VStack(alignment: .leading, spacing: 3) {
+            Text(table.id).foregroundStyle(.primary)
+            if let purpose = table.purpose {
+              Text(purpose).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+          }.frame(maxWidth: .infinity, alignment: .leading)
+        } icon: {
+          Image(systemName: "tablecells")
+        }.contentShape(.rect)
+      }
+      .buttonStyle(.plain)
+      .disabled(disabled)
+      .listRowBackground(selected ? Color.accentColor.opacity(0.12) : Color.clear)
+      .accessibilityAddTraits(selected ? .isSelected : [])
+      .accessibilityIdentifier("sidebar-table-" + table.id)
+      if let onPin {
+        Button(action: onPin) { Image(systemName: "pin").frame(minWidth: 44, minHeight: 44) }
+          .buttonStyle(.borderless).disabled(disabled || pinDisabled)
+          .accessibilityLabel("Pin \(table.id)").help("Pin table")
+      }
     }
   }
 }

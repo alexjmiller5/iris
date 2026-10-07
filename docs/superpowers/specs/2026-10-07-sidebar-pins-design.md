@@ -1,6 +1,6 @@
 # Synced sidebar table pins
 
-Status: requested behavior accepted; detailed design ready for review.
+Status: approved for implementation.
 
 ## Outcome
 

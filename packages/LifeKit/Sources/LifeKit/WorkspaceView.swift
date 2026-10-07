@@ -52,6 +52,9 @@ public struct WorkspaceView: View {
       }
     }
     // Receiving a URL only retains it; navigation waits for an explicit Open.
+    .savedUndoShortcut(enabled: editor == nil && canFind && model.undoAction != nil) {
+      undoSavedChange()
+    }
     .onOpenURL { pendingLink.receive($0) }
     // An open window keeps its workspace context instead of spawning an empty one.
     .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
@@ -344,7 +347,8 @@ public struct WorkspaceView: View {
       guard canExportLoadedRows else { return }
       do {
         // Freeze persisted values before presentation or any asynchronous preparation.
-        recordExport = RecordExportTarget(snapshot: try model.captureLoadedRowsForExport(at: Date()))
+        recordExport = RecordExportTarget(
+          snapshot: try model.captureLoadedRowsForExport(at: Date()))
       } catch { model.error = error.localizedDescription }
     } label: {
       Label("Export loaded rows", systemImage: "square.and.arrow.up")
@@ -630,6 +634,16 @@ public struct WorkspaceView: View {
       .padding(32).frame(maxWidth: 560, alignment: .leading)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .navigationTitle("Life UI")
+    }
+  }
+
+  private func undoSavedChange() {
+    guard let action = model.undoAction else { return }
+    let context = model.editingContext
+    Task {
+      do { try await model.undo(action, context: context) } catch {
+        model.error = error.localizedDescription
+      }
     }
   }
 
@@ -1329,6 +1343,16 @@ private struct RecordEditor: View {
             Text(violation.message).font(.caption).foregroundStyle(.red)
           }
           HStack {
+            if let action = model.undoAction {
+              Button {
+                undoSavedChange(action)
+              } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+              }.disabled(
+                editor.saving || editor.recovery != nil || editor.needsReview || model.undoing
+              )
+              .accessibilityIdentifier("undo-inline")
+            }
             Button("Cancel") {
               withMarkdownSnapshot { if editor.dirty { discard = true } else { closeRecord() } }
             }
@@ -1447,24 +1471,7 @@ private struct RecordEditor: View {
           if let action = model.undoAction {
             Section {
               Button {
-                focusedField = nil
-                saving = true
-                Task {
-                  defer {
-                    editor.resumeMarkdownEditors()
-                    saving = false
-                  }
-                  do {
-                    try await editor.performUndo(
-                      action, isCurrent: editorIsCurrent,
-                      collect: { try await collectMarkdown(lock: true) }
-                    ) {
-                      try await model.undo(action, context: context)
-                    }
-                    editor.refreshMarkdownEditors()
-                    actionFailure = nil
-                  } catch { actionFailure = error.localizedDescription }
-                }
+                undoSavedChange(action)
               } label: {
                 Label("Undo last saved change", systemImage: "arrow.uturn.backward")
               }
@@ -1579,8 +1586,36 @@ private struct RecordEditor: View {
     }
   }
 
+  private func undoSavedChange(_ action: CoreUndoAction) {
+    focusedField = nil
+    saving = true
+    Task {
+      defer {
+        editor.resumeMarkdownEditors()
+        saving = false
+      }
+      do {
+        try await editor.performUndo(
+          action, isCurrent: editorIsCurrent,
+          collect: { try await collectMarkdown(lock: true) }
+        ) {
+          try await model.undo(action, context: context)
+        }
+        editor.refreshMarkdownEditors()
+        actionFailure = nil
+      } catch { actionFailure = error.localizedDescription }
+    }
+  }
+
   private var editorContent: some View {
     editorFields
+      .savedUndoShortcut(
+        enabled: focusedField == nil && !editor.saving && !saving
+          && editor.recovery == nil && !editor.needsReview && !model.undoing
+          && model.undoAction != nil
+      ) {
+        if let action = model.undoAction { undoSavedChange(action) }
+      }
       .onChange(of: scenePhase) { _, phase in
         if phase == .inactive { flushInBackground() }
       }
@@ -1648,7 +1683,7 @@ private struct RecordEditor: View {
           }
         }
       }
-      .disabled(saving || editor.undoing || referenceNavigation?.loading == true)
+      .disabled(saving || editor.undoing || editor.resolving || referenceNavigation?.loading == true)
       .interactiveDismissDisabled(
         saving || editor.saving || editor.dirty || editor.recovery != nil
           || editor.draft.fields.contains(where: { $0.type == "markdown" })
@@ -1749,6 +1784,23 @@ private struct RecordEditor: View {
           )
           .textSelection(.enabled)
         }
+      }
+      if field.property["derived_by"]?.text.hasPrefix("http:") == true,
+        field.property["deprecated"]?.isTrue != true
+      {
+        Button("Resolve \(field.label)") {
+          Task {
+            do {
+              try await editor.resolveDerived(isCurrent: editorIsCurrent) { original in
+                try await model.resolveDerived(
+                  column: field.id, original: original, context: context)
+              }
+            } catch { actionFailure = error.localizedDescription }
+          }
+        }
+        .accessibilityIdentifier("resolve-\(field.id)")
+        .disabled(
+          editor.saving || editor.isTrashed || editor.isNew || !model.canWrite || model.syncing)
       }
     }
   }
