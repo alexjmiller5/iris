@@ -1456,9 +1456,11 @@ final class WorkspaceModel {
       guard generation == workspaceGeneration, isCurrent(), !Task.isCancelled else {
         throw CancellationError()
       }
-      // All fallible preparation precedes the synchronous Keychain+workspace commit.
-      if remember { try credentialStore.save(canonical) }
-      try localSelection.clear()
+      // File preparation precedes the synchronous Keychain+workspace commit.
+      // A failed credential save restores the previous explicit file choice.
+      try localSelection.clear {
+        if remember { try credentialStore.save(canonical) }
+      }
     } catch {
       try? await prepared.close()
       throw error

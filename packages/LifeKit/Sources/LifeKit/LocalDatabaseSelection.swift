@@ -42,6 +42,25 @@ struct LocalDatabaseSelection {
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
   }
 
+  /// Clear the file choice before installing a credential, restoring the exact
+  /// bookmark if secure storage refuses the candidate. No fallible file work
+  /// follows a successful credential installation.
+  func clear(install: () throws -> Void) throws {
+    let previous =
+      FileManager.default.fileExists(atPath: file.path)
+      ? try Data(contentsOf: file) : nil
+    try clear()
+    do {
+      try install()
+    } catch {
+      if let previous {
+        try previous.write(to: file, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+      }
+      throw error
+    }
+  }
+
   func clear() throws {
     if FileManager.default.fileExists(atPath: file.path) {
       try FileManager.default.removeItem(at: file)
