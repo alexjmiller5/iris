@@ -8,13 +8,17 @@
 
   @Suite(.serialized) @MainActor
   struct SharedLocalDatabaseTests {
-    private func fixture() async throws -> (URL, URL, WorkspaceModel) {
+    private func fixture(wal: Bool = true) async throws -> (URL, URL, WorkspaceModel) {
       let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
       let file = root.appendingPathComponent("life.db")
       let seed = try NativeWorkspace(path: file.path)
       try await seed.createSample()
       try await seed.close()
+      // The CLI establishes WAL before the UI opens its shared database.
+      // Switching journal modes during a UI transaction requires an exclusive
+      // lock and fails immediately, independently of the ordinary busy timeout.
+      if wal { _ = try await sql(file, "SELECT 1") }
       let model = WorkspaceModel(
         localURL: { root.appendingPathComponent("local.sqlite") },
         credentialStore: MemoryHubCredentials(nil))
@@ -71,8 +75,7 @@
     @Test func separateProcessWriteLetsAnAdmittedUITransactionFinish() async throws {
       let (root, file, model) = try await fixture()
       defer { try? FileManager.default.removeItem(at: root) }
-      // Establish the CLI journal mode before holding the write transaction.
-      _ = try await sql(file, "SELECT 1")
+      #expect(try await sql(file, "PRAGMA journal_mode") == "wal")
       var configuration = Configuration()
       configuration.allowsUnsafeTransactions = true
       let transaction = try DatabaseQueue(path: file.path, configuration: configuration)
@@ -154,11 +157,13 @@
       #expect(!FileManager.default.fileExists(atPath: file.path))
     }
     @Test func externalCatalogChangesRefreshWithoutDiscardingTheSelectedTable() async throws {
-      let (root, file, model) = try await fixture()
+      // Also cover an idle legacy file whose external writer first enables WAL.
+      let (root, file, model) = try await fixture(wal: false)
       defer { try? FileManager.default.removeItem(at: root) }
+      // Enable WAL while the already-open UI is idle, before starting its read loop.
+      _ = try await sql(file, "UPDATE catalog_tables SET purpose='Changed by CLI' WHERE id='notes'")
       let observing = Task { await model.runLocalObservation(interval: .milliseconds(20)) }
       defer { observing.cancel() }
-      _ = try await sql(file, "UPDATE catalog_tables SET purpose='Changed by CLI' WHERE id='notes'")
       for _ in 0..<100
       where model.tables.first(where: { $0["id"]?.text == "notes" })?["purpose"]?.text
         != "Changed by CLI"
