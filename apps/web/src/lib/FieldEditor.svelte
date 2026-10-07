@@ -86,6 +86,28 @@
 		return null;
 	}
 	const link = $derived(openLink(property.type, value));
+	const recordLink = $derived(
+		property.type === 'text' &&
+			value.length <= 4096 &&
+			/^[A-Za-z_][A-Za-z0-9_]*\/[^\s/\\?#\u0000-\u001f\u007f]+$/.test(value)
+	);
+	let opening = $state(false);
+	let openError = $state('');
+	async function openRecord() {
+		if (!onopenlink || opening) return;
+		const original = value;
+		opening = true;
+		openError = '';
+		try {
+			if (!(await onopenlink(original)) && value === original)
+				openError = 'This record is not available in this workspace.';
+		} catch (error) {
+			if (value === original && !(error instanceof DOMException && error.name === 'AbortError'))
+				openError = error instanceof Error ? error.message : 'Could not open this record.';
+		} finally {
+			opening = false;
+		}
+	}
 </script>
 
 <div class="field-control">
@@ -229,6 +251,12 @@
 					? 'Call'
 					: 'Open website'}</a
 		>
+	{/if}
+	{#if recordLink && onopenlink}
+		<button class="field-link" type="button" disabled={opening} onclick={openRecord}
+			>{opening ? 'Opening record…' : 'Open record'}</button
+		>
+		{#if openError}<p role="alert">{openError}</p>{/if}
 	{/if}
 	<button
 		class="clear"

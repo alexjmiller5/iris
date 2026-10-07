@@ -102,6 +102,15 @@ struct NativeFieldValueTests {
     #expect(NativeFieldLink.destination(type: "phone", value: raw) == nil)
   }
 
+  @Test func recordIdentityCandidatesKeepLocalNavigationSeparateFromURLs() {
+    #expect(NativeFieldLink.isRecordReference("items/Exact-雪"))
+    for value in [
+      "text", "items/", "/items/id", "items/id/extra", "items/id?x", "https://example.test",
+    ] {
+      #expect(!NativeFieldLink.isRecordReference(value))
+    }
+  }
+
   @Test func ordinaryTextNeverAcquiresAnAutomaticLinkAction() {
     #expect(NativeFieldLink.destination(type: "text", value: "https://example.test") == nil)
   }

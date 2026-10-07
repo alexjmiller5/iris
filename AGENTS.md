@@ -52,7 +52,9 @@ schema and permitted sync scope. View names and personal lifecycle filters are r
   image metadata before decoding. Browser decoder allocation remains platform-owned.
   External images stay inert. File viewing never rewrites Markdown.
   Source links resolve through core `resolveSourceLink` and whole-record import
-  provenance, then ordinary fresh-row navigation. Unmapped URLs retain an explicit
+  provenance, then ordinary fresh-row navigation. Text fields containing explicit
+  `table/id` identities offer Open record through the same guarded resolver;
+  unavailable targets preserve the field and never become external navigation. Unmapped URLs retain an explicit
   original-link action. Cancel or close disposes requests and file resources.
 - `scripts`: build and fixture test operations. No credentials or data exports.
 
@@ -309,6 +311,19 @@ advertisement are verified. DTOs and the pure inverse planner do not authorize
 client previews or writes. Keep the original approval request/key after an uncertain
 response; only a matching committed receipt, purged result or authenticated durable
 `not_committed` result can settle it. HTTP classification belongs to the core adapter.
+
+Web related-change review uses the separate `bounded-changeset-proposals-v1`
+capability and canonical core client. Only an enrolled USER approval connection
+can open it; drafts and pending local edits must be resolved/synced first. The
+panel reads a supplied proposal ID, displays the entire frozen set and never
+writes SQL or edits its operations. Its journal captures endpoint, deployment,
+session, principal, full proposal and original request before dispatch. Closing,
+auth failure or an uncertain response retains the same key; only a validated
+whole-set receipt, purge or durable negative result clears it. A completed hub
+approval requires ordinary sync to update local rows. Shared IndexedDB storage
+uses strict durability and compare-delete, with immutable captured scope codecs.
+Native multi-row review is not mounted. Single-row presentation retains its
+separate existing boundary.
 
 Native recovery journals are private, atomic and isolated per editor. Persist
 the latest draft and any unacknowledged write before awaiting its receipt.
