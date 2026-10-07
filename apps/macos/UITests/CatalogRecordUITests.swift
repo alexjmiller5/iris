@@ -34,7 +34,9 @@ final class CatalogRecordUITests: XCTestCase {
     XCTAssertTrue(location.waitForExistence(timeout: 5))
     location.typeText(file.path)
     location.typeKey(.return, modifierFlags: [])
-    app.buttons["Open"].firstMatch.click()
+    let confirmOpen = app.sheets.buttons["Open"].firstMatch
+    XCTAssertTrue(confirmOpen.waitForExistence(timeout: 5))
+    confirmOpen.click()
     let table = app.buttons["sidebar-table-record_examples"]
     XCTAssertTrue(table.waitForExistence(timeout: 10))
     table.click()
