@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "cb45e00f68cd4cc4e8743ed76df07a09ae5fbcabc33862a71d753da2783532f6";
+export declare const CORE_CONTRACT_HASH = "ed3648cd960c6eef6f1bca248f5928c14b4fc3ce7b697aa3a56db14dff2ee208";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -386,6 +386,7 @@ export type HubCapabilities = {
     subscription_features?: "scalar-lifecycle-v1";
     governance?: GovernanceCapability;
     rowCreation?: RowCreationCapability;
+    changesets?: ChangesetCapability;
 };
 export type HubSession = {
     name: string;
@@ -710,6 +711,111 @@ export type DerivationFailure = {
 export type ResolveDerivedResult = {
     derived: number;
     failed: DerivationFailure[];
+};
+export type ChangesetCreate = {
+    kind: "create";
+    table: string;
+    id: string;
+    expected_revision: null;
+    values: Row;
+};
+export type ChangesetPatch = {
+    kind: "patch";
+    table: string;
+    id: string;
+    expected_revision: Revision;
+    values: Row;
+};
+export type ChangesetSoftDelete = {
+    kind: "soft_delete";
+    table: string;
+    id: string;
+    expected_revision: Revision;
+};
+export type ChangesetOperation = ChangesetCreate | ChangesetPatch | ChangesetSoftDelete;
+export type ChangesetReadSet = {
+    table: string;
+    where: Record<string, FilterValue>;
+    expected: ChangesetReadMember[];
+};
+export type ChangesetInput = {
+    operations: ChangesetOperation[];
+    reads: ChangesetReadSet[];
+};
+export type ChangesetChange = {
+    table: string;
+    id: string;
+    kind: "create" | "patch" | "soft_delete";
+    before: Row | null;
+    after: Row | null;
+};
+export type ChangesetPreview = {
+    changes: ChangesetChange[];
+    previewToken: string;
+    expiresAt: string;
+};
+export type ChangesetProposal = {
+    id: string;
+    version: string;
+    state: ProposalState;
+    input: ChangesetInput;
+    changes: ChangesetChange[];
+    dependencies: string;
+    proposedBy: Actor;
+    claimedOrigin: string | null;
+    createdAt: string;
+    updatedAt: string;
+};
+export type ChangesetRowReceipt = {
+    table: string;
+    id: string;
+    kind: "create" | "patch" | "soft_delete";
+    revision: Revision;
+};
+export type ChangesetApproval = {
+    operationId: string;
+    proposalId: string;
+    proposalVersion: string;
+    rows: ChangesetRowReceipt[];
+    historyEventIds: string[];
+    approvedBy: Actor;
+    committedAt: string;
+};
+export type ChangesetPreviewSuccess = {
+    kind: "success";
+    value: ChangesetPreview;
+};
+export type ChangesetPreviewResult = ChangesetPreviewSuccess | UnavailableResult | PurgedResult | MutationError | TransportError;
+export type ChangesetProposalSuccess = {
+    kind: "success";
+    value: ChangesetProposal;
+};
+export type ChangesetProposalResult = ChangesetProposalSuccess | UnavailableResult | PurgedResult | MutationError | TransportError;
+export type ChangesetApprovalSuccess = {
+    kind: "success";
+    value: ChangesetApproval;
+};
+export type ChangesetApprovalResult = ChangesetApprovalSuccess | UnavailableResult | PurgedResult | MutationError | TransportError;
+export type ChangesetLimits = {
+    maxOperations: number;
+    maxTables: number;
+    maxBytes: number;
+    maxReadSets: number;
+    maxMembershipRows: number;
+    maxReadRows: number;
+    previewTtlSeconds: number;
+};
+export type ChangesetCapability = {
+    protocol: "bounded-changeset-proposals-v1";
+    principal: Actor;
+    authority: GovernanceAuthority;
+    limits: ChangesetLimits;
+    deploymentId: string;
+    sessionId: string;
+};
+export type ChangesetReadMember = {
+    id: string;
+    revision: Revision;
 };
 export interface CoreOperations {
     catalog: {
