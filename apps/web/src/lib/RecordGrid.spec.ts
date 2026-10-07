@@ -98,11 +98,9 @@ test('configured action columns reorder data and keep the first visible data cel
 			onduplicate: async () => false
 		} as never
 	}).body;
-	expect([...window.document.querySelectorAll('th')].map((e) => e.textContent?.trim())).toEqual([
-		'Close item',
-		'State',
-		'Title'
-	]);
+	expect(
+		[...window.document.querySelectorAll('th:not(.selection)')].map((e) => e.textContent?.trim())
+	).toEqual(['Close item', 'State', 'Title']);
 	expect(window.document.querySelector('[data-column="state"]')?.getAttribute('tabindex')).toBe(
 		'0'
 	);

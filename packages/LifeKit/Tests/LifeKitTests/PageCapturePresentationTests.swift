@@ -8,6 +8,21 @@ import Testing
 
 @MainActor
 struct PageCapturePresentationTests {
+  @Test func htmlPreviewUsesVerifiedArtifactAndClosesOnDismissal() async throws {
+    let bytes = Data("<!doctype html><h1>Readable archive</h1>".utf8)
+    let model = PageCapturePresentation(attempt: try captureWithBytes(bytes)) { _, _ in
+      try RetainedFile(data: bytes, contentType: "text/html", name: "page.html")
+    }
+    defer { model.cancel() }
+    await model.startPreview(.html)?.value
+    let renderer = try #require(model.htmlRenderer)
+    #expect(renderer.webView.configuration.websiteDataStore.isPersistent == false)
+    #expect(!renderer.webView.configuration.defaultWebpagePreferences.allowsContentJavaScript)
+    #expect(model.previewData == nil && !model.isLoading && model.error == nil)
+    model.cancel()
+    #expect(model.htmlRenderer == nil && model.file == nil)
+  }
+
   @Test func previewActionProducesBoundedRasterFromVerifiedPNG() async throws {
     let bytes = try capturePNGBytes()
     let model = PageCapturePresentation(attempt: try captureWithBytes(bytes, kind: "png")) { _, _ in

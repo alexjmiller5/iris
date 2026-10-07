@@ -13,6 +13,51 @@
     .enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_CAPTURE_SAVE"] == "1"))
   @MainActor
   struct PageCaptureNativeAcceptanceTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_CAPTURE_PREVIEW"] == "1"))
+    func mountedHTMLCanReturnToScreenshotAndDismiss() async throws {
+      let png = try capturePNGBytes()
+      let html = Data(
+        "<!doctype html><h1>Readable mounted archive</h1><p>Offline fixture details.</p>".utf8)
+      var row = try captureRecord()
+      for (kind, bytes) in [("png", png), ("html", html)] {
+        row[kind + "_bytes"] = .number(Double(bytes.count))
+        row[kind + "_sha256"] = .string(
+          SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
+      }
+      let model = PageCapturePresentation(attempt: try PageCapture(record: row)) { key, _ in
+        let image = key.hasSuffix("png")
+        return try RetainedFile(
+          data: image ? png : html, contentType: image ? "image/png" : "text/html",
+          name: image ? "page.png" : "page.html")
+      }
+      let window = NSWindow(
+        contentRect: NSRect(x: 100, y: 100, width: 760, height: 850),
+        styleMask: [.titled, .closable], backing: .buffered, defer: false)
+      window.isReleasedWhenClosed = false
+      var finished = false
+      var sawHTML = false
+      var returnedToPNG = false
+      window.title = "Mounted capture preview"
+      window.contentView = NSHostingView(
+        rootView: CaptureAcceptanceHost(model: model) { finished = true })
+      window.makeKeyAndOrderFront(nil)
+      NSApplication.shared.activate(ignoringOtherApps: true)
+      defer {
+        model.cancel()
+        window.close()
+      }
+      FileHandle.standardError.write(
+        Data("CAPTURE_PREVIEW_READY pid=\(ProcessInfo.processInfo.processIdentifier)\n".utf8))
+      let deadline = ContinuousClock.now.advanced(by: .seconds(90))
+      while !finished && ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(20))
+        if model.htmlRenderer != nil { sawHTML = true }
+        if sawHTML && model.previewData != nil { returnedToPNG = true }
+      }
+      #expect(finished && sawHTML && returnedToPNG)
+      #expect(model.htmlRenderer == nil && model.file == nil)
+    }
+
     @Test func saveCancelRetryAndReadback() async throws {
       try #require(
         Bundle.main.bundleURL.pathExtension == "app",

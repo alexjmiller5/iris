@@ -14,6 +14,7 @@
 	} from './record-grid';
 	let {
 		rows,
+		selectedIds = $bindable([]),
 		properties,
 		widths,
 		busy,
@@ -40,6 +41,7 @@
 		onaction = async () => {}
 	}: {
 		rows: Row[];
+		selectedIds?: string[];
 		actions?: RowAction[];
 		actionLayout?: ViewLayoutItem[];
 		canRunAction?: boolean;
@@ -115,8 +117,19 @@
 				: item.id === properties[0]?.col && !actionLayout
 					? 280
 					: 180;
-	const layout = $derived(gridItems.map((i) => `${itemWidth(i)}px`).join(' '));
-	const totalWidth = $derived(gridItems.reduce((sum, i) => sum + itemWidth(i), 0));
+	const layout = $derived('44px ' + gridItems.map((i) => `${itemWidth(i)}px`).join(' '));
+	const totalWidth = $derived(44 + gridItems.reduce((sum, i) => sum + itemWidth(i), 0));
+	const loadedIds = $derived(
+		rows.map((row) => row.id).filter((id): id is string => typeof id === 'string')
+	);
+	const allSelected = $derived(
+		loadedIds.length > 0 && loadedIds.every((id) => selectedIds.includes(id))
+	);
+	function selectRow(id: string, checked: boolean) {
+		selectedIds = checked
+			? [...new Set([...selectedIds, id])]
+			: selectedIds.filter((value) => value !== id);
+	}
 	let runningAction = $state(false);
 	async function runAction(id: string, row: Row) {
 		if (busy || runningAction || !canRunAction) return;
@@ -313,12 +326,23 @@
 			role="grid"
 			aria-label="Records"
 			aria-rowcount={rows.length + 1}
-			aria-colcount={gridItems.length}
+			aria-colcount={gridItems.length + 1}
 			style:width={`${totalWidth}px`}
 		>
 			<thead
 				><tr style:grid-template-columns={layout}
-					>{#each gridItems as item, index}<th role="columnheader" class:pinned={index === 0}
+					><th role="columnheader" class="selection"
+						><input
+							type="checkbox"
+							aria-label="Select loaded rows"
+							disabled={busy || !!edit || !loadedIds.length}
+							checked={allSelected}
+							onchange={(event) => {
+								selectedIds = event.currentTarget.checked ? [...loadedIds] : [];
+							}}
+						/></th
+					>
+					{#each gridItems as item, index}<th role="columnheader" class:pinned={index === 0}
 							>{item.kind === 'action'
 								? actions.find((a) => a.id === item.id)?.label
 								: item.id === properties[0]?.col && !actionLayout
@@ -345,6 +369,17 @@
 				})}
 			>
 				{#snippet children(row)}
+					<td role="gridcell" class="selection"
+						><input
+							type="checkbox"
+							aria-label={`Select record ${row.id}`}
+							disabled={busy || !!edit || typeof row.id !== 'string'}
+							checked={selectedIds.includes(String(row.id))}
+							onchange={(event) => {
+								if (typeof row.id === 'string') selectRow(row.id, event.currentTarget.checked);
+							}}
+						/></td
+					>
 					{#each gridItems as item, columnIndex (`${item.kind}:${item.id}`)}
 						{#if item.kind === 'action'}
 							{@const action = actions.find((a) => a.id === item.id)!}
