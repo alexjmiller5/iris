@@ -40,7 +40,9 @@ final class PresentationUITests: XCTestCase {
       picker.click()
       app.menuItems[name].click()
       if name == "Calendar" {
-        app.popUpButtons["End date"].click()
+        let endDate = app.popUpButtons["calendar-end-date"]
+        XCTAssertTrue(endDate.waitForExistence(timeout: 5))
+        endDate.click()
         app.menuItems["Ends"].click()
       }
       app.buttons["apply-view-options"].click()

@@ -22,10 +22,8 @@ if (source !== "--native") {
   const sourcePath = resolve(source);
   const sourceRoot = resolve(dirname(sourcePath), '../..');
   const schemaPath = join(sourceRoot, 'core/contract/core.json');
-  const viewSchemaPath = join(sourceRoot, 'core/schema/saved-views.json');
   const schemaNames = (await readdir(join(sourceRoot, 'core/schema'))).filter(name => name.endsWith('.json')).sort();
   await mkdir(join(root, 'packages/core/schema'), { recursive: true });
-  await copyFile(viewSchemaPath, join(root, 'packages/core/schema/saved-views.json'));
   for (const name of schemaNames) await copyFile(join(sourceRoot, 'core/schema', name), join(root, 'packages/core/schema', name));
   const fixtureDir = join(root, 'packages/LifeKit/Tests/LifeKitTests/Fixtures');
   await mkdir(fixtureDir, { recursive: true });

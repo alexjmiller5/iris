@@ -12,6 +12,11 @@ export interface WorkspaceSnapshot {
 	undo: CoreResult<'undoStatus'>['action'];
 }
 export interface DatabaseOperations {
+	listSidebarPins: { args: CoreArgs<'listSidebarPins'>; result: CoreResult<'listSidebarPins'> };
+	pinTable: { args: CoreArgs<'pinTable'>; result: CoreResult<'pinTable'> };
+	unpinTable: { args: CoreArgs<'unpinTable'>; result: CoreResult<'unpinTable'> };
+	moveTablePin: { args: CoreArgs<'moveTablePin'>; result: CoreResult<'moveTablePin'> };
+
 	runRowAction: { args: CoreArgs<'runRowAction'>; result: CoreResult<'runRowAction'> };
 	enrollmentEndpoint: { args: { endpoint: string }; result: string };
 	enrollmentApproval: {

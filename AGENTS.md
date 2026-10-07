@@ -3,6 +3,13 @@
 Local-first web and native Apple clients for catalogued life-data databases.
 Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
 
+Preferred table views are synced IDs through canonical `getViewDefault`/`setViewDefault`.
+Plain table navigation applies the preference; explicit view or record links win.
+Unavailable targets show a catalog-default fallback without rewriting stored views.
+Preference changes use displayed revisions, the ordinary writer and Undo. Local/demo
+setup uses the canonical `view-defaults/v1` manifest; replicas require operator-provisioned
+schema and permitted sync scope. View names and personal lifecycle filters are runtime data.
+
 ## Layout and contracts
 
 - `apps/web`: Svelte 5/SvelteKit, Tailwind 4, Cloudflare Worker static assets.
@@ -21,6 +28,12 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   bundle hash without writes. Change the schema in life-data and regenerate the
   bundle; never hand-edit DTOs. Swift `CoreRequests` and TS operation pairs share
   these shapes. Native and Worker boundaries reject a local contract hash mismatch.
+- Sidebar table pins use core's ordinary synced `sidebar_pins` rows. NativePinsModel
+  and the web SidebarPins controller retain only acknowledged display state;
+  never add localStorage/UserDefaults pin authority. Pin controls use selected
+  revisions and existing guarded navigation. App-owned sample/local databases
+  may install the packaged manifest; enrolled replicas receive logged schema
+  through sync. Web refreshes pins on visibility return, not dialog focus.
 - `scripts/native-core.ts`: native adapter over the generated shared core.
   It must not become a second validator, view compiler or sync implementation.
 - `apps/web/vite.graph.config.ts`: self-contained native graph HTML built from

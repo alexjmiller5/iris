@@ -79,7 +79,7 @@ public struct WorkspaceView: View {
               Label("Schema graph", systemImage: "point.3.connected.trianglepath.dotted")
             }.disabled(!canFind).accessibilityIdentifier("schema-graph-sidebar")
             WorkspaceSidebar(
-              tables: NativeSidebarTables(model.tables), recents: model.recents,
+              tables: NativeSidebarTables(model.tables, pins: model.pins?.active ?? []), recents: model.recents, pins: model.pins,
               selectedTable: model.table, disabled: !canFind,
               error: navigationError,
               onOpen: { openDestination($0) })
@@ -142,6 +142,7 @@ public struct WorkspaceView: View {
     }
     .task(id: "\(model.workspaceGeneration)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
+      await model.pins?.refresh()
       await model.recents?.refresh()
       guard !Task.isCancelled else { return }
       await model.runAutomaticSync()
@@ -149,8 +150,10 @@ public struct WorkspaceView: View {
     .onChange(of: model.syncing) {
       if !model.syncing {
         let recents = model.recents
+        let pins = model.pins
         let inbox = rejectionInbox
         Task {
+          await pins?.refresh()
           await recents?.refresh()
           await inbox?.refresh()
         }
