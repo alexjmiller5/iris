@@ -21,6 +21,12 @@ Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
   bundle hash without writes. Change the schema in life-data and regenerate the
   bundle; never hand-edit DTOs. Swift `CoreRequests` and TS operation pairs share
   these shapes. Native and Worker boundaries reject a local contract hash mismatch.
+- Sidebar table pins use core's ordinary synced `sidebar_pins` rows. NativePinsModel
+  and the web SidebarPins controller retain only acknowledged display state;
+  never add localStorage/UserDefaults pin authority. Pin controls use selected
+  revisions and existing guarded navigation. App-owned sample/local databases
+  may install the packaged manifest; enrolled replicas receive logged schema
+  through sync. Web refreshes pins on visibility return, not dialog focus.
 - `scripts/native-core.ts`: native adapter over the generated shared core.
   It must not become a second validator, view compiler or sync implementation.
 - `apps/web/vite.graph.config.ts`: self-contained native graph HTML built from
@@ -55,6 +61,17 @@ request stamp; full refreshes invalidate the prefix before awaiting work. Native
 workspace menus open the system destination picker, with CSV metadata saved
 separately from the same capture. Exports contain no attachment bytes and provide
 no restore operation.
+
+Native record actions can explicitly open a saved row as a Page Archiver attempt.
+The viewer validates canonical metadata without table-name inference, keeps the
+selected historical attempt immutable, and uses the current enrolled host's file
+reader. Verify declared size, MIME and SHA-256 before preview or save. PNG is the
+default bounded preview; partial warnings and unsupported original URL text remain
+visible. Preview refusal does not invalidate the retained capture. Save PNG/HTML
+uses the system destination picker with exact original bytes, cancel and retry;
+opening the viewer never flushes an editor draft. Workspace changes cancel its
+requests. Archived HTML rendering remains unmounted pending native interaction
+acceptance; saving HTML does not automatically open it.
 
 The supported service dependency is the life-data hub API with independently
 minted client credentials. Never bind its D1/R2 or borrow infrastructure tokens.

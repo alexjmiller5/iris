@@ -203,8 +203,11 @@ final class RecordPolishUITests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Short fixture title."))
         .firstMatch.waitForExistence(timeout: 5))
-    // Dismiss only this owned property-help popover.
-    title.tap()
+    // The title is behind the help popover; use its system dismissal region.
+    let dismissHelp = app.otherElements["PopoverDismissRegion"]
+    XCTAssertTrue(dismissHelp.waitForExistence(timeout: 5))
+    dismissHelp.tap()
+    XCTAssertFalse(dismissHelp.exists)
     let state = app.buttons["field-state"]
     state.tap()
     let ready = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Ready for review."))

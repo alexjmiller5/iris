@@ -342,6 +342,24 @@ public final class NativeWorkspace {
   public func search(_ args: CoreSearchArgs) async throws -> [CoreSearchHit] {
     try await decode(CoreRequests.Search(args))
   }
+  public func listSidebarPins() async throws -> CoreSidebarPinList {
+    try await decode(CoreRequests.ListSidebarPins(CoreEmptyArgs()))
+  }
+  public func pinTable(_ args: CorePinTableArgs) async throws -> CoreSidebarPinList {
+    try await decode(CoreRequests.PinTable(args))
+  }
+  public func unpinTable(_ args: CoreUnpinTableArgs) async throws -> CoreSidebarPinList {
+    try await decode(CoreRequests.UnpinTable(args))
+  }
+  public func moveTablePin(_ args: CoreMoveTablePinArgs) async throws -> CoreSidebarPinList {
+    try await decode(CoreRequests.MoveTablePin(args))
+  }
+  @discardableResult public func prepareLocalPins() async throws -> Bool {
+    guard case .bool(let created) = try await call("prepareLocalPins") else {
+      throw WorkspaceError(message: "Invalid pin setup response.", violations: [])
+    }
+    return created
+  }
   public func listViews(table: String) async throws -> CoreSavedViewList {
     try await decode(CoreRequests.ListViews(CoreListViewsArgs(table: table)))
   }
