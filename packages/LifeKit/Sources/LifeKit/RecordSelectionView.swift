@@ -164,7 +164,7 @@ struct RecordSelectionView: View {
       let operation = try prepare(ids)
       batch = operation
       error = nil
-      operation.start(values: patch)
+      _ = operation.start(values: patch)
     } catch { self.error = error.localizedDescription }
   }
   private func resultLabel(_ status: BulkRecordResult.Status) -> String {

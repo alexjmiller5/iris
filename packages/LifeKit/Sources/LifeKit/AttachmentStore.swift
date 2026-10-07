@@ -37,12 +37,13 @@ actor AttachmentStore {
       throw Failure.invalidMetadata
     }
     let id = UUID().uuidString.lowercased()
-    let directory = root.appendingPathComponent(id, isDirectory: true)
     try FileManager.default.createDirectory(
       at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-    try FileManager.default.createDirectory(
-      at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+    let directory = try FileManager.default.url(
+      for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: root, create: true)
     do {
+      try FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: directory.path)
       let bytesURL = directory.appendingPathComponent("bytes")
       guard
         FileManager.default.createFile(
@@ -68,7 +69,8 @@ actor AttachmentStore {
         id: id, key: "attachments/" + id, name: name, contentType: contentType,
         bytes: count, sha256: digest.finalize().map { String(format: "%02x", $0) }.joined(),
         state: .queued)
-      try persist(entry)
+      try persist(entry, directory: directory)
+      try FileManager.default.moveItem(at: directory, to: root.appendingPathComponent(id))
       return entry
     } catch {
       try? FileManager.default.removeItem(at: directory)
@@ -143,8 +145,9 @@ actor AttachmentStore {
     }
   }
 
-  private func persist(_ entry: StagedAttachment) throws {
-    let url = root.appendingPathComponent(entry.id).appendingPathComponent("metadata.json")
+  private func persist(_ entry: StagedAttachment, directory: URL? = nil) throws {
+    let url = (directory ?? root.appendingPathComponent(entry.id)).appendingPathComponent(
+      "metadata.json")
     try JSONEncoder().encode(entry).write(to: url, options: .atomic)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
   }

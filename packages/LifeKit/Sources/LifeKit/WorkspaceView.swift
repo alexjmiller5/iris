@@ -1944,17 +1944,26 @@ private struct RecordEditor: View {
         }
       } else {
         LabeledContent {
-          FieldInput(
-            field: field, workspace: context?.workspace, transport: model.imageTransport,
-            focus: $focusedField,
-            editor: editor, onOpenReference: openReference,
-            isCurrent: editorIsCurrent,
-            referenceAvailability: referenceAvailability(field),
-            value: Binding(
-              get: { editor.draft.values[field.id] ?? "" },
-              set: { editor.setValue($0, for: field.id) })
-          )
-          .labelsHidden()
+          if field.type == "file" {
+            AttachmentPropertyField(
+              value: Binding(
+                get: { editor.draft.values[field.id] ?? "" },
+                set: { editor.setValue($0, for: field.id) }),
+              label: field.label, attachments: model.attachments, isCurrent: editorIsCurrent,
+              resolve: { try await model.retainedFile($0, context: context) })
+          } else {
+            FieldInput(
+              field: field, workspace: context?.workspace, transport: model.imageTransport,
+              focus: $focusedField,
+              editor: editor, onOpenReference: openReference,
+              isCurrent: editorIsCurrent,
+              referenceAvailability: referenceAvailability(field),
+              value: Binding(
+                get: { editor.draft.values[field.id] ?? "" },
+                set: { editor.setValue($0, for: field.id) })
+            )
+            .labelsHidden()
+          }
         } label: {
           fieldLabel(field)
         }
@@ -2051,6 +2060,8 @@ private struct RecordEditor: View {
       presentationIsCurrent() && model?.workspaceGeneration == generation
         && context?.workspace === model?.client && context?.table == model?.table
     }
+    holder.attachments = model.attachments
+    holder.attachmentsAreCurrent = current
     holder.configureFileActions(
       resolveFile: { [weak model] key in
         guard let model, current() else { throw CancellationError() }
