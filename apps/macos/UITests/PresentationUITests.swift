@@ -38,7 +38,7 @@ final class PresentationUITests: XCTestCase {
       object: app.buttons["cancel-destination"])
     XCTAssertEqual(XCTWaiter.wait(for: [navigationFinished], timeout: 10), .completed)
     func layout(_ name: String) {
-      app.buttons["view-options"].click()
+      app.buttons["saved-views"].click()
       let picker = app.popUpButtons["view-layout"]
       XCTAssertTrue(picker.waitForExistence(timeout: 5))
       picker.click()
@@ -49,7 +49,8 @@ final class PresentationUITests: XCTestCase {
         endDate.click()
         app.menuItems["Ends"].click()
       }
-      app.buttons["apply-view-options"].click()
+      // Layout applies at once and saves with the view when the sheet closes.
+      app.sheets.buttons["Done"].firstMatch.click()
     }
     layout("Calendar")
     let records = app.buttons.matching(NSPredicate(format: "label == %@", "A place to start"))

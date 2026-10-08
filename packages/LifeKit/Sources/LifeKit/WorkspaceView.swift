@@ -177,7 +177,7 @@ public struct WorkspaceView: View {
           #endif
         }
         .onChange(of: model.table) { showingGraph = false }
-        .focusedSceneValue(\.toggleSidebar, toggleSidebar)
+        .focusedSceneValue(\.toggleSidebar, sidebarToggle)
       }
     }
     .task { if demo { await model.open(demo: true) } else { await model.resumeConnection() } }
@@ -1194,6 +1194,15 @@ public struct WorkspaceView: View {
     }
   }
 
+  private var sidebarToggle: SidebarToggle {
+    #if os(iOS)
+      let compact = sizeClass == .compact
+    #else
+      let compact = false
+    #endif
+    return SidebarToggle(window: ObjectIdentifier(model), compact: compact, perform: toggleSidebar)
+  }
+
   /// Cmd+\: the sidebar column on regular widths, the sidebar/detail page on compact iPhone.
   private func toggleSidebar() {
     #if os(iOS)
@@ -1366,7 +1375,6 @@ public struct WorkspaceView: View {
       .toolbar {
         #if os(iOS)
           ToolbarItemGroup(placement: .primaryAction) {
-            statusPill
             workspaceMenu
             if model.canWrite && !model.trash {
               Button {
@@ -1377,6 +1385,8 @@ public struct WorkspaceView: View {
               }.disabled(editor != nil).accessibilityIdentifier("new-record")
             }
           }
+          // The bottom bar's status slot keeps long states from squeezing the title.
+          ToolbarItem(placement: .status) { statusPill }
           ToolbarItemGroup(placement: .bottomBar) {
             Button {
               savedViews = true

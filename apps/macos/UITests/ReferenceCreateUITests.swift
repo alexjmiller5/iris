@@ -72,7 +72,7 @@ final class ReferenceCreateUITests: XCTestCase {
     click(app.buttons["create-reference-save"])
     XCTAssertTrue(
       app.staticTexts.matching(
-        NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "domain is required",
+        NSPredicate(format: "value CONTAINS[c] %@ OR label CONTAINS[c] %@", "domain is required",
           "domain is required")
       ).firstMatch.waitForExistence(timeout: 10))
     capture(app, "mac-handoff-validation")

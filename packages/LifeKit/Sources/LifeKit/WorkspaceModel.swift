@@ -1137,6 +1137,7 @@ final class WorkspaceModel {
   func autosaveDefinition() throws -> CoreSavedViewDefinition? {
     guard let applied = appliedView else { return nil }
     var definition = try currentViewDefinition()
+    definition.search = applied.definition?.search
     definition.trash = applied.definition?.trash
     return definition
   }

@@ -66,8 +66,9 @@ final class ReferenceCreateUITests: XCTestCase {
     capture(app, "ios-handoff")
     tap(app.buttons["create-reference-save"])
     XCTAssertTrue(
-      app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'domain is required'")).firstMatch
+      app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'domain is required'")).firstMatch
         .waitForExistence(timeout: 10))
+    XCTAssertFalse(app.staticTexts["create-reference-failure"].exists)
     capture(app, "ios-handoff-validation")
     let domain = app.textFields["field-domain"]
     tap(domain)

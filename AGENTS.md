@@ -684,8 +684,8 @@ iOS record screens use inline navigation titles and no extra top list content
 margin; keep title, controls and first list row separate and compact.
 iOS uses native bottom toolbar actions for Views, Filter, Find and Schema graph;
 workspace actions are in the ellipsis Menu and full sync/location details in the
-read-only status sheet. One `SyncPill` (Mac sidebar bottom, iOS toolbar, Mac menu
-bar) is the only sync surface: Synced, Syncing (only while rows move, edits upload
+read-only status sheet. One `SyncPill` (Mac sidebar bottom, iPhone bottom-bar status
+slot, Mac menu bar) is the only sync surface: Synced, Syncing (only while rows move, edits upload
 or before a first success), N pending, Offline · N pending, N rejected (opens
 Issues), Paused: cap reached (hub 429), Sync issue, Shared with CLI or Local only.
 Sync failures reach the pill and status sheet, never `model.error`. Ordinary saves

@@ -214,7 +214,13 @@ private struct ReferenceCreationSheet: View {
         } footer: {
           Text("Saving adds this record to the relation. Cancel leaves the relation unchanged.")
         }
-        if let failure = editor.failure {
+        // Violations shown under their fields already explain a rejected save.
+        if let failure = editor.failure,
+          editor.violations.isEmpty
+            || editor.violations.contains(where: { violation in
+              !editor.draft.fields.contains { $0.id == violation.col }
+            })
+        {
           Text(failure).foregroundStyle(.red).accessibilityIdentifier("create-reference-failure")
         }
       }

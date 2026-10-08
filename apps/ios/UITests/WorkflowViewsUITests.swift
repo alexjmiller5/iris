@@ -24,19 +24,20 @@ final class WorkflowViewsUITests: XCTestCase {
     before.name = "native-daily-queue"
     before.lifetime = .keepAlways
     add(before)
-    app.buttons["view-options"].tap()
-    XCTAssertTrue(app.navigationBars["View options"].waitForExistence(timeout: 5))
-    XCTAssertEqual(app.buttons.matching(identifier: "sort-column").count, 2)
+    app.buttons["filter-bar-sort"].tap()
+    XCTAssertTrue(app.navigationBars["Sort"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["sort-direction-0"].exists)
+    XCTAssertTrue(app.buttons["sort-direction-1"].exists)
     let options = XCTAttachment(screenshot: app.screenshot())
     options.name = "native-ordered-sorts"
     options.lifetime = .keepAlways
     add(options)
-    app.buttons["apply-view-options"].tap()
+    app.otherElements["PopoverDismissRegion"].tap()
     XCTAssertTrue(review.waitForExistence(timeout: 5))
     review.tap()
     XCTAssertTrue(review.waitForNonExistence(timeout: 5))
     views.tap()
-    app.buttons["All records"].tap()
+    app.buttons["Default view"].tap()
     let record = app.buttons["Viewfixture Alpha"]
     XCTAssertTrue(record.waitForExistence(timeout: 5))
     record.tap()

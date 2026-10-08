@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Layout, row actions and the Today boundary for the current view. Filters and
-/// sorts live in the FilterBar. Changes apply immediately and save with the view
-/// when the Views sheet closes.
+/// Row actions, their column order and the Today boundary for the current view.
+/// Filters and sorts live in the FilterBar, layout at the top of the Views sheet.
+/// Changes apply immediately and save with the view when the Views sheet closes.
 struct WorkspaceOptionsView: View {
   @Bindable var model: WorkspaceModel
 
@@ -31,8 +31,6 @@ struct WorkspaceOptionsView: View {
 
   var body: some View {
     Form {
-      NativePresentationControls(
-        value: $model.viewPresentation, fields: model.properties.map(CatalogField.init))
       Section {
         TextField("Today timezone", text: $model.viewTimeZone)
           .accessibilityIdentifier("today-timezone")
@@ -106,7 +104,7 @@ struct WorkspaceOptionsView: View {
       }
     }
     .formStyle(.grouped)
-    .navigationTitle("Layout and actions")
+    .navigationTitle("Row actions and Today")
     #if os(iOS)
       .navigationBarTitleDisplayMode(.inline)
     #endif

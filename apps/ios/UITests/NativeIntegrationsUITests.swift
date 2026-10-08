@@ -74,10 +74,11 @@ import XCTest
         XCUIElement.ElementType.searchField.rawValue, XCUIElement.ElementType.textField.rawValue)
     ).firstMatch
     require(search, in: spotlight, 10)
-    search.typeText("A place to start")
-    let result = spotlight.descendants(matching: .any).matching(
-      NSPredicate(format: "label CONTAINS %@", "A place to start")
-    ).firstMatch
+    // A unique synthetic title saved by the Quick Add acceptance run.
+    let title = "Quick Add fixture saved"
+    search.typeText(title)
+    let result = spotlight.cells.matching(NSPredicate(format: "label CONTAINS[c] %@", title))
+      .firstMatch
     require(result, in: spotlight, 20)
     keep(spotlight, "spotlight-title-result")
     result.tap()
@@ -91,7 +92,7 @@ import XCTest
     open.tap()
     let field = app.textFields["field-title"]
     XCTAssertTrue(field.waitForExistence(timeout: 15))
-    XCTAssertEqual(field.value as? String, "A place to start")
+    XCTAssertEqual(field.value as? String, title)
     keep(app, "spotlight-row-opened")
   }
 

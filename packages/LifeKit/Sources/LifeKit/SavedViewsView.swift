@@ -33,6 +33,9 @@ struct SavedViewsView: View {
   var body: some View {
     NavigationStack {
       Form {
+        NativePresentationControls(
+          value: Binding(get: { model.viewPresentation }, set: { model.viewPresentation = $0 }),
+          fields: model.properties.map(CatalogField.init))
         Section {
           NavigationLink {
             PropertyLayoutView(model: model)
@@ -42,8 +45,8 @@ struct SavedViewsView: View {
           NavigationLink {
             WorkspaceOptionsView(model: model)
           } label: {
-            Label("Layout and actions", systemImage: "square.grid.2x2")
-          }.accessibilityIdentifier("view-layout-actions")
+            Label("Row actions and Today", systemImage: "square.grid.2x2")
+          }.accessibilityIdentifier("view-actions-today")
         } footer: {
           Text("Changes apply now and save to the current view when you close this sheet.")
         }

@@ -622,7 +622,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.buttons["Delete \(renamed)"])
     tapWhenReady(app.buttons["Delete view"])
     XCTAssertTrue(app.buttons[renamed].waitForNonExistence(timeout: 5))
-    XCTAssertTrue(app.buttons["All records"].exists)
+    XCTAssertTrue(app.buttons["Default view"].exists)
     tapWhenReady(app.navigationBars["Saved views"].buttons["Done"])
   }
 
@@ -1027,18 +1027,18 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(title)
     title.typeText("Alpha parity")
     tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
-    tapWhenReady(app.buttons["view-options"])
-    tapWhenReady(app.buttons["Add sort"])
-    tapWhenReady(app.buttons["sort-column"])
+    tapWhenReady(app.buttons["filter-bar-sort"])
+    tapWhenReady(app.buttons["add-sort"])
     tapWhenReady(app.buttons["Title"])
-    tapWhenReady(app.buttons["sort-direction"])
-    tapWhenReady(app.buttons["Descending"])
-    tapWhenReady(app.buttons["Add filter"])
+    tapWhenReady(app.buttons["sort-direction-0"])
+    tapWhenReady(app.otherElements["PopoverDismissRegion"])
+    tapWhenReady(app.buttons["filter-bar-filter"])
+    tapWhenReady(app.buttons["filter-property-title"])
     tapWhenReady(app.buttons["filter-operation"])
     tapWhenReady(app.buttons["Contains"])
     tapWhenReady(app.textFields["filter-value"])
     app.textFields["filter-value"].typeText("parity")
-    tapWhenReady(app.navigationBars["View options"].buttons["apply-view-options"])
+    tapWhenReady(app.otherElements["PopoverDismissRegion"])
     let alpha = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Alpha parity"))
       .firstMatch
     XCTAssertTrue(alpha.waitForExistence(timeout: 5))
@@ -1053,9 +1053,10 @@ final class WorkspaceUITests: XCTestCase {
     filterShot.name = "native-sorted-filtered-workspace"
     filterShot.lifetime = .keepAlways
     add(filterShot)
-    tapWhenReady(app.buttons["view-options"])
-    tapWhenReady(app.buttons["Reset sort and filters"])
-    tapWhenReady(app.navigationBars["View options"].buttons["apply-view-options"])
+    tapWhenReady(app.buttons["remove-filter-chip-0"])
+    tapWhenReady(app.buttons["sort-chip"])
+    tapWhenReady(app.buttons["clear-sorts"])
+    tapWhenReady(app.otherElements["PopoverDismissRegion"])
     XCTAssertTrue(
       app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
         .firstMatch.waitForExistence(timeout: 5))

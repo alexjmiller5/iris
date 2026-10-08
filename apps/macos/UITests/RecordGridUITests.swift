@@ -94,13 +94,13 @@ final class RecordGridUITests: XCTestCase {
     XCTAssertTrue(header.waitForExistence(timeout: 3))
     header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
     app.menuItems["Filter…"].click()
-    let filter = app.popUpButtons["filter-column"]
-    XCTAssertTrue(filter.waitForExistence(timeout: 3))
-    XCTAssertEqual(filter.value as? String, "Status")
-    app.textFields["filter-value"].click()
-    app.textFields["filter-value"].typeText("Ready")
-    app.buttons["apply-view-options"].click()
+    let ready = app.descendants(matching: .any)["filter-option-Ready"]
+    XCTAssertTrue(ready.waitForExistence(timeout: 3))
+    XCTAssertTrue(app.buttons["filter-chip-0"].exists)
+    ready.click()
+    capture(app, name: "column-header-filter-chip")
     XCTAssertTrue(app.staticTexts["No records"].waitForExistence(timeout: 5))
+    XCTAssertEqual(app.buttons["filter-chip-0"].label, "Status: Ready")
   }
 
   private func capture(_ app: XCUIApplication, name: String) {

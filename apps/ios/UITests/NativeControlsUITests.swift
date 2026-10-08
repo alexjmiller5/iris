@@ -123,7 +123,8 @@ final class NativeControlsUITests: XCTestCase {
     defer { app.terminate() }
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 15))
     for identifier in [
-      "saved-views", "view-options", "quick-find", "schema-graph", "workspace-menu", "new-record",
+      "saved-views", "filter-bar-filter", "filter-bar-sort", "quick-find", "schema-graph",
+      "workspace-menu", "new-record",
     ] {
       let button = app.buttons[identifier]
       XCTAssertTrue(button.isHittable, identifier)

@@ -46,9 +46,6 @@ struct FilterBar: View {
           SortMenu(model: model).compactPopover()
         }
         Spacer(minLength: 0)
-        if model.savingView || model.hasPendingViewSave {
-          ProgressView().controlSize(.small).accessibilityLabel("Saving view")
-        }
         if model.hasPendingViewSave || model.undoAction?.table == "views" {
           Button {
             Task {

@@ -36,7 +36,7 @@ final class SyncStatusUITests: XCTestCase {
       try await Task.sleep(for: .milliseconds(50))
     }
     XCTAssertTrue(waiting)
-    let pill = app.navigationBars["notes"].buttons["workspace-status"]
+    let pill = app.toolbars.buttons["workspace-status"]
     expect(pill, "Syncing")
     capture(app, "pill-syncing")
     pill.tap()
