@@ -123,12 +123,12 @@ try {
       await connect();
     };
     const sync = async () => {
-      await click("Sync now");
+      await click("Connect");
       await expect
         .poll(
           () =>
             cdp.evaluate(
-              `!!(${button("Sync now")}) && !(${button("Sync now")}).disabled`,
+              `!!(${button("Connect")}) && !(${button("Connect")}).disabled`,
             ),
           { timeout: 30000 },
         )
@@ -206,7 +206,7 @@ try {
     await cdp.fill(field("quantity"), "43");
     await cdp.fill(field("detail"), "Retained second edit");
     await click("Save record");
-    await bodyHas("Pending edits: 1");
+    await cdp.until(`!!document.querySelector('[data-pending="1"]')`);
     await click("Close record");
     await click("Fixture record");
     await value("quantity", "43");
@@ -252,7 +252,7 @@ try {
     await click("Fixture record");
     await cdp.fill(field("quantity"), "44");
     await click("Save record");
-    await bodyHas("Pending edits: 1");
+    await cdp.until(`!!document.querySelector('[data-pending="1"]')`);
     await click("Close record");
     await sync();
     expect(
@@ -293,7 +293,7 @@ try {
     const certified = await stored();
     failPull = true;
     await sync();
-    await bodyHas("Sync did not finish. Local records remain available.");
+    await bodyHas("hub HTTP 503");
     await enabled("New record", true);
     expect(await stored()).toEqual(certified);
     await cdp.navigate(url);
@@ -303,7 +303,7 @@ try {
     await value("quantity", "44");
     await cdp.fill(field("detail"), "Saved after interrupted refresh");
     await click("Save record");
-    await bodyHas("Pending edits: 1");
+    await cdp.until(`!!document.querySelector('[data-pending="1"]')`);
     expect(await stored()).toMatchObject({
       quantity: 44,
       detail: "Saved after interrupted refresh",
