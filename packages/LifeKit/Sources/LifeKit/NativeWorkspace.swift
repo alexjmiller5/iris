@@ -70,8 +70,11 @@ public final class NativeWorkspace {
   private var requests: [Work] = []
   private var active: Request?
   private var suspended: [Int: Request] = [:]
+  private var networks: [Int: Task<Void, Never>] = [:]
   private var nextID = 0
+  private var closing = false
   private var closed = false
+  private var droppedOnClose: [String] = []
   private let diagnostics = NativeWorkspaceDiagnostics()
   private var referenceReadPending = false
   private var referenceWaiters: [(UUID, CheckedContinuation<Void, Error>)] = [] {
@@ -178,6 +181,10 @@ public final class NativeWorkspace {
         callback.call(withArguments: [#"{"error":"No hub connection."}"#])
         return
       }
+      if self.closing {
+        callback.call(withArguments: [Self.closingReply])
+        return
+      }
       if owner.control?.cancelled == true {
         callback.call(withArguments: [#"{"error":"Sync cancelled. Local changes are retained."}"#])
         return
@@ -225,11 +232,16 @@ public final class NativeWorkspace {
         self.receiveTransport(owner: owner.id, callback: callback, response: response)
       }
       owner.control?.network = network
+      self.networks[owner.id] = network
     }
     runtime.context.setObject(post, forKeyedSubscript: "__lifePost" as NSString)
     let get: @convention(block) (String, JSValue) -> Void = { [weak self] route, callback in
       guard let self, let owner = self.active, let transport = owner.transport else {
         callback.call(withArguments: [#"{"error":"No hub connection."}"#])
+        return
+      }
+      if self.closing {
+        callback.call(withArguments: [Self.closingReply])
         return
       }
       do { try self.suspendForTransport(owner) } catch {
@@ -238,7 +250,7 @@ public final class NativeWorkspace {
         ])
         return
       }
-      Task { @MainActor in
+      self.networks[owner.id] = Task { @MainActor in
         let response: String
         do {
           let reply = try await transport.get(route: route)
@@ -556,7 +568,41 @@ public final class NativeWorkspace {
     }
     return created
   }
-  public func close() async throws { _ = try await call("close") }
+  /// Close refuses new HTTP and cancels every outstanding transport, so each
+  /// suspended owner unwinds through the queue before SQLite closes. An owner
+  /// still suspended after `grace` is failed and dropped; the result names the
+  /// dropped methods. Close never waits on a hub response beyond `grace`.
+  @discardableResult
+  public func close(grace: Duration = .seconds(5)) async throws -> [String] {
+    closing = true
+    for network in networks.values { network.cancel() }
+    let deadline = Task { @MainActor [weak self] in
+      do { try await Task.sleep(for: grace) } catch { return }
+      self?.dropSuspended()
+    }
+    defer { deadline.cancel() }
+    if grace <= .zero { dropSuspended() }
+    do { _ = try await call("close") } catch {
+      closing = false
+      throw error
+    }
+    return droppedOnClose
+  }
+  private static let closingReply = #"{"error":"The workspace is closing."}"#
+  private func dropSuspended() {
+    for (id, owner) in suspended.sorted(by: { $0.key < $1.key }) {
+      suspended[id] = nil
+      networks.removeValue(forKey: id)?.cancel()
+      owner.control?.deadline?.cancel()
+      if owner.method == "sync" { syncLock = nil }
+      diagnostics.finish(owner.diagnosticID)
+      continue; droppedOnClose.append(owner.method)
+      owner.continuation.resume(
+        throwing: WorkspaceError(
+          message: "The workspace closed before the hub replied.", violations: []))
+    }
+    startNext()
+  }
 
   private func decode<R: CoreRequest>(
     _ request: R, transport: HubTransport? = nil, control: SyncControl? = nil,
@@ -777,6 +823,7 @@ public final class NativeWorkspace {
   }
 
   private func receiveTransport(owner: Int, callback: JSValue, response: String) {
+    networks[owner] = nil
     if let request = suspended[owner] {
       request.control?.network = nil
       diagnostics.resume(request.diagnosticID)

@@ -16,6 +16,10 @@ struct FilterBar: View {
   @State private var sorting = false
 
   private var fields: [CatalogField] { model.viewFields }
+  /// Flag quick filters that are off; an applied one shows as its ordinary chip.
+  private var flagSuggestions: [CatalogField] {
+    CatalogField.flagFilters(fields).map(\.flag).filter { !model.flagIsOn($0.id) }
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -62,7 +66,9 @@ struct FilterBar: View {
       }
       .buttonStyle(.bordered)
       .controlSize(.small)
-      if !model.filters.isEmpty || !model.filterGroups.isEmpty || !model.sortRules.isEmpty {
+      if !model.filters.isEmpty || !model.filterGroups.isEmpty || !model.sortRules.isEmpty
+        || !flagSuggestions.isEmpty
+      {
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: 6) {
             if !model.sortRules.isEmpty { sortChip }
@@ -71,6 +77,17 @@ struct FilterBar: View {
             }
             ForEach(Array(model.filterGroups.enumerated()), id: \.element.id) { index, group in
               groupChip(group, index: index)
+            }
+            ForEach(flagSuggestions) { flag in
+              Button {
+                model.toggleFlag(flag.id)
+                model.scheduleViewSave()
+              } label: {
+                Label(flag.label, systemImage: "flag")
+              }
+              .buttonStyle(.bordered).controlSize(.small).tint(.secondary)
+              .accessibilityHint("Shows only records with this flag, with its reason")
+              .accessibilityIdentifier("flag-chip-\(flag.id)")
             }
           }
         }

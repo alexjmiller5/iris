@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import Observation
+import os
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
@@ -19,6 +20,8 @@ struct ReplicaDownloadContext {
 
 @Observable @MainActor
 final class WorkspaceModel {
+  private static let log = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "LifeKit", category: "workspace")
   var client: NativeWorkspace? {
     didSet {
       if oldValue !== client {
@@ -1081,6 +1084,21 @@ final class WorkspaceModel {
     return filter.id
   }
   func removeFilter(_ id: UUID) { filters.removeAll { $0.id == id } }
+  private func isFlag(_ filter: WorkspaceFilter, _ column: String) -> Bool {
+    filter.column == column && filter.operation == .eq && filter.value == "true" && !filter.today
+  }
+  func flagIsOn(_ column: String) -> Bool { filters.contains { isFlag($0, column) } }
+  func toggleFlag(_ column: String) {
+    if flagIsOn(column) {
+      filters.removeAll { isFlag($0, column) }
+    } else {
+      filters.append(WorkspaceFilter(column: column, value: "true"))
+    }
+  }
+  /// Reason fields of the flag quick filters that are on, shown beside each record.
+  var activeFlagReasons: [String] {
+    CatalogField.flagFilters(viewFields).filter { flagIsOn($0.flag.id) }.map(\.reason.id)
+  }
   @discardableResult
   func addFilterGroup(column: String) -> UUID {
     let type = viewFields.first { $0.id == column }?.type ?? "text"
@@ -1303,11 +1321,18 @@ final class WorkspaceModel {
   func makeQuickFind() -> QuickFindModel? {
     guard let client else { return nil }
     let generation = workspaceGeneration
+    var statusFields: [String: CatalogField] = [:]
+    for property in catalog?.properties ?? [] {
+      let field = CatalogField(property: property)
+      if field.id == "status", field.type == "select", let table = property["tbl"]?.text {
+        statusFields[table] = field
+      }
+    }
     return QuickFindModel(
       search: client.search, read: client.rows,
       isCurrent: { [weak self] in
         self?.client === client && self?.workspaceGeneration == generation
-      })
+      }, statusFields: statusFields)
   }
 
   func makeOnlineBrowser() -> OnlineBrowseModel? {
@@ -2124,17 +2149,28 @@ final class WorkspaceModel {
     downloadPreferences = ReplicaPreferences()
   }
 
+  @ObservationIgnored private var closingWorkspace = false
   func close() async {
+    // A repeated Close while the first one unwinds must not report "closed" as an error.
+    guard !closingWorkspace else { return }
+    closingWorkspace = true
+    defer { closingWorkspace = false }
     await flushViewSave()
     attachments?.stop()
     attachments = nil
     stopAutomaticSync()
-    // Unwind held HTTP before the native close barrier waits for its owner.
-    client?.cancelSync()
     workspaceGeneration += 1
     revision += 1
     services.configure(workspace: nil, transport: nil)
-    do { try await client?.close() } catch {
+    // Native close cancels every outstanding hub request and waits a bounded time.
+    do {
+      let dropped = try await client?.close() ?? []
+      if !dropped.isEmpty {
+        let methods = dropped.joined(separator: ", ")
+        Self.log.notice("Closed workspace; dropped hub requests: \(methods, privacy: .public)")
+      }
+    } catch {
+      Self.log.error("Close workspace failed: \(error.localizedDescription, privacy: .public)")
       self.error = error.localizedDescription
       return
     }

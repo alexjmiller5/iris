@@ -5,6 +5,12 @@ extension CoreSearchHit {
   var identity: [Data] { [Data(table.utf8), Data(id.utf8)] }
 }
 
+/// A hit's lifecycle status and its catalog option description.
+struct QuickFindStatus: Equatable {
+  let value: String
+  let help: String?
+}
+
 @Observable @MainActor
 final class QuickFindModel: Identifiable {
   let id = UUID()
@@ -12,6 +18,7 @@ final class QuickFindModel: Identifiable {
     didSet { if oldValue != query { invalidate(clear: true) } }
   }
   private(set) var results: [CoreSearchHit] = []
+  private var statuses: [[Data]: QuickFindStatus] = [:]
   private(set) var loading = false
   private(set) var opening: [Data]?
   private(set) var error: String?
@@ -23,16 +30,23 @@ final class QuickFindModel: Identifiable {
   private let search: (CoreSearchArgs) async throws -> [CoreSearchHit]
   private let read: (CoreView) async throws -> [WorkspaceRow]
   private let current: () -> Bool
+  /// Each table's lifecycle field: the select named `status` (life-data's estate
+  /// status dictionary). Its value labels the hit; its option description explains it.
+  private let statusFields: [String: CatalogField]
 
   init(
     search: @escaping (CoreSearchArgs) async throws -> [CoreSearchHit],
     read: @escaping (CoreView) async throws -> [WorkspaceRow],
-    isCurrent: @escaping () -> Bool = { true }
+    isCurrent: @escaping () -> Bool = { true },
+    statusFields: [String: CatalogField] = [:]
   ) {
     self.search = search
     self.read = read
     current = isCurrent
+    self.statusFields = statusFields
   }
+
+  func status(of hit: CoreSearchHit) -> QuickFindStatus? { statuses[hit.identity] }
 
   var isCurrent: Bool { active && current() }
 
@@ -44,6 +58,7 @@ final class QuickFindModel: Identifiable {
     error = nil
     if clear {
       results = []
+      statuses = [:]
       offset = 0
       canLoadMore = false
     }
@@ -69,9 +84,27 @@ final class QuickFindModel: Identifiable {
       let page = try await search(CoreSearchArgs(text: text, limit: 50, offset: start))
       guard isCurrent, request == revision, !Task.isCancelled else { return }
       var seen = Set(results.map(\.identity))
-      results += page.filter { seen.insert($0.identity).inserted }
+      let fresh = page.filter { seen.insert($0.identity).inserted }
+      results += fresh
       offset = start + page.count
       canLoadMore = page.count == 50
+      loading = false
+      // A failed status read leaves the hit unlabeled; it never fails the search.
+      for hit in fresh {
+        guard let field = statusFields[hit.table],
+          let rows = try? await read(
+            CoreView(
+              table: hit.table,
+              filters: [CoreFilter(column: "id", op: .eq, value: .string(hit.id))], limit: 1))
+        else { continue }
+        guard isCurrent, request == revision, !Task.isCancelled else { return }
+        if let value = rows.first(where: { $0.byteExactID == Data(hit.id.utf8) })?
+          .record[field.id]?.text.nonempty
+        {
+          statuses[hit.identity] = QuickFindStatus(value: value, help: field.optionHelp(value))
+        }
+      }
+      return
     } catch {
       guard isCurrent, request == revision, !Task.isCancelled else { return }
       self.error = error.localizedDescription

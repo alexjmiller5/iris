@@ -8,6 +8,7 @@ final class QuickFindCoordinator: Identifiable {
     let label: String
     let excerpt: String
     let unavailable: String?
+    var status: QuickFindStatus? = nil
   }
 
   let id = UUID()
@@ -53,7 +54,7 @@ final class QuickFindCoordinator: Identifiable {
       + search.results.map {
         Entry(
           id: NativeDestination(table: $0.table, rowID: $0.id), label: $0.label,
-          excerpt: $0.excerpt, unavailable: nil)
+          excerpt: $0.excerpt, unavailable: nil, status: search.status(of: $0))
       }
   }
 

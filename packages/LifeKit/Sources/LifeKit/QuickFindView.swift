@@ -159,6 +159,15 @@ private struct QuickFindEntryRow: View {
             Text("Table")
           }
           if entry.id.rowID != nil || entry.id.viewID != nil { Text(entry.id.table) }
+          if let status = entry.status {
+            Text(status.value)
+              .padding(.horizontal, 6)
+              .overlay(Capsule().strokeBorder(.secondary.opacity(0.5)))
+              .help(status.help ?? status.value)
+              .accessibilityLabel("Status \(status.value)")
+              .accessibilityHint(status.help ?? "")
+              .accessibilityIdentifier("quick-find-status")
+          }
         }.font(.caption).foregroundStyle(.secondary)
         if !entry.excerpt.isEmpty {
           Text(entry.excerpt).font(.callout).foregroundStyle(.secondary).lineLimit(3)

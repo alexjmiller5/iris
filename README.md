@@ -913,6 +913,10 @@ hub state: `LIFE_UI_TEST_URL=<reserved-url> bun scripts/test-workflow-views.ts <
 It checks grouped conditions, configured day-boundary/foreground refresh, actions
 and reopen. `scripts/test-view-options.ts` also covers policy persistence, typed
 filter changes, live action choices and stale displayed-view rejection.
+`scripts/test-notes-views.ts <life-data-checkout>` (same `LIFE_UI_TEST_URL`/`_TARGET`
+variables; optional `LIFE_UI_TEST_SHOTS=<dir>`) seeds a synthetic lifecycle table and
+checks the preferred default view, a separate related-record view, a flag quick
+filter with its inline reason and status-labeled search.
 The native `WorkflowViewsUITests` uses `SavedViewsTests.prepareSavedViewsUIFixture`
 on the exact disposable simulator selected by `LIFE_UI_TEST_SAVED_VIEWS_SIMULATOR`.
 

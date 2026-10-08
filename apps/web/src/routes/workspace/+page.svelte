@@ -873,7 +873,6 @@
 				...(references[p.col] ?? []).filter((row) => row.id !== result.row.id),
 				result.row
 			];
-			notice = `Created ${refTitle(p, result.row)} on this device. Save the record to keep the link.`;
 			await refresh();
 		} catch (e) {
 			if (database !== workspace) return;

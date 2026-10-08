@@ -149,7 +149,7 @@ public struct WorkspaceView: View {
                 statusPill
                 HStack(spacing: 12) {
                   Button("Hub connection") { settings = true }.disabled(!canFind)
-                  Button("Close workspace") { Task { await model.close() } }.disabled(!canFind)
+                  Button("Close workspace", action: closeWorkspace)
                 }
                 .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
               }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
@@ -394,6 +394,25 @@ public struct WorkspaceView: View {
         )
         closeEditor(target)
       }, onSaved: { closeEditor(target) })
+  }
+
+  /// Close is always available and dismisses every open surface itself. Edits are
+  /// journaled as they happen, so an open draft stays recoverable after reopening.
+  /// The workspace generation change resets navigation, Find and online state.
+  private func closeWorkspace() {
+    editor?.preparedEditor?.endInlineMarkdown()
+    editor = nil
+    settings = false
+    savedViews = false
+    importing = false
+    recordExport = nil
+    rowSelection = nil
+    catalogEditor = nil
+    filterEditing = nil
+    showingStatus = false
+    widgetSettings = false
+    tableSearchPresented = false
+    Task { await model.close() }
   }
 
   private func closeEditor(_ target: EditorTarget) {
@@ -897,8 +916,9 @@ public struct WorkspaceView: View {
   private var recordList: some View {
     ScrollViewReader { scroll in
       let title = model.titleProperty
+      let reasons = model.activeFlagReasons
       let fields = model.orderedRecordFields(model.viewFields).filter { field in
-        field.id == title?.id
+        field.id == title?.id || reasons.contains(field.id)
           || (model.visibleRecordColumns?.contains(field.id)
             ?? !["id", "created_at", "updated_at", "deleted_at", "hub_at"].contains(field.id))
       }
@@ -1054,6 +1074,12 @@ public struct WorkspaceView: View {
       selected: model.visibleRecordColumns, widths: model.appliedView?.definition?.widths ?? [:]
     )
     .filter { $0.id != model.titleProperty?.id }
+    // An applied flag quick filter shows its reason first.
+    for id in model.activeFlagReasons.reversed() where !columns.contains(where: { $0.id == id }) {
+      if let field = model.viewFields.first(where: { $0.id == id }) {
+        columns.insert(NativeGridColumn(field: field, width: 220), at: 0)
+      }
+    }
     // A refreshed catalog may remove a property while its draft is open. Keep
     // that editor reachable; the writer still validates against the fresh catalog.
     if let target = editor, let id = target.inlineField,
@@ -1240,11 +1266,9 @@ public struct WorkspaceView: View {
             systemImage: model.trash ? "tray" : "trash")
         }.disabled(editor != nil).accessibilityIdentifier("toggle-trash")
         Divider()
-        Button {
-          Task { await model.close() }
-        } label: {
+        Button(action: closeWorkspace) {
           Label("Close workspace", systemImage: "xmark.circle")
-        }.disabled(editor != nil)
+        }
       } label: {
         Label("Workspace actions", systemImage: "ellipsis")
           .labelStyle(.iconOnly)

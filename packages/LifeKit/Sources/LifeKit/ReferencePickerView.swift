@@ -121,7 +121,6 @@ private struct ReferencePickerView: View {
           }
           .accessibilityIdentifier("create-reference-\(field.id)")
         }
-        if model.creating { ProgressView("Creating…") }
         ForEach(model.rows, id: \.byteExactID) { row in
           Button {
             model.choose(row)

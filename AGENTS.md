@@ -231,6 +231,13 @@ Selected relation actions share the guarded full-row opening path. Navigation
 stays separate from editing/removal permissions, and skipped tables may still
 contain navigable local rows. Preserve the source editor on unavailable targets
 or canceled discard; stale lookup successes and errors must not change context.
+Editable ref/multi_ref pickers offer Create "<text>" when the trimmed search has
+no exact loaded name. Targets must be writable with a non-derived display property
+(`reference-create.ts`, `ReferenceCreator`). Creation uses the ordinary writer:
+untouched catalog defaults are omitted for core, required fields without defaults
+open a target-table editor first (dialog on web, sheet on native) and Cancel writes
+nothing. Only the receipt's exact id enters the source draft (multi_ref appends);
+the source still needs its own Save. Writes are local, sync later and join Undo.
 
 Web recents store at most eight table/view/row identity tuples per workspace,
 with labels resolved from current local data. Record only completed navigation;
@@ -366,6 +373,14 @@ ordinary `saveView` with the latest revision this tab wrote, after edits settle 
 never while a filter or sort popover is open. Context changes, unload and Undo
 flush it first, so Cmd-Z reverts the latest view edit. Search and Trash are browsing
 state and are not saved.
+
+A Boolean property whose catalog description names exactly one sibling text column
+is a flag with a reason (`flag-filters.ts`, `CatalogField.flagFilters`). Web and
+native bars offer it as a dashed quick-filter chip that adds the ordinary `eq true`
+rule (saved like any chip); while it is on, the reason column shows beside each
+record. Search hits from a table with a `status` select (life-data's status
+dictionary) show that status with its catalog option description as help
+(`search-status.ts`, `QuickFindModel.statusFields`). No lifecycle word is hardcoded.
 
 Saved view version 2 supports bounded all/any groups, host-resolved Today,
 ordered option/value sorts, literal row actions and interleaved action columns.

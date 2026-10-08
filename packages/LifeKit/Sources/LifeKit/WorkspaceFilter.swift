@@ -131,3 +131,28 @@ struct WorkspaceFilterGroup: Identifiable, Equatable {
       })
   }
 }
+
+extension CatalogField {
+  /// A Boolean field whose catalog description names exactly one sibling text field
+  /// is a flag with a reason: it gets a quick filter and its reason shows inline.
+  /// Same rule as the web `flag-filters.ts`; nothing here knows a table's schema.
+  // ponytail: description word match; a bool naming a text column for another purpose pairs with it.
+  static func flagFilters(_ fields: [CatalogField]) -> [(flag: CatalogField, reason: CatalogField)] {
+    fields.compactMap { flag in
+      guard flag.type == "bool" else { return nil }
+      let words = Set(
+        flag.description.split { !($0.isLetter || $0.isNumber || $0 == "_") }.map(String.init))
+      let reasons = fields.filter { $0.id != flag.id && $0.type == "text" && words.contains($0.id) }
+      return reasons.count == 1 ? (flag, reasons[0]) : nil
+    }
+  }
+
+  /// The catalog description of one select option, when it has one.
+  func optionHelp(_ value: String) -> String? {
+    guard case .array(let options) = property["options"] else { return nil }
+    for case .object(let option) in options where option["v"]?.text == value {
+      return option["d"]?.text.nonempty
+    }
+    return nil
+  }
+}
