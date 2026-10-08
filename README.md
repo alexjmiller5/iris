@@ -449,6 +449,17 @@ mark-all-read actions. To include interrupted-save UI recovery, set
 UDID. The app-host test seeds only that simulator's local workspace before the
 UI test copies recovered text, exits, opens the saved row and relaunches.
 
+Native create-in-place (`ReferenceCreateUITests`) uses a synthetic
+people/companies/meetings workspace from `bun scripts/reference-create-fixture.ts
+<out.sqlite>`. On iOS, install the app on a disposable simulator, copy the file to
+its data container's `Library/Application Support/life-ui/local.sqlite` and run
+`-only-testing:LifeUIUITests/ReferenceCreateUITests` with
+`TEST_RUNNER_LIFE_UI_TEST_REFERENCE_CREATE_SIMULATOR` set to that UDID. On macOS,
+set `TEST_RUNNER_LIFE_UI_TEST_REFERENCE_CREATE_DATABASE` to the generated file; the
+test opens it through the file picker and needs an unlocked console session.
+The browser version is `bun scripts/test-reference-create.ts /path/to/life-data`
+on `http://life-ui-reference-create.localhost:5244/workspace?review`.
+
 For the native navigation regression, use a disposable simulator: the fixture
 replaces its saved connection and seeds 50,000 synthetic provenance rows. Start
 `uv run scripts/navigation-hub.py --port 0` and use its printed loopback URL:
