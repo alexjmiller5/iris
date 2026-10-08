@@ -54,7 +54,7 @@ try {
   await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));
   await page.getByLabel('Device token').fill('fixture');
   await page.getByLabel('Automatic sync row limit').fill('0');
-  const sync = page.getByRole('button',{name:'Sync now',exact:true});
+  const sync = page.getByRole('button',{name:'Connect',exact:true});
   await sync.click(); await expect(sync).toBeEnabled({timeout:30000});
   await expect(page.getByRole('alert')).toContainText('503');
   firstSchemaFailure=false;
@@ -113,11 +113,13 @@ try {
   console.log('PASS: closing and reopening ignores a delayed online record without losing the local draft');
 
   capped=true; const beforeCap=pulls.length;
-  await dialog.getByRole('button',{name:'Refresh',exact:true}).click();
+  await dialog.getByRole('button',{name:'Close online browsing',exact:true}).click();
+  await page.getByRole('button',{name:'Browse online',exact:true}).click();
   await expect(dialog.getByRole('alert')).toContainText('429');
   expect(pulls).toHaveLength(beforeCap+1);
   capped=false;
-  await dialog.getByRole('button',{name:'Refresh',exact:true}).click();
+  await dialog.getByRole('button',{name:'Close online browsing',exact:true}).click();
+  await page.getByRole('button',{name:'Browse online',exact:true}).click();
   await expect(dialog.getByRole('status')).toContainText('50 records loaded');
   await expect(dialog.getByRole('button',{name:'Fresh online title',exact:true})).toBeVisible();
   expect(pulls.at(-1)).not.toHaveProperty('after');
@@ -138,7 +140,7 @@ try {
   await dialog.getByRole('button',{name:'Close online browsing',exact:true}).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Keep this local draft');
-  await expect(page.getByText('Pending edits: 0',{exact:true})).toBeVisible();
+  await expect(page.locator('[data-pending="0"]')).toBeVisible();
   await expect(page.getByText('This table is excluded from sync. Its local records may be incomplete.',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Fresh online title',exact:true})).toHaveCount(0);
   await page.reload();

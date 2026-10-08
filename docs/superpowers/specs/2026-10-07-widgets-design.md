@@ -65,7 +65,7 @@ The units are:
    order. Add the canonical DTO and operation to `core/contract/core.json` and
    regenerate consumers through the existing generator and bundler.
 2. **Extension support target:** Foundation, generated portable DTOs, shared
-   calendar resolution, identity encoding, and a read-only GRDB executor.
+   calendar resolution, identity encoding, and a read-only system SQLite executor.
    Extract those shared components once from LifeKit; keep existing public
    entry points forwarding compatibly. No dependency on LifeKit's JSC engine,
    editor resources, writer, credential store, or networking.

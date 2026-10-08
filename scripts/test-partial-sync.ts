@@ -45,7 +45,7 @@ try{
  await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
  await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));
  await page.getByLabel('Device token').fill('fixture');
- const sync=page.getByRole('button',{name:'Sync now',exact:true});
+ const sync=page.getByRole('button',{name:'Connect',exact:true});
  await sync.click();await expect(sync).toBeEnabled({timeout:30000});
  await observer.goto(observerUrl);
  await observer.getByRole('button',{name:'Open my workspace',exact:true}).click();
@@ -54,14 +54,14 @@ try{
  await page.getByRole('button',{name:'Fixture record',exact:true}).click();
  await page.getByLabel('Quantity',{exact:true}).fill('43');
  await page.getByRole('button',{name:'Save record',exact:true}).click();
- for(const tab of [page,observer])await expect(tab.getByText('Pending edits: 1',{exact:true})).toBeVisible();
+ for(const tab of [page,observer])await expect(tab.locator('[data-pending="1"]')).toBeVisible();
  await page.getByRole('button',{name:'Close record',exact:true}).click();
  const stamp=new Date(Date.now()+1000).toISOString();
  db.db.query('UPDATE widgets SET title=?,updated_at=?,hub_at=? WHERE id=?').run('Received before failure',stamp,stamp,'second-record');
  failHistory=true;await sync.click();await expect(sync).toBeEnabled({timeout:30000});
  expect(db.db.query("SELECT quantity FROM widgets WHERE id='fixture-record'").get()).toEqual({quantity:43});
  for(const tab of [page,observer]){
-  await expect(tab.getByText('Pending edits: 0',{exact:true})).toBeVisible();
+  await expect(tab.locator('[data-pending="0"]')).toBeVisible();
   await expect(tab.getByRole('button',{name:'Received before failure',exact:true})).toBeVisible();
   await expect(tab.getByRole('button',{name:'New record',exact:true})).toBeDisabled();
   await expect(tab.getByRole('status',{name:'Editing availability'})).toContainText('incomplete');

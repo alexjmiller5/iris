@@ -64,7 +64,8 @@
 		IconArrowBackUp,
 		IconArrowsSort,
 		IconArrowUp,
-		IconArrowDown
+		IconArrowDown,
+		IconFlag
 	} from '@tabler/icons-svelte';
 	import {
 		createHttpHub,
@@ -100,6 +101,8 @@
 	import SavedViews from '$lib/SavedViews.svelte';
 	import ViewControls from '$lib/ViewControls.svelte';
 	import FilterBar from '$lib/FilterBar.svelte';
+	import { flagFilters, flagOn, toggleFlag } from '$lib/flag-filters';
+	import { labelStatus } from '$lib/search-status';
 	import SortMenu from '$lib/SortMenu.svelte';
 	import { createViewAutosave } from '$lib/saved-views';
 	import { queryDefinition } from '$lib/view-controls';
@@ -530,7 +533,14 @@
 	const recordProperty = $derived(
 		properties.find((p) => p.col === display) ?? { col: 'id', label: 'Record', type: 'text' }
 	);
-	const gridColumns = $derived([recordProperty, ...gridProperties]);
+	const flags = $derived(flagFilters(properties));
+	// An active flag filter shows its reason right after the record title.
+	const flagReasons = $derived(
+		flags
+			.filter(({ flag, reason }) => flagOn(filters, flag.col) && !gridProperties.includes(reason))
+			.map(({ reason }) => reason)
+	);
+	const gridColumns = $derived([recordProperty, ...flagReasons, ...gridProperties]);
 	const canEditCell = (p: Property) =>
 		!system.has(p.col) &&
 		!p.derived_by &&
@@ -2175,7 +2185,14 @@
 	}
 	async function searchWorkspace(text: string, offset: number) {
 		if (!database) throw new Error('Open a workspace first.');
-		return database.request('search', { text, offset, limit: 50 });
+		const workspace = database;
+		const hits = await workspace.request('search', { text, offset, limit: 50 });
+		return labelStatus(hits, catalog.properties, async (table, id) => {
+			const [row] = await workspace.request('rows', {
+				view: { table, filters: [{ column: 'id', op: 'eq', value: id }], limit: 1 }
+			});
+			return row?.status;
+		});
 	}
 	async function openRecord(
 		target: { table: string; id: string },
@@ -2804,6 +2821,21 @@
 												)?.label || first.column}{/if}</button
 										>
 									{/if}
+									{#each flags as { flag } (flag.col)}
+										{#if !flagOn(filters, flag.col)}
+											<button
+												type="button"
+												class="sort-chip"
+												title={flag.description ?? undefined}
+												disabled={busy || navigationLoading || !chosenView}
+												onclick={() => {
+													if (!closeRecord()) return;
+													filters = toggleFlag(filters, flag.col);
+													viewChanged();
+												}}><IconFlag size={14} aria-hidden="true" />{flag.label || flag.col}</button
+											>
+										{/if}
+									{/each}
 								{/snippet}
 							</FilterBar>
 							<SortMenu

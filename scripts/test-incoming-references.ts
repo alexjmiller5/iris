@@ -126,7 +126,7 @@ try {
   const manual = page.getByText("Use a device token", { exact: true });
   if (await manual.count()) await manual.click();
   await page.getByLabel("Device token", { exact: true }).fill("fixture");
-  const sync = page.getByRole("button", { name: "Sync now", exact: true });
+  const sync = page.getByRole("button", { name: "Connect", exact: true });
   await sync.click();
   await expect(sync).toBeEnabled({ timeout: 20000 });
   const editor = page.getByRole("complementary", {
@@ -204,9 +204,7 @@ try {
       expect(
         reads.every((r: any) => r.limit === 20 && r.rowId === "fixture-record"),
       ).toBe(true);
-      await expect(
-        page.getByText("Pending edits: 0", { exact: true }),
-      ).toBeVisible();
+      await expect(page.locator('[data-pending="0"]')).toBeVisible();
     },
   );
   await check(
@@ -240,9 +238,7 @@ try {
       await expect(editor.getByLabel("Detail", { exact: true })).toHaveValue(
         "Full detail 0",
       );
-      await expect(
-        page.getByText("Pending edits: 0", { exact: true }),
-      ).toBeVisible();
+      await expect(page.locator('[data-pending="0"]')).toBeVisible();
     },
   );
   await check(

@@ -220,7 +220,9 @@
 								<span class="result-heading"
 									><strong
 										>{entry.label || (entry.kind === 'table' ? entry.table : entry.id)}</strong
-									>{#if entry.kind !== 'table'}<span class="table">{entry.table}</span>{/if}</span
+									>{#if entry.kind === 'record' && 'status' in entry && entry.status}<span class="lifecycle" title={entry.status.d}
+											>{entry.status.v}</span
+										>{/if}{#if entry.kind !== 'table'}<span class="table">{entry.table}</span>{/if}</span
 								>
 								{#if entry.kind === 'record' && entry.excerpt}<span class="excerpt"
 										>{entry.excerpt}</span
@@ -387,6 +389,14 @@
 		min-width: 0;
 		font-weight: 600;
 		overflow-wrap: anywhere;
+	}
+	.lifecycle {
+		flex-shrink: 0;
+		border: 1px solid var(--color-rule);
+		border-radius: 999px;
+		padding: 0 0.4rem;
+		color: var(--color-muted);
+		font-size: 0.75rem;
 	}
 	.table {
 		flex-shrink: 0;

@@ -94,8 +94,8 @@ async function connect() {
   await click(named("summary", "Use a device token"));
   await fill(element("#endpoint"), server.url.href.replace(/\/$/, ""));
   await fill(element("#token"), "fixture");
-  await click(button("Sync now"));
-  await until(`!(${button("Sync now")}).disabled`);
+  await click(button("Connect"));
+  await until(`!!document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync')`);
 }
 async function open() {
   await click(button("widgets", element('nav[aria-label="Tables"]')));
@@ -150,8 +150,10 @@ try {
 
   await click(button("Save record", editor));
   await until(`!(${button("Save record", editor)}).disabled`);
-  await click(button("Sync now"));
-  await until(`!(${button("Sync now")}).disabled`);
+  const resyncSince = await evaluate("new Date().toISOString()");
+  await until(
+    `(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${js(resyncSince)}`,
+  );
   const stored = db.db
     .query("SELECT body FROM widgets WHERE id=?")
     .get("fixture-record") as { body: string };

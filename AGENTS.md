@@ -31,9 +31,25 @@ schema from the operator. Ordinary table defaults are unaffected.
 - `packages/LifeKit/Sources/LifeWidgets`: App Intents widget configuration queries
   over authorized publications, depending only on LifeExtensionSupport. Calendar
   choices require tagged calendar bindings from the canonical core plan.
-  The iOS WidgetKit extension embeds table-title, Today and bounded-count widgets;
-  accessories expose only generic labels/counts. Both targets use the configured
-  `LIFE_WIDGET_APP_GROUP`; signed distribution requires explicit matching profiles.
+  The iOS WidgetKit extension embeds table-title, Today, bounded-count and Quick Add
+  widgets; accessories expose only generic labels/counts. App, widget and share
+  targets use the configured `LIFE_WIDGET_APP_GROUP`; signed distribution requires
+  explicit matching profiles. App Shortcuts are declared in the iOS app target
+  (a package-declared provider is not discovered).
+- Quick Add, the share extension and Shortcuts stage one protected `quick-add.json`
+  handoff in the App Group; captured text never enters a URL. The host installs a
+  recoverable editor journal before consuming it and records the UUID in bounded
+  `quick-add-receipts.json`, so retried or late deliveries never open a second draft.
+  The share extension (LifeExtensionSupport only) puts one URL or text into a
+  Quick Add source's display column; only explicit Save creates a row.
+- NativeIntegrationSettings holds per-workspace identities only: Spotlight tables,
+  the Shortcuts lookup table (default none) and the daily-section widget source.
+  Spotlight indexes display titles of enabled tables in a protected Core Spotlight
+  index; item IDs are `life://open/v1` links handled by the pending-link banner.
+  Disabling a table or forgetting the connection deletes its domains. Look Up and
+  Open Today run in the app through NativeIntentInbox. The iOS sidebar's daily
+  section reads the Today widget's own publication through NativeWidgetSettings,
+  so both rebind the same calendar slots at the configured day boundary.
 - Widget source opt-ins are durable private host preferences, separate from
   regenerable App Group publications. NativeWidgetSettings publishes paired list
   and count plans from the opened database; the library scopes them by workspace

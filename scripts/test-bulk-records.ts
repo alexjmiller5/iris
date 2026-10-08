@@ -87,7 +87,7 @@ try {
     `(()=>{const e=${named("label", label)};return e?.control??e?.querySelector('input');})()`;
   await cdp.fill(input("Hub address"), server.url.href.replace(/\/$/, ""));
   await cdp.fill(input("Device token"), "fixture");
-  await click("Sync now");
+  await click("Connect");
   await cdp.until(
     `!!(${button("New record")}) && !(${button("New record")}).disabled`,
   );
@@ -101,10 +101,10 @@ try {
   await cdp.until(
     `document.body.innerText.includes('2 succeeded · 1 failed · 0 unattempted')`,
   );
+  const resyncQuantity = await cdp.evaluate("new Date().toISOString()");
   await cdp.until(
-    `!!(${button("Sync now")}) && !(${button("Sync now")}).disabled`,
+    `(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${JSON.stringify(resyncQuantity)}`,
   );
-  await click("Sync now");
   await expect
     .poll(() =>
       db.db.query("SELECT id,quantity FROM widgets ORDER BY id").all(),
@@ -198,7 +198,10 @@ try {
   await cdp.until(
     `document.body.innerText.includes('2 succeeded · 0 failed · 0 unattempted')`,
   );
-  await click("Sync now");
+  const resyncTrash = await cdp.evaluate("new Date().toISOString()");
+  await cdp.until(
+    `(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${JSON.stringify(resyncTrash)}`,
+  );
   await expect
     .poll(() =>
       db.db

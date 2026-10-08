@@ -77,7 +77,13 @@ try {
 	// Local writes push automatically; 'online' wakes a scheduler that backed off while the hub was down.
 	const pushed = async (done: () => boolean) => {
 		await page.evaluate(() => window.dispatchEvent(new Event('online')));
-		await expect.poll(done, { timeout: 15000 }).toBe(true);
+		try {
+			await expect.poll(done, { timeout: 15000 }).toBe(true);
+		} catch (error) {
+			const pill = await page.locator('.sync-status').first().getAttribute('title').catch(() => null);
+			const label = await page.locator('.sync-status').first().innerText().catch(() => '');
+			throw new Error(`${error}\nSync pill: ${label} (${pill}); hub people: ${JSON.stringify(db.db.query('SELECT name,deleted_at FROM people').all())}; meeting: ${JSON.stringify(db.db.query('SELECT host,attendees,company FROM meetings').all())}`);
+		}
 	};
 	const editor = page.getByRole('complementary', { name: 'Record editor', exact: true });
 	const create = (text: string) => editor.getByRole('button', { name: `Create “${text}”`, exact: true });

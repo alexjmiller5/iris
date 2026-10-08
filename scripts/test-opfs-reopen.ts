@@ -376,7 +376,7 @@ try {
         hub.server.url.href.replace(/\/$/, ""),
       );
       await cdp.fill(input("Device token"), "fixture");
-      await cdp.click(named("button", "Sync now"));
+      await cdp.click(named("button", "Connect"));
       await cdp.until(
         `!!(${named("button", "Fixture record")})`,
         "Initial clean sync has rendered its record",

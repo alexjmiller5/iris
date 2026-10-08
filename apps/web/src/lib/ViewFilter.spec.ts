@@ -33,6 +33,6 @@ test('select values are a checkbox list with the chosen options checked', () => 
 		}
 	}).body;
 	expect(html.match(/type="checkbox"/g)).toHaveLength(2);
-	expect(html).toMatch(/type="checkbox"[^>]*checked[^>]*>\s*<span>Done/);
-	expect(html).not.toMatch(/type="checkbox"[^>]*checked[^>]*>\s*<span>Open/);
+	expect(html).toMatch(/type="checkbox"[^>]*checked[^>]*>\s*<span[^>]*>Done/);
+	expect(html).not.toMatch(/type="checkbox"[^>]*checked[^>]*>\s*<span[^>]*>Open/);
 });

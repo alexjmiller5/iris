@@ -110,7 +110,7 @@ try {
 	await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 	await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 	await page.getByLabel('Device token').fill('fixture');
-	const sync = page.getByRole('button', { name: 'Sync now', exact: true });
+	const sync = page.getByRole('button', { name: 'Connect', exact: true });
 	await sync.click();
 	await expect(sync).toBeEnabled({ timeout: 15000 });
 	expect((await page.evaluate(() => (window as any).syncReply))?.error).toBeUndefined();
@@ -139,7 +139,7 @@ try {
 		await expect(editor.getByLabel('Code', { exact: true })).toHaveValue('hidden-code');
 		const reads = await page.evaluate(() => (window as any).relationReads);
 		expect(reads.some((v: any) => v.filters[0].value === 'fixture-record' && !v.columns)).toBe(true);
-		await expect(page.getByText('Pending edits: 0', { exact: true })).toBeVisible();
+		await expect(page.locator('[data-pending="0"]')).toBeVisible();
 		expect(db.db.query('SELECT parent,related FROM widgets WHERE id=?').get('fixture-record')).toEqual({ parent: 'fixture-record', related: '["fixture-record","target-two"]' });
 	});
 	await check('multi reference opening is separate from removing its selection', async () => {

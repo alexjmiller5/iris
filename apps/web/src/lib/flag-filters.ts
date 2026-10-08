@@ -10,7 +10,7 @@ export function flagFilters(properties: Property[]): { flag: Property; reason: P
 		const words = new Set(flag.description?.match(/[A-Za-z_]\w*/g) ?? []);
 		const reasons = properties.filter(
 			(p) =>
-				p !== flag && p.tbl === flag.tbl && true && words.has(p.col)
+				p !== flag && p.tbl === flag.tbl && (p.type ?? 'text') === 'text' && words.has(p.col)
 		);
 		return reasons.length === 1 ? [{ flag, reason: reasons[0] }] : [];
 	});

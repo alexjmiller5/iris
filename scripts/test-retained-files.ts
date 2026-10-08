@@ -135,8 +135,8 @@ try {
   await click(named("summary", "Use a device token"));
   await fill(element("#endpoint"), server.url.href.replace(/\/$/, ""));
   await fill(element("#token"), "fixture");
-  await click(button("Sync now"));
-  await until(`!(${button("Sync now")}).disabled`);
+  await click(button("Connect"));
+  await until(`!(${button("Connect")}).disabled`);
   await click(button("widgets", element('nav[aria-label="Tables"]')));
   await click(button("Fixture record", grid));
   await until(
@@ -218,8 +218,10 @@ try {
   await click(button("Save cell", cell));
   await click(button("Fixture record", grid));
   await until(`!!${element('img[alt="Diagram"]')}`);
-  await click(button("Sync now"));
-  await until(`!(${button("Sync now")}).disabled`);
+  const resync = await evaluate("new Date().toISOString()");
+  await until(
+    `(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${js(resync)}`,
+  );
   expect(
     (
       db.db
