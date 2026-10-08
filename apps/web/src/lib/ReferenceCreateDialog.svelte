@@ -70,7 +70,7 @@
 		{#if error}<p role="alert">{error}</p>{/if}
 		<footer>
 			<button type="button" class="secondary" onclick={oncancel} disabled={busy}>Cancel</button>
-			<button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save record'}</button>
+			<button type="submit" disabled={busy}>Save record</button>
 		</footer>
 	</form>
 </dialog>

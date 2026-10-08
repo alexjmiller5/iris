@@ -210,7 +210,7 @@ try {
   // A completed copy belongs to its original editor, even after that editor closes.
   const reopenedSource = await sourceText();
   await until(
-    `!${editor}.textContent.includes('Body changes pending') && !${editor}.textContent.includes('Saving body')`,
+    `!['pending', 'saving'].includes(${editor}.querySelector('[aria-label="Body save status"]')?.dataset.state ?? '')`,
   );
   cdp.on("Page.javascriptDialogOpening", ({ message }: { message: string }) => {
     if (message === "Discard unsaved changes to this record?")

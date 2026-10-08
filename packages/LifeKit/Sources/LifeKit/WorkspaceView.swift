@@ -605,7 +605,10 @@ public struct WorkspaceView: View {
   @ViewBuilder private var quickAddBanner: some View {
     if pendingQuickAdd != nil || quickAddError != nil {
       VStack(alignment: .leading, spacing: 6) {
-        Text("Quick Add is waiting. Finish the current editor before opening its draft.")
+        Text(
+          editor == nil
+            ? "A Quick Add draft is waiting."
+            : "A Quick Add draft is waiting. Finish the current editor first.")
         if let error = quickAddError {
           Text(error).foregroundStyle(.red).accessibilityIdentifier("quick-add-error")
         }
@@ -783,6 +786,7 @@ public struct WorkspaceView: View {
       VStack(alignment: .leading, spacing: 22) {
         Image(systemName: "square.grid.2x2").font(.largeTitle).foregroundStyle(.tint)
         Text("Your workspace, locally.").font(.largeTitle.bold())
+          .fixedSize(horizontal: false, vertical: true)
         Text(
           "Browse your catalog, write a note, and keep its Markdown source. Work locally or connect a hub to sync across devices."
         )

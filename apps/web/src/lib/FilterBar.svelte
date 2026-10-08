@@ -278,7 +278,8 @@
 	aria-label="Edit filter"
 	bind:this={editPopover}
 	use:anchored={{
-		anchor: () => editAnchor,
+		// The edited chip re-renders once its rule completes; find the live one.
+		anchor: () => row?.querySelector<HTMLElement>('[data-editing] .chip-main') ?? editAnchor,
 		ontoggle: (open) => {
 			ontoggle?.(open);
 			if (!open) closed();

@@ -69,6 +69,7 @@ try {
 	await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'all' });
 	await cdp.detach();
 	await page.goto(url);
+	await page.waitForLoadState('networkidle', { timeout: 120000 });
 	await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
 	await page.getByText('Connect to a hub', { exact: true }).click();
 	await page.getByText('Use a device token', { exact: true }).click();

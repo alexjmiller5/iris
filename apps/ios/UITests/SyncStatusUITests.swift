@@ -77,10 +77,10 @@ final class SyncStatusUITests: XCTestCase {
 
   private func expect(_ pill: XCUIElement, _ value: String) {
     let state = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "value == %@", value), object: pill)
+      predicate: NSPredicate(format: "label == %@", value), object: pill)
     XCTAssertEqual(
       XCTWaiter.wait(for: [state], timeout: 20), .completed,
-      "Pill stayed \(String(describing: pill.value)) instead of \(value)")
+      "Pill stayed \(pill.label) instead of \(value)")
   }
 
   private func capture(_ app: XCUIApplication, _ name: String) {

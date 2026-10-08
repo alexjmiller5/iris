@@ -47,7 +47,7 @@ try{
  await page.getByRole('button', {name:'Body options',exact:true}).click();
   await page.getByRole('menuitem', {name:'Body source',exact:true}).click();
  await page.getByRole('textbox',{name:'Body',exact:true}).fill('Automatically saved offline');
- await expect(page.getByRole('status',{name:'Body save status',exact:true})).toHaveText('Body saved on this device');
+ await expect(page.locator('[aria-label="Body save status"]')).toHaveAttribute('data-state','saved');
  await page.reload();
  await page.getByRole('button',{name:'Try sample workspace',exact:true}).click();
  await page.getByRole('button',{name:'A place to start',exact:true}).click();
@@ -57,12 +57,12 @@ try{
  await page.evaluate(() => { (window as any).holdWrites = true; });
  await page.getByRole('textbox',{name:'Body',exact:true}).fill('First in flight');
  await page.waitForFunction(() => (window as any).heldWrites.length === 1);
- await expect(page.getByRole('status',{name:'Body save status',exact:true})).toHaveText('Saving body…');
+ await expect(page.locator('[aria-label="Body save status"]')).toHaveAttribute('data-state','saving');
  await expect(page.getByRole('button',{name:'Save record',exact:true})).toBeDisabled();
  await page.getByRole('textbox',{name:'Body',exact:true}).fill('Typed after save started');
  await page.getByRole('textbox',{name:'Title',exact:true}).fill('Unsaved property change');
  await page.evaluate(() => (window as any).releaseWrites());
- await expect(page.getByRole('status',{name:'Body save status',exact:true})).toHaveText('Body saved on this device');
+ await expect(page.locator('[aria-label="Body save status"]')).toHaveAttribute('data-state','saved');
  await expect(page.getByRole('textbox',{name:'Body',exact:true})).toHaveValue('Typed after save started');
  await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Unsaved property change');
  const writes=await page.evaluate(()=>(window as any).writeRequests);
@@ -119,7 +119,7 @@ try{
  await page.getByRole('button', {name:'Body options',exact:true}).click();
   await page.getByRole('menuitem', {name:'Body source',exact:true}).click();
  await page.getByRole('textbox',{name:'Body',exact:true}).fill('Body saved after catalog changed');
- await expect(page.getByRole('status',{name:'Body save status',exact:true})).toHaveText('Body saved on this device');
+ await expect(page.locator('[aria-label="Body save status"]')).toHaveAttribute('data-state','saved');
  await expect(page.getByRole('complementary',{name:'Record editor',exact:true}).locator('.eyebrow')).toContainText('Saved');
  await page.getByRole('textbox',{name:'Title',exact:true}).fill('A place to start');
  await page.getByRole('button',{name:'Save record',exact:true}).click();

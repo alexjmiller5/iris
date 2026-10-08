@@ -81,7 +81,9 @@ struct SyncStatusPill: View {
 
   var body: some View {
     Button(action: action) {
+      // Toolbars default labels to icon-only; the pill always shows its words.
       Label(pill.title, systemImage: pill.symbol)
+        .labelStyle(.titleAndIcon)
         .font(.caption.weight(.medium))
         .lineLimit(1)
         .fixedSize()
@@ -95,8 +97,8 @@ struct SyncStatusPill: View {
       .buttonStyle(.plain)
     #endif
     .accessibilityIdentifier("workspace-status")
-    .accessibilityLabel("Sync status")
-    .accessibilityValue(pill.title)
+    .accessibilityLabel(pill.title)
+    .accessibilityHint("Shows sync details")
     .help("Show sync details")
   }
 

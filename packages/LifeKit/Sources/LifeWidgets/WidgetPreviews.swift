@@ -24,25 +24,25 @@
     """
 
   #Preview("Table small", as: .systemSmall) { LifeTableWidget() } timeline: {
-    preview(.list, rows: titles)
+    syntheticEntry(.list, rows: titles)
   }
   #Preview("Today medium", as: .systemMedium) { LifeTodayWidget() } timeline: {
-    preview(.list, rows: titles)
-    preview(.list, rows: "[]")
+    syntheticEntry(.list, rows: titles)
+    syntheticEntry(.list, rows: "[]")
   }
   #Preview("Table large stale", as: .systemLarge) { LifeTableWidget() } timeline: {
-    preview(.list, rows: titles, stale: true)
+    syntheticEntry(.list, rows: titles, stale: true)
   }
   #Preview("Count small", as: .systemSmall) { LifeCountWidget() } timeline: {
-    preview(.count, rows: #"[{"count":10001}]"#)
+    syntheticEntry(.count, rows: #"[{"count":10001}]"#)
   }
   #Preview("Lock rectangular", as: .accessoryRectangular) { LifeCountWidget() } timeline: {
-    preview(.count, rows: #"[{"count":7}]"#)
+    syntheticEntry(.count, rows: #"[{"count":7}]"#)
   }
   #Preview("Lock circular", as: .accessoryCircular) { LifeCountWidget() } timeline: {
-    preview(.count, rows: #"[{"count":7}]"#)
+    syntheticEntry(.count, rows: #"[{"count":7}]"#)
   }
   #Preview("Lock inline", as: .accessoryInline) { LifeCountWidget() } timeline: {
-    preview(.count, rows: #"[{"count":7}]"#)
+    syntheticEntry(.count, rows: #"[{"count":7}]"#)
   }
 #endif

@@ -4,9 +4,11 @@ Local-first web and native Apple clients for catalogued life-data databases.
 Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
 
 Preferred table views are synced IDs through canonical `getViewDefault`/`setViewDefault`.
-Plain table navigation applies the preference; explicit view or record links win.
-Unavailable targets show a catalog-default fallback without rewriting stored views.
-Preference changes use displayed revisions, the ordinary writer and Undo. Transient links carry bounded query/presentation JSON through canonical `resolveViewDefinition`, without provisioning or writing saved views. Action values come only from the displayed saved revision, never the URL. Local/demo
+Plain table and record links open the table through canonical `ensureDefaultView`
+(the table's default saved view, created when it has none, with no Undo receipt);
+explicit view links win. Unavailable preferences keep their notice without rewriting
+stored views. Preference changes use displayed revisions, the ordinary writer and
+Undo. Links carry only table, view and record IDs, never view settings. Local/demo
 setup uses the canonical `view-defaults/v1` manifest; replicas require operator-provisioned
 schema and permitted sync scope. View names and personal lifecycle filters are runtime data.
 
@@ -353,6 +355,17 @@ silently discarding later typing. Web body autosave writes only editable Markdow
 columns on existing rows; it updates the acknowledged baseline without replacing
 the live draft. Failed identical patches must not loop. Preserve unknown existing
 multi-select values.
+
+The web view toolbar holds the view switcher (its menu renames, copies, deletes and
+sets defaults), Filter, Sort and layout. Filter chips edit `filter-bar.ts` rules:
+operators come from the property type, several checked options save as an any-of
+group (none-of for "is not"), other groups stay advanced chips, and rules without a
+value are never saved. Every view change applies to the query at once;
+`createViewAutosave` captures the applied view synchronously and saves it through
+ordinary `saveView` with the latest revision this tab wrote, after edits settle and
+never while a filter or sort popover is open. Context changes, unload and Undo
+flush it first, so Cmd-Z reverts the latest view edit. Search and Trash are browsing
+state and are not saved.
 
 Saved view version 2 supports bounded all/any groups, host-resolved Today,
 ordered option/value sorts, literal row actions and interleaved action columns.

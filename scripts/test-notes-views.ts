@@ -152,14 +152,28 @@ try {
   const showsRows = (ids: string[]) =>
     expect.poll(rows, { timeout: 10000 }).toEqual([...ids].sort());
   const select = element('select[aria-label="View"]');
+  const tables = element('nav[aria-label="Tables"]');
+  // A click before hydration does nothing; retry until the workspace shell is up.
+  const enter = () =>
+    expect
+      .poll(
+        async () =>
+          (await cdp.evaluate(`!!(${tables})`)) ||
+          (await cdp.click(button("Open my workspace")).then(
+            () => false,
+            () => false,
+          )),
+        { timeout: 30000 },
+      )
+      .toBe(true);
   const open = async (path: string) => {
     await cdp.navigate(new URL(path, url).href);
-    await click("Open my workspace");
+    await enter();
   };
   await cdp.navigate(new URL("/", url).href);
   await cdp.command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await cdp.navigate(url);
-  await click("Open my workspace");
+  await enter();
   for (const label of ["Connect to a hub", "Use a device token"]) {
     const control = named("button,summary", label);
     await cdp.until(`!!(${control})`);
@@ -171,10 +185,10 @@ try {
   await cdp.fill(input("Hub address"), server.url.href.replace(/\/$/, ""));
   await cdp.fill(input("Device token"), "fixture");
   await click("Connect");
-  await cdp.until(`!!(${named("button", "notes", element('nav[aria-label="Tables"]'))})`);
+  await cdp.until(`!!(${named("button", "notes", tables)})`);
 
   // 1. Plain table navigation opens the preferred everyday view.
-  await cdp.click(named("button", "notes", element('nav[aria-label="Tables"]')));
+  await cdp.click(named("button", "notes", tables));
   await cdp.until(`(${select})?.value==='everyday'`);
   await showsRows(["n-reference", "n-working"]);
   await shot("1-default-everyday");
@@ -201,12 +215,14 @@ try {
   await open("/workspace?table=notes");
   await cdp.until(`(${select})?.value==='everyday'`);
   await showsRows(["n-reference", "n-working"]);
-  await click("Needs review");
+  const flagChip = named("button", "Needs review", element(".chips"));
+  await cdp.click(flagChip);
   await showsRows(["n-reference"]);
   await cdp.until(
     `!!document.querySelector('[aria-label="Records"] [data-row="n-reference"][data-column="review_reason"]')?.textContent.includes('Duplicates the packing list')`,
   );
-  expect(await cdp.evaluate(`!!(${button("Needs review")})`)).toBe(false);
+  // The bar's own removable chip replaces the quick filter while it is on.
+  expect(await cdp.evaluate(`!!(${flagChip})`)).toBe(false);
   await shot("4-needs-review-reason");
 
   // 5. Search still finds Retired records and labels them from the catalog.

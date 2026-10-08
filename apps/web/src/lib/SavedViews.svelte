@@ -134,7 +134,6 @@
 		popovertarget={`${id}-menu`}
 		aria-label="View settings"><IconDots size={16} aria-hidden="true" /></button
 	>
-	{#if modified}<span class="modified" aria-hidden="true">Saving…</span>{/if}
 	<div
 		id={`${id}-menu`}
 		popover="auto"
@@ -328,11 +327,6 @@
 	select:disabled {
 		opacity: 0.5;
 		cursor: default;
-	}
-	.modified {
-		padding: 0 0.25rem;
-		color: var(--color-muted);
-		font-size: 0.75rem;
 	}
 	.hint,
 	.error {

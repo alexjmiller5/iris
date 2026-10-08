@@ -2828,7 +2828,7 @@
 										{#if !flagOn(filters, flag.col)}
 											<button
 												type="button"
-												class="sort-chip"
+												class="sort-chip flag-chip"
 												title={flag.description ?? undefined}
 												disabled={busy || navigationLoading || !chosenView}
 												onclick={() => {
@@ -3077,16 +3077,28 @@
 								: 'Review it and choose Save record to continue.'} Body autosave is paused.
 						</p>{/if}
 					{#if draftProperties.some((p) => p.type === 'markdown')}
-						<p role="status" aria-label="Body save status" class="hint">
-							{bodySaving
-								? 'Saving body…'
-								: !selected
-									? 'Save record to start body autosave'
-									: bodyPatch
-										? bodyFailure === bodySaveKey
-											? 'Body not saved. Your draft is kept.'
-											: 'Body changes pending'
-										: 'Body saved on this device'}
+						<!-- Ordinary autosave is silent; only guidance and failures show. -->
+						{@const bodyState = bodySaving
+							? 'saving'
+							: !selected
+								? 'new'
+								: bodyPatch
+									? bodyFailure === bodySaveKey
+										? 'failed'
+										: 'pending'
+									: 'saved'}
+						<p
+							role="status"
+							aria-label="Body save status"
+							class="hint"
+							data-state={bodyState}
+							hidden={bodyState !== 'new' && bodyState !== 'failed'}
+						>
+							{bodyState === 'new'
+								? 'Save record to start body autosave'
+								: bodyState === 'failed'
+									? 'Body not saved. Your draft is kept.'
+									: ''}
 						</p>
 					{/if}
 					{#if draftProperties.length !== properties.length}
@@ -3514,6 +3526,11 @@
 	}
 	.sort-chip :global(svg) {
 		color: var(--color-accent);
+	}
+	/* A suggestion, not an applied filter. */
+	.flag-chip {
+		border-style: dashed;
+		background: transparent;
 	}
 	.search {
 		display: flex;
