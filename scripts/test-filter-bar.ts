@@ -67,8 +67,9 @@ try {
     await shot("02-default-view");
   });
 
-  // Synthetic rows only, written through the ordinary writer.
-  await page.evaluate(async () => {
+  // Synthetic rows only, written through the ordinary writer; a previous run's
+  // view settings are reset the same way.
+  await page.evaluate(async (id) => {
     const { WorkspaceDatabase } = await import("/src/lib/database.ts");
     const db = new WorkspaceDatabase();
     try {
@@ -83,10 +84,20 @@ try {
           ["Second draft", "Draft"],
         ])
           await db.request("write", { table: "notes", patch: { title, status } });
+      const applied = (await db.request("listViews", { table: "notes" })).views.find(
+        (v) => v.id === id,
+      )!;
+      await db.request("saveView", {
+        table: "notes",
+        name: applied.name,
+        definition: { version: 2 },
+        id,
+        expectedUpdatedAt: applied.updated_at!,
+      });
     } finally {
       db.close();
     }
-  });
+  }, view);
   await page.reload();
   await open(page);
   await expect.poll(() => rows().count()).toBeGreaterThanOrEqual(4);
