@@ -460,6 +460,11 @@
 		void reflectLocation();
 		return true;
 	}
+	/** View edits close an open record or cell first; otherwise they touch nothing
+	 * else, so an open filter or sort editor survives every keystroke. */
+	function leaveRecord() {
+		return (!editing && !gridDraft) || closeRecord();
+	}
 	let lastSync = $state<string | null>(null),
 		pendingEdits = $state(0),
 		rejected = $state<RejectionSnapshot>({ page: null, error: '' }),
@@ -2638,8 +2643,8 @@
 				</div>
 			</aside>
 			<main class="records">
-				{#if sidebarCollapsed}{@render sidebarToggle()}{/if}
-				{#if !editing && (table || undoAction)}<div class="link-toolbar">
+				{#if sidebarCollapsed || (!editing && (table || undoAction))}<div class="link-toolbar">
+						{#if sidebarCollapsed}{@render sidebarToggle()}{/if}
 						{#if table && !editing}
 							<button
 								class="secondary"
@@ -2648,7 +2653,7 @@
 								><IconLink size={16} /> Copy link</button
 							>
 						{/if}
-						{@render undoButton()}
+						{#if !editing && (table || undoAction)}{@render undoButton()}{/if}
 					</div>{/if}
 				{#if navigationLoading}<p role="status" class="hint">Opening link…</p>{/if}
 				{#if notice}<p role="status" class="hint">{notice}</p>{/if}
@@ -2766,7 +2771,7 @@
 										columns={[display ?? 'id', ...visibleColumns]}
 										disabled={busy || navigationLoading || !chosenView}
 										onchange={(patch) => {
-											if (!closeRecord()) return;
+											if (!leaveRecord()) return;
 											if (patch.actions) actions = patch.actions;
 											if (patch.layout) actionLayout = patch.layout;
 											if (patch.timeZone !== undefined) timeZone = patch.timeZone;
@@ -2793,7 +2798,7 @@
 									else void loadOptions(p);
 								}}
 								onchange={(next) => {
-									if (!closeRecord()) return false;
+									if (!leaveRecord()) return false;
 									filters = next.filters;
 									filterGroups = next.groups;
 									viewChanged();
@@ -2832,7 +2837,7 @@
 												title={flag.description ?? undefined}
 												disabled={busy || navigationLoading || !chosenView}
 												onclick={() => {
-													if (!closeRecord()) return;
+													if (!leaveRecord()) return;
 													filters = toggleFlag(filters, flag.col);
 													viewChanged();
 												}}><IconFlag size={14} aria-hidden="true" />{flag.label || flag.col}</button
@@ -2848,7 +2853,7 @@
 								bind:anchor={sortAnchor}
 								disabled={busy || navigationLoading || !chosenView}
 								onchange={(next) => {
-									if (!closeRecord()) return false;
+									if (!leaveRecord()) return false;
 									sorts = next;
 									viewChanged();
 									return true;
@@ -2860,7 +2865,7 @@
 								{properties}
 								disabled={busy || navigationLoading || !chosenView}
 								onchange={(value) => {
-									if (!closeRecord()) return;
+									if (!leaveRecord()) return;
 									presentation = value;
 									loadBoardOptions();
 									viewChanged();
@@ -2980,7 +2985,7 @@
 										sorts.find((sort) => sort.column === column)?.direction ?? null}
 									onsort={chosenView && !busy && !navigationLoading
 										? (column, direction) => {
-												if (!closeRecord()) return;
+												if (!leaveRecord()) return;
 												sorts = [{ column, direction }];
 												viewChanged();
 											}
@@ -3382,8 +3387,8 @@
 		display: inline-flex;
 		color: var(--color-muted);
 	}
-	.records > .sidebar-toggle {
-		margin-bottom: 12px;
+	.link-toolbar > .sidebar-toggle {
+		margin-right: auto;
 	}
 	.sidebar-foot {
 		margin-top: auto;
@@ -3397,6 +3402,7 @@
 		bottom: -24px;
 		margin: 0 -16px -24px;
 		padding: 10px 16px 14px;
+		border-top: 1px solid var(--color-rule);
 		background: var(--color-paper);
 	}
 	.connect {
@@ -3523,6 +3529,9 @@
 		font: inherit;
 		font-size: 13px;
 		cursor: pointer;
+	}
+	.sort-chip:focus-visible {
+		outline-offset: -2px;
 	}
 	.sort-chip :global(svg) {
 		color: var(--color-accent);

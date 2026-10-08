@@ -203,10 +203,14 @@
 	.tool:hover:not(:disabled) {
 		background: var(--color-bone);
 	}
-	.tool.active {
+	.tool.active,
+	.tool.active:hover:not(:disabled) {
 		border-color: var(--color-accent);
 		background: var(--color-accent);
 		color: var(--color-on-accent);
+	}
+	.tool.active:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--color-accent) 86%, var(--color-ink));
 	}
 	.tool:disabled {
 		opacity: 0.5;

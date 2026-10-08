@@ -40,6 +40,7 @@ async function open(target: Page) {
   if (await sample.isVisible().catch(() => false)) await sample.click();
   await expect(target.getByLabel("View", { exact: true })).toBeVisible();
   await expect(rows().first()).toBeVisible();
+  await target.waitForURL(/[?&]view=/);
 }
 
 let failures = 0;
@@ -89,8 +90,20 @@ try {
   await page.reload();
   await open(page);
   await expect.poll(() => rows().count()).toBeGreaterThanOrEqual(4);
-  const all = await rows().count();
-  const ready = await rows().filter({ hasText: "Ready" }).count();
+  const [all, ready] = await page.evaluate(async () => {
+    const { WorkspaceDatabase } = await import("/src/lib/database.ts");
+    const db = new WorkspaceDatabase();
+    try {
+      await db.request("open", { demo: true });
+      const count = async (filters: unknown[]) =>
+        (await db.request("rows", { view: { table: "notes", filters, limit: 200 } })).length;
+      return [await count([]), await count([{ column: "status", op: "eq", value: "Ready" }])];
+    } finally {
+      db.close();
+    }
+  });
+  expect(ready).toBeGreaterThan(0);
+  expect(ready).toBeLessThan(all);
 
   await check("Filter, property, value: the grid narrows with no Apply", async () => {
     await page.getByRole("button", { name: "Filter", exact: true }).click();
@@ -105,7 +118,7 @@ try {
     await expect(rows()).toHaveCount(ready);
     await page.keyboard.press("Escape");
     await expect(editor()).toBeHidden();
-    await expect(chips().getByRole("button", { name: "Status: Ready" })).toBeFocused();
+    await expect(chips().getByRole("button", { name: "Status: Ready", exact: true })).toBeFocused();
     await expect
       .poll(async () => (await saved(view))?.filters)
       .toEqual([{ column: "status", op: "eq", value: "Ready" }]);
@@ -115,7 +128,7 @@ try {
   await check("a reload shows the saved filter", async () => {
     await page.reload();
     await open(page);
-    await expect(chips().getByRole("button", { name: "Status: Ready" })).toBeVisible();
+    await expect(chips().getByRole("button", { name: "Status: Ready", exact: true })).toBeVisible();
     await expect(rows()).toHaveCount(ready);
   });
 
@@ -158,7 +171,7 @@ try {
     await expect.poll(async () => (await saved(view))?.filters).toEqual([]);
     await page.locator("body").click({ position: { x: 5, y: 5 } });
     await page.keyboard.press("ControlOrMeta+z");
-    await expect(chips().getByRole("button", { name: "Status: Ready" })).toBeVisible();
+    await expect(chips().getByRole("button", { name: "Status: Ready", exact: true })).toBeVisible();
     await expect(rows()).toHaveCount(ready);
     await expect
       .poll(async () => (await saved(view))?.filters)
@@ -174,7 +187,7 @@ try {
     await editor().getByLabel("Value").first().fill("one");
     await expect(rows()).toHaveCount(1);
     await page.keyboard.press("Escape");
-    await expect(chips().getByRole("button", { name: "All of 1 rules" })).toBeVisible();
+    await expect(chips().getByRole("button", { name: "All of 1 rules", exact: true })).toBeVisible();
     await expect.poll(async () => (await saved(view))?.groups?.length).toBe(1);
     await chips().getByRole("button", { name: "Remove filter: All of 1 rules" }).click();
   });
@@ -203,7 +216,7 @@ try {
     await page.keyboard.press("Escape");
   });
 } finally {
+  // Disconnect only; the disposable browser belongs to the caller.
   await page.close();
-  await browser.close();
 }
-if (failures) process.exit(1);
+process.exit(failures ? 1 : 0);

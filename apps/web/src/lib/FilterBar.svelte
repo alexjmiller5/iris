@@ -370,10 +370,14 @@
 	.tool:hover:not(:disabled) {
 		background: var(--color-bone);
 	}
-	.tool.active {
+	.tool.active,
+	.tool.active:hover:not(:disabled) {
 		border-color: var(--color-accent);
 		background: var(--color-accent);
 		color: var(--color-on-accent);
+	}
+	.tool.active:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--color-accent) 86%, var(--color-ink));
 	}
 	.tool:disabled {
 		opacity: 0.5;
@@ -391,14 +395,20 @@
 	}
 	.chips {
 		order: 1;
-		flex: 1 0 100%;
+		flex: 1 0 calc(100% + 8px);
 		display: flex;
 		gap: 0.375rem;
 		align-items: center;
 		min-width: 0;
 		overflow-x: auto;
 		scrollbar-width: thin;
-		padding-bottom: 2px;
+		/* Room for focus rings inside the scroller without shifting the row. */
+		margin: -4px;
+		padding: 4px;
+	}
+	.chip-main:focus-visible,
+	.chip-x:focus-visible {
+		outline-offset: -2px;
 	}
 	.chip {
 		display: inline-flex;
