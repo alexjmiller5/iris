@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import GRDB
 import JavaScriptCore
@@ -12,6 +13,69 @@ public final class SQLiteBridge {
 
   var isInsideTransaction: Bool {
     database.unsafeRead { $0.isInsideTransaction }
+  }
+
+  /// NativeWorkspace keeps its normal file-gate turn until this backup ends.
+  /// SQLite performs the coherent copy off MainActor; the live file is never moved.
+  func exportWidgetSnapshot(to url: URL) async throws {
+    let source = database
+    let work = Task.detached(priority: .utility) {
+      guard url.isFileURL else {
+        throw WorkspaceError(message: "Widget snapshot destination already exists.", violations: [])
+      }
+      let descriptor = Darwin.open(url.path, O_CREAT | O_EXCL | O_RDWR, mode_t(S_IRUSR | S_IWUSR))
+      guard descriptor >= 0 else {
+        throw WorkspaceError(message: "Widget snapshot destination is unavailable.", violations: [])
+      }
+      Darwin.close(descriptor)
+      var completed = false
+      defer {
+        if !completed {
+          for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(atPath: url.path + suffix)
+          }
+        }
+      }
+      #if os(iOS)
+        try FileManager.default.setAttributes(
+          [.protectionKey: FileProtectionType.complete], ofItemAtPath: url.path)
+      #endif
+      let size = try source.read { db in
+        let pages = try Int64.fetchOne(db, sql: "PRAGMA page_count") ?? 0
+        let pageSize = try Int64.fetchOne(db, sql: "PRAGMA page_size") ?? 0
+        return pages.multipliedReportingOverflow(by: pageSize)
+      }
+      guard !size.overflow, size.partialValue > 0, size.partialValue <= 536_870_912 else {
+        throw WorkspaceError(
+          message: "Workspace exceeds the widget snapshot budget.", violations: [])
+      }
+      let started = ContinuousClock.now
+      let destination = try DatabaseQueue(path: url.path)
+      do {
+        try source.backup(to: destination, pagesPerStep: 128) { progress in
+          if !progress.isCompleted {
+            try Task.checkCancellation()
+            if started.duration(to: .now) > .seconds(5) { throw CancellationError() }
+          }
+        }
+        try Task.checkCancellation()
+        // One closed standalone file, with no unpaired WAL or SHM sidecars.
+        try destination.writeWithoutTransaction { db in
+          try db.execute(sql: "PRAGMA journal_mode = DELETE")
+        }
+        try destination.close()
+        completed = true
+      } catch {
+        try? destination.close()
+        try? FileManager.default.removeItem(at: url)
+        throw error
+      }
+    }
+    try await withTaskCancellationHandler {
+      try await work.value
+    } onCancel: {
+      work.cancel()
+    }
   }
 
   public convenience init(path: String) throws {

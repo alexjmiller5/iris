@@ -18,12 +18,13 @@ struct StoredEditorDraft: Codable, Identifiable {
   let autosavePaused: Bool?
   let undoUnconfirmed: Bool?
   let modifiedAt: Date
+  let captureID: UUID?
 
   init(
     id: String = UUID().uuidString, table: String, recordID: String?, draft: RecordDraft,
     failure: String?, failedPatch: WorkspaceRecord?, pendingWrite: PendingEditorWrite? = nil,
     autosavePaused: Bool? = nil, undoUnconfirmed: Bool? = nil,
-    modifiedAt: Date = Date()
+    modifiedAt: Date = Date(), captureID: UUID? = nil
   ) {
     self.id = id
     self.table = table
@@ -35,6 +36,7 @@ struct StoredEditorDraft: Codable, Identifiable {
     self.autosavePaused = autosavePaused
     self.undoUnconfirmed = undoUnconfirmed
     self.modifiedAt = modifiedAt
+    self.captureID = captureID
   }
 }
 

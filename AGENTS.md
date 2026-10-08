@@ -24,6 +24,23 @@ schema from the operator. Ordinary table defaults are unaffected.
   FTS5-enabled JS/WASM pair is in `vendor/wa-sqlite`; regenerate through its Nix
   package and `scripts/build-wa-sqlite.ts`, preserving the matching API/VFS pin.
 - `apps/ios`, `apps/macos`: XcodeGen SwiftUI targets consuming LifeKit.
+- `packages/LifeKit/Sources/LifeExtensionSupport`: portable generated DTOs, shared
+  calendar policy and bounded read-only SQLite extension reader. No JavaScriptCore,
+  network, credentials or database writer. LifeKit reexports the portable types;
+  `bundle-core.ts` generates their single canonical Swift source there.
+- `packages/LifeKit/Sources/LifeWidgets`: App Intents widget configuration queries
+  over authorized publications, depending only on LifeExtensionSupport. Calendar
+  choices require tagged calendar bindings from the canonical core plan.
+  The iOS WidgetKit extension embeds table-title, Today and bounded-count widgets;
+  accessories expose only generic labels/counts. Both targets use the configured
+  `LIFE_WIDGET_APP_GROUP`; signed distribution requires explicit matching profiles.
+- Widget source opt-ins are durable private host preferences, separate from
+  regenerable App Group publications. NativeWidgetSettings publishes paired list
+  and count plans from the opened database; the library scopes them by workspace
+  and physical replica identity. Explicit access removal or database replacement
+  revokes the old publication; ordinary close retains its offline copy. A failed
+  refresh labels previous data stale. Unreadable preferences and link identity
+  files stay intact and must not block ordinary workspace use.
 - `packages/LifeKit`: serialized JavaScriptCore facade, GRDB adapter, native
   workspace, URLSession transport, Keychain storage and bundled graph island.
 - `packages/core`: generated TypeScript declarations and JS artifacts. Core
@@ -482,6 +499,11 @@ Keep active drafts and their action controls mounted through catalog/row refresh
 measure editor height before retiling the row. Disable workspace replacement and
 new-record actions while an inline editor is active. Property help popovers belong
 to their individual buttons.
+RecordEditorModel capture preparation retains its handoff UUID in the ordinary
+recoverable creation journal. Pending delivery retries preserve edits and refuse
+to fork another live editor. Empty captures stay recoverable; only explicit Save
+creates a row. Entry-point navigation and workspace/writeability checks remain
+the host's responsibility.
 Markdown previews parse a bounded prefix off the main actor and never rewrite
 source. Only the active cell mounts a rich editor. Its prepared record model owns
 the live WebKit view across table recycling; dismantling a cell is not an editor

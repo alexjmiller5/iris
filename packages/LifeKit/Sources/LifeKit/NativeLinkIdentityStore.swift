@@ -32,6 +32,13 @@ struct NativeLinkIdentityStore {
     return .local(saved.id)
   }
 
+  /// Identifies only the prior grant to revoke; never authorizes the new file.
+  func replacedBinding() throws -> NativeWorkspaceBinding? {
+    let stamp = try currentStamp()
+    guard let saved = try read(), saved.stamp != stamp else { return nil }
+    return .local(saved.id)
+  }
+
   /// Capture the installed client's physical file before accepting or creating links.
   func retainingOpenedFile() throws -> Self {
     var retained = self

@@ -64,6 +64,35 @@ def identity_for_profile(keychain, profile):
     raise ValueError('No valid distribution private-key identity matches the profile')
 
 
+def validate_profile_set(profiles, device, required_groups):
+    """Every embedded executable needs its own validated capability grant."""
+    if not profiles or (len(profiles) > 1 and not required_groups):
+        raise ValueError('Embedded targets require an explicit shared App Group')
+    if any(not isinstance(group, str) or not group.startswith('group.') or '*' in group
+           for group in required_groups):
+        raise ValueError('Invalid required App Group')
+    team = None
+    certificates = None
+    for bundle, profile in profiles.items():
+        candidate, _ = validate_profile(profile, bundle, device)
+        if team is not None and candidate != team:
+            raise ValueError('Embedded targets must use the same team')
+        team = candidate
+        entitlements = profile['Entitlements']
+        if required_groups:
+            identifier = entitlements['application-identifier']
+            if '*' in identifier or any(
+                    group not in entitlements.get('com.apple.security.application-groups', [])
+                    for group in required_groups):
+                raise ValueError('Explicit bundle profiles must authorize the shared App Group')
+        allowed = profile['DeveloperCertificates']
+        certificates = (list(allowed) if certificates is None else
+                        [certificate for certificate in certificates if certificate in allowed])
+    if not certificates:
+        raise ValueError('No distribution certificate is shared by every target profile')
+    return team, certificates
+
+
 @contextmanager
 def signing_material(p12, password, profile_bytes, uuid, profiles):
     original = shlex.split(run('security', 'list-keychains', '-d', 'user').decode())
@@ -140,6 +169,37 @@ def verify_app(app, bundle, team, fingerprint, device, expected_uuid=None):
         if (hashlib.sha1(certificate).hexdigest().upper() != fingerprint
                 or certificate not in profile['DeveloperCertificates']):
             raise ValueError('Exported leaf certificate is not the selected profile identity')
+    return entitlements
+
+
+def verify_app_tree(app, bundle, team, fingerprint, device, expected_profiles, required_groups):
+    """Verify every extension individually; --deep alone does not prove its claims."""
+    info = plistlib.loads((app / 'Info.plist').read_bytes())
+    versions = (info.get('CFBundleShortVersionString'), info.get('CFBundleVersion'))
+    if not all(isinstance(version, str) and version for version in versions):
+        raise ValueError('App version metadata is missing')
+    targets = {bundle: app}
+    for extension in app.rglob('*.appex'):
+        if extension.is_symlink() or extension.parent != app / 'PlugIns':
+            raise ValueError('Unsupported embedded extension placement')
+        metadata = plistlib.loads((extension / 'Info.plist').read_bytes())
+        identifier = metadata.get('CFBundleIdentifier')
+        if (not isinstance(identifier, str) or not identifier.startswith(bundle + '.')
+                or identifier in targets):
+            raise ValueError('Unexpected embedded bundle identity')
+        if (metadata.get('CFBundleShortVersionString'), metadata.get('CFBundleVersion')) != versions:
+            raise ValueError('App and extension versions differ')
+        targets[identifier] = extension
+    if set(targets) != set(expected_profiles):
+        raise ValueError('Exported embedded targets do not match the signing profiles')
+    if len(targets) > 1 and not required_groups:
+        raise ValueError('Embedded targets require an explicit shared App Group')
+    for identifier, target in targets.items():
+        entitlements = verify_app(target, identifier, team, fingerprint, device,
+                                  expected_profiles[identifier])
+        groups = entitlements.get('com.apple.security.application-groups', [])
+        if set(groups) != set(required_groups):
+            raise ValueError('App and extension App Groups do not match the required grant')
 
 
 def build(project, scheme, output):
@@ -190,7 +250,7 @@ def build(project, scheme, output):
             apps = list((extracted / 'Payload').glob('*.app'))
             if len(apps) != 1:
                 raise ValueError('Expected exactly one exported app')
-            verify_app(apps[0], bundle, team, fingerprint, device, uuid)
+            verify_app_tree(apps[0], bundle, team, fingerprint, device, {bundle: uuid}, [])
             output = Path(output)
             output.mkdir(parents=True, exist_ok=True)
             destination = output / 'App.ipa'

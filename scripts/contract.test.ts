@@ -11,7 +11,7 @@ test('vendored contract generates the exact Swift and TypeScript consumed by bot
   const output = generateContract(contract);
   expect(core.CORE_CONTRACT_HASH).toBe(output.hash);
   expect(await readFile(resolve(root, 'packages/core/contract.generated.ts'), 'utf8')).toBe(output.typescript);
-  expect(await readFile(resolve(root, 'packages/LifeKit/Sources/LifeKit/Generated/CoreContract.generated.swift'), 'utf8')).toBe(output.swift);
+  expect(await readFile(resolve(root, 'packages/LifeKit/Sources/LifeExtensionSupport/Generated/CoreContract.generated.swift'), 'utf8')).toBe(output.swift);
 });
 
 async function withNative(body: (request: (method: string, args?: object) => Promise<unknown>, db: Database) => Promise<void>) {

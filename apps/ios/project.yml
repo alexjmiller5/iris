@@ -7,6 +7,8 @@ settings:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: 1
+    LIFE_APP_BUNDLE_IDENTIFIER: com.alexmiller.life-ui
+    LIFE_WIDGET_APP_GROUP: group.$(LIFE_APP_BUNDLE_IDENTIFIER)
   configs:
     debug:
       ONLY_ACTIVE_ARCH: YES
@@ -22,14 +24,17 @@ targets:
     sources: [App]
     dependencies:
       - package: LifeKit
+      - target: LifeUIWidgets
+        embed: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.life-ui
+        PRODUCT_BUNDLE_IDENTIFIER: $(LIFE_APP_BUNDLE_IDENTIFIER)
         PRODUCT_NAME: LifeUI
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Signing/LifeUI.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_ENTITLEMENTS: App/WidgetGroup.entitlements
       configs:
         # Only the app takes the Ad Hoc profile; package resource bundles cannot.
         release:
@@ -40,10 +45,34 @@ targets:
         CFBundleDisplayName: Life UI
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
+        LifeWidgetAppGroup: $(LIFE_WIDGET_APP_GROUP)
         CFBundleURLTypes:
           - CFBundleURLName: com.alexmiller.life-ui.open
             CFBundleTypeRole: Viewer
             CFBundleURLSchemes: [life]
+  LifeUIWidgets:
+    type: app-extension
+    platform: iOS
+    sources: [Widgets]
+    dependencies:
+      - package: LifeKit
+        product: LifeWidgets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(LIFE_APP_BUNDLE_IDENTIFIER).widgets
+        PRODUCT_NAME: LifeUIWidgets
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: App/WidgetGroup.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Life UI Widgets
+        LifeWidgetAppGroup: $(LIFE_WIDGET_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
   LifeUITests:
     type: bundle.unit-test
     platform: iOS
@@ -56,6 +85,8 @@ targets:
     dependencies:
       - target: LifeUI
       - package: LifeKit
+      - package: LifeKit
+        product: LifeWidgets
   LifeUIUITests:
     type: bundle.ui-testing
     platform: iOS

@@ -205,6 +205,7 @@ final class RecordEditorModel {
   private let write: @MainActor (WorkspaceRecord, WorkspaceRecord?) async throws -> WorkspaceRecord
   private var unreadableDraft = false
   private var journalID = UUID().uuidString
+  private var captureID: UUID?
   private var pendingWrite: PendingEditorWrite?
   private var reviewRequired = false
   private final class Owner {
@@ -293,6 +294,45 @@ final class RecordEditorModel {
     }
   }
 
+  /// A capture owns a recoverable creation draft, never an implicit record write.
+  /// Delivery retries retain edits and reuse the journal after relaunch.
+  func installCaptureDraft(id: UUID, text: String?, column: String?) throws {
+    guard (text == nil) == (column == nil), (text?.utf8.count ?? 0) <= 65_536,
+      column == nil
+        || draft.fields.contains(where: {
+          Data($0.id.utf8) == Data(column!.utf8) && ["text", "markdown", "url"].contains($0.type)
+        })
+    else {
+      throw WorkspaceError(
+        message: "Choose an available text field for this capture.", violations: [])
+    }
+    if captureID == id { return }
+    guard captureID == nil else {
+      throw WorkspaceError(
+        message: "Finish the open capture before opening another.", violations: [])
+    }
+    if let saved = recoveryChoices.first(where: { $0.captureID == id }) {
+      guard isNew, !dirty, saved.recordID == nil, saved.draft.original == nil,
+        Self.owners[ownerKey(saved.id)]?.editor == nil
+      else {
+        throw WorkspaceError(message: "This capture already has an open draft.", violations: [])
+      }
+      resumeDraft(saved)
+      return
+    }
+    guard store != nil else {
+      throw WorkspaceError(
+        message: "Open a persistent workspace before preparing a capture.", violations: [])
+    }
+    captureID = id
+    do {
+      try installDuplicateDraft(from: column.map { [$0: .string(text!)] } ?? [:])
+    } catch {
+      captureID = nil
+      throw error
+    }
+  }
+
   func installDuplicateDraft(
     from row: WorkspaceRecord, isCurrent: @MainActor () -> Bool = { true }
   ) throws {
@@ -363,6 +403,7 @@ final class RecordEditorModel {
     }
     let changed = draft.original?["updated_at"] != recovery.draft.original?["updated_at"]
     draft = recovery.draft
+    captureID = recovery.captureID
     pendingWrite = recovery.pendingWrite
     undoUnconfirmed = recovery.undoUnconfirmed == true
     autosavePaused = recovery.autosavePaused == true
@@ -516,14 +557,15 @@ final class RecordEditorModel {
         message: "The saved draft has been kept. It could not be opened.", violations: [])
     }
     guard recovery == nil else { return }
-    if keepEmpty || dirty || failure != nil || pendingWrite != nil || undoUnconfirmed
+    if keepEmpty || (isNew && captureID != nil) || dirty || failure != nil || pendingWrite != nil
+      || undoUnconfirmed
       || autosavePaused
     {
       try store?.save(
         StoredEditorDraft(
           id: journalID, table: table, recordID: recordID, draft: draft,
           failure: failure, failedPatch: failedPatch, pendingWrite: pendingWrite,
-          autosavePaused: autosavePaused, undoUnconfirmed: undoUnconfirmed))
+          autosavePaused: autosavePaused, undoUnconfirmed: undoUnconfirmed, captureID: captureID))
     } else {
       try store?.remove(table: table, recordID: recordID, draftID: journalID)
     }

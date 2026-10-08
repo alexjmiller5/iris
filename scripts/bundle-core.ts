@@ -37,7 +37,7 @@ if (source !== "--native") {
     throw new Error('Source core contract is stale; regenerate it in life-data first.');
   }
   const contractDir = join(root, 'packages/core/contract');
-  const swiftDir = join(root, 'packages/LifeKit/Sources/LifeKit/Generated');
+  const swiftDir = join(root, 'packages/LifeKit/Sources/LifeExtensionSupport/Generated');
   await mkdir(contractDir, { recursive: true });
   await mkdir(swiftDir, { recursive: true });
   await copyFile(schemaPath, join(contractDir, 'core.json'));

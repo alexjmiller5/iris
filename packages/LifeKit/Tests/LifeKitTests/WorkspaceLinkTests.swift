@@ -152,7 +152,8 @@ struct WorkspaceLinkTests {
     await model.close()
   }
 
-  @Test func unreadIdentityDoesNotBlockOpeningAndCopyNeverOverwritesIt() async throws {
+  @Test(arguments: [false, true])
+  func unreadIdentityDoesNotBlockOpeningAndCopyNeverOverwritesIt(widgetsEnabled: Bool) async throws {
     let root = try directory()
     defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("local.sqlite")
@@ -161,7 +162,9 @@ struct WorkspaceLinkTests {
       at: store.file.deletingLastPathComponent(), withIntermediateDirectories: true)
     let bytes = Data("{\"version\":99,\"private\":\"unread\"}".utf8)
     try bytes.write(to: store.file)
-    let model = WorkspaceModel(localURL: { file })
+    let model = WorkspaceModel(
+      localURL: { file },
+      widgetLibrary: widgetsEnabled ? WidgetLibrary(root: root.appendingPathComponent("shared")) : nil)
     await model.open()
     #expect(model.client != nil && !model.rows.isEmpty && model.linkError != nil)
     #expect(throws: WorkspaceError.self) {
