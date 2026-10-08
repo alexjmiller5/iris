@@ -65,9 +65,13 @@ jobs:
             --filter PresentationTests.preparePresentationUIFixture \
             2>&1 | tee "$RUNNER_TEMP/presentation-fixture.log"
           test -s "$presentation"
+          references="$fixture_dir/reference-create.sqlite"
+          bun scripts/reference-create-fixture.ts "$references"
+          test -s "$references"
           (cd apps/macos && xcodegen generate --spec project.yml)
           TEST_RUNNER_LIFE_UI_TEST_CATALOG_DATABASE="$fixture" \
           TEST_RUNNER_LIFE_UI_TEST_PRESENTATION_DATABASE="$presentation" \
+          TEST_RUNNER_LIFE_UI_TEST_REFERENCE_CREATE_DATABASE="$references" \
           TEST_RUNNER_LIFE_UI_TEST_CATALOG_CLEAN_HOST=1 \
             xcodebuild -project apps/macos/LifeUI.xcodeproj -scheme LifeUI \
               -derivedDataPath "$RUNNER_TEMP/catalog-derived" -destination 'platform=macOS' \
@@ -77,6 +81,7 @@ jobs:
               -only-testing:LifeUIUITests/CatalogEditorUITests/testCatalogEditRetainsInvalidDraftAndRefreshesRecordMetadata \
               -only-testing:LifeUIUITests/RelatedViewsUITests/testMainAndRelatedPreferencesStayIndependentThroughUserControls \
               -only-testing:LifeUIUITests/SidebarMenuBarUITests/testCommandBackslashTogglesPersistedSidebarAndMenuBarItemOpensQuickFind \
+              -only-testing:LifeUIUITests/ReferenceCreateUITests/testPickersCreateRecordsInPlaceAndHandRequiredFieldsToTheEditor \
               -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
               CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/catalog-xcui.log"
           xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/catalog-ui.xcresult" \
@@ -87,9 +92,9 @@ jobs:
           import sys
 
           result = json.loads(pathlib.Path(sys.argv[1]).read_text())
-          if (result.get("passedTests"), result.get("failedTests"), result.get("skippedTests")) != (5, 0, 0):
-              raise SystemExit(f"Expected five executed passing XCUI tests: {result}")
-          print("Verified catalog, presentation, related-view and sidebar/menu-bar XCUI tests; no skipped or zero-test success")
+          if (result.get("passedTests"), result.get("failedTests"), result.get("skippedTests")) != (6, 0, 0):
+              raise SystemExit(f"Expected six executed passing XCUI tests: {result}")
+          print("Verified catalog, presentation, related-view, sidebar/menu-bar and reference-create XCUI tests; no skipped or zero-test success")
           PYVERIFY
       - name: Preserve synthetic catalog failure evidence
         if: failure()

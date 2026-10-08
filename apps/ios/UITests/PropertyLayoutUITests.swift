@@ -21,7 +21,9 @@ final class PropertyLayoutUITests: XCTestCase {
     let name = app.textFields["saved-view-name"]
     for _ in 0..<5 where !name.isHittable { app.swipeUp() }
     name.tap()
-    name.typeText("Body first")
+    // The field starts with the applied view's name ("Default view").
+    let current = (name.value as? String)?.count ?? 0
+    name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current) + "Body first")
     app.buttons["save-view-copy"].tap()
     XCTAssertTrue(app.staticTexts["saved-view-receipt"].waitForExistence(timeout: 5))
     app.navigationBars["Saved views"].buttons["Done"].tap()
@@ -71,7 +73,9 @@ final class PropertyLayoutUITests: XCTestCase {
     let name = app.textFields["saved-view-name"]
     for _ in 0..<5 where !name.isHittable { app.swipeUp() }
     name.tap()
-    name.typeText("Title focus")
+    // The field starts with the applied view's name ("Default view").
+    let current = (name.value as? String)?.count ?? 0
+    name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current) + "Title focus")
     app.buttons["save-view-copy"].tap()
     XCTAssertTrue(app.staticTexts["saved-view-receipt"].waitForExistence(timeout: 5))
     app.navigationBars["Saved views"].buttons["Done"].tap()
