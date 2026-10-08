@@ -6,7 +6,9 @@ struct LifeMenuBar: Scene {
   @AppStorage("lifeui.menuBarItem") private var shown = true
 
   var body: some Scene {
-    MenuBarExtra(isInserted: $shown) {
+    // SwiftUI writes isInserted back on every scene update; an unchanged write to
+    // AppStorage invalidates the scenes again and spins the main thread at launch.
+    MenuBarExtra(isInserted: Binding(get: { shown }, set: { if shown != $0 { shown = $0 } })) {
       WorkspaceMenuBarContent()
     } label: {
       WorkspaceMenuBarLabel()
