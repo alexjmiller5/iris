@@ -22,6 +22,17 @@ import XCTest
     XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 15))
   }
 
+  /// Hierarchy text for diagnosing system UI that changes between OS releases.
+  private func require(_ element: XCUIElement, in app: XCUIApplication, _ timeout: TimeInterval) {
+    guard !element.waitForExistence(timeout: timeout) else { return }
+    let tree = XCTAttachment(string: app.debugDescription)
+    tree.name = "hierarchy"
+    tree.lifetime = .keepAlways
+    add(tree)
+    keep(app, "missing-element")
+    XCTFail("Missing \(element)")
+  }
+
   private func keep(_ app: XCUIApplication, _ name: String) {
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = name
@@ -54,15 +65,15 @@ import XCTest
   func testSpotlightTitleOpensItsRowThroughTheLinkBanner() throws {
     let app = try application()
     XCUIDevice.shared.press(.home)
-    let start = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
-    start.press(forDuration: 0.05, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)))
+    let pill = springboard.buttons["Search"]
+    if pill.waitForExistence(timeout: 5) { pill.tap() } else { springboard.swipeDown() }
     let search = springboard.searchFields.firstMatch
-    XCTAssertTrue(search.waitForExistence(timeout: 10))
+    require(search, in: springboard, 10)
     search.typeText("A place to start")
     let result = springboard.buttons.matching(
       NSPredicate(format: "label CONTAINS %@", "A place to start")
     ).firstMatch
-    XCTAssertTrue(result.waitForExistence(timeout: 20))
+    require(result, in: springboard, 20)
     keep(springboard, "spotlight-title-result")
     result.tap()
     XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15))
@@ -84,11 +95,22 @@ import XCTest
     let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
     safari.open(URL(string: "https://example.com/life-ui-share-check")!)
     XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20))
-    let share = safari.buttons["ShareButton"].exists ? safari.buttons["ShareButton"] : safari.buttons["Share"]
-    XCTAssertTrue(share.waitForExistence(timeout: 20))
+    _ = safari.webViews.firstMatch.waitForExistence(timeout: 20)
+    let share = safari.buttons.matching(
+      NSPredicate(format: "identifier == 'ShareButton' OR label == 'Share'")
+    ).firstMatch
+    if !share.waitForExistence(timeout: 5) {
+      // Newer Safari keeps Share inside the page menu.
+      let menu = safari.buttons.matching(
+        NSPredicate(format: "label IN {'More', 'Page Menu', 'Show Page Menu'}")
+      ).firstMatch
+      require(menu, in: safari, 10)
+      menu.tap()
+    }
+    require(share, in: safari, 10)
     share.tap()
-    let target = safari.cells.matching(NSPredicate(format: "label == %@", "Life UI")).firstMatch
-    XCTAssertTrue(target.waitForExistence(timeout: 15))
+    let target = safari.descendants(matching: .any)["Life UI"].firstMatch
+    require(target, in: safari, 15)
     target.tap()
     let prepare = safari.buttons["share-prepare"]
     XCTAssertTrue(prepare.waitForExistence(timeout: 20))

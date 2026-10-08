@@ -62,6 +62,7 @@
 
 	async function refreshFeed() {
 		if (!hub || !active || refreshing || marking) return;
+		feedAt = Date.now();
 		refreshing = true;
 		try {
 			const result = await readNotifications(hub);
@@ -78,6 +79,7 @@
 	}
 	async function refreshUsage() {
 		if (!hub || !active || loadingUsage) return;
+		usageAt = Date.now();
 		loadingUsage = true;
 		try {
 			const result = await readUsage(hub);
@@ -113,11 +115,15 @@
 		if (next === 'settings') void refreshUsage();
 		else void refreshFeed();
 	}
-	// An open panel follows the background sync loop.
+	// An open panel follows the background sync loop, at most every 30 s so a
+	// slow read never keeps its actions disabled.
+	let feedAt = 0,
+		usageAt = 0;
 	$effect(() => {
 		if (!syncRevision) return;
-		if (section === 'settings') void refreshUsage();
-		else if (section === 'notifications') void refreshFeed();
+		const stale = (at: number) => Date.now() - at > 30_000;
+		if (section === 'settings' && stale(usageAt)) void refreshUsage();
+		else if (section === 'notifications' && stale(feedAt)) void refreshFeed();
 	});
 	onMount(() => {
 		if (!connection) return;

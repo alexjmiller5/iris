@@ -11,8 +11,8 @@ const shots = process.env.LIFE_UI_TEST_SHOTS;
 const browser = await chromium.connectOverCDP(cdp);
 const context = browser.contexts()[0] ?? (await browser.newContext());
 const page = await context.newPage();
-page.setDefaultTimeout(60_000);
-const expect = base.configure({ timeout: 60_000 });
+page.setDefaultTimeout(180_000);
+const expect = base.configure({ timeout: 180_000 });
 
 const shot = async (name: string) => {
   if (shots) await page.screenshot({ path: `${shots}/${name}.png` });

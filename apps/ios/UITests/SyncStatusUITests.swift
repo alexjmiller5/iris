@@ -47,7 +47,8 @@ final class SyncStatusUITests: XCTestCase {
     app.buttons["status-done"].tap()
 
     _ = try await gate("release")
-    expect(pill, "Synced")
+    // The seeded replica first uploads its 50,000 synthetic rows; Syncing lasts until then.
+    expect(pill, "Synced", timeout: 300)
     capture(app, "pill-synced")
 
     _ = try await gate("mode/offline")
@@ -75,11 +76,11 @@ final class SyncStatusUITests: XCTestCase {
     capture(app, "pill-opens-rejection-inbox")
   }
 
-  private func expect(_ pill: XCUIElement, _ value: String) {
+  private func expect(_ pill: XCUIElement, _ value: String, timeout: TimeInterval = 20) {
     let state = XCTNSPredicateExpectation(
       predicate: NSPredicate(format: "label == %@", value), object: pill)
     XCTAssertEqual(
-      XCTWaiter.wait(for: [state], timeout: 20), .completed,
+      XCTWaiter.wait(for: [state], timeout: timeout), .completed,
       "Pill stayed \(pill.label) instead of \(value)")
   }
 
