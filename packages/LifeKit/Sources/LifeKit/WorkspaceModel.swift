@@ -379,15 +379,51 @@ final class WorkspaceModel {
   let services = HubServicesModel()
   private var groupsURL: URL?
   var imageTransport: HubTransport? { transport }
+  private(set) var attachments: AttachmentController?
+
+  private func configureAttachments(path: String?) throws {
+    attachments?.stop()
+    attachments = nil
+    guard let path else { return }
+    let hash = SHA256.hash(data: Data(path.utf8)).map { String(format: "%02x", $0) }.joined()
+    let root =
+      path.hasPrefix(":demo:")
+      ? FileManager.default.temporaryDirectory.appendingPathComponent(
+        "life-ui-demo-attachments/" + hash)
+      : try resolveLocalURL().deletingLastPathComponent().appendingPathComponent(
+        "attachments/" + hash)
+    let controller = AttachmentController(store: AttachmentStore(root: root))
+    attachments = controller
+    if let transport {
+      controller.upload = { entry, file in try await transport.uploadAttachment(entry, file: file) }
+      controller.retry()
+    }
+    Task { try? await controller.refresh() }
+  }
   private var transport: HubTransport?
 
   func retainedFile(
     _ key: String, context: WorkspaceEditingContext?, maximumBytes: Int = 128 * 1024 * 1024
   ) async throws -> RetainedFile {
-    guard let context, context.workspace === client, let transport else {
+    guard let context, context.workspace === client else { throw CancellationError() }
+    let generation = workspaceGeneration
+    if let attachments,
+      let entry = try await attachments.store.entries().first(where: {
+        $0.key.utf8.elementsEqual(key.utf8)
+      })
+    {
+      guard entry.bytes <= maximumBytes else {
+        throw WorkspaceError(message: "File exceeds the viewing size limit.", violations: [])
+      }
+      let data = try await attachments.store.localBytes(for: entry.id)
+      guard generation == workspaceGeneration, context.workspace === client else {
+        throw CancellationError()
+      }
+      return try RetainedFile(data: data, contentType: entry.contentType, name: entry.name)
+    }
+    guard let transport else {
       throw WorkspaceError(message: "Connect to your hub to open this file.", violations: [])
     }
-    let generation = workspaceGeneration
     let file = try await transport.retainedFile(key: key, maximumBytes: maximumBytes)
     guard generation == workspaceGeneration, context.workspace === client,
       self.transport?.endpoint == transport.endpoint
@@ -1145,6 +1181,8 @@ final class WorkspaceModel {
     workspaceGeneration += 1
     loading = true
     error = nil
+    attachments?.stop()
+    attachments = nil
     transport = nil
     localObserver = nil
     services.configure(workspace: nil, transport: nil)
@@ -1175,6 +1213,7 @@ final class WorkspaceModel {
       }
       try loadGroups(workspace: demo ? nil : path)
       try prepareDrafts(path: demo ? nil : path)
+      try configureAttachments(path: demo ? ":demo:" + UUID().uuidString : path)
       let recentStore =
         demo
         ? nil
@@ -1310,6 +1349,7 @@ final class WorkspaceModel {
         violations: [])
     }
     let generation = workspaceGeneration
+    attachments?.retry()
     let outgoingRevision = localSyncRevision
     let current = {
       self.client === client && self.workspaceGeneration == generation
@@ -1620,6 +1660,7 @@ final class WorkspaceModel {
     draftStore = EditorDraftStore(root: root.appendingPathComponent("drafts"), workspace: path)
     refreshDrafts()
     transport = hub
+    try configureAttachments(path: path.path)
     services.configure(workspace: prepared, transport: hub)
     connection = canonical
     downloadStore = preferencesStore
@@ -1640,6 +1681,7 @@ final class WorkspaceModel {
   func synchronize() async {
     guard let client, let transport, !syncing else { return }
     let generation = workspaceGeneration
+    attachments?.retry()
     let outgoingRevision = localSyncRevision
     var completed = false
     syncCancelledByUser = false
@@ -1726,6 +1768,7 @@ final class WorkspaceModel {
     automaticSyncSession = session
     automaticSyncDebounce = debounce
     defer { if automaticSyncSession == session { stopAutomaticSync() } }
+    attachments?.retry()
     scheduleAutomaticSync()
     while generation == workspaceGeneration, automaticSyncSession == session, !Task.isCancelled {
       do { try await Task.sleep(for: interval) } catch { return }
@@ -1782,6 +1825,8 @@ final class WorkspaceModel {
   }
 
   func close() async {
+    attachments?.stop()
+    attachments = nil
     stopAutomaticSync()
     // Unwind held HTTP before the native close barrier waits for its owner.
     client?.cancelSync()

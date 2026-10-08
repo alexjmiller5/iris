@@ -157,6 +157,32 @@ export function createRetainedFileResolver(
 		};
 	};
 }
+export async function retainedBlob(
+	blob: Blob,
+	signal?: AbortSignal,
+	preview = false
+): Promise<RetainedFile> {
+	signal?.throwIfAborted();
+	if (blob.size > (preview ? 8 : 128) * 1024 * 1024)
+		throw Error('File exceeds the viewing size limit.');
+	if (preview) {
+		if (!isInlineImage(blob.type)) throw Error('This file cannot be displayed as an image.');
+		blob = await imagePreview(blob, signal);
+	}
+	signal?.throwIfAborted();
+	const url = URL.createObjectURL(blob);
+	let disposed = false;
+	return {
+		url,
+		contentType: blob.type,
+		dispose() {
+			if (!disposed) {
+				disposed = true;
+				URL.revokeObjectURL(url);
+			}
+		}
+	};
+}
 export function isInlineImage(contentType: string): boolean {
 	return ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp'].includes(
 		contentType

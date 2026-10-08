@@ -199,9 +199,41 @@
 		connection: { endpoint: string; token: string };
 	} | null>(null);
 	let connectedHub = $state<{ endpoint: string; token: string } | null>(null);
-	const resolveRetainedFile = $derived(
-		connectedHub ? createRetainedFileResolver(connectedHub) : undefined
-	);
+	import { AttachmentOutbox } from '$lib/attachments';
+	let attachments = $state<AttachmentOutbox>();
+	$effect(() => {
+		const workspace = database,
+			scope = demo;
+		if (!workspace || scope) return;
+		let disposed = false,
+			owner: AttachmentOutbox | undefined;
+		void AttachmentOutbox.open('workspace', () => (database === workspace ? connectedHub : null))
+			.then((box) => {
+				owner = box;
+				if (disposed || database !== workspace) {
+					box.dispose();
+					return;
+				}
+				attachments = box;
+				void box.retry();
+			})
+			.catch(() => {
+				if (!disposed) error = 'Attachment storage is unavailable. Files cannot be kept offline.';
+			});
+		return () => {
+			disposed = true;
+			owner?.dispose();
+			if (attachments === owner) attachments = undefined;
+		};
+	});
+	$effect(() => {
+		connectedHub;
+		if (attachments) void attachments.retry();
+	});
+	const resolveRetainedFile = $derived.by(() => {
+		const remote = connectedHub ? createRetainedFileResolver(connectedHub) : undefined;
+		return attachments ? attachments.resolver(remote) : remote;
+	});
 	let findVisible = $state(false);
 	let findVersion = 0;
 	let findNavigation = $state<NavigationState>({ destinations: [], loading: false, error: '' });
@@ -2655,6 +2687,7 @@
 									onbegin={beginCell}
 									oncommit={commitCell}
 									resolveFile={resolveRetainedFile}
+									{attachments}
 									onopenlink={openSourceLink}
 									onopen={(id) =>
 										openRecord({ table, id }, () => !findVisible, true).catch((e) => {
@@ -2769,6 +2802,7 @@
 										id={`field-${p.col}`}
 										property={p}
 										resolveFile={resolveRetainedFile}
+										{attachments}
 										onopenlink={openSourceLink}
 										bind:value={draft[p.col]}
 										onchange={() => {

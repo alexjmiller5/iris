@@ -56,6 +56,14 @@ schema and permitted sync scope. View names and personal lifecycle filters are r
   `table/id` identities offer Open record through the same guarded resolver;
   unavailable targets preserve the field and never become external navigation. Unmapped URLs retain an explicit
   original-link action. Cancel or close disposes requests and file resources.
+- Offline attachment bytes live in private app/OPFS files, never database blobs.
+  Stage/hash all bytes before publishing a canonical `/v1/files/attachments/<id>`
+  reference into the ordinary draft. Native directory rename and web atomic manifest
+  publication keep unfinished copies private. Existing enrolled file PUT is
+  create-only; uncertain replies require actual authenticated GET byte verification.
+  Failures retain bytes and expose retry after reconnect. Workspace replacement
+  stops upload admission and stale draft callbacks. Catalog type `file` uses these
+  controls and the existing retained-file readers; no implicit save or schema edit.
 - `scripts`: build and fixture test operations. No credentials or data exports.
 
 Loaded-row export shares the TypeScript serializer in `apps/web/src/lib/export`

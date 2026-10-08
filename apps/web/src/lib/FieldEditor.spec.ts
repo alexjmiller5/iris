@@ -161,3 +161,36 @@ test.each(['ordinary text', 'items/', '/items/id', 'https://example.test/path', 
 		window.close();
 	}
 );
+
+test('file properties offer authenticated download even when read-only', () => {
+	const window = field({
+		property: { col: 'value', type: 'file' },
+		value: '/v1/files/attachments/fixture',
+		disabled: true,
+		resolveFile: async () => {
+			throw Error('not invoked during render');
+		}
+	});
+	expect(
+		[...window.document.querySelectorAll('button')].some(
+			(button) => button.textContent?.trim() === 'Download file' && !button.disabled
+		)
+	).toBe(true);
+	expect(window.document.querySelector('input')?.value).toBe('/v1/files/attachments/fixture');
+	window.close();
+});
+test.each([
+	'https://external.invalid/file',
+	'/v1/files/../secret',
+	'/v1/files/attachments/%2fsecret'
+])('file property %s is never an unauthenticated external download', (value) => {
+	const window = field({
+		property: { col: 'value', type: 'file' },
+		value,
+		resolveFile: async () => {
+			throw Error('not invoked during render');
+		}
+	});
+	expect(window.document.body.textContent).not.toContain('Download file');
+	window.close();
+});

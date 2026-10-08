@@ -68,6 +68,11 @@ struct HubTransport: Sendable {
     try await request(route: route, body: body)
   }
 
+  func uploadAttachment(_ entry: StagedAttachment, file: URL) async throws -> AttachmentReceipt {
+    try await AttachmentUploader(endpoint: endpoint, token: token, session: session).upload(
+      entry, file: file)
+  }
+
   func retainedFile(key: String, maximumBytes: Int = 128 * 1024 * 1024) async throws -> RetainedFile
   {
     let route = try retainedFileRoute(key: key)

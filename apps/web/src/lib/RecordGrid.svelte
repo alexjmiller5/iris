@@ -3,6 +3,7 @@
 	import { Virtualizer } from 'virtua/svelte';
 	import { IconPlus, IconCopy, IconTrash, IconRestore } from '@tabler/icons-svelte';
 	import type { Property, Row, RowAction, ViewLayoutItem } from 'life-ui-core/client';
+	import type { AttachmentOutbox } from './attachments';
 	import FieldEditor from './FieldEditor.svelte';
 	import type { RetainedFileResolver } from './retained-files';
 	import {
@@ -34,6 +35,7 @@
 		referenceOptions = () => [],
 		onsearch = () => {},
 		resolveFile,
+		attachments,
 		onopenlink,
 		actions = [],
 		actionLayout = undefined,
@@ -65,6 +67,7 @@
 		referenceOptions?(p: Property): { id: string; label: string }[];
 		onsearch?(p: Property, query: string): void;
 		resolveFile?: RetainedFileResolver;
+		attachments?: AttachmentOutbox;
 		onopenlink?(href: string): Promise<boolean>;
 	} = $props();
 	let root: HTMLDivElement, virtualizer: Virtualizer<Row>;
@@ -303,6 +306,7 @@
 			value={draft.raw}
 			onchange={controller.change}
 			{resolveFile}
+			{attachments}
 			{onopenlink}
 			disabled={busy || cellState.phase === 'saving' || !canEdit(property)}
 			options={options[property.col]}

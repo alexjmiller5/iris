@@ -1,7 +1,10 @@
 <script lang="ts">
 	import type { Property } from 'life-ui-core/client';
+	import AttachmentControl from './AttachmentControl.svelte';
+	import type { AttachmentOutbox } from './attachments';
 	import MarkdownEditor from './components/MarkdownEditor.svelte';
-	import type { RetainedFileResolver } from './retained-files';
+	import { retainedFileKey, type RetainedFileResolver } from './retained-files';
+	import { onDestroy } from 'svelte';
 	import { IconX } from '@tabler/icons-svelte';
 	let {
 		id,
@@ -14,6 +17,7 @@
 		onsearch,
 		onchange,
 		resolveFile,
+		attachments,
 		onopenlink
 	}: {
 		id: string;
@@ -26,6 +30,7 @@
 		onsearch?(query: string): void;
 		onchange?(value: string): void;
 		resolveFile?: RetainedFileResolver;
+		attachments?: AttachmentOutbox;
 		onopenlink?(href: string): Promise<boolean>;
 	} = $props();
 	const label = $derived(
@@ -91,6 +96,45 @@
 			value.length <= 4096 &&
 			/^[A-Za-z_][A-Za-z0-9_]*\/[^\s/\\?#\u0000-\u001f\u007f]+$/.test(value)
 	);
+	const fileKey = $derived(property.type === 'file' ? retainedFileKey(value) : null);
+	let downloading = $state(false),
+		downloadError = $state('');
+	let active = true;
+	const downloadAbort = new AbortController(),
+		downloads: (() => void)[] = [];
+	onDestroy(() => {
+		active = false;
+		downloadAbort.abort();
+		for (const dispose of downloads) dispose();
+	});
+	async function downloadFile() {
+		if (!fileKey || !resolveFile || downloading) return;
+		const selected = value,
+			resolver = resolveFile,
+			key = fileKey;
+		downloading = true;
+		downloadError = '';
+		try {
+			const file = await resolver(key, downloadAbort.signal);
+			if (!active || value !== selected || resolveFile !== resolver) {
+				file.dispose();
+				return;
+			}
+			downloads.push(file.dispose);
+			const link = document.createElement('a');
+			link.href = file.url;
+			link.download = key.split('/').at(-1) || 'attachment';
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+		} catch {
+			if (active)
+				downloadError =
+					'The file could not download. Its reference has been kept. Retry when connected.';
+		} finally {
+			downloading = false;
+		}
+	}
 	let opening = $state(false);
 	let openError = $state('');
 	async function openRecord() {
@@ -162,6 +206,12 @@
 		{/if}
 	{:else if property.type === 'markdown'}
 		<MarkdownEditor {id} {label} {value} {disabled} {resolveFile} {onopenlink} onchange={change} />
+		{#if attachments}<AttachmentControl
+				outbox={attachments}
+				{value}
+				{disabled}
+				onchange={change}
+			/>{/if}
 	{:else if property.type === 'json'}
 		<textarea
 			{id}
@@ -266,6 +316,21 @@
 		onclick={() => change('')}>Clear</button
 	>
 </div>
+
+{#if fileKey && resolveFile}
+	<button type="button" disabled={downloading} onclick={downloadFile}
+		>{downloading ? 'Downloading…' : 'Download file'}</button
+	>
+	{#if downloadError}<p role="alert">{downloadError}</p>{/if}
+{/if}
+
+{#if property.type === 'file' && attachments}<AttachmentControl
+		outbox={attachments}
+		{value}
+		{disabled}
+		onchange={change}
+		property
+	/>{/if}
 
 <style>
 	.field-control {
