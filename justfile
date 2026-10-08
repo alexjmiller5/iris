@@ -11,6 +11,7 @@ test:
 check:
     bun run check
     bun run --cwd apps/web lint
+    bun scripts/check-a11y.ts
     just --justfile apps/macos/justfile check
     just --justfile apps/ios/justfile check
 

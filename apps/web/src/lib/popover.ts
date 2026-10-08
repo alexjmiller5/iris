@@ -74,6 +74,7 @@ export function anchored(
 export function focusReturn() {
 	const opener = typeof document === 'undefined' ? null : document.activeElement;
 	return () => {
+		if (!opener) return;
 		const now = document.activeElement;
 		if (opener instanceof HTMLElement && opener.isConnected && (!now || now === document.body))
 			opener.focus();

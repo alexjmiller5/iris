@@ -126,16 +126,11 @@
 				{/each}
 				{#each graph.nodes as node (node.id)}
 					<foreignObject x={node.x} y={node.y} width={node.width} height={node.height}>
-						<button
-							type="button"
-							class="table-node"
-							onclick={() => onSelect(node.id)}
-						>
+						<button type="button" class="table-node" onclick={() => onSelect(node.id)}>
 							<IconTable size={21} aria-hidden="true" />
 							<span
-								><strong title={node.id}>{node.id}</strong> <small
-									>{node.columns} {node.columns === 1 ? 'column' : 'columns'}</small
-								></span
+								><strong title={node.id}>{node.id}</strong>
+								<small>{node.columns} {node.columns === 1 ? 'column' : 'columns'}</small></span
 							>
 						</button>
 					</foreignObject>

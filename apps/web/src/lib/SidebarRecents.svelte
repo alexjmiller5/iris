@@ -40,9 +40,10 @@
 							size={16}
 						/>{/if}
 					<span
-						><strong>{entry.label}</strong> <small
-							>{entry.context}{entry.trash ? ' · Trash' : ''}</small
-						>{#if entry.loading}<small>Loading…</small>{/if}</span
+						><strong>{entry.label}</strong>
+						<small>{entry.context}{entry.trash ? ' · Trash' : ''}</small>{#if entry.loading}<small
+								>Loading…</small
+							>{/if}</span
 					>
 				</button>
 				<button
