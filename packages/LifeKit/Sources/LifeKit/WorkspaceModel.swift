@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import Observation
+import os
 
 struct WorkspaceEditingContext {
   let workspace: NativeWorkspace
@@ -16,6 +17,8 @@ struct ReplicaDownloadContext {
 
 @Observable @MainActor
 final class WorkspaceModel {
+  private static let log = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "LifeKit", category: "workspace")
   var client: NativeWorkspace? {
     didSet {
       if oldValue !== client {
@@ -1824,16 +1827,27 @@ final class WorkspaceModel {
     downloadPreferences = ReplicaPreferences()
   }
 
+  @ObservationIgnored private var closingWorkspace = false
   func close() async {
+    // A repeated Close while the first one unwinds must not report "closed" as an error.
+    guard !closingWorkspace else { return }
+    closingWorkspace = true
+    defer { closingWorkspace = false }
     attachments?.stop()
     attachments = nil
     stopAutomaticSync()
-    // Unwind held HTTP before the native close barrier waits for its owner.
-    client?.cancelSync()
     workspaceGeneration += 1
     revision += 1
     services.configure(workspace: nil, transport: nil)
-    do { try await client?.close() } catch {
+    // Native close cancels every outstanding hub request and waits a bounded time.
+    do {
+      let dropped = try await client?.close() ?? []
+      if !dropped.isEmpty {
+        let methods = dropped.joined(separator: ", ")
+        Self.log.notice("Closed workspace; dropped hub requests: \(methods, privacy: .public)")
+      }
+    } catch {
+      Self.log.error("Close workspace failed: \(error.localizedDescription, privacy: .public)")
       self.error = error.localizedDescription
       return
     }

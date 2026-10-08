@@ -21,7 +21,7 @@ final class RecordGridUITests: XCTestCase {
     XCTAssertTrue(field.waitForExistence(timeout: 5))
     XCTAssertEqual(app.sheets.count, 0)
     XCTAssertFalse(app.buttons["new-record"].isEnabled)
-    XCTAssertFalse(app.buttons["Close workspace"].isEnabled)
+    XCTAssertTrue(app.buttons["Close workspace"].isEnabled, "Close dismisses the inline editor itself")
     field.click()
     field.typeKey("a", modifierFlags: .command)
     field.typeText("Changed inside the table")

@@ -203,6 +203,73 @@ struct ForegroundSyncTests {
     #expect(try await reopened.status().pendingUiEdits == status.pendingUiEdits)
     try await reopened.close()
   }
+  @Test func closingWorkspaceCancelsHeldServiceRequestAndRetainsQueuedLocalEdits() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let hub = try transport()
+    let model = WorkspaceModel(
+      localURL: { directory.appendingPathComponent("local.sqlite") }, makeTransport: { _ in hub })
+    try await model.connect(
+      HubCredentials(endpoint: hub.endpoint, token: "fixture"), remember: false,
+      synchronizeAfter: false)
+    let workspace = try #require(model.client)
+    try await workspace.createSample()
+    let row = try #require(try await workspace.rows(table: "notes").first)
+    _ = try await workspace.write(
+      table: "notes", patch: ["id": .string(row.id), "title": .string("Queued offline edit")])
+    let before = try await workspace.rows(table: "notes")
+    let status = try await workspace.status()
+    #expect(status.pendingUiEdits > 0)
+    let started = HeldSyncTransport.nextStart()
+    let usage = Task { await model.services.refreshUsage() }
+    #expect(await started.wait(), "Usage must reach its held HTTP boundary")
+    let completed = TestSignal()
+    let close = Task {
+      await model.close()
+      completed.signal()
+    }
+    let closed = await completed.wait()
+    #expect(closed, "Close workspace must not await a held service response")
+    // Unblock the unfixed implementation after the bounded failure.
+    HeldSyncTransport.release()
+    await close.value
+    await usage.value
+    #expect(model.client == nil && model.error == nil)
+    let reopened = try NativeWorkspace(
+      path: WorkspaceModel.replicaURL(root: directory, endpoint: hub.endpoint).path)
+    #expect(try await reopened.rows(table: "notes") == before)
+    #expect(try await reopened.status().pendingUiEdits == status.pendingUiEdits)
+    try await reopened.close()
+  }
+
+  @Test func closeCancelsAHeldServiceRequestInsteadOfDroppingIt() async throws {
+    let workspace = try NativeWorkspace(path: ":memory:")
+    try await workspace.createSample()
+    let hub = try transport()
+    let started = HeldSyncTransport.nextStart()
+    let service = Task { try await workspace.notifications(using: hub) }
+    #expect(await started.wait(), "Notifications must reach the held GET")
+    let completed = TestSignal()
+    let close = Task {
+      defer { completed.signal() }
+      return try await workspace.close()
+    }
+    #expect(await completed.wait(), "Close must cancel the held GET")
+    HeldSyncTransport.release()
+    #expect(try await close.value == [], "Cancellation unwinds the GET well inside the grace")
+    if case .success = await service.result { Issue.record("A cancelled request succeeded") }
+  }
+  @Test func closeDropsAnOwnerStillSuspendedAfterItsGrace() async throws {
+    let workspace = try NativeWorkspace(path: ":memory:")
+    try await workspace.createSample()
+    let hub = try transport()
+    let started = HeldSyncTransport.nextStart()
+    let service = Task { try await workspace.notifications(using: hub) }
+    #expect(await started.wait(), "Notifications must reach the held GET")
+    #expect(try await workspace.close(grace: .zero) == ["serviceNotifications"])
+    if case .success = await service.result { Issue.record("A dropped request succeeded") }
+    HeldSyncTransport.release()
+  }
 
   @Test func cancellationUnwindsHeldTransportAndKeepsLocalData() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
@@ -290,7 +357,7 @@ struct ForegroundSyncTests {
     try await workspace.close()
   }
 
-  @Test func secondSyncAndCloseWaitForTheSuspendedOwner() async throws {
+  @Test func closeCancelsTheSuspendedOwnerAndRefusesQueuedHTTP() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let hub = try transport()
@@ -310,22 +377,20 @@ struct ForegroundSyncTests {
       localFinished = true
     }
     try await waitUntil { localFinished }
-    var closed = false
+    #expect(!secondFinished, "A queued sync waits for the suspended one")
+    let starts = HeldSyncTransport.startCount
+    let completed = TestSignal()
     let close = Task {
-      try await workspace.close()
-      closed = true
+      defer { completed.signal() }
+      return try await workspace.close()
     }
-    try await Task.sleep(for: .milliseconds(20))
-    #expect(!secondFinished && !closed)
+    #expect(await completed.wait(), "Close must cancel held HTTP instead of waiting for it")
     HeldSyncTransport.release()
-    _ = await first.result
-    try await waitUntil { HeldSyncTransport.isWaiting }
-    #expect(!closed)
-    HeldSyncTransport.release()
-    _ = await second.result
+    #expect(try await close.value == [], "The cancelled owner unwinds before SQLite closes")
+    if case .success = await first.result { Issue.record("Cancelled sync succeeded") }
+    if case .success = await second.result { Issue.record("Sync queued before close succeeded") }
+    #expect(HeldSyncTransport.startCount == starts, "No HTTP starts once close begins")
     try await local.value
-    try await close.value
-    #expect(closed)
   }
 
   @Test func syncHTTPInsideATransactionFailsWithoutReleasingOwnership() async throws {

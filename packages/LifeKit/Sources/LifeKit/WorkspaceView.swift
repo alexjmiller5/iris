@@ -107,7 +107,7 @@ public struct WorkspaceView: View {
                   .disabled(model.syncing).accessibilityIdentifier("sync-now")
                 }
                 Button("Hub connection") { settings = true }.disabled(!canFind)
-                Button("Close workspace") { Task { await model.close() } }.disabled(!canFind)
+                Button("Close workspace", action: closeWorkspace)
               }.padding().frame(maxWidth: .infinity, alignment: .leading)
               .background(.bar)
             }
@@ -338,6 +338,25 @@ public struct WorkspaceView: View {
         )
         closeEditor(target)
       }, onSaved: { closeEditor(target) })
+  }
+
+  /// Close is always available and dismisses every open surface itself. Edits are
+  /// journaled as they happen, so an open draft stays recoverable after reopening.
+  /// The workspace generation change resets navigation, Find and online state.
+  private func closeWorkspace() {
+    editor?.preparedEditor?.endInlineMarkdown()
+    editor = nil
+    settings = false
+    options = false
+    savedViews = false
+    importing = false
+    recordExport = nil
+    rowSelection = nil
+    catalogEditor = nil
+    filterColumn = nil
+    showingStatus = false
+    tableSearchPresented = false
+    Task { await model.close() }
   }
 
   private func closeEditor(_ target: EditorTarget) {
@@ -1111,11 +1130,9 @@ public struct WorkspaceView: View {
             systemImage: model.trash ? "tray" : "trash")
         }.disabled(editor != nil).accessibilityIdentifier("toggle-trash")
         Divider()
-        Button {
-          Task { await model.close() }
-        } label: {
+        Button(action: closeWorkspace) {
           Label("Close workspace", systemImage: "xmark.circle")
-        }.disabled(editor != nil)
+        }
       } label: {
         Label("Workspace actions", systemImage: "ellipsis")
           .labelStyle(.iconOnly)
