@@ -147,9 +147,15 @@ const editor = page.getByRole("complementary", {
   name: "Record editor",
   exact: true,
 });
+// Recent destinations are named by their visible title and context.
 const recent = (label: string) =>
   recents
-    .getByRole("button", { name: `Open recent ${label}`, exact: true })
+    .locator(".destination")
+    .filter({
+      has: page.locator("strong", {
+        hasText: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
+      }),
+    })
     .first();
 async function closeFixture() {
   accept = true;
@@ -592,7 +598,7 @@ try {
       await ready();
       await settled();
       await expect(
-        recents.getByRole("button", { name: /^Open recent / }),
+        recents.locator(".destination"),
       ).toHaveCount(8);
       await expect(recent("missing/0+?")).toBeDisabled();
       await expect(

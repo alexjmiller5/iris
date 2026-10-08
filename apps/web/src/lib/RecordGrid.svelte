@@ -441,6 +441,9 @@
 				itemProps={({ index }) => ({
 					role: 'row',
 					'aria-rowindex': index + 2,
+					'aria-selected': selectionEnabled
+						? selectedIds!.includes(String(rows[index]?.id))
+						: undefined,
 					style: { display: 'grid', 'grid-template-columns': layout, width: '100%' }
 				})}
 			>
@@ -448,7 +451,7 @@
 					{#if selectionEnabled}<td role="gridcell" class="selection"
 							><input
 								type="checkbox"
-								aria-label={`Select record ${row.id}`}
+								aria-label={`Select ${(properties[0] && format(properties[0], row[properties[0].col])) || row.id}`}
 								disabled={busy || !!edit || typeof row.id !== 'string'}
 								checked={selectedIds?.includes(String(row.id))}
 								onchange={(event) => {
@@ -548,7 +551,6 @@
 		>
 		<button
 			type="button"
-			aria-label={trash ? 'Restore selected record' : 'Trash selected record'}
 			disabled={busy || !canTrash || !cursor}
 			onclick={() => cursor && ontrash(cursor.rowId)}
 			>{#if trash}<IconRestore size={16} />Restore record{:else}<IconTrash size={16} />Move to trash{/if}</button

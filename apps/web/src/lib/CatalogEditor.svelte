@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import { focusReturn } from './popover';
 	let dialog: HTMLDialogElement;
+	onDestroy(focusReturn());
 	$effect(() => {
 		dialog?.showModal();
 	});

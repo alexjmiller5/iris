@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
+	import { focusReturn } from './popover';
 	import { IconX, IconArrowLeft, IconArrowUpRight } from '@tabler/icons-svelte';
 	import type { Property, RemoteRowsPage, RemoteRowResult } from 'life-ui-core/client';
 	import MarkdownEditor from './components/MarkdownEditor.svelte';
@@ -39,6 +40,7 @@
 		await tick();
 		if (!closed && $model.selected) heading?.focus();
 	}
+	onDestroy(focusReturn());
 	onMount(() => {
 		dialog.showModal();
 		void model.refresh();

@@ -43,8 +43,12 @@ export function anchored(
 		if (open) place();
 		else if (restore) {
 			restore = false;
+			// `toggle` is queued: the browser may already have restored focus, and the
+			// user may have moved on. Only rescue focus left in the hidden popover.
+			const now = document.activeElement;
+			const dropped = !now || now === document.body || popover.contains(now);
 			const anchor = current.anchor();
-			if (anchor instanceof HTMLElement && anchor.isConnected) anchor.focus();
+			if (dropped && anchor instanceof HTMLElement && anchor.isConnected) anchor.focus();
 		}
 		current.ontoggle?.(open);
 	};
@@ -60,5 +64,18 @@ export function anchored(
 			popover.removeEventListener('toggle', toggle);
 			window.removeEventListener('resize', place);
 		}
+	};
+}
+
+/** For a modal that unmounts instead of closing natively, which would otherwise
+ * drop focus on the body: call while its opener still has focus (component
+ * setup); the returned function, run on destroy, puts focus back there unless
+ * something else has taken it. */
+export function focusReturn() {
+	const opener = typeof document === 'undefined' ? null : document.activeElement;
+	return () => {
+		const now = document.activeElement;
+		if (opener instanceof HTMLElement && opener.isConnected && (!now || now === document.body))
+			opener.focus();
 	};
 }

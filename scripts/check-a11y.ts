@@ -200,8 +200,9 @@ async function walk(page: Page, scheme: "light" | "dark") {
   await page.keyboard.press("Enter");
   await close.waitFor({ state: "hidden" });
 
-  // Cmd+K palette.
-  await page.locator("body").focus();
+  // Cmd+K palette, opened from the sidebar button so focus has somewhere to return.
+  const findButton = role("button", /^Find records/);
+  await tabTo(findButton, true);
   await page.keyboard.press("ControlOrMeta+k");
   const find = page.getByRole("dialog", { name: /Find/ });
   await find.waitFor();
@@ -210,6 +211,7 @@ async function walk(page: Page, scheme: "light" | "dark") {
   await audit("find");
   await page.keyboard.press("Escape");
   await find.waitFor({ state: "hidden" });
+  await expectFocus([findButton], "Find records");
 
   // Layouts.
   const layout = page.getByRole("combobox", { name: "View layout" });

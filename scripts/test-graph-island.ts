@@ -66,7 +66,7 @@ try {
   await expect
     .poll(async () => (await diagram.boundingBox())!.width)
     .toBeGreaterThan(initial);
-  expect((await page.getByRole("button", { name: "Open table history", exact: true }).boundingBox())!.height,
+  expect((await page.getByRole("button", { name: /^history \d+ columns?$/ }).boundingBox())!.height,
     "One zoom step must make table targets readable and tappable").toBeGreaterThanOrEqual(44);
   await page.getByRole("button", { name: "Fit graph", exact: true }).click();
   await expect
@@ -75,7 +75,7 @@ try {
     )
     .toBe(true);
   await page
-    .getByRole("button", { name: "Open table topics", exact: true })
+    .getByRole("button", { name: /^topics \d+ columns?$/ })
     .click();
   await expect
     .poll(() => page.evaluate(() => (window as any).events.at(-1)))

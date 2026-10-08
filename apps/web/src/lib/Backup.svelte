@@ -281,11 +281,15 @@
 										>{backup.key.split('/')[0]} · {formatBytes(backup.bytes)}</small
 									></span
 								>
-								<button disabled={!!busy} onclick={() => downloadHub(backup)}
-									>Download<span class="sr-only">: {backup.key}</span></button
+								<button
+									disabled={!!busy}
+									aria-label={`Download ${backup.key}`}
+									onclick={() => downloadHub(backup)}>Download</button
 								>
-								<button disabled={!!busy} onclick={() => previewHub(backup)}
-									>Restore…<span class="sr-only">: {backup.key}</span></button
+								<button
+									disabled={!!busy}
+									aria-label={`Restore ${backup.key}`}
+									onclick={() => previewHub(backup)}>Restore…</button
 								>
 							</li>
 						{/each}
@@ -322,10 +326,13 @@
 									run('Downloading', async () => {
 										const file = await database.request('backupFile', { file: entry.file });
 										saveBlob(file, file.name);
-									})}>Download<span class="sr-only">: recovery copy</span></button
+									})}
+								aria-label={`Download recovery copy from ${when(entry.modified)}`}>Download</button
 							>
-							<button disabled={!!busy} onclick={() => previewRecovery(entry)}
-								>Restore…<span class="sr-only">: recovery copy</span></button
+							<button
+								disabled={!!busy}
+								aria-label={`Restore recovery copy from ${when(entry.modified)}`}
+								onclick={() => previewRecovery(entry)}>Restore…</button
 							>
 						</li>
 					{/each}
@@ -487,13 +494,5 @@
 	}
 	code {
 		font-size: 0.85em;
-	}
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip: rect(0 0 0 0);
-		white-space: nowrap;
 	}
 </style>

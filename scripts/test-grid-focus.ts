@@ -343,7 +343,7 @@ try {
       await begin("b", "qty", "46");
       await key("Tab");
       await receipt("b", "qty", "46");
-      await focused(button("Trash selected record"));
+      await focused(button("Move to trash"));
     },
   );
   for (const refresh of ["Saved row leaves view", "Save empties view"])

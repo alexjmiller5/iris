@@ -28,7 +28,6 @@
 				<button
 					class="destination"
 					type="button"
-					aria-label={`Open recent ${entry.label}`}
 					aria-current={current && recentKey(current) === recentKey(entry.destination)
 						? 'page'
 						: undefined}
@@ -41,7 +40,7 @@
 							size={16}
 						/>{/if}
 					<span
-						><strong>{entry.label}</strong><small
+						><strong>{entry.label}</strong> <small
 							>{entry.context}{entry.trash ? ' · Trash' : ''}</small
 						>{#if entry.loading}<small>Loading…</small>{/if}</span
 					>

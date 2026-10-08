@@ -591,7 +591,7 @@ final class WorkspaceUITests: XCTestCase {
       scrollFormUp(app.collectionViews["saved-views-form"])
     }
     tapWhenReady(app.buttons["save-view-copy"])
-    XCTAssertTrue(app.staticTexts["saved-view-receipt"].waitForExistence(timeout: 5))
+    assertSavedViewReceipt(app)
     tapWhenReady(app.navigationBars["Saved views"].buttons["Done"])
     app.terminate()
     app.launch()
@@ -616,7 +616,7 @@ final class WorkspaceUITests: XCTestCase {
       scrollFormUp(app.collectionViews["saved-views-form"])
     }
     tapWhenReady(app.buttons["update-saved-view"])
-    XCTAssertTrue(app.staticTexts["saved-view-receipt"].waitForExistence(timeout: 5))
+    assertSavedViewReceipt(app)
     let screenshot = XCTAttachment(screenshot: app.screenshot())
     screenshot.name = "native-saved-views"
     screenshot.lifetime = .keepAlways
@@ -1486,6 +1486,17 @@ final class WorkspaceUITests: XCTestCase {
 
   private func scrollRecordFormUp(_ app: XCUIApplication) {
     scrollFormUp(app.collectionViews["record-form"])
+  }
+
+  /// The receipt is the Views sheet's last row; the lazy form creates it only on screen.
+  private func assertSavedViewReceipt(
+    _ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line
+  ) {
+    let receipt = app.staticTexts["saved-view-receipt"]
+    for _ in 0..<6 where !receipt.waitForExistence(timeout: 1) {
+      scrollFormUp(app.collectionViews["saved-views-form"])
+    }
+    XCTAssertTrue(receipt.exists, file: file, line: line)
   }
 
   private func scrollFormUp(_ form: XCUIElement) {

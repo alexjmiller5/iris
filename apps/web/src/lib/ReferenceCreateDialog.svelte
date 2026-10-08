@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import { focusReturn } from './popover';
 	import type { Property } from 'life-ui-core/client';
 	import FieldEditor from './FieldEditor.svelte';
 	import type { CreationPlan } from './reference-create';
@@ -20,6 +21,7 @@
 	let values = $state(untrack(() => ({ ...plan.values })));
 	const explicit = untrack(() => new Set(plan.explicit));
 	let dialog: HTMLDialogElement;
+	onDestroy(focusReturn());
 	$effect(() => {
 		dialog?.showModal();
 		// Start where the user has work to do: the first required field without a value.

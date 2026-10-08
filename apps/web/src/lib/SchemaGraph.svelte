@@ -129,12 +129,11 @@
 						<button
 							type="button"
 							class="table-node"
-							aria-label={`Open table ${node.id}`}
 							onclick={() => onSelect(node.id)}
 						>
 							<IconTable size={21} aria-hidden="true" />
 							<span
-								><strong title={node.id}>{node.id}</strong><small
+								><strong title={node.id}>{node.id}</strong> <small
 									>{node.columns} {node.columns === 1 ? 'column' : 'columns'}</small
 								></span
 							>

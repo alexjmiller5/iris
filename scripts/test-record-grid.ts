@@ -702,7 +702,7 @@ try {
       // The footer is outside the scroll container; locate by the component's root.
       const trashAction = owned
         .locator(".record-grid")
-        .getByRole("button", { name: "Trash selected record", exact: true });
+        .getByRole("button", { name: "Move to trash", exact: true });
       accept = false;
       await trashAction.click();
       await expect(
@@ -744,7 +744,7 @@ try {
       await cell("title").focus();
       await cell("title").press("ArrowRight");
       const restoreAction = owned.getByRole("button", {
-        name: "Restore selected record",
+        name: "Restore record",
         exact: true,
       });
       await expect(restoreAction).toHaveText("Restore record");

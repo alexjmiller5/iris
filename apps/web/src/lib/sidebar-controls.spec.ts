@@ -95,19 +95,21 @@ test('unavailable/loading recent entries remain visible with a reason and indepe
 	);
 	const doc = window.document;
 	expect(doc.querySelector('nav[aria-label="Recent destinations"]')).not.toBeNull();
-	expect(doc.querySelector('[aria-label="Open recent gone"]')?.hasAttribute('disabled')).toBe(true);
+	// Each destination is named by its visible title and context, never a hidden label.
+	const recent = (label: string) =>
+		[...doc.querySelectorAll('.destination')].find(
+			(button) => button.querySelector('strong')?.textContent === label
+		);
+	expect(doc.querySelectorAll('.destination[aria-label]')).toHaveLength(0);
+	expect(recent('gone')?.hasAttribute('disabled')).toBe(true);
 	expect(
 		doc.querySelector('[aria-label="Remove gone from recents"]')?.hasAttribute('disabled')
 	).toBe(false);
 	expect(doc.body.textContent).toContain('Not available in this replica');
-	expect(doc.querySelector('[aria-label="Open recent Old title"]')?.hasAttribute('disabled')).toBe(
-		false
-	);
-	expect(doc.querySelector('[aria-label="Open recent Old title"]')?.textContent).toContain('Trash');
-	expect(
-		doc.querySelector('[aria-label="Open recent Old title"]')?.getAttribute('aria-current')
-	).toBe('page');
-	expect(doc.querySelector('[aria-label="Open recent view"]')?.hasAttribute('disabled')).toBe(true);
+	expect(recent('Old title')?.hasAttribute('disabled')).toBe(false);
+	expect(recent('Old title')?.textContent).toContain('Trash');
+	expect(recent('Old title')?.getAttribute('aria-current')).toBe('page');
+	expect(recent('view')?.hasAttribute('disabled')).toBe(true);
 	expect(doc.querySelector('[role="status"]')?.textContent).toContain('Recents could not be saved');
 	window.close();
 });

@@ -118,8 +118,8 @@ try {
   await cdp.until(
     `document.body.innerText.includes('Second row refuses seven.')`,
   );
-  await cdp.click(element('input[aria-label="Select record fixture-record"]'));
-  await cdp.click(element('input[aria-label="Select record legacy-record"]'));
+  await cdp.click(element('[role=row]:has([data-row="fixture-record"]) input[type=checkbox]'));
+  await cdp.click(element('[role=row]:has([data-row="legacy-record"]) input[type=checkbox]'));
   await cdp.click(named("summary", "Export"));
   await cdp.until(
     `!!(${button("Export selection")}) && !(${button("Export selection")}).disabled`,
@@ -192,8 +192,8 @@ try {
     `document.body.innerText.includes('1 succeeded · 0 failed · 2 unattempted')`,
   );
   expect(await cdp.evaluate("window.bulkFixture.writes")).toBe(1);
-  await cdp.click(element('input[aria-label="Select record fixture-record"]'));
-  await cdp.click(element('input[aria-label="Select record legacy-record"]'));
+  await cdp.click(element('[role=row]:has([data-row="fixture-record"]) input[type=checkbox]'));
+  await cdp.click(element('[role=row]:has([data-row="legacy-record"]) input[type=checkbox]'));
   await click("Move selected to trash");
   await cdp.until(
     `document.body.innerText.includes('2 succeeded · 0 failed · 0 unattempted')`,

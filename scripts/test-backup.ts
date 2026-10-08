@@ -121,7 +121,12 @@ let failures = 0;
 const shot = async (name: string) => { if (shots) await page.screenshot({ path: join(shots, `web-${name}.png`) }); };
 async function check(name: string, body: () => Promise<void>) {
 	try { await body(); console.log(`ok - ${name}`); }
-	catch (error) { failures++; console.log(`not ok - ${name}\n${error}`); await shot(`failed-${name.replace(/\W+/g, '-')}`); }
+	catch (error) {
+		failures++;
+		console.log(`not ok - ${name}\n${error}`);
+		await shot(`failed-${name.replace(/\W+/g, '-')}`);
+		if (process.env.LIFE_UI_TEST_DEBUG) console.log(await dialog().ariaSnapshot().catch(() => ''));
+	}
 }
 /** Waits for exactly one new finished download and returns its path. */
 async function downloaded(action: () => Promise<void>) {
@@ -176,7 +181,7 @@ try {
 	});
 
 	await check('hub backups download verified and back up now is rate limited', async () => {
-		const file = await downloaded(() => dialog().getByRole('button', { name: `Download: ${SEEDED_KEY}` }).click());
+		const file = await downloaded(() => dialog().getByRole('button', { name: `Download ${SEEDED_KEY}` }).click());
 		expect(sha(readFileSync(file))).toBe(sha(seeded));
 		expect(gunzipSync(readFileSync(file)).toString()).toContain('Backup-only widget');
 		await dialog().getByRole('button', { name: 'Back up now' }).click();
@@ -199,7 +204,7 @@ try {
 	});
 
 	await check('a hub backup restores after preview and typed confirmation; the hub receives what it lacked', async () => {
-		await dialog().getByRole('button', { name: `Restore…: ${SEEDED_KEY}` }).click();
+		await dialog().getByRole('button', { name: `Restore ${SEEDED_KEY}` }).click();
 		await expect(dialog().getByRole('heading', { name: 'Restore preview' })).toBeVisible();
 		const widgets = dialog().getByRole('row').filter({ hasText: 'widgets' });
 		await expect(widgets).toContainText('2 (2 live)');
@@ -237,7 +242,7 @@ try {
 		await dialog().getByRole('button', { name: 'Close' }).click();
 		await expect(records().getByRole('button', { name: 'Backup-only widget', exact: true })).toBeVisible();
 		await page.getByRole('button', { name: 'Backup', exact: true }).click();
-		await dialog().getByRole('button', { name: 'Restore…: recovery copy' }).first().click();
+		await dialog().getByRole('button', { name: /^Restore recovery copy from/ }).first().click();
 		await expect(dialog().getByRole('row').filter({ hasText: 'notes' })).toContainText('Added');
 		await dialog().getByLabel(/Type replace to confirm/).fill('replace');
 		await dialog().getByRole('button', { name: 'Restore', exact: true }).click();

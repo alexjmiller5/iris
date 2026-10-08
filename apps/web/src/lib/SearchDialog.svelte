@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
+	import { focusReturn } from './popover';
 	import { IconAlertTriangle, IconLoader2, IconSearch, IconX } from '@tabler/icons-svelte';
 	import type { SearchHit } from 'life-ui-core/client';
 	import { createSearchModel, type Search } from './search-dialog';
@@ -109,8 +110,10 @@
 			void choose(entries[activeIndex]);
 		}
 	}
+	onDestroy(focusReturn());
 	onMount(() => {
-		// showModal/close supply the native focus trap, Escape behavior and focus return.
+		// showModal supplies the native focus trap and Escape; focusReturn hands focus
+		// back because the host unmounts the dialog instead of closing it.
 		dialog.showModal();
 		input.focus();
 		return () => {
@@ -200,7 +203,8 @@
 		{#each groups as group (group.kind)}
 			{#if entries.some((entry) => entry.kind === group.kind)}
 				<div role="group" aria-label={group.label}>
-					<h3>{group.label}</h3>
+					<!-- The group carries the name; a listbox may only contain options. -->
+					<h3 aria-hidden="true">{group.label}</h3>
 					{#each entries as entry, index (entryKey(entry))}
 						{#if entry.kind === group.kind}
 							<button
