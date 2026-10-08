@@ -29,5 +29,15 @@ test('the grid exposes separate exact row selections and a loaded-page selector'
 	expect(checks).toHaveLength(3);
 	expect(checks[0]?.getAttribute('aria-label')).toBe('Select loaded rows');
 	expect(checks.slice(1).map((box) => box.checked)).toEqual([true, false]);
+	// Row checkboxes are named by the record, not its opaque id, and rows report selection.
+	expect(checks.slice(1).map((box) => box.getAttribute('aria-label'))).toEqual([
+		'Select First',
+		'Select Second'
+	]);
+	expect(
+		[...window.document.querySelectorAll('[role="row"][aria-rowindex]')].map((row) =>
+			row.getAttribute('aria-selected')
+		)
+	).toEqual(['true', 'false']);
 	window.happyDOM.abort();
 });
