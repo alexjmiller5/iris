@@ -1907,10 +1907,14 @@
 			const receipt = await workspace.request('undo', { receiptId: action.receiptId });
 			if (database !== workspace || editorVersion !== version) return;
 			if (action.table === 'views') {
-				await loadViews();
-				if (database !== workspace || editorVersion !== version) return;
+				// Read the reverted view directly: the write's own refresh can supersede
+				// a shared loadViews() and leave the old definition applied.
+				const target = table;
+				const list = await workspace.request('listViews', { table: target });
+				if (database !== workspace || editorVersion !== version || table !== target) return;
+				savedViews = list.views;
 				if (chosenView?.id === action.rowId)
-					applyView(savedViews.find((view) => view.id === action.rowId) ?? null);
+					applyView(list.views.find((view) => view.id === action.rowId) ?? null);
 			}
 			if (gridDraft && table === action.table && gridDraft.cell.rowId === action.rowId) {
 				const cell = gridDraft;

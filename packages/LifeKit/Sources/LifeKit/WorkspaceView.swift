@@ -64,7 +64,9 @@ public struct WorkspaceView: View {
       }
     }
     // Receiving a URL only retains it; navigation waits for an explicit Open.
-    .savedUndoShortcut(enabled: editor == nil && canFind && model.undoAction != nil) {
+    .savedUndoShortcut(
+      enabled: editor == nil && canFind && (model.undoAction != nil || model.hasPendingViewSave)
+    ) {
       undoSavedChange()
     }
     .onOpenURL { pendingLink.receive($0) }
@@ -835,10 +837,10 @@ public struct WorkspaceView: View {
   }
 
   private func undoSavedChange() {
-    guard let action = model.undoAction else { return }
+    guard model.undoAction != nil || model.hasPendingViewSave else { return }
     let context = model.editingContext
     Task {
-      do { try await model.undo(action, context: context) } catch {
+      do { try await model.undoLatest(context: context) } catch {
         model.error = error.localizedDescription
       }
     }

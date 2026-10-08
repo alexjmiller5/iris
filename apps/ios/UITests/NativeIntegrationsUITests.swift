@@ -65,19 +65,21 @@ import XCTest
   func testSpotlightTitleOpensItsRowThroughTheLinkBanner() throws {
     let app = try application()
     XCUIDevice.shared.press(.home)
-    let pill = springboard.otherElements["spotlight-pill"]
+    let pill = springboard.otherElements["spotlight-pill"].firstMatch
     if pill.waitForExistence(timeout: 5) { pill.tap() } else { springboard.swipeDown() }
-    let search = springboard.descendants(matching: .any).matching(
+    // Spotlight's field and results live in their own process on current iOS.
+    let spotlight = XCUIApplication(bundleIdentifier: "com.apple.Spotlight")
+    let search = spotlight.descendants(matching: .any).matching(
       NSPredicate(format: "elementType == %d OR elementType == %d",
         XCUIElement.ElementType.searchField.rawValue, XCUIElement.ElementType.textField.rawValue)
     ).firstMatch
-    require(search, in: springboard, 10)
+    require(search, in: spotlight, 10)
     search.typeText("A place to start")
-    let result = springboard.buttons.matching(
+    let result = spotlight.descendants(matching: .any).matching(
       NSPredicate(format: "label CONTAINS %@", "A place to start")
     ).firstMatch
-    require(result, in: springboard, 20)
-    keep(springboard, "spotlight-title-result")
+    require(result, in: spotlight, 20)
+    keep(spotlight, "spotlight-title-result")
     result.tap()
     XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15))
     let open = app.buttons["open-pending-link"]

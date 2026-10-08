@@ -37,8 +37,13 @@ async function saved(view: string) {
 }
 async function open(target: Page) {
   const sample = target.getByRole("button", { name: "Try sample workspace" });
-  if (await sample.isVisible().catch(() => false)) await sample.click();
-  await expect(target.getByLabel("View", { exact: true })).toBeVisible();
+  const views = target.getByLabel("View", { exact: true });
+  await expect(sample.or(views).first()).toBeVisible();
+  if (await sample.isVisible()) {
+    await expect(sample).toBeEnabled();
+    await sample.click();
+  }
+  await expect(views).toBeVisible();
   await expect(rows().first()).toBeVisible();
   await target.waitForURL(/[?&]view=/);
 }

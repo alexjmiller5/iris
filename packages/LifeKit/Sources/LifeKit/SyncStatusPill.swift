@@ -81,17 +81,19 @@ struct SyncStatusPill: View {
 
   var body: some View {
     Button(action: action) {
-      // Toolbars default labels to icon-only; the pill always shows its words.
-      Label(pill.title, systemImage: pill.symbol)
-        .labelStyle(.titleAndIcon)
-        .font(.caption.weight(.medium))
-        .lineLimit(1)
-        .fixedSize()
-        .foregroundStyle(tint)
-        #if os(macOS)
-          .padding(.horizontal, 8).padding(.vertical, 3)
-          .background(tint.opacity(0.12), in: .capsule)
-        #endif
+      // Toolbars collapse a Label to its icon; the pill always shows its words.
+      HStack(spacing: 4) {
+        Image(systemName: pill.symbol)
+        Text(pill.title)
+      }
+      .font(.caption.weight(.medium))
+      .lineLimit(1)
+      .fixedSize()
+      .foregroundStyle(tint)
+      #if os(macOS)
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(tint.opacity(0.12), in: .capsule)
+      #endif
     }
     #if os(macOS)
       .buttonStyle(.plain)

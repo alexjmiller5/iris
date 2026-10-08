@@ -126,19 +126,28 @@ The hub may change between pages, so the loaded count is not a snapshot or total
 Connect and sync the catalog before browsing online; usage caps and connection
 failures remain visible and require an explicit retry.
 
-**Saved views** keep a table's filters, search, sort, column order and widths in
-ordinary synced `views` rows. Choose a view, **Save as** a new name, or use
-**Update selected** to save changes and rename it. **Delete view** keeps the
-records and returns to All records. Updates use the revision you opened, so a
-remote change asks you to reopen and review instead of overwriting it. Invalid
-or newer definitions stay visible with their reason and are preserved.
+**Saved views** keep a table's filters, sort, column order and widths in
+ordinary synced `views` rows. Every table opens on a real saved view: one named
+"Default view" is created the first time a table without one is opened.
+**Filter** lists the table's properties; pick one and a chip appears with its
+condition and value (options are a checklist, and several checked options match
+any of them). Click a chip to change it, or its x to remove it. **Add filter
+group** builds all/any rule groups. **Sort** orders by several properties; drag
+the handles or use the arrow keys to reorder, and column headers sort too.
+Changes apply at once and save to the view when you close the popover, with no
+Apply or Save button; Cmd/Ctrl-Z undoes the last change. Search and Trash are
+not saved. The view menu (…) renames the view, saves a copy, deletes it (records
+are kept) and sets defaults. Saves use the revision you opened, so a remote
+change asks you to reopen and review instead of overwriting it. Invalid or newer
+definitions stay visible with their reason and are preserved.
 
 The sample workspace creates the standard storage locally. Connected workspaces
 receive it through schema sync from their operator; the client never adopts an
 unrelated table named `views`. Column visibility changes the grid only, so
 editing still reads all of a record's fields.
 
-**Copy link** shares the current table, saved view and saved record. Unsaved filters, sorting, visible columns and presentation follow the link too; this does not save or modify a view. View settings are limited to 16 KiB; save larger configurations as a named view before sharing. Links use
+**Copy link** shares the current table, saved view and saved record; view
+settings live in the saved view, not the link. Links use
 `/workspace?table=<table-id>&view=<view-id>&row=<record-id>` with optional view
 and row identifiers. Renaming a saved view does not change its link. Open the
 matching workspace on the receiving device, and sync if the target is not yet
@@ -455,7 +464,10 @@ xcodebuild -project apps/ios/LifeUI.xcodeproj -scheme LifeUI \
 ```
 
 This holds a real sync response while opening a large cached table, returning to
-notes, saving an edit and reopening the stored record. Run again without
+notes, saving an edit and reopening the stored record. Add
+`-only-testing:LifeUIUITests/SyncStatusUITests` to drive the sync pill through
+Syncing, Synced, Offline, Offline · 1 pending and 1 rejected with the fixture's
+`/fixture/mode/<accept|reject|offline>` switch; the seed replaces the replica each run. Run again without
 `TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_HUB` for repeated
 local large-table navigation. Each mode skips the other mode's tests. Retained
 XCTest screenshots show the saved record while sync remains held. Stop the fixture server
@@ -556,6 +568,12 @@ Two-tab runners retain their observer handle and restore its fixture URL before
 disconnecting; product links intentionally discard `review` and `observer` flags.
 
 ```sh
+# Filter and sort toolbar on the sample workspace; needs a disposable Chrome
+# (--remote-debugging-port=9333, fresh --user-data-dir) and a dev server that
+# no other edits reload.
+LIFE_UI_TEST_CDP=http://127.0.0.1:9333 LIFE_UI_TEST_URL=http://127.0.0.1:5261/workspace \
+  LIFE_UI_TEST_SHOTS=/tmp/shots bun scripts/test-filter-bar.ts
+
 LIFE_UI_TEST_URL=http://127.0.0.1:5196/workspace bun scripts/test-workspace.ts
 
 # Separate test origin keeps integration fixtures out of another workspace.

@@ -1038,7 +1038,10 @@ final class WorkspaceModel {
     viewGeneration += 1
   }
 
-  func saveCurrentView(name: String, update: Bool, context: WorkspaceEditingContext?) async throws {
+  func saveCurrentView(
+    name: String, update: Bool, context: WorkspaceEditingContext?,
+    definition override: CoreSavedViewDefinition? = nil
+  ) async throws {
     let context = try requireViewContext(context)
     guard !savingView, !undoing else {
       throw WorkspaceError(
@@ -1050,7 +1053,7 @@ final class WorkspaceModel {
     }
     let args = CoreSaveViewArgs(
       table: context.table, name: name,
-      definition: try currentViewDefinition(), id: update ? selected?.id : nil,
+      definition: try override ?? currentViewDefinition(), id: update ? selected?.id : nil,
       expectedUpdatedAt: update ? selected?.updatedAt : nil)
     let generation = viewGeneration
     let workspace = workspaceGeneration
@@ -1129,10 +1132,26 @@ final class WorkspaceModel {
   private(set) var viewSaveError: String?
   var hasPendingViewSave: Bool { pendingViewSave != nil }
 
+  /// The applied view with the current settings, keeping its stored search and
+  /// Trash: those are browsing state and only an explicit Update view saves them.
+  func autosaveDefinition() throws -> CoreSavedViewDefinition? {
+    guard let applied = appliedView else { return nil }
+    var definition = try currentViewDefinition()
+    definition.trash = applied.definition?.trash
+    return definition
+  }
+
+  /// Human Undo: first save a pending view edit, so Undo reverts the latest change.
+  func undoLatest(context: WorkspaceEditingContext?) async throws {
+    await flushViewSave()
+    guard let action = undoAction else { return }
+    try await undo(action, context: context)
+  }
+
   func scheduleViewSave(after delay: Duration = .milliseconds(400)) {
     viewSaveTimer?.cancel()
     guard let context = editingContext, let applied = appliedView, let revision = applied.updatedAt,
-      let definition = try? currentViewDefinition(), definition != applied.definition,
+      let definition = try? autosaveDefinition(), definition != applied.definition,
       TimeZone(identifier: viewTimeZone) != nil
     else {
       pendingViewSave = nil
@@ -1169,8 +1188,11 @@ final class WorkspaceModel {
       {
         while savingView || undoing { try await Task.sleep(for: .milliseconds(50)) }
         // A manual save or Undo may already have settled the change.
-        guard viewModified, let applied = appliedView, Data(applied.id.utf8) == id else { return }
-        try await saveCurrentView(name: applied.name, update: true, context: context)
+        guard let applied = appliedView, Data(applied.id.utf8) == id,
+          let definition = try autosaveDefinition(), definition != applied.definition
+        else { return }
+        try await saveCurrentView(
+          name: applied.name, update: true, context: context, definition: definition)
       } else {
         _ = try await context.workspace.saveView(pending.args)
         if context.workspace === client { recordLocalChange() }

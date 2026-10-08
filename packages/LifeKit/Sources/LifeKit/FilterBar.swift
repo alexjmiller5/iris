@@ -49,17 +49,17 @@ struct FilterBar: View {
         if model.savingView || model.hasPendingViewSave {
           ProgressView().controlSize(.small).accessibilityLabel("Saving view")
         }
-        if let action = model.undoAction, action.table == "views" {
+        if model.hasPendingViewSave || model.undoAction?.table == "views" {
           Button {
             Task {
               do {
-                try await model.undo(action, context: model.editingContext)
+                try await model.undoLatest(context: model.editingContext)
               } catch { model.error = error.localizedDescription }
             }
           } label: {
             Label("Undo", systemImage: "arrow.uturn.backward")
           }
-          .disabled(model.undoing || model.savingView || model.hasPendingViewSave)
+          .disabled(model.undoing || model.savingView)
           .accessibilityLabel("Undo last saved change")
           .accessibilityIdentifier("filter-bar-undo")
         }

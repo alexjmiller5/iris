@@ -403,8 +403,8 @@
 		overflow-x: auto;
 		scrollbar-width: thin;
 		/* Room for focus rings inside the scroller without shifting the row. */
-		margin: -4px;
-		padding: 4px;
+		margin: -4px -4px -10px;
+		padding: 4px 4px 10px;
 	}
 	.chip-main:focus-visible,
 	.chip-x:focus-visible {

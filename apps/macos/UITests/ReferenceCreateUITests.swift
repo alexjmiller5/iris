@@ -55,6 +55,8 @@ final class ReferenceCreateUITests: XCTestCase {
     click(app.buttons["Done"].firstMatch)
 
     // A required field without a default opens the editor; Cancel keeps the relation.
+    // Empty optional properties start collapsed on saved records.
+    if !app.buttons["field-company"].exists { click(app.buttons["Empty properties"].firstMatch) }
     click(app.buttons["field-company"])
     search("Globex", app: app)
     click(app.buttons["create-reference-company"])

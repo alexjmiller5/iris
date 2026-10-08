@@ -38,9 +38,11 @@ struct TableNavigationUIFixtureTests {
           root: local.deletingLastPathComponent(), endpoint: endpoint)
         try FileManager.default.createDirectory(
           at: replica.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: replica.path) {
-          try FileManager.default.copyItem(at: local, to: replica)
+        // Start every run from the seeded copy; durable rejections must not leak between runs.
+        for suffix in ["", "-wal", "-shm"] {
+          try? FileManager.default.removeItem(atPath: replica.path + suffix)
         }
+        try FileManager.default.copyItem(at: local, to: replica)
         try HubCredentialStore().save(
           HubCredentials(endpoint: endpoint, token: "synthetic-navigation-fixture"))
       }

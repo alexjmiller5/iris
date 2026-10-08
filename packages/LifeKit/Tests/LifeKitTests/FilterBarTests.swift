@@ -115,4 +115,33 @@ struct FilterBarTests {
     #expect(second.filters.map(\.value) == ["Draft"])
     await second.close()
   }
+
+  @Test func searchAndTrashAreBrowsingStateAndUndoFlushesThePendingSave() async throws {
+    let model = WorkspaceModel()
+    await model.open(demo: true)
+    let context = try await notes(model)
+    let opened = try #require(model.appliedView)
+    model.search = "filterbar"
+    model.scheduleViewSave(after: .milliseconds(10))
+    #expect(!model.hasPendingViewSave)
+    _ = model.addFilter(column: "status")
+    model.filters[0].value = "Ready"
+    model.scheduleViewSave(after: .seconds(30))
+    await model.flushViewSave()
+    let saved = try #require(model.appliedView)
+    #expect(saved.definition?.filters?.count == 1)
+    #expect(saved.definition?.search == nil)
+    #expect(saved.definition?.trash == nil)
+    model.search = ""
+    model.setSort(column: "title", ascending: true)
+    model.scheduleViewSave(after: .seconds(30))
+    #expect(model.hasPendingViewSave)
+    // Undo first saves the pending edit, then reverts exactly that latest change.
+    try await model.undoLatest(context: context)
+    #expect(!model.hasPendingViewSave)
+    #expect(model.sortRules.isEmpty)
+    #expect(model.filters.map(\.value) == ["Ready"])
+    #expect(model.appliedView?.byteExactID == opened.byteExactID)
+    await model.close()
+  }
 }

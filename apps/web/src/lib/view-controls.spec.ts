@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import {
 	initialFilterValue,
 	editSort,
+	moveItem,
 	parseDayStart,
 	parseFilter,
 	queryDefinition
@@ -101,4 +102,11 @@ test('mixed all-day and timed fields accept the same Today comparison', () => {
 		relative: 'today'
 	});
 	expect(() => parseFilter('due', 'contains', '', 'date_or_datetime', true)).toThrow();
+});
+
+test('moving a sort keeps every other clause in order', () => {
+	const sorts = ['a', 'b', 'c', 'd'];
+	expect(moveItem(sorts, 3, 0)).toEqual(['d', 'a', 'b', 'c']);
+	expect(moveItem(sorts, 0, 2)).toEqual(['b', 'c', 'a', 'd']);
+	expect(sorts).toEqual(['a', 'b', 'c', 'd']);
 });

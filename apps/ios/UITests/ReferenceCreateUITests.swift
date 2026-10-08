@@ -80,10 +80,15 @@ final class ReferenceCreateUITests: XCTestCase {
   }
 
   private func pick(_ column: String, app: XCUIApplication) {
-    let field = app.buttons["field-\(column)"]
-    for _ in 0..<6 where !(field.exists && field.isHittable) {
-      app.collectionViews["record-form"].swipeUp()
+    let form = app.collectionViews["record-form"]
+    let field = form.buttons["field-\(column)"]
+    // Empty optional properties start collapsed on saved records.
+    let empty = form.buttons["Empty properties"]
+    if !field.exists && empty.exists {
+      for _ in 0..<6 where !empty.isHittable { form.swipeUp() }
+      tap(empty)
     }
+    for _ in 0..<6 where !(field.exists && field.isHittable) { form.swipeUp() }
     tap(field)
   }
 
