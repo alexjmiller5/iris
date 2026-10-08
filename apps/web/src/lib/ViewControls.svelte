@@ -207,11 +207,6 @@
 		align-items: center;
 		margin: 6px 0;
 	}
-	.sorts {
-		display: grid;
-		gap: 6px;
-		justify-items: start;
-	}
 	details {
 		border: 1px solid var(--color-rule);
 		border-radius: 6px;

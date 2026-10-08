@@ -61,11 +61,3 @@ private enum QuickAddIntentError: Error, CustomLocalizedStringResourceConvertibl
     }
   }
 }
-
-public struct LifeQuickAddShortcuts: AppShortcutsProvider {
-  public static var appShortcuts: [AppShortcut] {
-    AppShortcut(
-      intent: QuickAddIntent(), phrases: ["Quick Add in \(.applicationName)"],
-      shortTitle: "Quick Add", systemImageName: "plus")
-  }
-}

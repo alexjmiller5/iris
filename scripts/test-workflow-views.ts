@@ -1,7 +1,7 @@
 import {chromium,expect} from '@playwright/test';
 import {resolve} from 'node:path';
 import {regressionHub} from './workspace-regression-hub';
-import {disposableOrigin,workspacePage} from './test-origin';
+import { disposableOrigin, workspacePage, synced } from './test-origin';
 const url=process.env.LIFE_UI_TEST_URL??'http://life-ui-markdown.localhost:5252/workspace?review';
 const source=process.argv[2];if(!source)throw Error('Provide the Life Data source checkout');
 const {server,db,auth}=await regressionHub(source,disposableOrigin(url));
@@ -27,7 +27,7 @@ try{
  await page.goto(url);await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
  await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token',{exact:true}).click();
  await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));await page.getByLabel('Device token').fill('fixture');
- await page.getByRole('button',{name:'Sync now',exact:true}).click();
+ await page.getByRole('button',{name:'Connect',exact:true}).click();
  await page.getByRole('navigation',{name:'Tables'}).getByRole('button',{name:'widgets',exact:true}).click();
  const views=page.getByRole('combobox',{name:'View',exact:true});await views.selectOption('workflow');await expect(views).toHaveValue('workflow');
  await expect(page.locator('.record-link')).toHaveText(['Fixture record']);
@@ -48,8 +48,7 @@ try{
  await expect(page.getByLabel('Status',{exact:true})).toHaveValue('Reviewed');
  await page.getByRole('button',{name:'Close record',exact:true}).click();
  await views.selectOption('workflow');
- await page.getByRole('button',{name:'Sync now',exact:true}).click();await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled();
- expect((db.db.query('SELECT status FROM widgets WHERE id=?').get('fixture-record') as any).status).toBe('Reviewed');
+ await synced(page); expect((db.db.query('SELECT status FROM widgets WHERE id=?').get('fixture-record') as any).status).toBe('Reviewed');
  console.log('PASS: action commits through ordinary sync and remains available in All records');
  // Preserve the definition across save/reopen, including action IDs, groups and option order.
  await page.getByLabel('View name',{exact:true}).fill('Queue copy');await page.getByRole('button',{name:'Save as',exact:true}).click();

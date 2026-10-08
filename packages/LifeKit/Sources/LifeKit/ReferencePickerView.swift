@@ -14,6 +14,7 @@ struct ReferenceField: View {
     field: CatalogField, value: Binding<String>, workspace: NativeWorkspace,
     onOpen: @escaping () -> Void = {}, canEdit: Bool = true,
     canOpen: Bool = true, availability: String? = nil,
+    creator: ReferenceCreator? = nil,
     onOpenRecord: ((String, String) -> Void)? = nil
   ) {
     self.field = field
@@ -26,7 +27,8 @@ struct ReferenceField: View {
     _picker = State(
       initialValue: try? ReferencePickerModel(
         table: field.property["ref_table"]?.text ?? "", value: value.wrappedValue,
-        multiple: field.type == "multi_ref", load: { try await workspace.rows(view: $0) }))
+        multiple: field.type == "multi_ref", creator: canEdit ? creator : nil,
+        load: { try await workspace.rows(view: $0) }))
   }
 
   var body: some View {
@@ -108,6 +110,18 @@ private struct ReferencePickerView: View {
         }
       }
       Section("Records") {
+        if let text = model.creationOffer {
+          Button {
+            Task {
+              await model.create(text)
+              finishCreation()
+            }
+          } label: {
+            Label("Create “\(text)”", systemImage: "plus")
+          }
+          .accessibilityIdentifier("create-reference-\(field.id)")
+        }
+        if model.creating { ProgressView("Creating…") }
         ForEach(model.rows, id: \.byteExactID) { row in
           Button {
             model.choose(row)
@@ -140,5 +154,91 @@ private struct ReferencePickerView: View {
     .task(id: model.search) { await model.reload() }
     .task { await model.resolveSelected() }
     .onDisappear { model.invalidateSearch() }
+    .sheet(
+      isPresented: Binding(
+        get: { model.creation != nil }, set: { if !$0 { model.cancelCreation() } })
+    ) {
+      if let editor = model.creation, let creator = model.creator {
+        ReferenceCreationSheet(
+          creator: creator, editor: editor, saving: model.creating,
+          onSave: {
+            Task {
+              await model.save(editor)
+              finishCreation()
+            }
+          }, onCancel: model.cancelCreation)
+      }
+    }
+  }
+
+  /// Publish a created record to the source draft; a single reference is then complete.
+  private func finishCreation() {
+    guard model.creation == nil, Data(value.utf8) != Data(model.selection.value.utf8) else {
+      return
+    }
+    value = model.selection.value
+    if !model.selection.multiple { dismiss() }
+  }
+}
+
+/// A new related record whose required fields still need values, in the editor's controls.
+private struct ReferenceCreationSheet: View {
+  let creator: ReferenceCreator
+  let editor: RecordEditorModel
+  let saving: Bool
+  let onSave: () -> Void
+  let onCancel: () -> Void
+  @FocusState private var focus: String?
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section {
+          ForEach(editor.draft.fields) { field in
+            LabeledContent {
+              FieldInput(
+                field: field, workspace: creator.workspace, transport: nil, focus: $focus,
+                editor: editor, onOpenReference: { _, _ in }, isCurrent: { true },
+                referenceAvailability: nil,
+                value: Binding(
+                  get: { editor.draft.values[field.id] ?? "" },
+                  set: { editor.setValue($0, for: field.id) })
+              )
+              .labelsHidden()
+            } label: {
+              Text(field.required ? "\(field.label) (required)" : field.label)
+            }
+            ForEach(editor.violations.filter { $0.col == field.id }, id: \.rule) { violation in
+              Text(violation.message).font(.caption).foregroundStyle(.red)
+            }
+          }
+        } footer: {
+          Text("Saving adds this record to the relation. Cancel leaves the relation unchanged.")
+        }
+        if let failure = editor.failure {
+          Text(failure).foregroundStyle(.red).accessibilityIdentifier("create-reference-failure")
+        }
+      }
+      .formStyle(.grouped)
+      .navigationTitle("New record")
+      #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+      #endif
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel", action: onCancel).disabled(saving)
+            .accessibilityIdentifier("create-reference-cancel")
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Save", action: onSave).disabled(saving)
+            .accessibilityIdentifier("create-reference-save")
+        }
+      }
+    }
+    #if os(macOS)
+      .frame(minWidth: 440, minHeight: 320)
+    #endif
+    .interactiveDismissDisabled(saving)
+    .onAppear { focus = creator.missing(in: editor.draft).first?.id }
   }
 }

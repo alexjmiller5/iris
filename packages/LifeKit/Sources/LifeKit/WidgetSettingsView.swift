@@ -68,6 +68,11 @@ struct WidgetSettingsView: View {
             .accessibilityIdentifier("widget-enable-source")
           }.disabled(settings.busy)
         }
+        #if os(iOS)
+          if let integrations = model.integrations {
+            IntegrationSettingsSections(model: model, widgets: settings, settings: integrations)
+          }
+        #endif
         if settings.busy { ProgressView("Preparing widget data") }
         if let message = failure ?? settings.error {
           Section { Text(message).foregroundStyle(.red).accessibilityIdentifier("widget-settings-error") }
@@ -77,7 +82,7 @@ struct WidgetSettingsView: View {
             .font(.callout).foregroundStyle(.secondary)
         }
       }
-      .navigationTitle("Widgets")
+      .navigationTitle("Widgets and Search")
       .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
       .task(id: table) {
         if table.isEmpty { table = model.table ?? model.tables.first?["id"]?.text ?? ""; return }

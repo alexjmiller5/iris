@@ -1,4 +1,4 @@
-import { workspacePage } from './test-origin';
+import { workspacePage, synced } from './test-origin';
 import { chromium,expect, type CDPSession } from '@playwright/test';
 
 const url=process.env.LIFE_UI_TEST_URL??'http://127.0.0.1:5197/workspace';
@@ -13,7 +13,7 @@ try{
   await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
   await page.getByLabel('Hub address').fill(hub);
   await page.getByLabel('Device token').fill('fixture');
-  await page.getByRole('button',{name:'Sync now',exact:true}).click();
+  await page.getByRole('button',{name:'Connect',exact:true}).click();
   await expect(page.getByRole('heading',{name:'widgets',exact:true})).toBeVisible({timeout:15000});
   await expect(page.getByRole('button',{name:'Fixture record',exact:true})).toBeVisible();
   const title=`Synced draft ${Date.now()}`;
@@ -35,7 +35,7 @@ try{
   await network.send('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});
   await network.detach();
   network=undefined;
-  await page.getByRole('button',{name:'Sync now',exact:true}).click();
+  await synced(page);
   await expect.poll(async()=>{
     const response=await fetch(`${hub}/v1/rows/pull`,{method:'POST',headers:{Authorization:'Bearer fixture','Content-Type':'application/json'},body:JSON.stringify({table:'widgets',columns:['id','title','body','quantity'],since:'',limit:200})});
     const result=await response.json() as {rows:Record<string,unknown>[]};
@@ -44,10 +44,10 @@ try{
   await expect(page.getByRole('alert')).toHaveCount(0);
   if(await page.getByRole('button',{name:'Use automatic size rule',exact:true}).count())await page.getByRole('button',{name:'Use automatic size rule',exact:true}).click();
   await page.getByLabel('Automatic sync row limit').fill('0');
-  await page.getByRole('button',{name:'Sync now',exact:true}).click();
+  await synced(page);
   await expect(page.getByText(/This table is excluded from sync/)).toBeVisible();
   await page.getByRole('button',{name:'Include this table',exact:true}).click();
-  await page.getByRole('button',{name:'Sync now',exact:true}).click();
+  await synced(page);
   await expect(page.getByText(/This table is excluded from sync/)).toHaveCount(0);
   console.log('PASS: browser OPFS pulled the real Worker schema/catalog, created a typed row and synced it back');
 }finally{

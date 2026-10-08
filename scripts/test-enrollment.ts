@@ -29,13 +29,13 @@ try {
  const approved=await page.getByLabel('Device token').inputValue();expect(approved).toMatch(/^lt_[a-f0-9]{48}$/);
  const state=await page.evaluate(()=>({url:location.href,local:JSON.stringify(localStorage),session:JSON.stringify(sessionStorage)}));expect(JSON.stringify(state)).not.toContain(approved);
  for(const bad of ['fixture-root','fixture-restricted','fixture-revoked']){
-  await page.getByLabel('Device token').fill(bad);await page.getByRole('button',{name:'Sync now',exact:true}).click();
+  await page.getByLabel('Device token').fill(bad);await page.getByRole('button',{name:'Connect',exact:true}).click();
   await expect(page.getByRole('alert')).toBeVisible();await expect(page.getByRole('button',{name:'Fixture record',exact:true})).toBeVisible();
  }
- await page.getByLabel('Device token').fill('fixture');await page.getByRole('button',{name:'Sync now',exact:true}).click();await expect(page.getByText('Connected. The device token stays in memory for this browser session.')).toBeVisible();
+ await page.getByLabel('Device token').fill('fixture');await page.getByRole('button',{name:'Connect',exact:true}).click();await expect(page.getByText('Connected. The device token stays in memory for this browser session.')).toBeVisible();
  console.log('PASS: dedicated manual token; admin/restricted/revoked rejection preserves existing workspace');
  await page.getByLabel('Hub address').fill(other.server.url.href.replace(/\/$/,''));
- await page.getByRole('button',{name:'Sync now',exact:true}).click();await expect(page.getByRole('alert')).toContainText('hub changed');expect(other.requests.filter(r=>r.authenticated)).toEqual([]);
+ await page.getByRole('button',{name:'Connect',exact:true}).click();await expect(page.getByRole('alert')).toContainText('hub changed');expect(other.requests.filter(r=>r.authenticated)).toEqual([]);
  await page.getByLabel('Hub address').fill(endpoint);await page.getByRole('button',{name:'Approve this browser',exact:true}).click();await expect(link).toBeVisible();
  const abandoned=await link.getAttribute('href');await page.getByRole('button',{name:'Cancel approval',exact:true}).click();
  await expect(page.getByText(/may still be approved later/)).toBeVisible();expect((await hub.approve(abandoned!)).status).toBe(200);

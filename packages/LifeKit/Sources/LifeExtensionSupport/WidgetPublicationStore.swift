@@ -193,14 +193,17 @@ public struct WidgetPublicationStore: Sendable {
   }
 
   /// One protected handoff, not a row writer. Another request must never replace
-  /// unsaved input. Retry the same identity only with byte-identical input.
+  /// unsaved input. Retry the same identity only with byte-identical input. A retried
+  /// delivery the app already consumed returns nil instead of preparing a second draft.
+  @discardableResult
   public func stageQuickAdd(id: UUID, sourceID: String, text: String?, column: String?) throws
-    -> WidgetQuickAdd
+    -> WidgetQuickAdd?
   {
     guard (text == nil) == (column == nil), (text?.utf8.count ?? 0) <= 65536,
       column == nil || (!column!.isEmpty && column!.utf8.count <= 512)
     else { throw unavailable }
     return try withLock(exclusive: true) {
+      if try consumedQuickAdds().contains(id) { return nil }
       let request = try currentPublication { metadata, _ in
         guard let source = metadata.sources.first(where: { bytesEqual($0.id, sourceID) }),
           source.plan.kind == .list, source.allowsQuickAdd == true, let url = source.openURL
@@ -243,7 +246,7 @@ public struct WidgetPublicationStore: Sendable {
     try withLock(exclusive: true) {
       guard let request = try readQuickAdd() else { return }
       guard request.id == id else { throw unavailable }
-      try FileManager.default.removeItem(at: root.appendingPathComponent("quick-add.json"))
+      try consumeQuickAdd(id)
     }
   }
 
@@ -252,7 +255,26 @@ public struct WidgetPublicationStore: Sendable {
       guard let request = try readQuickAdd() else { return }
       guard request.id == id else { throw unavailable }
       try validateQuickAdd(request)
-      try FileManager.default.removeItem(at: root.appendingPathComponent("quick-add.json"))
+      try consumeQuickAdd(id)
+    }
+  }
+
+  /// The receipt is durable before the handoff disappears, so a late intent retry
+  /// after the draft was opened, saved or discarded cannot start another draft.
+  private func consumeQuickAdd(_ id: UUID) throws {
+    // ponytail: last 64 deliveries; a retry older than that is not a realistic replay.
+    let receipts = (try consumedQuickAdds().filter { $0 != id } + [id]).suffix(64)
+    try write(Array(receipts), to: root.appendingPathComponent("quick-add-receipts.json"), limit: 8192)
+    try FileManager.default.removeItem(at: root.appendingPathComponent("quick-add.json"))
+  }
+
+  private func consumedQuickAdds() throws -> [UUID] {
+    do {
+      return try decode(root.appendingPathComponent("quick-add-receipts.json"), limit: 8192)
+    } catch let error as CocoaError
+      where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile
+    {
+      return []
     }
   }
 

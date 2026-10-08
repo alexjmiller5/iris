@@ -8,6 +8,7 @@ logs/
 *.xcodeproj/
 apps/*/App/Info.plist
 apps/ios/Widgets/Info.plist
+apps/ios/Share/Info.plist
 .DS_Store
 .env
 .env.*

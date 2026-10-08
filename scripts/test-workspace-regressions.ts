@@ -53,7 +53,7 @@ try {
 	await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 	await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 	await page.getByLabel('Device token').fill('fixture');
-	await page.getByRole('button', { name: 'Sync now', exact: true }).click();
+	await page.getByRole('button',{name:'Connect',exact:true}).click();
 	await expect(page.getByRole('button', { name: 'Fixture record', exact: true })).toBeVisible({ timeout: 15000 });
 	const save = page.getByRole('button', { name: 'Save record', exact: true });
 	async function reopen() {
@@ -242,7 +242,7 @@ try {
 		await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 		await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 		await page.getByLabel('Device token').fill('fixture');
-		await page.getByRole('button', { name: 'Sync now', exact: true }).click();
+		await page.getByRole('button',{name:'Connect',exact:true}).click();
 		await expect(pending).toHaveText('Pending edits: 0');
 	});
 	if (failures.length) throw new Error(`${failures.length} regression(s) failed: ${failures.join('; ')}`);

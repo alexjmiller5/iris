@@ -68,6 +68,9 @@ public struct WorkspaceView: View {
       undoSavedChange()
     }
     .onOpenURL { pendingLink.receive($0) }
+    #if os(iOS)
+      .modifier(NativeIntegrationHandlers(model: model) { pendingLink.receive($0) })
+    #endif
     .task(
       id:
         "\(model.widgets.map(ObjectIdentifier.init).map(String.init(describing:)) ?? "none")|\(scenePhase == .active)"
@@ -122,6 +125,9 @@ public struct WorkspaceView: View {
             } label: {
               Label("Schema graph", systemImage: "point.3.connected.trianglepath.dotted")
             }.disabled(!canFind).accessibilityIdentifier("schema-graph-sidebar")
+            #if os(iOS)
+              DailySection(model: model) { openDestination($0) }.disabled(!canFind)
+            #endif
             WorkspaceSidebar(
               tables: NativeSidebarTables(model.tables, pins: model.pins?.active ?? []),
               recents: model.recents, pins: model.pins,
@@ -1204,7 +1210,7 @@ public struct WorkspaceView: View {
             widgetSettings = true
           } catch { model.error = error.localizedDescription }
         } label: {
-          Label("Widgets", systemImage: "square.grid.2x2")
+          Label("Widgets and Search", systemImage: "square.grid.2x2")
         }
         .disabled(editor != nil).accessibilityIdentifier("widget-settings")
         Button(action: showRejections) { Label("Issues", systemImage: "exclamationmark.bubble") }
@@ -2070,6 +2076,7 @@ private struct RecordEditor: View {
               editor: editor, onOpenReference: openReference,
               isCurrent: editorIsCurrent,
               referenceAvailability: referenceAvailability(field),
+              referenceCreator: model.referenceCreator(for: field, context: context),
               value: Binding(
                 get: { editor.draft.values[field.id] ?? "" },
                 set: { editor.setValue($0, for: field.id) })
@@ -2374,7 +2381,7 @@ struct PropertyHelpButton: View {
   }
 }
 
-private struct FieldInput: View {
+struct FieldInput: View {
   let field: CatalogField
   let workspace: NativeWorkspace?
   let transport: HubTransport?
@@ -2383,6 +2390,7 @@ private struct FieldInput: View {
   let onOpenReference: (String, String) -> Void
   let isCurrent: @MainActor () -> Bool
   let referenceAvailability: String?
+  var referenceCreator: ReferenceCreator? = nil
   @Binding var value: String
   @State private var linkOpening = false
   @State private var linkError: String?
@@ -2396,7 +2404,7 @@ private struct FieldInput: View {
           ReferenceField(
             field: field, value: $value, workspace: workspace, onOpen: { focus.wrappedValue = nil },
             canOpen: !editor.saving, availability: referenceAvailability,
-            onOpenRecord: onOpenReference)
+            creator: referenceCreator, onOpenRecord: onOpenReference)
         } else {
           Text("Reference choices are unavailable. The original value has been preserved.")
             .foregroundStyle(.secondary)

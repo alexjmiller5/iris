@@ -39,10 +39,12 @@ jobs:
           attempt = os.environ['GITHUB_RUN_ATTEMPT']
           if not all(re.fullmatch(r'[1-9][0-9]*', value) for value in (run, attempt)):
               raise SystemExit('Invalid build identity')
-          path = pathlib.Path('apps/ios/App/Info.plist')
-          info = plistlib.loads(path.read_bytes())
-          info['CFBundleVersion'] = f'{run}.{attempt}'
-          path.write_bytes(plistlib.dumps(info))
+          # Embedded extensions must carry the app's exact build number.
+          for name in ('App', 'Widgets', 'Share'):
+              path = pathlib.Path('apps/ios') / name / 'Info.plist'
+              info = plistlib.loads(path.read_bytes())
+              info['CFBundleVersion'] = f'{run}.{attempt}'
+              path.write_bytes(plistlib.dumps(info))
       - uses: 1Password/install-cli-action@v4
       # Existing Apple Signing exception supplies iOS signing material only.
       - uses: 1password/load-secrets-action@v2

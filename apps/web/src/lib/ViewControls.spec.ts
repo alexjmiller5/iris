@@ -11,8 +11,6 @@ test.each([0, 180, 1439])(
 			window.document.body.innerHTML = render(ViewControls, {
 				props: {
 					properties: [],
-					sorts: [],
-					groups: [],
 					actions: [],
 					columns: [],
 					timeZone: 'UTC',
@@ -37,8 +35,6 @@ test('action fields receive dynamic choices without depending on record editor s
 			properties: [
 				{ tbl: 'items', col: 'status', type: 'select', options_sql: "SELECT 'Dynamic'" }
 			],
-			sorts: [],
-			groups: [],
 			actions: [{ id: 'finish', label: 'Finish', values: { status: null } }],
 			columns: ['status'],
 			timeZone: 'UTC',

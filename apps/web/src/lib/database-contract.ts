@@ -75,6 +75,10 @@ export interface DatabaseOperations {
 		result: CoreResult<'setRelatedViewDefault'>;
 	};
 	getViewDefault: { args: CoreArgs<'getViewDefault'>; result: CoreResult<'getViewDefault'> };
+	ensureDefaultView: {
+		args: CoreArgs<'ensureDefaultView'>;
+		result: CoreResult<'ensureDefaultView'>;
+	};
 	setViewDefault: { args: CoreArgs<'setViewDefault'>; result: CoreResult<'setViewDefault'> };
 	saveView: { args: CoreArgs<'saveView'>; result: CoreResult<'saveView'> };
 	deleteView: { args: CoreArgs<'deleteView'>; result: CoreResult<'deleteView'> };

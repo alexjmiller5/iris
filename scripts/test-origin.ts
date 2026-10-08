@@ -26,3 +26,22 @@ export function workspacePage<T extends { url(): string }>(pages: readonly T[], 
 	if (candidates.length > 1) throw new Error('Ambiguous fixture pages. Keep one workspace tab per observer role.');
 	return candidates[0];
 }
+
+/** Wait for an automatic sync round that started after this call. Core stamps
+ * last_sync when a round begins, so a newer stamp covers earlier local writes and
+ * hub changes. Rejected rounds keep the old stamp; wait for the rejection instead.
+ */
+export async function synced(
+	page: {
+		evaluate<R>(fn: () => R): Promise<R>;
+		waitForFunction(fn: (since: string) => boolean, arg: string, options: { timeout: number }): Promise<unknown>;
+	},
+	timeout = 15000
+) {
+	const since = await page.evaluate(() => new Date().toISOString());
+	await page.waitForFunction(
+		(since) => (document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > since,
+		since,
+		{ timeout }
+	);
+}

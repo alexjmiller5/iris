@@ -61,7 +61,10 @@
 		IconX,
 		IconDeviceFloppy,
 		IconLink,
-		IconArrowBackUp
+		IconArrowBackUp,
+		IconArrowsSort,
+		IconArrowUp,
+		IconArrowDown
 	} from '@tabler/icons-svelte';
 	import {
 		createHttpHub,
@@ -472,6 +475,7 @@
 	let viewVersion = 0,
 		viewsRequest = 0;
 	let sorts = $state<Sort[]>([]);
+	let sortAnchor = $state<HTMLElement>();
 	let filterGroups = $state<FilterGroup[]>([]),
 		actions = $state<RowAction[]>([]),
 		actionLayout = $state<ViewLayoutItem[] | undefined>(),
@@ -490,6 +494,7 @@
 	const currentExportContext = $derived(
 		JSON.stringify([table, search, trash, filters, sorts, offset])
 	);
+	const system = new Set(['id', 'created_at', 'updated_at', 'deleted_at', 'hub_at']);
 	const properties = $derived(
 		catalog.properties
 			.filter((p) => p.tbl === table && !system.has(p.col))
@@ -2691,49 +2696,141 @@
 							Connect to your hub in the sidebar to bring your tables to this device.
 						</div>{/if}
 					{#if table}
-						{#key table}
-							<div class="saved-views-panel">
+						<div class="view-toolbar">
+							{#key table}
 								<SavedViews
 									list={savedViews}
 									unavailable={viewsUnavailable}
 									{busy}
 									selected={chosenView?.id ?? null}
-									modified={viewModified}
+									modified={$viewAutosave.pending}
 									onchoose={chooseView}
 									onsave={saveNamedView}
 									ondelete={deleteNamedView}
-								/>
-								<div role="group" aria-label="Default view">
-									<span>Default: {preferredView?.view?.name ?? 'Catalog default'}</span>
-									<button
-										disabled={busy || !defaultPermission?.writable || !chosenView || viewModified}
-										onclick={() => setDefaultView(chosenView?.id ?? null)}
-										>Use current view by default</button
-									>
-									<button
-										disabled={busy || !defaultPermission?.writable || !preferredView?.viewId}
-										onclick={() => setDefaultView(null)}>Use catalog default</button
-									>
-									{#if preferredView?.unavailable}<p>{preferredView.unavailable}</p>{/if}
-									<span>Related records: {relatedView?.view?.name ?? 'All live links'}</span>
-									<button
-										type="button"
-										onclick={() => setDefaultView(chosenView?.id ?? null, true)}
-										disabled={busy || !relatedPermission?.writable || !chosenView || viewModified}
-										>Use current view for related records</button
-									>
-									<button
-										type="button"
-										onclick={() => setDefaultView(null, true)}
-										disabled={busy || !relatedPermission?.writable || !relatedView?.viewId}
-										>Use all live related records</button
-									>
-									{#if relatedView?.unavailable}<p>{relatedView.unavailable}</p>{/if}
-								</div>
-								{#if defaultViewNotice}<p role="status">{defaultViewNotice}</p>{/if}
-							</div>
-						{/key}
-						<div class="toolbar">
+								>
+									<div class="view-defaults" role="group" aria-label="Default view">
+										<p>Opens by default: {preferredView?.view?.name ?? 'Catalog default'}</p>
+										<button
+											class="secondary"
+											disabled={busy || !defaultPermission?.writable || !chosenView || viewModified}
+											onclick={() => setDefaultView(chosenView?.id ?? null)}
+											>Use current view by default</button
+										>
+										<button
+											class="secondary"
+											disabled={busy || !defaultPermission?.writable || !preferredView?.viewId}
+											onclick={() => setDefaultView(null)}>Use catalog default</button
+										>
+										{#if preferredView?.unavailable}<p>{preferredView.unavailable}</p>{/if}
+										<p>Related records: {relatedView?.view?.name ?? 'All live links'}</p>
+										<button
+											type="button"
+											class="secondary"
+											onclick={() => setDefaultView(chosenView?.id ?? null, true)}
+											disabled={busy || !relatedPermission?.writable || !chosenView || viewModified}
+											>Use current view for related records</button
+										>
+										<button
+											type="button"
+											class="secondary"
+											onclick={() => setDefaultView(null, true)}
+											disabled={busy || !relatedPermission?.writable || !relatedView?.viewId}
+											>Use all live related records</button
+										>
+										{#if relatedView?.unavailable}<p>{relatedView.unavailable}</p>{/if}
+									</div>
+									<ViewControls
+										properties={viewProperties}
+										{actions}
+										layout={actionLayout}
+										{timeZone}
+										{dayStartMinutes}
+										{actionOptions}
+										{actionReferences}
+										onactionsearch={loadActionReferences}
+										columns={[display ?? 'id', ...visibleColumns]}
+										disabled={busy || navigationLoading || !chosenView}
+										onchange={(patch) => {
+											if (!closeRecord()) return;
+											if (patch.actions) actions = patch.actions;
+											if (patch.layout) actionLayout = patch.layout;
+											if (patch.timeZone !== undefined) timeZone = patch.timeZone;
+											if (patch.dayStartMinutes !== undefined)
+												dayStartMinutes = patch.dayStartMinutes;
+											viewChanged();
+										}}
+									/>
+								</SavedViews>
+							{/key}
+							<FilterBar
+								{filters}
+								groups={filterGroups}
+								properties={viewProperties}
+								disabled={busy || navigationLoading || !chosenView}
+								options={optionValues}
+								references={(p) =>
+									(references[p.col] ?? []).map((row) => ({
+										id: String(row.id),
+										label: refTitle(p, row)
+									}))}
+								onsearch={(p, query) => {
+									if (p.type === 'ref' || p.type === 'multi_ref') void loadReferences(p, query);
+									else void loadOptions(p);
+								}}
+								onchange={(next) => {
+									if (!closeRecord()) return false;
+									filters = next.filters;
+									filterGroups = next.groups;
+									viewChanged();
+									return true;
+								}}
+								ontoggle={(open) => viewAutosave.hold(open)}
+							>
+								{#snippet leading()}
+									{#if sorts.length}
+										{@const first = sorts[0]}
+										<button
+											type="button"
+											class="sort-chip"
+											popovertarget="view-sort"
+											disabled={busy || navigationLoading || !chosenView}
+											onclick={(e) => (sortAnchor = e.currentTarget)}
+											>{#if sorts.length > 1}<IconArrowsSort size={14} aria-hidden="true" />{sorts.length}
+												sorts{:else}{#if first.direction === 'asc'}<IconArrowUp
+														size={14}
+														aria-label="Ascending"
+													/>{:else}<IconArrowDown size={14} aria-label="Descending" />{/if}{viewProperties.find(
+													(p) => p.col === first.column
+												)?.label || first.column}{/if}</button
+										>
+									{/if}
+								{/snippet}
+							</FilterBar>
+							<SortMenu
+								id="view-sort"
+								{sorts}
+								properties={viewProperties}
+								bind:anchor={sortAnchor}
+								disabled={busy || navigationLoading || !chosenView}
+								onchange={(next) => {
+									if (!closeRecord()) return false;
+									sorts = next;
+									viewChanged();
+									return true;
+								}}
+								ontoggle={(open) => viewAutosave.hold(open)}
+							/>
+							<PresentationControls
+								value={presentation}
+								{properties}
+								disabled={busy || navigationLoading || !chosenView}
+								onchange={(value) => {
+									if (!closeRecord()) return;
+									presentation = value;
+									loadBoardOptions();
+									viewChanged();
+								}}
+							/>
 							<form
 								onsubmit={(e) => {
 									e.preventDefault();
@@ -2753,7 +2850,6 @@
 								onclick={() => {
 									if (!closeRecord()) return;
 									trash = !trash;
-									void reflectLocation(true);
 									offset = 0;
 									loadRows().catch((e) => (error = message(e)));
 								}}><IconTrash size={16} />{trash ? 'All records' : 'Trash'}</button
@@ -2791,104 +2887,13 @@
 								}}
 							/>
 						</div>
-						<PresentationControls
-							value={presentation}
-							{properties}
-							disabled={busy || navigationLoading}
-							onchange={(value) => {
-								if (!closeRecord()) return;
-								presentation = value;
-								void reflectLocation(true);
-								loadBoardOptions();
-							}}
-						/>
-						<ViewControls
-							properties={viewProperties}
-							sorts={sorts}
-							{filters}
-							groups={filterGroups}
-							{actions}
-							layout={actionLayout}
-							{timeZone}
-							{dayStartMinutes}
-							{actionOptions}
-							{actionReferences}
-							onactionsearch={loadActionReferences}
-							columns={[display ?? 'id', ...visibleColumns]}
-							disabled={busy || navigationLoading}
-							onchange={(patch) => {
-								if (!closeRecord()) return;
-								if (patch.sorts) importedSort = patch.sorts;
-								if (patch.groups) filterGroups = patch.groups;
-								if (patch.filters) filters = patch.filters;
-								if (patch.actions) actions = patch.actions;
-								if (patch.layout) actionLayout = patch.layout;
-								if (patch.timeZone !== undefined) timeZone = patch.timeZone;
-								if (patch.dayStartMinutes !== undefined) dayStartMinutes = patch.dayStartMinutes;
-								void reflectLocation(true);
-								offset = 0;
-								loadRows().catch((e) => (error = message(e)));
-							}}
-						/>
-
-						<form
-							class="filters"
-							onsubmit={(e) => {
-								e.preventDefault();
-								applyFilter();
-							}}
-						>
-							<select
-								aria-label="Filter property"
-								bind:value={filterColumn}
-								onchange={() => {
-									filterOp = 'eq';
-									filterValue = '';
-								}}
-								><option value="">All records</option>{#each properties as p}<option value={p.col}
-										>{label(p)}</option
-									>{/each}</select
-							>
-							{#if filterColumn}<select aria-label="Filter operator" bind:value={filterOp}
-									><option value="eq">is</option><option value="ne">is not</option><option
-										value="empty">is empty</option
-									><option value="not_empty">is not empty</option
-									>{#if ['number', 'int', 'date', 'datetime', 'date_or_datetime'].includes(filterType)}<option
-											value="gt">greater than</option
-										><option value="lt">less than</option>{:else if filterType !== 'bool'}<option
-											value="contains">contains</option
-										>{/if}</select
-								>
-								{#if !['empty', 'not_empty'].includes(filterOp)}
-									{#if filterType === 'bool'}
-										<select aria-label="Filter value" bind:value={filterValue}>
-											<option value="">Choose a value</option>
-											<option value="true">True</option>
-											<option value="false">False</option>
-										</select>
-									{:else}<input aria-label="Filter value" bind:value={filterValue} />{/if}{/if}{/if}
-							<button class="secondary" type="submit">Apply filter</button>
-						</form>
+						{#if defaultViewNotice}<p role="status" class="notice">{defaultViewNotice}</p>{/if}
 						<ColumnSettings
 							properties={columnChoices}
 							columns={visibleColumns}
 							{widths}
 							onChange={changeColumns}
 						/>
-						{#if filters.length}
-							<div class="active-filters" role="group" aria-label="Active filters">
-								<span>Match all</span>
-								{#each filters as filter, index}
-									<button
-										class="secondary filter-chip"
-										aria-label={`Remove filter ${index + 1}: ${describeFilter(filter)}`}
-										onclick={() => removeFilter(index)}
-										>{describeFilter(filter)}<IconX size={14} /></button
-									>
-								{/each}
-								<button class="secondary" onclick={() => removeFilter()}>Clear filters</button>
-							</div>
-						{/if}
 						{#if blocked}<p role="status" aria-label="Editing availability" class="notice">
 								{writePermission?.reason?.message ?? 'Checking editing rules…'}
 							</p>{/if}
@@ -2936,6 +2941,14 @@
 										!trash &&
 										!navigationLoading}
 									onaction={runSavedAction}
+									sortOf={(column) => sorts.find((sort) => sort.column === column)?.direction ?? null}
+									onsort={chosenView && !busy && !navigationLoading
+										? (column, direction) => {
+												if (!closeRecord()) return;
+												sorts = [{ column, direction }];
+												viewChanged();
+											}
+										: undefined}
 									properties={gridColumns}
 									{widths}
 									busy={busy || gridActionOpening !== null}
@@ -3208,7 +3221,6 @@
 		display: contents;
 	}
 	button,
-	select,
 	input {
 		font: inherit;
 	}
@@ -3423,40 +3435,51 @@
 		min-height: 36px;
 		padding: 6px;
 	}
-	.filters {
+	.view-toolbar {
 		display: flex;
 		gap: 8px;
-		flex-wrap: wrap;
-		margin: 0 0 20px;
-	}
-	.filters input {
-		max-width: 220px;
-	}
-	.active-filters {
-		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 8px;
-		margin: 0 0 20px;
-		font-size: 0.8rem;
+		margin: 0 0 16px;
+		min-width: 0;
+	}
+	.view-toolbar .search {
+		flex: 1 1 180px;
+	}
+	.view-defaults {
+		display: grid;
+		gap: 6px;
+		justify-items: start;
+		padding-top: 12px;
+		border-top: 1px solid var(--color-rule);
+		font-size: 13px;
+	}
+	.view-defaults p {
+		margin: 4px 0 0;
 		color: var(--color-muted);
 	}
-	.filter-chip {
-		max-width: 100%;
-		overflow-wrap: anywhere;
-		text-align: left;
+	.view-defaults button {
+		min-height: 36px;
 	}
-	.saved-views-panel {
-		margin-bottom: 20px;
-	}
-	.toolbar {
-		display: flex;
-		gap: 8px;
+	.sort-chip {
+		display: inline-flex;
+		flex: none;
 		align-items: center;
-		flex-wrap: wrap;
-		margin: 0 0 20px;
+		gap: 5px;
+		min-height: 30px;
+		padding: 0 10px;
+		border: 1px solid color-mix(in srgb, var(--color-accent) 35%, var(--color-rule));
+		border-radius: 999px;
+		background: var(--color-accent-soft);
+		color: var(--color-ink);
+		font: inherit;
+		font-size: 13px;
+		cursor: pointer;
 	}
-	.search {
+	.sort-chip :global(svg) {
+		color: var(--color-accent);
+	}
+		.search {
 		display: flex;
 		align-items: center;
 		gap: 8px;
@@ -3474,8 +3497,7 @@
 		width: 100%;
 		background: none;
 	}
-	input,
-	select {
+	input {
 		border: 1px solid var(--color-rule);
 		border-radius: 6px;
 		padding: 9px 10px;
@@ -3483,9 +3505,6 @@
 		color: var(--color-ink);
 		font-size: 13px;
 		min-height: 38px;
-	}
-	select {
-		max-width: 100%;
 	}
 	.empty {
 		padding: 60px 24px;

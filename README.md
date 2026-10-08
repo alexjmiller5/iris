@@ -37,7 +37,7 @@ The token stays in memory for that browser session. The hub must allow this web
 app's origin through CORS, including its existing session endpoint.
 
 **Use a device token** is an explicit alternative: paste a dedicated full device
-token, then choose **Sync now**. New credentials are validated before replacing
+token, then choose **Connect**. New credentials are validated before replacing
 the current connection; root/admin and restricted tokens cannot open replicas.
 A hub cap still permits enrollment and usage/notification access. Download limits
 remain separate from enrollment.
@@ -59,6 +59,18 @@ device through the hub's device management page. A replacement browser/device
 creates a fresh credential through the same approval flow; no token export or
 storage transfer is required.
 
+Once connected, the workspace syncs by itself: a saved edit is sent about a
+second later, and changes made elsewhere (the CLI, other devices) arrive within
+a few seconds while the tab is visible. Hidden tabs pause; returning, regaining
+focus or reconnecting syncs at once. With several tabs open, one visible tab runs
+sync and the others refresh from it. Hub errors back off up to a minute; a usage
+cap pauses until it resets. Drafts in an open cell or editor are never replaced.
+The pill at the bottom of the sidebar is the only sync status: **Synced** (hover
+for the last sync time), **Syncing**, **Offline · N pending**, **Paused · usage
+cap**, **Sync error** or **N rejected**, which opens the rejected edits.
+**Cmd+\\** (Ctrl+\\ elsewhere) or the sidebar button hides and shows the sidebar;
+the choice is remembered on this device.
+
 - Browse catalog tables, search and sort records. Added filters combine with AND;
   remove individual filter chips or clear them together.
 - **Find records** (Cmd+K or Ctrl+K) searches records and offers tables and saved
@@ -75,7 +87,7 @@ storage transfer is required.
   are separate; missing or trashed targets leave the current editor intact.
 - **Referenced by** on a saved record groups incoming links by table and field.
   Open a group to load local records, page through more, or follow a named record.
-  Skipped tables show a completeness warning; refresh updates the visible groups.
+  Skipped tables show a completeness warning; opened groups update as data changes.
 - Required fields, immutable/derived properties, reference validation and
   stale-edit checks use the shared core. Unsaved drafts prompt before leaving.
 - View table relationships and group tables locally. Groups are separate for
@@ -106,7 +118,7 @@ A sync can receive records or acknowledge edits before a later request fails.
 Open browser tabs refresh that progress and retain unsaved drafts.
 
 **Browse online** opens an excluded table in a read-only window. Load 50 records
-at a time, refresh from the beginning, or find an exact record ID. Opening a
+at a time or find an exact record ID; reopen the window to start fresh. Opening a
 result fetches its current complete row, including Markdown; records in the
 trash are identified. These results stay in memory until the window closes.
 Local rows, pending edits, search and editing availability remain unchanged.
@@ -349,15 +361,18 @@ device. Loopback HTTP is supported for development.
 
 An established Keychain-backed replica reopens offline without requiring a fresh
 session response. Cached records and local saves remain available while network
-sync runs. While the app is open, saved edits sync automatically after a short
-pause, with periodic catch-up every minute. Failed or cancelled rounds wait a
-minute before automatic retry; **Sync now** retries immediately. The status button
-opens progress, elapsed time, Cancel, pending/rejected counts and the last
-successful sync. Failures keep local records, edits and drafts available.
+sync runs. There is no manual sync: while the app is open and online it pulls on
+activation and every 2 seconds, saved edits upload after a short pause, and a
+returning network connection syncs at once. A failed round retries after a minute
+or on the next activation. One status pill (sidebar bottom on Mac, toolbar on
+iPhone, and the Mac menu-bar item) shows Synced, Syncing, pending edits, Offline,
+rejected edits or Paused: cap reached; tapping it opens read-only progress, counts
+and the last successful sync, or **Issues** when edits were rejected. Failures keep
+local records, edits and drafts available.
 Open **Issues** to page through durable rejected edits, including after
 reopening offline. **Review edit** opens the current local record with the rejected
-editable values held in a paused draft. Save a correction, then sync; only an
-accepted sync removes the inbox entry. Trashed records require Restore first,
+editable values held in a paused draft. Save a correction; only an accepted sync
+removes the inbox entry. Trashed records require Restore first,
 which keeps the review draft. A failed or cancelled review keeps existing drafts
 and navigation intact. **Forget saved connection**
 removes the local Keychain entry and keeps the replica; it does not revoke the
@@ -629,8 +644,7 @@ adapter, not a second validator. No native SQL callbacks are exposed to web
 content.
 
 `apps/web`, `apps/macos`, `apps/ios`, `packages/LifeKit`, `packages/core` and
-`scripts` follow the repository's platform boundaries. The independent
-mockup remains in `../life-ui-mockup`.
+`scripts` follow the repository's platform boundaries.
 
 ## Markdown editing
 
@@ -708,7 +722,8 @@ workspace can edit its local data offline.
 Notifications come from the signed-in hub's generic feed. Usage alerts and
 other producers share the same list. Reading an item or marking the list read
 updates the hub's read state across devices. Web shows an unread badge and
-refreshes while visible, on reconnection and on request. Requests are tied to
+refreshes while visible and on reconnection; an open panel follows each sync.
+Requests are tied to
 the explicitly connected endpoint; draft connection fields cannot redirect them.
 
 Settings shows the hub deployment's current billing period, reset time and

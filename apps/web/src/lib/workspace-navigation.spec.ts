@@ -114,6 +114,7 @@ describe('workspace destinations', () => {
 			request: async (method: string, args?: { view: { trash: boolean } }) => {
 				if (method === 'snapshot')
 					return { catalog: { tables: [{ id: 'things' }], properties: [], rules: [] } };
+				if (method === 'ensureDefaultView') return { view: null, unavailable: null };
 				reads.push(args!.view.trash);
 				return args!.view.trash ? [{ id: 'trashed', deleted_at: '2026-01-01', hidden: 42 }] : [];
 			}
@@ -128,7 +129,7 @@ describe('workspace destinations', () => {
 	});
 });
 
-it('uses the preferred ID only for plain table destinations and preserves fallback notices', async () => {
+it('opens the default view for table and record links, never for explicit views', async () => {
 	const saved = {
 		id: 'opaque-preferred',
 		tbl: 'things',
@@ -139,19 +140,24 @@ it('uses the preferred ID only for plain table destinations and preserves fallba
 	};
 	const calls: string[] = [];
 	let unavailable: string | null = null;
+	let ensureFails = false;
+	const preference = () => ({
+		table: 'things',
+		viewId: saved.id,
+		updated_at: 'revision',
+		view: unavailable ? null : saved,
+		unavailable
+	});
 	const workspace = {
 		request: async (method: string) => {
 			calls.push(method);
 			if (method === 'snapshot')
 				return { catalog: { tables: [{ id: 'things' }], properties: [], rules: [] } };
-			if (method === 'getViewDefault')
-				return {
-					table: 'things',
-					viewId: saved.id,
-					updated_at: 'revision',
-					view: unavailable ? null : saved,
-					unavailable
-				};
+			if (method === 'ensureDefaultView') {
+				if (ensureFails) throw Error('Views are not writable.');
+				return preference();
+			}
+			if (method === 'getViewDefault') return preference();
 			if (method === 'listViews') return { views: [saved], unavailable: null };
 			if (method === 'rows') return [{ id: 'row' }];
 			throw Error(method);
@@ -164,6 +170,7 @@ it('uses the preferred ID only for plain table destinations and preserves fallba
 	);
 	expect(normal.view).toBe(saved);
 	expect(normal.defaultNotice).toBeNull();
+	expect(calls).toContain('ensureDefaultView');
 	unavailable = 'Preferred view unavailable. Showing catalog default.';
 	const fallback = await resolveDestination(
 		workspace as never,
@@ -172,67 +179,32 @@ it('uses the preferred ID only for plain table destinations and preserves fallba
 	);
 	expect(fallback.view).toBeNull();
 	expect(fallback.defaultNotice).toBe(unavailable);
+	unavailable = null;
+	ensureFails = true;
+	calls.length = 0;
+	const record = await resolveDestination(
+		workspace as never,
+		{ table: 'things', view: null, row: 'row' },
+		''
+	);
+	expect(record.view).toBe(saved);
+	expect(calls).toEqual(['snapshot', 'ensureDefaultView', 'getViewDefault', 'rows']);
 	calls.length = 0;
 	await resolveDestination(workspace as never, { table: 'things', view: saved.id, row: null }, '');
-	await resolveDestination(workspace as never, { table: 'things', view: null, row: 'row' }, '');
+	expect(calls).not.toContain('ensureDefaultView');
 	expect(calls).not.toContain('getViewDefault');
 });
 
-it('round trips transient query configuration without URL-supplied actions', () => {
-	const state = {
-		version: 2,
-		columns: ['name'],
-		filters: [{ column: 'name', op: 'eq', value: 'Synthetic' }],
-		sort: [{ column: 'name', direction: 'desc' }],
-		actions: [{ id: 'action', name: 'Stored', values: {} }]
-	};
-	const url = destinationURL(new URL('https://example.test/workspace'), {
+it('links carry identities only; old view-settings parameters are ignored', () => {
+	const url = destinationURL(new URL('https://example.test/workspace?state=%7B%7D'), {
 		table: 'things',
 		view: 'saved',
-		row: null,
-		state
-	} as never);
-	expect(url.searchParams.has('state')).toBe(true);
-	const { actions, ...expected } = state;
-	expect(readDestination(url)).toEqual({
-		table: 'things',
-		view: 'saved',
-		row: null,
-		state: expected
+		row: null
 	});
-	for (const value of ['{', JSON.stringify({ version: 2, actions: [] }), 'x'.repeat(16385)]) {
-		expect(() =>
-			readDestination(
-				new URL('https://example.test/workspace?table=things&state=' + encodeURIComponent(value))
-			)
-		).toThrow();
-	}
-	expect(() =>
-		readDestination(new URL('https://example.test/workspace?state=%7B%22version%22%3A2%7D'))
-	).toThrow();
-});
-
-it('resolves transient state through core without loading a preference or saving a view', async () => {
-	const state = { version: 2, columns: ['name'] };
-	const calls: unknown[] = [];
-	const workspace = {
-		request: async (method: string, args?: unknown) => {
-			calls.push([method, args]);
-			if (method === 'snapshot')
-				return { catalog: { tables: [{ id: 'things' }], properties: [], rules: [] } };
-			if (method === 'resolveViewDefinition')
-				return { definition: state, view: { table: 'things', columns: ['name'] } };
-			throw Error(method);
-		}
-	};
-	const result = await resolveDestination(
-		workspace as never,
-		{ table: 'things', view: null, row: null, state } as never,
-		''
-	);
-	expect(result.definition).toEqual(state);
-	expect(calls).toEqual([
-		['snapshot', undefined],
-		['resolveViewDefinition', { table: 'things', definition: state }]
-	]);
+	expect([...url.searchParams.keys()]).toEqual(['table', 'view']);
+	expect(
+		readDestination(
+			new URL('https://example.test/workspace?table=things&state=' + encodeURIComponent('{'))
+		)
+	).toEqual({ table: 'things', view: null, row: null });
 });

@@ -1,11 +1,11 @@
 import type { WorkspaceDatabase } from './database';
-import type { Row, SavedViewRecord, SavedViewDefinition } from 'life-ui-core/client';
+import type { Row, SavedViewRecord } from 'life-ui-core/client';
 
+/** Links carry identities only; view settings live in the saved view. */
 export type Destination = {
 	table: string | null;
 	view: string | null;
 	row: string | null;
-	state?: SavedViewDefinition;
 };
 export function readDestination(url: URL): Destination {
 	const read = (key: string) => {
@@ -17,21 +17,7 @@ export function readDestination(url: URL): Destination {
 		return values[0] ?? null;
 	};
 	const destination: Destination = { table: read('table'), view: read('view'), row: read('row') };
-	const state = read('state');
-	if (state !== null) {
-		if (new TextEncoder().encode(state).length > 16384)
-			throw new Error('This view link is too large. Save the view and copy its link.');
-		const definition = JSON.parse(state);
-		if (
-			!definition ||
-			typeof definition !== 'object' ||
-			Array.isArray(definition) ||
-			Object.hasOwn(definition, 'actions')
-		)
-			throw new Error('This link has invalid view settings.');
-		destination.state = definition;
-	}
-	if (!destination.table && (destination.view || destination.row || destination.state))
+	if (!destination.table && (destination.view || destination.row))
 		throw new Error('This link needs a table. Copy a new link from the workspace.');
 	return destination;
 }
@@ -39,13 +25,6 @@ export function destinationURL(url: URL, destination: Destination): URL {
 	const result = new URL(url.pathname, url.origin);
 	for (const key of ['table', 'view', 'row'] as const) {
 		if (destination[key] !== null) result.searchParams.set(key, destination[key]);
-	}
-	if (destination.state) {
-		const { actions: _actions, ...state } = destination.state;
-		const text = JSON.stringify(state);
-		if (new TextEncoder().encode(text).length > 16384)
-			throw new Error('This view link is too large. Save the view and copy its link.');
-		result.searchParams.set('state', text);
 	}
 	return result;
 }
@@ -77,24 +56,13 @@ export async function resolveDestination(
 			);
 		}
 	}
-	if (table && !destination.view && !destination.row && !destination.state) {
-		const preferred = await workspace.request('getViewDefault', { table });
+	if (table && !destination.view) {
+		// Every table opens on a real saved view, created when it has none.
+		const preferred = await workspace
+			.request('ensureDefaultView', { table })
+			.catch(() => workspace.request('getViewDefault', { table }));
 		view = preferred.view;
 		defaultNotice = preferred.unavailable;
-	}
-	let definition: SavedViewDefinition | null = null;
-	if (destination.state) {
-		if (Object.hasOwn(destination.state, 'actions'))
-			throw new Error('This link has invalid view settings.');
-		// URI settings never authorize actions; only the displayed saved revision does.
-		const resolved = await workspace.request('resolveViewDefinition', {
-			table,
-			definition: {
-				...destination.state,
-				...(view?.definition?.actions ? { actions: view.definition.actions } : {})
-			}
-		});
-		definition = resolved.definition;
 	}
 	let row: Row | null = null;
 	if (destination.row) {
@@ -116,5 +84,5 @@ export async function resolveDestination(
 				'The linked record is not available locally. It may be missing or outside this replica. Include its table and sync, or choose another record.'
 			);
 	}
-	return { catalog, table, view, row, defaultNotice, definition };
+	return { catalog, table, view, row, defaultNotice };
 }

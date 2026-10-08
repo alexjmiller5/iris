@@ -25,7 +25,7 @@ try {
 	await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 	await page.getByLabel('Hub address').fill(fixture.server.url.href.replace(/\/$/, ''));
 	await page.getByLabel('Device token').fill('fixture');
-	await page.getByRole('button', { name: 'Sync now', exact: true }).click();
+	await page.getByRole('button',{name:'Connect',exact:true}).click();
 	await expect(page.getByRole('button', { name: 'Fixture record', exact: true })).toBeVisible({ timeout: 30000 });
 	await expect(notifications).toHaveAccessibleName('Notifications, 205 unread');
 	await notifications.click();
@@ -49,10 +49,11 @@ try {
 	await expect(dialog.getByText(/Resets/)).toContainText(new Date(fixture.window.end).toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' }));
 	// The hub still serves usage and notifications when a data-sync cap is reached.
 	fixture.auth.db.query('UPDATE _usage SET rows_read=? WHERE principal=?').run(25e9, 'device:example');
-	await dialog.getByRole('button', { name: 'Refresh usage', exact: true }).click();
+	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+	await page.getByRole('button', { name: 'Settings', exact: true }).click();
 	await expect(dialog.getByRole('status')).toContainText('Sync is paused at the D1 reads cap.');
 	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
-	await page.getByRole('button', { name: 'Sync now', exact: true }).click();
+	await page.getByRole('button', { name: 'Connect', exact: true }).click();
 	await expect(page.getByRole('alert')).toContainText('hub HTTP 429');
 	await fixture.notify({ id: 'fixture:new', producer: 'another-producer', type: 'future.event', severity: 'warning', title: 'New event at the cap', body: 'The feed stays available.', data: { opaque: ['future'] } });
 	await notifications.click();
@@ -64,7 +65,7 @@ try {
 	await expect(dialog.getByRole('status')).toContainText('Sync is paused');
 	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 	await page.getByLabel('Hub address').fill(other.server.url.href.replace(/\/$/, ''));
-	await page.getByRole('button', { name: 'Sync now', exact: true }).click();
+	await page.getByRole('button', { name: 'Connect', exact: true }).click();
 	await expect(page.getByRole('alert').filter({ hasText: 'hub changed' })).toBeVisible();
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
 	await expect(dialog.getByText(fixture.server.url.origin, { exact: true })).toBeVisible();

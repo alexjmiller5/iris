@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { resolve } from 'node:path';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, workspacePage } from './test-origin';
+import { disposableOrigin, workspacePage, synced } from './test-origin';
 
 const url=process.env.LIFE_UI_TEST_URL??'http://life-ui-markdown.localhost:5198/workspace?review';
 const origin=disposableOrigin(url);
@@ -43,7 +43,7 @@ try{
  await page.getByRole('button' ,{name:'Open my workspace',exact:true}).click();
  await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
  await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));await page.getByLabel('Device token').fill('fixture');
- await page.getByRole('button',{name:'Sync now',exact:true}).click();
+ await page.getByRole('button',{name:'Connect',exact:true}).click();
  await page.getByRole('navigation',{name:'Tables'}).getByRole('button',{name:'widgets',exact:true}).click();
  const views=page.getByRole('combobox',{name:'View',exact:true});
  await expect(views).toContainText('Only the second record');
@@ -77,8 +77,7 @@ try{
  await expect(page.getByText('Modified',{exact:true})).not.toBeVisible();
  const copyId=await views.inputValue();
  expect(copyId).not.toBe('');
- await page.getByRole('button',{name:'Sync now',exact:true}).click();
- await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled();
+ await synced(page);
  const stored=db.db.query('SELECT * FROM views WHERE id=?').get(copyId) as any;
  expect(stored?.name).toBe('A saved copy');
  expect(JSON.parse(stored.definition)).toMatchObject({columns:['title','body'],filters:[{column:'title',op:'eq',value:'Second record'}],widths:{body:360},sort:[{column:'id',direction:'desc'},{column:'quantity',direction:'asc'}]});
@@ -107,8 +106,7 @@ try{
  await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
  await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/,''));
  await page.getByLabel('Device token').fill('fixture');
- await page.getByRole('button',{name:'Sync now',exact:true}).click();
- await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'Connect',exact:true}).click();
  await expect(views).toContainText('Renamed elsewhere');
  await expect(page.getByLabel('View name',{exact:true})).toHaveValue('My unsaved rename');
  await page.getByRole('button',{name:'Update selected',exact:true}).click();
@@ -127,8 +125,7 @@ try{
  await expect(views).toHaveValue('');
  await expect(page.locator('.record-link')).toHaveText(['Fixture record','Legacy record','Second record']);
  await expect(views).not.toContainText('Reviewed rename');
- await page.getByRole('button',{name:'Sync now',exact:true}).click();
- await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled();
+ await synced(page);
  expect((db.db.query('SELECT deleted_at FROM views WHERE id=?').get(copyId) as any).deleted_at).toBeTruthy();
  expect((db.db.query('SELECT COUNT(*) AS n FROM widgets WHERE deleted_at IS NULL').get() as any).n).toBe(3);
  console.log('PASS: deleting a view returns to all records without deleting records');

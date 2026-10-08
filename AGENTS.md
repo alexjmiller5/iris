@@ -443,13 +443,17 @@ controls; late results and old defers must not affect a newer request. It never
 cancels sync or removes a core continuation. Canceled reloads preserve displayed
 rows and errors. Admitted sync and committed mutations own their awaited model
 reconciliation, with fresh workspace/query guards, independently of scene-task
-cancellation. Sync has its own progress and Cancel
-action, with cooperative transport cancellation and a 15-minute round deadline.
-The scene's single foreground task runs automatic catch-up every 60 seconds.
-Successful local record/view saves and undo debounce catch-up by 750 ms; edits
-during a round queue another round after its receipt. Failure or cancellation
-delays automatic retry by 60 seconds. Workspace/session guards cancel obsolete
-timers, and manual Sync now remains available. No closed-app delivery is implied.
+cancellation. Sync has read-only progress, cooperative transport cancellation
+(used by close) and a 15-minute round deadline; there is no manual sync action.
+The scene's single foreground task pulls on activation, then every 2 seconds while
+active and online. The system path monitor pauses it offline and pulls at once
+when a path returns; background scenes stop it. Successful local record/view saves
+and undo debounce catch-up by 750 ms; edits during a round queue another round
+after its receipt. Failure delays automatic retry by 60 seconds until the next
+activation or reconnection. A round that moved nothing and left the catalog
+unchanged refreshes only writeability and status counters, never rows, recents,
+pins or the inbox. Workspace/session guards cancel obsolete timers. No closed-app
+delivery is implied.
 Native SQLite connections force `legacy_alter_table=OFF` so logged renames
 rewrite trigger/view references consistently across hosts. Recovery repairs only
 an exact canonical timestamp trigger whose direct table rename is in the local
@@ -563,6 +567,15 @@ Never report a write as saved or a round as synced before its promise succeeds.
 Web sync failures also broadcast database changes: individual pulls and receipts
 can commit before a later request fails. Refresh rows, counts and writeability
 in every open tab while retaining editor drafts and the original sync error.
+Connected web workspaces sync by themselves through `sync-status.ts`: push 750 ms
+after a committed write (worker `change` events carry the method, so other tabs'
+writes count), pull every 2 s while visible and online, wake on visibility, focus
+and online, one run at a time, backing off to 60 s on errors. One visible connected
+tab holds the `life-ui:sync-leader:<database>` Web Lock; hidden tabs release it. The
+worker broadcasts a sync only when it pulled, pushed or rejected rows, so idle polls
+never refresh views. `SyncStatus.svelte` in the sidebar is the only sync/save status;
+add no sync or refresh buttons, progress bars or save notices. Cmd/Ctrl+\ toggles
+the sidebar, persisted per device in localStorage.
 
 Credentials cross the supported client seam as a hub URL and app-issued token.
 Browser tokens are session-only; native tokens use Keychain.
@@ -623,10 +636,18 @@ iOS record screens use inline navigation titles and no extra top list content
 margin; keep title, controls and first list row separate and compact.
 iOS uses native bottom toolbar actions for Views, Filter, Find and Schema graph;
 workspace actions are in the ellipsis Menu and full sync/location details in the
-status sheet. Active sync details show phase, table, page/row counts and elapsed
-time with Cancel sync. Cancellation calls the model and keeps sync controls busy
-until the owning operation unwinds. `SyncStatusUITests` uses the held loopback
-fixture to verify cancellation before server release and preserve the workspace.
+read-only status sheet. One `SyncPill` (Mac sidebar bottom, iOS toolbar, Mac menu
+bar) is the only sync surface: Synced, Syncing (only while rows move, edits upload
+or before a first success), N pending, Offline · N pending, N rejected (opens
+Issues), Paused: cap reached (hub 429), Sync issue, Shared with CLI or Local only.
+Sync failures reach the pill and status sheet, never `model.error`. Ordinary saves
+show no progress text. `SyncStatusUITests` drives `navigation-hub.py`'s
+accept/reject/offline modes through those states and retains screenshots.
+Cmd+\ (`WorkspaceCommands`, View > Toggle Sidebar) toggles the sidebar column,
+persisted as `lifeui.sidebarHidden`; compact iPhone switches sidebar and detail.
+The Mac status item (`WorkspaceMenuBar`, opt-out in Settings) mirrors the most
+recently active window: Open, Quick Find, five recents and pinned tables by title
+only. Its commands reach that window through the guarded navigation paths.
 Keep active errors and incomplete-table notices visible. Do not
 reintroduce a permanent multiline sync footer. The graph sheet shares the offline
 WebKit coordinator and bundled FK/group component with macOS; dismiss first,
@@ -669,7 +690,8 @@ An explicitly opened database is remembered in a private security-scoped bookmar
 Reopening a missing selection fails visibly rather than creating a replacement or
 falling back to a different replica. The supported Life CLI file contract shares
 SQLite data/schema and its existing write validation; the CLI background service
-owns hub sync in this mode, with its own credential. No consumer credentials are
+owns hub sync in this mode, with its own credential. The observer connection
+reads only `_sync_state.hub_url` to show Shared with CLI; the app never syncs it. No consumer credentials are
 shared. App hub mode remains an independent replica and clears the local choice.
 A separate canonical-path read connection observes PRAGMA data_version while the
 window is active. External commits refresh catalog/rows without resetting editor

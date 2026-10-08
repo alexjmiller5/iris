@@ -37,12 +37,12 @@ import Testing
       let rows = try await workspace.rows(table: "notes")
       let id = UUID()
       let raw = " # Exact\n café and cafe\u{301} "
-      let request = try store.stageQuickAdd(id: id, sourceID: sourceID, text: raw, column: "body")
+      let request = try #require(try store.stageQuickAdd(id: id, sourceID: sourceID, text: raw, column: "body"))
       let reopened = WidgetPublicationStore(root: store.root)
       #expect(try reopened.pendingQuickAdd()?.id == id)
       #expect(Data(try reopened.pendingQuickAdd()!.text!.utf8) == Data(raw.utf8))
       #expect(
-        try reopened.stageQuickAdd(id: id, sourceID: sourceID, text: raw, column: "body").id == id)
+        try reopened.stageQuickAdd(id: id, sourceID: sourceID, text: raw, column: "body")?.id == id)
       #expect(throws: (any Error).self) {
         try reopened.stageQuickAdd(id: UUID(), sourceID: sourceID, text: "Replace", column: "body")
       }
@@ -51,6 +51,26 @@ import Testing
       #expect(try reopened.pendingQuickAdd()?.id == request.id)
       try reopened.finishQuickAdd(id: id)
       #expect(try reopened.pendingQuickAdd() == nil)
+    }
+  }
+
+  @Test func consumedRequestsReplayAsDeliveredAfterRelaunch() async throws {
+    try await fixture { workspace, _, store, sourceID in
+      let rows = try await workspace.rows(table: "notes")
+      let finished = UUID()
+      _ = try store.stageQuickAdd(id: finished, sourceID: sourceID, text: nil, column: nil)
+      try store.finishQuickAdd(id: finished)
+      let discarded = UUID()
+      _ = try store.stageQuickAdd(id: discarded, sourceID: sourceID, text: "x", column: "body")
+      try store.discardQuickAdd(id: discarded)
+      let reopened = WidgetPublicationStore(root: store.root)
+      for id in [finished, discarded] {
+        #expect(try reopened.stageQuickAdd(id: id, sourceID: sourceID, text: nil, column: nil) == nil)
+        #expect(try reopened.pendingQuickAdd() == nil)
+      }
+      let next = UUID()
+      #expect(try reopened.stageQuickAdd(id: next, sourceID: sourceID, text: nil, column: nil)?.id == next)
+      #expect(try await workspace.rows(table: "notes").count == rows.count)
     }
   }
 
@@ -70,7 +90,7 @@ import Testing
       #expect(throws: (any Error).self) {
         try store.stageQuickAdd(id: UUID(), sourceID: "unknown", text: nil, column: nil)
       }
-      let request = try store.stageQuickAdd(id: UUID(), sourceID: sourceID, text: nil, column: nil)
+      let request = try #require(try store.stageQuickAdd(id: UUID(), sourceID: sourceID, text: nil, column: nil))
       try store.revoke()
       #expect(throws: (any Error).self) { try store.pendingQuickAdd() }
       #expect(
@@ -99,8 +119,8 @@ import Testing
   @Test func maximumEscapedTextSurvivesItsJSONHandoff() async throws {
     try await fixture { _, _, store, sourceID in
       let text = String(repeating: "\n", count: 65536)
-      let request = try store.stageQuickAdd(
-        id: UUID(), sourceID: sourceID, text: text, column: "body")
+      let request = try #require(
+        try store.stageQuickAdd(id: UUID(), sourceID: sourceID, text: text, column: "body"))
       #expect(try store.pendingQuickAdd()?.text == text)
       try store.finishQuickAdd(id: request.id)
     }
@@ -147,8 +167,8 @@ import Testing
           [NativeWidgetSelection(table: "notes", viewID: nil)], partial: false))
       let source = try #require(try library.sources().first { $0.kind == .list })
       let store = library.store(workspaceID: source.workspaceID)
-      let request = try store.stageQuickAdd(
-        id: UUID(), sourceID: source.id, text: " # Captured\n", column: "body")
+      let request = try #require(
+        try store.stageQuickAdd(id: UUID(), sourceID: source.id, text: " # Captured\n", column: "body"))
       let workspace = try #require(model.client)
       let before = try await workspace.rows(table: "notes")
       let editor = try await model.prepareQuickAdd(request)
@@ -182,8 +202,8 @@ import Testing
           [NativeWidgetSelection(table: "notes", viewID: nil)], partial: false))
       let source = try #require(try library.sources().first { $0.kind == .list })
       let store = library.store(workspaceID: source.workspaceID)
-      let request = try store.stageQuickAdd(
-        id: UUID(), sourceID: source.id, text: "Keep this input", column: "missing")
+      let request = try #require(
+        try store.stageQuickAdd(id: UUID(), sourceID: source.id, text: "Keep this input", column: "missing"))
       await #expect(throws: WorkspaceError.self) { try await model.prepareQuickAdd(request) }
       #expect(try store.pendingQuickAdd()?.id == request.id)
       #expect(try model.editingContext?.draftStore?.all().isEmpty == true)

@@ -28,6 +28,8 @@ targets:
         product: LifeWidgets
       - target: LifeUIWidgets
         embed: true
+      - target: LifeUIShare
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(LIFE_APP_BUNDLE_IDENTIFIER)
@@ -78,6 +80,37 @@ targets:
         LifeWidgetAppGroup: $(LIFE_WIDGET_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+  LifeUIShare:
+    type: app-extension
+    platform: iOS
+    sources: [Share]
+    dependencies:
+      - package: LifeKit
+        product: LifeExtensionSupport
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(LIFE_APP_BUNDLE_IDENTIFIER).share
+        PRODUCT_NAME: LifeUIShare
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Signing/Extension.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+      configs:
+        release:
+          PROVISIONING_PROFILE_SPECIFIER: ${IOS_SHARE_PROFILE}
+    info:
+      path: Share/Info.plist
+      properties:
+        CFBundleDisplayName: Life UI
+        LifeWidgetAppGroup: $(LIFE_WIDGET_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
   LifeUITests:
     type: bundle.unit-test
     platform: iOS

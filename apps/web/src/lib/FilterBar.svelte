@@ -41,14 +41,14 @@
 		references?: (p: Property) => { id: string; label: string }[];
 		onsearch?: (p: Property, query: string) => void;
 		/** Returns false when the change was refused (e.g. an unsaved record). */
-		onchange: (state: FilterState) => boolean;
+		onchange: (next: FilterState) => boolean;
 		ontoggle?: (open: boolean) => void;
 		/** Chips shown before the filter chips (the sort summary). */
 		leading?: Snippet;
 	} = $props();
 	const id = $props.id();
-	const state = $derived({ filters, groups });
-	const chips = $derived(chipsOf(state));
+	const current = $derived({ filters, groups });
+	const chips = $derived(chipsOf(current));
 	const typeOf = (column: string) => properties.find((p) => p.col === column)?.type ?? 'text';
 	const label = (column: string) => {
 		const p = properties.find((p) => p.col === column);
@@ -83,14 +83,14 @@
 	}
 	function editRule(value: Rule) {
 		if (!rule) return;
-		const placed = placeRule(state, rule.ref, value, typeOf);
-		if (placed.state !== state && !apply(placed.state)) return;
+		const placed = placeRule(current, rule.ref, value, typeOf);
+		if (placed.state !== current && !apply(placed.state)) return;
 		rule = { ref: placed.ref, value, error: placed.error };
 	}
 	function editGroup(draft: GroupDraft) {
 		if (!group) return;
-		const placed = placeGroup(state, group.ref, draft, typeOf);
-		if (placed.state !== state && !apply(placed.state)) return;
+		const placed = placeGroup(current, group.ref, draft, typeOf);
+		if (placed.state !== current && !apply(placed.state)) return;
 		group = { ref: placed.ref, draft };
 	}
 	async function openEditor() {
@@ -139,7 +139,7 @@
 		void openEditor();
 	}
 	function remove(ref: ChipRef) {
-		if (disabled || !apply(removeChip(state, ref))) return;
+		if (disabled || !apply(removeChip(current, ref))) return;
 		if (editing(ref)) editPopover?.hidePopover();
 		rule = null;
 		group = null;

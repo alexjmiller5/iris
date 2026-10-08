@@ -16,6 +16,8 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
   private(set) var busy = false
   private(set) var error: String?
   private(set) var unreadable = false
+  /// Advances after every publication attempt so in-app readers re-read it.
+  private(set) var publicationRevision = 0
   private let workspace: NativeWorkspace
   private let store: WidgetPublicationStore
   private let workspaceID: String
@@ -170,8 +172,37 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
     try save([], permit: nil)
   }
 
+  /// The in-app daily section reads exactly what the Today widget reads: the same
+  /// protected publication, rebound to the calendar at `now`, stale state included.
+  func presentation(_ selection: NativeWidgetSelection, now: Date) -> (
+    WidgetPresentation, nextBoundary: Date?
+  )? {
+    guard selections.contains(where: { $0.id == selection.id }) else { return nil }
+    let id = WidgetLibrary.sourceID(
+      workspaceID: workspaceID, table: selection.table, viewID: selection.viewID, kind: .list)
+    let result = store.read(
+      sourceID: id, workspaceID: workspaceID, replicaID: replicaID, now: now, saveSuccess: false)
+    let display = try? store.withCurrentPublication { metadata, _ in
+      metadata.sources.first { $0.id.utf8.elementsEqual(id.utf8) }?.plan.displayColumn
+    }
+    return (
+      WidgetPresentation(result, kind: .list, displayColumn: display ?? nil, rowLimit: 10),
+      result.content?.nextBoundary
+    )
+  }
+
+  /// Published display name (saved-view name or table) for pickers.
+  func publishedTitle(_ selection: NativeWidgetSelection) -> String? {
+    let id = WidgetLibrary.sourceID(
+      workspaceID: workspaceID, table: selection.table, viewID: selection.viewID, kind: .list)
+    return try? store.withCurrentPublication { metadata, _ in
+      metadata.sources.first { $0.id.utf8.elementsEqual(id.utf8) }?.title
+    }
+  }
+
   private func finish() {
     busy = false
+    publicationRevision += 1
     didChange()
     if pending {
       pending = false

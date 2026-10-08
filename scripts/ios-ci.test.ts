@@ -14,18 +14,24 @@ describe('iOS distribution workflow boundary', () => {
     expect(stamp).toBeLessThan(steps.findIndex((s: any) => s.run?.includes('scripts/sign-ios.py')));
     const root = mkdtempSync(join(tmpdir(), 'life-ui-build-identity-'));
     try {
-      mkdirSync(join(root, 'apps/ios/App'), { recursive: true });
-      const info = join(root, 'apps/ios/App/Info.plist');
-      const seed = Bun.spawnSync(['python3', '-c', 'import plistlib,sys; plistlib.dump({"CFBundleVersion":"1","CFBundleShortVersionString":"1.0","CFBundleIdentifier":"com.example.fixture"},open(sys.argv[1],"wb"))', info]);
-      expect(seed.exitCode).toBe(0);
+      const plists = ['App', 'Widgets', 'Share'].map(name => join(root, 'apps/ios', name, 'Info.plist'));
+      for (const path of plists) {
+        mkdirSync(join(path, '..'), { recursive: true });
+        const seed = Bun.spawnSync(['python3', '-c', 'import plistlib,sys; plistlib.dump({"CFBundleVersion":"1","CFBundleShortVersionString":"1.0","CFBundleIdentifier":"com.example.fixture"},open(sys.argv[1],"wb"))', path]);
+        expect(seed.exitCode).toBe(0);
+      }
+      const info = plists[0];
       for (const [run, attempt] of [['71', '1'], ['71', '2'], ['72', '1']]) {
         const result = Bun.spawnSync(['python3', '-c', steps[stamp].run], { cwd: root, env: { ...process.env, GITHUB_RUN_NUMBER: run, GITHUB_RUN_ATTEMPT: attempt, GITHUB_SHA: 'a'.repeat(40) } });
         expect(result.exitCode).toBe(0);
-        const read = Bun.spawnSync(['python3', '-c', 'import json,plistlib,sys; print(json.dumps(plistlib.load(open(sys.argv[1],"rb"))))', info]);
-        const value = JSON.parse(read.stdout.toString());
-        expect(value.CFBundleVersion).toBe(`${run}.${attempt}`);
-        expect(value.CFBundleShortVersionString).toBe('1.0');
-        expect(value.CFBundleIdentifier).toBe('com.example.fixture');
+        // Every embedded extension carries the app's exact build number.
+        for (const path of plists) {
+          const read = Bun.spawnSync(['python3', '-c', 'import json,plistlib,sys; print(json.dumps(plistlib.load(open(sys.argv[1],"rb"))))', path]);
+          const value = JSON.parse(read.stdout.toString());
+          expect(value.CFBundleVersion).toBe(`${run}.${attempt}`);
+          expect(value.CFBundleShortVersionString).toBe('1.0');
+          expect(value.CFBundleIdentifier).toBe('com.example.fixture');
+        }
       }
       const before = readFileSync(info);
       const invalid = Bun.spawnSync(['python3', '-c', steps[stamp].run], { cwd: root, env: { ...process.env, GITHUB_RUN_NUMBER: 'bad', GITHUB_RUN_ATTEMPT: '1' } });
@@ -87,8 +93,13 @@ describe('iOS distribution workflow boundary', () => {
     expect(step.env.IOS_CERTIFICATE_PASSWORD).toBe('op://Apple Signing/Apple Distribution Cert/password');
     expect(step.env.IOS_PROFILE_BASE64).toBeUndefined();
     expect(step.env.ASC_KEY_P8_BASE64).toBe('op://Apple Signing/App Store Connect API Key/p8_base64');
-    const download = workflow().jobs.build.steps.find((s: any) => s.name === 'Download app-specific Ad Hoc profile');
-    expect(download.env.PROFILE_ID).toBe('${{ vars.IOS_PROVISIONING_PROFILE_ID }}');
+    const download = workflow().jobs.build.steps.find((s: any) => s.name === 'Download app and extension Ad Hoc profiles');
+    expect(download.env.PROFILE_IDS.match(/\$\{\{[^}]+\}\}/g)).toEqual([
+      '${{ vars.IOS_PROVISIONING_PROFILE_ID }}',
+      '${{ vars.IOS_WIDGETS_PROVISIONING_PROFILE_ID }}',
+      '${{ vars.IOS_SHARE_PROVISIONING_PROFILE_ID }}',
+    ]);
+    expect(download.run).toContain('IOS_EXTENSION_PROFILES_BASE64=');
     expect(download.run).toContain("profile.profileType!=='IOS_APP_ADHOC'");
     expect(download.run).toContain('::add-mask::');
   });

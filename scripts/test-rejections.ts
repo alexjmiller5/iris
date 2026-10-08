@@ -1,4 +1,4 @@
-import { workspacePage } from './test-origin';
+import { workspacePage, synced } from './test-origin';
 import {chromium,expect} from '@playwright/test';
 const url=process.env.LIFE_UI_TEST_URL??'http://localhost:5196/workspace';
 const hub=process.env.LIFE_UI_TEST_HUB??'http://127.0.0.1:5201';
@@ -18,7 +18,7 @@ try{
   await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
   await page.getByLabel('Hub address').fill(hub);
   await page.getByLabel('Device token').fill('fixture');
-  await page.getByRole('button',{name:'Sync now',exact:true}).click();
+  await page.getByRole('button',{name:'Connect',exact:true}).click();
   await expect(page.getByRole('heading',{name:'widgets',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'New record',exact:true}).click();
   await page.getByRole('textbox',{name:'Title',exact:true}).fill('Rejected draft');
@@ -26,7 +26,7 @@ try{
   await expect(page.getByRole('button',{name:'Save record',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Close record',exact:true}).click();
   await pattern('Allowed');
-  await page.getByRole('button',{name:'Sync now',exact:true}).click();
+  await expect(page.getByText(/rejected edits need attention/)).toBeVisible({ timeout: 15000 });
   await page.getByText(/rejected edits need attention/).click();
   await expect(page.locator('.rejections')).toContainText('not in the expected form');
   await page.getByRole('button',{name:'Review rejected edit',exact:true}).first().click();
@@ -35,7 +35,7 @@ try{
   await page.getByRole('button',{name:'Save record',exact:true}).click();
   await expect(page.getByRole('button',{name:'Save record',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Close record',exact:true}).click();
-  await page.getByRole('button',{name:'Sync now',exact:true}).click();
+  await synced(page);
   await expect(page.locator('.rejections')).toHaveCount(0);
   console.log('PASS: server-side rule change rejects pending edit; inbox preserves, explains and repairs it');
 }finally{try{await pattern(null);}finally{await browser.close();}}

@@ -37,6 +37,8 @@ final class WorkspaceModel {
         pins = nil
         widgets?.cancel()
         widgets = nil
+        integrations?.cancel()
+        integrations = nil
         widgetWorkspaceURL = nil
         workspaceGeneration += 1
         undoAction = nil
@@ -53,6 +55,8 @@ final class WorkspaceModel {
   private(set) var linkError: String?
   private var linkIdentityStore: NativeLinkIdentityStore?
   private(set) var widgets: NativeWidgetSettings?
+  /// Spotlight, Shortcuts lookup and daily-section choices for the same workspace.
+  private(set) var integrations: NativeIntegrationSettings?
   private let widgetLibrary: WidgetLibrary?
   private var widgetWorkspaceURL: URL?
 
@@ -98,6 +102,17 @@ final class WorkspaceModel {
         WidgetCenter.shared.reloadAllTimelines()
         #endif
       })
+    #if os(iOS)
+      let spotlight: SpotlightIndexing? = CoreSpotlightIndex()
+    #else
+      let spotlight: SpotlightIndexing? = nil
+    #endif
+    integrations = NativeIntegrationSettings(
+      workspace: client, workspaceID: workspaceID, binding: binding,
+      preferencesURL: root.appendingPathComponent("integrations", isDirectory: true)
+        .appendingPathComponent(replica.uuidString.lowercased() + ".json"),
+      spotlight: spotlight)
+    integrations?.scheduleRefresh()
     if linkBinding == nil { linkBinding = physical }
   }
   private struct LoadedRowsContext: Equatable {
@@ -231,6 +246,7 @@ final class WorkspaceModel {
       if !recordExportCatalogsMatch(oldValue, catalog) {
         exportCatalogRevision += 1
         widgets?.scheduleRefresh(partial: isReplica)
+        integrations?.scheduleRefresh()
       }
     }
   }
@@ -376,7 +392,9 @@ final class WorkspaceModel {
   /// The last automatic round's failure. Shown only through the sync pill.
   private(set) var syncError: String?
   /// Bumped when a round received or sent data, so views refresh only then.
-  private(set) var syncDataRevision = 0
+  private(set) var syncDataRevision = 0 {
+    didSet { integrations?.scheduleRefresh() }
+  }
   /// A shared CLI file whose own background service owns sync.
   private(set) var cliSyncBound = false
 
@@ -1627,6 +1645,54 @@ final class WorkspaceModel {
     return receipt
   }
 
+  /// Create-in-place for an editable reference field, or nil when its target cannot be named.
+  func referenceCreator(for field: CatalogField, context: WorkspaceEditingContext?)
+    -> ReferenceCreator?
+  {
+    guard let context, context.workspace === client,
+      let target = ReferenceCreator.target(
+        of: field, tables: tables, properties: catalog?.properties ?? [])
+    else { return nil }
+    let workspace = context.workspace
+    let generation = workspaceGeneration
+    return ReferenceCreator(
+      table: target.table, display: target.display,
+      properties: Self.properties(in: catalog, table: target.table), workspace: workspace
+    ) { [weak self] patch in
+      guard let self, self.client === workspace, self.workspaceGeneration == generation else {
+        throw WorkspaceError(
+          message: "The workspace changed. No record was created.", violations: [])
+      }
+      return try await self.createRecord(table: target.table, patch: patch, workspace: workspace)
+    }
+  }
+
+  /// An ordinary local write to another table; sync and Undo pick it up like any save.
+  private func createRecord(table: String, patch: WorkspaceRecord, workspace: NativeWorkspace)
+    async throws -> WorkspaceRecord
+  {
+    guard !undoing else {
+      throw WorkspaceError(message: "Wait for Undo to finish.", violations: [])
+    }
+    let permission = try await workspace.writeability(table: table)
+    guard permission.writable else {
+      throw WorkspaceError(
+        message: permission.reason?.message ?? "This table cannot be edited on this device.",
+        violations: [])
+    }
+    let generation = workspaceGeneration
+    let receipt = try await workspace.write(table: table, patch: patch)
+    if workspace === client, generation == workspaceGeneration {
+      recordLocalChange()
+      if let undo = try? await workspace.undoStatus(), workspace === client,
+        generation == workspaceGeneration
+      {
+        undoAction = undo.action
+      }
+    }
+    return receipt
+  }
+
   /// A committed operation owns its awaited refresh even when its initiating view leaves.
   private func reloadAfterCommit(workspace: NativeWorkspace, generation: Int, query: [String]) async
   {
@@ -2011,6 +2077,7 @@ final class WorkspaceModel {
   private func recordLocalChange() {
     localSyncRevision += 1
     widgets?.scheduleRefresh(partial: isReplica)
+    integrations?.scheduleRefresh()
     scheduleAutomaticSync()
   }
 
@@ -2044,6 +2111,7 @@ final class WorkspaceModel {
   func forgetConnection() async throws {
     try await services.revokePushBeforeForgetting()
     try widgets?.revoke()
+    try await integrations?.removeAll()
     try credentialStore.remove()
     stopAutomaticSync()
     workspaceGeneration += 1

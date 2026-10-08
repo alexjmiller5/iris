@@ -33,9 +33,8 @@ try {
 	await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 	await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 	await page.getByLabel('Device token').fill('fixture');
-	await page.getByRole('button', { name: 'Sync now', exact: true }).click();
+	await page.getByRole('button',{name:'Connect',exact:true}).click();
 	await expect(page.getByRole('button', { name: 'Fixture record', exact: true })).toBeVisible({ timeout: 30000 });
-	await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeEnabled({ timeout: 30000 });
 	// Expose the actual adapter only inside the test worker response. No test API
 	// or arbitrary SQL operation is added to production dispatch.
 	await page.context().route(`${origin}/src/lib/database.worker.ts*`, async route => {
@@ -148,7 +147,7 @@ try {
 	await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 	await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 	await page.getByLabel('Device token').fill('fixture');
-	await page.getByRole('button', { name: 'Sync now', exact: true }).click();
+	await page.getByRole('button',{name:'Connect',exact:true}).click();
 	await expect(page.getByText('Pending edits: 0', { exact: true })).toBeVisible({ timeout: 30000 });
 	expect(hub.db.query('SELECT body FROM widgets WHERE id=?').get(saved.value.id)).toEqual({ body: 'With history' });
 	expect(browserErrors).toEqual([]);

@@ -128,8 +128,7 @@ try {
  await check('dirty same-row cell promotes only changed raw over undo receipt', async()=>{
   await saveGridQuantity(); await beginCell('title','Title');
   await gridGroup('Title').getByLabel('Title',{exact:true}).fill('Retained grid draft');
-  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible(); await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled();
-  await expect(panel()).toBeVisible();
+  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible(); await expect(panel()).toBeVisible();
   await expect(panel().getByLabel('Title',{exact:true})).toHaveValue('Retained grid draft');
   await expect(panel().getByLabel('Quantity',{exact:true})).toHaveValue('42');
   await expect(page.locator('[data-cell-editor]')).toHaveCount(0);
@@ -141,7 +140,7 @@ try {
  await check('dirty same-property cell preserves raw and saves from receipt revision',async()=>{
   await saveGridQuantity(); await beginCell('quantity','Quantity');
   await gridGroup('Quantity').getByLabel('Quantity',{exact:true}).fill('44');
-  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible(); await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled(); await expect(panel().getByLabel('Quantity',{exact:true})).toHaveValue('44');
+  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible();await expect(panel().getByLabel('Quantity',{exact:true})).toHaveValue('44');
   await assertPaused(); expect((await stored()).quantity).toBe(42);
   await save().click(); await expect(save()).toBeEnabled(); expect((await stored()).quantity).toBe(44);
  });
@@ -152,14 +151,14 @@ try {
   await gridGroup('Body').getByRole('button', {name:'Body options',exact:true}).click();
   await gridGroup('Body').getByRole('menuitem', {name:'Body source',exact:true}).click();
   await gridGroup('Body').getByRole('textbox',{name:'Body',exact:true}).fill('Unsaved **cell** body');
-  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible(); await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled(); await expect(panel()).toBeVisible();
+  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible();await expect(panel()).toBeVisible();
   await expect(await body()).toHaveValue('Unsaved **cell** body');
   await assertPaused(); expect((await stored()).body).toBe('Original body'); expect((await stored()).quantity).toBe(42);
   await save().click(); await expect(save()).toBeEnabled(); expect((await stored()).body).toBe('Unsaved **cell** body');
  });
  await check('clean same-row cell clears without copying the undone value back',async()=>{
   await saveGridQuantity(); await beginCell('quantity','Quantity');
-  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible(); await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled(); await expect(page.locator('[data-cell-editor]')).toHaveCount(0);
+  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible();await expect(page.locator('[data-cell-editor]')).toHaveCount(0);
   await expect(panel()).toHaveCount(0);
   await expect(page.locator('[data-row="fixture-record"][data-column="quantity"]')).toContainText('42');
   expect((await stored()).quantity).toBe(42);
@@ -167,7 +166,7 @@ try {
  await check('other-row dirty cell stays editable with its original draft',async()=>{
   await saveGridQuantity(); await beginCell('title','Title','second-record');
   await gridGroup('Title').getByLabel('Title',{exact:true}).fill('Other draft');
-  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible(); await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled(); await expect(undo()).toBeDisabled();
+  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible();await expect(undo()).toBeDisabled();
   await expect(panel()).toHaveCount(0); await expect(gridGroup('Title').getByLabel('Title',{exact:true})).toHaveValue('Other draft');
   expect((await stored()).quantity).toBe(42); expect((await stored('second-record')).title).toBe('Second record');
   await gridGroup('Title').getByRole('button',{name:'Save cell',exact:true}).click();
@@ -178,7 +177,7 @@ try {
   await title().fill('New grid record'); await save().click(); await expect(save()).toBeEnabled();
   const created=(await rows()).find(r=>r.title==='New grid record')!; await close();
   await beginCell('title','Title',String(created.id)); await gridGroup('Title').getByLabel('Title',{exact:true}).fill('Retained creation draft');
-  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible(); await expect(page.getByRole('button',{name:'Sync now',exact:true})).toBeEnabled(); await expect(panel()).toBeVisible();
+  await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible();await expect(panel()).toBeVisible();
   await expect(panel().getByLabel('Title',{exact:true})).toHaveValue('Retained creation draft');
   await expect(panel().getByLabel('Title',{exact:true})).toBeDisabled(); await expect(save()).toBeDisabled();
   expect((await stored(String(created.id))).deleted_at).not.toBeNull();

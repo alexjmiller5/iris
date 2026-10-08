@@ -113,10 +113,10 @@ try {
   await page.getByText("Use a device token", { exact: true }).click();
   await page.getByLabel("Hub address").fill(server.url.href.replace(/\/$/, ""));
   await page.getByLabel("Device token").fill("fixture");
-  await page.getByRole("button", { name: "Sync now", exact: true }).click();
+  await page.getByRole("button",{name:"Connect",exact:true}).click();
   await expect(
-    page.getByRole("button", { name: "Sync now", exact: true }),
-  ).toBeEnabled({ timeout: 30000 });
+    page.getByRole("button", { name: "Fixture record", exact: true }),
+  ).toBeVisible({ timeout: 30000 });
   await page
     .getByRole("navigation", { name: "Tables", exact: true })
     .getByRole("button", { name: "widgets", exact: true })

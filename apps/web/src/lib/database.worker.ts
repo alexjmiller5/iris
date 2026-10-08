@@ -418,6 +418,8 @@ async function dispatch(request: DatabaseRequest) {
 			return local.setRelatedViewDefault(args);
 		case 'getViewDefault':
 			return local.getViewDefault(args);
+		case 'ensureDefaultView':
+			return local.ensureDefaultView(args);
 		case 'setViewDefault':
 			return local.setViewDefault(args);
 		case 'saveCatalogProperty':
