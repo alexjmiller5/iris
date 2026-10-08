@@ -32,6 +32,11 @@ public struct WorkspaceView: View {
   @State private var pendingReferenceEditor:
     (destination: ReferenceDestination, source: WorkspaceEditingContext, generation: Int)?
   @State private var pendingLink = PendingNativeLink()
+  @State private var pendingQuickAdd: WidgetQuickAdd?
+  @State private var quickAddError: String?
+  @State private var quickAddPreparing = false
+  @State private var discardQuickAdd = false
+  @State private var discardQuickAddID: UUID?
   @State private var pendingDuplicateEditor: (target: EditorTarget, generation: Int)?
   private let demo: Bool
 
@@ -45,6 +50,7 @@ public struct WorkspaceView: View {
   public var body: some View {
     VStack(spacing: 0) {
       pendingLinkBanner
+      quickAddBanner
       DestinationProgress(isOpening: openingDestination) {
         // Queued calls keep their ownership; only this navigation request is cancelled.
         navigationRequest += 1
@@ -59,6 +65,33 @@ public struct WorkspaceView: View {
       undoSavedChange()
     }
     .onOpenURL { pendingLink.receive($0) }
+    .task(
+      id:
+        "\(model.widgets.map(ObjectIdentifier.init).map(String.init(describing:)) ?? "none")|\(scenePhase == .active)"
+    ) {
+      guard scenePhase == .active, model.widgets != nil else { return }
+      // The intent may finish in another process after foreground activation.
+      // ponytail: one protected-file read per active second; use file events if
+      // this bounded inbox grows beyond a single draft handoff.
+      while !Task.isCancelled {
+        do {
+          pendingQuickAdd = try model.retainedQuickAdd()
+          if pendingQuickAdd == nil { quickAddError = nil }
+        } catch { quickAddError = error.localizedDescription }
+        do { try await Task.sleep(for: .seconds(1)) } catch { return }
+      }
+    }
+    .confirmationDialog("Discard the pending Quick Add input?", isPresented: $discardQuickAdd) {
+      Button("Discard Quick Add", role: .destructive) {
+        guard let id = discardQuickAddID else { return }
+        defer { discardQuickAddID = nil }
+        do {
+          try model.discardQuickAdd(id: id)
+          if pendingQuickAdd?.id == id { pendingQuickAdd = nil }
+          quickAddError = nil
+        } catch { quickAddError = error.localizedDescription }
+      }
+    }
     // An open window keeps its workspace context instead of spawning an empty one.
     .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
   }
@@ -352,7 +385,8 @@ public struct WorkspaceView: View {
   }
 
   private var canFind: Bool {
-    model.client != nil && !openingDestination && editor == nil && online == nil && quickFind == nil
+    model.client != nil && !openingDestination && !quickAddPreparing && editor == nil
+      && online == nil && quickFind == nil
       && pendingSearchEditor == nil && pendingDuplicateEditor == nil
       && pendingReferenceEditor == nil && rejectionInbox == nil && pendingRejection == nil
       && !settings && !options && !savedViews && !importing && recordExport == nil
@@ -547,6 +581,58 @@ public struct WorkspaceView: View {
         destination, onOpened: { pendingLink.complete(request.id) },
         onFailed: { pendingLink.fail(request.id, message: $0) })
     } catch { pendingLink.fail(request.id, message: error.localizedDescription) }
+  }
+
+  @ViewBuilder private var quickAddBanner: some View {
+    if pendingQuickAdd != nil || quickAddError != nil {
+      VStack(alignment: .leading, spacing: 6) {
+        Text("Quick Add is waiting. Finish the current editor before opening its draft.")
+        if let error = quickAddError {
+          Text(error).foregroundStyle(.red).accessibilityIdentifier("quick-add-error")
+        }
+        if pendingQuickAdd != nil {
+          HStack {
+            Button("Open Quick Add", action: openQuickAdd).disabled(!canFind || quickAddPreparing)
+              .accessibilityIdentifier("open-quick-add")
+            Button("Discard") {
+              discardQuickAddID = pendingQuickAdd?.id
+              discardQuickAdd = true
+            }.disabled(quickAddPreparing)
+              .accessibilityIdentifier("discard-quick-add")
+          }
+        }
+      }.font(.callout).padding(8).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
+    }
+  }
+
+  private func openQuickAdd() {
+    guard canFind, !quickAddPreparing, let request = pendingQuickAdd else { return }
+    do {
+      let destination = try model.quickAddDestination(request)
+      openDestination(
+        destination,
+        onOpened: {
+          let generation = model.workspaceGeneration
+          quickAddPreparing = true
+          Task { @MainActor in
+            defer { quickAddPreparing = false }
+            do {
+              let prepared = try await model.prepareQuickAdd(request)
+              guard model.workspaceGeneration == generation, editor == nil, !Task.isCancelled else {
+                return
+              }
+              editor = EditorTarget(
+                row: nil, context: model.editingContext, preparedEditor: prepared)
+              pendingQuickAdd = nil
+              quickAddError = nil
+            } catch {
+              if model.workspaceGeneration == generation {
+                quickAddError = error.localizedDescription
+              }
+            }
+          }
+        }, onFailed: { quickAddError = $0 })
+    } catch { quickAddError = error.localizedDescription }
   }
 
   private func copyLink(
@@ -1097,8 +1183,10 @@ public struct WorkspaceView: View {
             try model.prepareWidgets()
             widgetSettings = true
           } catch { model.error = error.localizedDescription }
-        } label: { Label("Widgets", systemImage: "square.grid.2x2") }
-          .disabled(editor != nil).accessibilityIdentifier("widget-settings")
+        } label: {
+          Label("Widgets", systemImage: "square.grid.2x2")
+        }
+        .disabled(editor != nil).accessibilityIdentifier("widget-settings")
         Button(action: showRejections) { Label("Issues", systemImage: "exclamationmark.bubble") }
           .disabled(!canFind).accessibilityIdentifier("workspace-issues")
         Divider()

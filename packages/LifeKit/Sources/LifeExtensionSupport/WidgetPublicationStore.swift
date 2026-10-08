@@ -7,12 +7,29 @@ public struct WidgetSource: Codable, Sendable {
   public let title: String
   public let plan: CoreReadPlan
   public let openURL: URL?
-  public init(id: String, title: String, plan: CoreReadPlan, openURL: URL? = nil) {
+  public let allowsQuickAdd: Bool?
+  public init(
+    id: String, title: String, plan: CoreReadPlan, openURL: URL? = nil, allowsQuickAdd: Bool = false
+  ) {
     self.id = id
     self.title = title
     self.plan = plan
     self.openURL = openURL
+    self.allowsQuickAdd = allowsQuickAdd
   }
+}
+
+public struct WidgetQuickAdd: Codable, Sendable {
+  public let version: Int
+  public let id: UUID
+  public let sourceID: String
+  public let workspaceID: String
+  public let replicaID: String
+  public let accessGeneration: String
+  public let openURL: URL
+  public let table: String
+  public let text: String?
+  public let column: String?
 }
 
 public struct WidgetPublication: Codable, Sendable {
@@ -158,16 +175,112 @@ public struct WidgetPublicationStore: Sendable {
 
   public func withCurrentPublication<T>(_ body: (WidgetPublication, URL) throws -> T) throws -> T {
     try withLock(exclusive: false) {
-      let current: Pointer = try decode(pointer, limit: 4096)
-      guard UUID(uuidString: current.generation) != nil else { throw unavailable }
-      let directory = root.appendingPathComponent(current.generation, isDirectory: true)
-      let metadata: WidgetPublication = try decode(
-        directory.appendingPathComponent("manifest.json"), limit: 8_388_608)
-      guard metadata.version == 1, bytesEqual(metadata.generation, current.generation),
-        metadata.sources.count <= 64
+      try currentPublication(body)
+    }
+  }
+
+  private func currentPublication<T>(_ body: (WidgetPublication, URL) throws -> T) throws -> T {
+    let current: Pointer = try decode(pointer, limit: 4096)
+    guard UUID(uuidString: current.generation) != nil else { throw unavailable }
+    let directory = root.appendingPathComponent(current.generation, isDirectory: true)
+    let metadata: WidgetPublication = try decode(
+      directory.appendingPathComponent("manifest.json"), limit: 8_388_608)
+    guard metadata.version == 1, bytesEqual(metadata.generation, current.generation),
+      metadata.sources.count <= 64
+    else { throw unavailable }
+    guard try bytesEqual(metadata.accessGeneration, revocationToken()) else { throw unavailable }
+    return try body(metadata, directory.appendingPathComponent("snapshot.sqlite"))
+  }
+
+  /// One protected handoff, not a row writer. Another request must never replace
+  /// unsaved input. Retry the same identity only with byte-identical input.
+  public func stageQuickAdd(id: UUID, sourceID: String, text: String?, column: String?) throws
+    -> WidgetQuickAdd
+  {
+    guard (text == nil) == (column == nil), (text?.utf8.count ?? 0) <= 65536,
+      column == nil || (!column!.isEmpty && column!.utf8.count <= 512)
+    else { throw unavailable }
+    return try withLock(exclusive: true) {
+      let request = try currentPublication { metadata, _ in
+        guard let source = metadata.sources.first(where: { bytesEqual($0.id, sourceID) }),
+          source.plan.kind == .list, source.allowsQuickAdd == true, let url = source.openURL
+        else { throw unavailable }
+        return WidgetQuickAdd(
+          version: 1, id: id, sourceID: source.id,
+          workspaceID: metadata.workspaceID, replicaID: metadata.replicaID,
+          accessGeneration: metadata.accessGeneration, openURL: url, table: source.plan.table,
+          text: text, column: column)
+      }
+      if let pending = try readQuickAdd() {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard try encoder.encode(pending) == encoder.encode(request) else {
+          throw ExtensionReadError(message: "Finish the pending Quick Add in the app first.")
+        }
+        return pending
+      }
+      // JSON may expand a control byte into a six-byte escape.
+      try write(request, to: root.appendingPathComponent("quick-add.json"), limit: 524288)
+      return request
+    }
+  }
+
+  public func pendingQuickAdd() throws -> WidgetQuickAdd? {
+    try withLock(exclusive: false) {
+      guard let request = try readQuickAdd() else { return nil }
+      try validateQuickAdd(request)
+      return request
+    }
+  }
+
+  /// Retained input can be explicitly discarded after access is revoked. Reading
+  /// it here supplies no authority to create a draft or execute a query.
+  public func retainedQuickAdd() throws -> WidgetQuickAdd? {
+    try withLock(exclusive: false) { try readQuickAdd() }
+  }
+
+  public func discardQuickAdd(id: UUID) throws {
+    try withLock(exclusive: true) {
+      guard let request = try readQuickAdd() else { return }
+      guard request.id == id else { throw unavailable }
+      try FileManager.default.removeItem(at: root.appendingPathComponent("quick-add.json"))
+    }
+  }
+
+  public func finishQuickAdd(id: UUID) throws {
+    try withLock(exclusive: true) {
+      guard let request = try readQuickAdd() else { return }
+      guard request.id == id else { throw unavailable }
+      try validateQuickAdd(request)
+      try FileManager.default.removeItem(at: root.appendingPathComponent("quick-add.json"))
+    }
+  }
+
+  private func readQuickAdd() throws -> WidgetQuickAdd? {
+    do {
+      let request: WidgetQuickAdd = try decode(
+        root.appendingPathComponent("quick-add.json"), limit: 524288)
+      return request
+    } catch let error as CocoaError
+      where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile
+    {
+      return nil
+    }
+  }
+
+  private func validateQuickAdd(_ request: WidgetQuickAdd) throws {
+    guard request.version == 1, (request.text == nil) == (request.column == nil),
+      (request.text?.utf8.count ?? 0) <= 65536,
+      request.column == nil || (!request.column!.isEmpty && request.column!.utf8.count <= 512)
+    else { throw unavailable }
+    try currentPublication { metadata, _ in
+      guard bytesEqual(request.workspaceID, metadata.workspaceID),
+        bytesEqual(request.replicaID, metadata.replicaID),
+        bytesEqual(request.accessGeneration, metadata.accessGeneration),
+        let source = metadata.sources.first(where: { bytesEqual($0.id, request.sourceID) }),
+        source.plan.kind == .list, source.allowsQuickAdd == true,
+        source.openURL == request.openURL, bytesEqual(source.plan.table, request.table)
       else { throw unavailable }
-      guard try bytesEqual(metadata.accessGeneration, revocationToken()) else { throw unavailable }
-      return try body(metadata, directory.appendingPathComponent("snapshot.sqlite"))
     }
   }
 

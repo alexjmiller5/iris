@@ -139,9 +139,10 @@ export function syncPill(s: PillInput): Pill {
 	if (!s.online || /fetch|network|load failed|timed out|offline/i.test(s.error))
 		return pill(`Offline${pending}`, 'warn');
 	if (!s.connected) return pill(`Not connected${pending}`, 'idle', 'connect');
-	if (s.syncing || s.pending) return pill('Syncing', 'busy');
+	if (s.syncing) return pill('Syncing', 'busy');
 	if (s.error === 'hub HTTP 429')
 		return pill('Paused · usage cap', 'warn', null, 'Hub usage cap reached; sync retries later');
 	if (s.error) return pill('Sync error', 'error', null, s.error);
+	if (s.pending) return pill('Syncing', 'busy');
 	return pill('Synced', 'ok');
 }

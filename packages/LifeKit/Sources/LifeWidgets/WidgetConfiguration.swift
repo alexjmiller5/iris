@@ -34,7 +34,43 @@ public struct CountWidgetConfiguration: WidgetSourceConfiguration {
   public init() {}
 }
 
-public struct ConfiguredWidgetProvider<Configuration: WidgetSourceConfiguration>: AppIntentTimelineProvider {
+public struct QuickAddWidgetConfiguration: WidgetConfigurationIntent {
+  public static let title: LocalizedStringResource = "Quick Add"
+  @Parameter(title: "Writable table", query: QuickAddSourceQuery()) public var source:
+    WidgetSourceEntity?
+  public init() {}
+}
+
+public struct QuickAddWidgetEntry: TimelineEntry, Sendable {
+  public let date: Date
+  public let source: WidgetSourceEntity?
+}
+
+public struct QuickAddWidgetProvider: AppIntentTimelineProvider {
+  public init() {}
+  public func placeholder(in context: Context) -> QuickAddWidgetEntry {
+    QuickAddWidgetEntry(date: Date(), source: nil)
+  }
+  public func snapshot(for configuration: QuickAddWidgetConfiguration, in context: Context) async
+    -> QuickAddWidgetEntry
+  {
+    await timeline(for: configuration, in: context).entries[0]
+  }
+  public func timeline(for configuration: QuickAddWidgetConfiguration, in context: Context) async
+    -> Timeline<QuickAddWidgetEntry>
+  {
+    let source = try? await QuickAddSourceQuery().entities(
+      for: configuration.source.map { [$0.id] } ?? []
+    ).first
+    return Timeline(
+      entries: [QuickAddWidgetEntry(date: Date(), source: source)],
+      policy: .after(Date().addingTimeInterval(900)))
+  }
+}
+
+public struct ConfiguredWidgetProvider<Configuration: WidgetSourceConfiguration>:
+  AppIntentTimelineProvider
+{
   public init() {}
   public func placeholder(in context: Context) -> WidgetEntry {
     WidgetEntry.timeline(sourceID: nil, kind: Configuration.resultKind, library: nil).entries[0]
@@ -42,7 +78,9 @@ public struct ConfiguredWidgetProvider<Configuration: WidgetSourceConfiguration>
   public func snapshot(for configuration: Configuration, in context: Context) async -> WidgetEntry {
     await timeline(for: configuration, in: context).entries[0]
   }
-  public func timeline(for configuration: Configuration, in context: Context) async -> Timeline<WidgetEntry> {
+  public func timeline(for configuration: Configuration, in context: Context) async -> Timeline<
+    WidgetEntry
+  > {
     let sourceID = configuration.source?.id
     return WidgetEntry.timeline(
       sourceID: sourceID, kind: Configuration.resultKind,

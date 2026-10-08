@@ -1,9 +1,11 @@
 import LifeKit
+import LifeWidgets
 import SwiftUI
 
 @main
 struct LifeUIApp: App {
   @UIApplicationDelegateAdaptor(LifePushAppDelegate.self) private var pushDelegate
+  init() { LifeQuickAddShortcuts.updateAppShortcutParameters() }
   var body: some Scene {
     WindowGroup {
       WorkspaceView(
