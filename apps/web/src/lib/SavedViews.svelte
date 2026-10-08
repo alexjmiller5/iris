@@ -157,7 +157,10 @@
 		<div class="actions">
 			<button
 				type="button"
-				disabled={locked || !canUpdate || !$model.name.trim() || $model.name.trim() === current?.name}
+				disabled={locked ||
+					!canUpdate ||
+					!$model.name.trim() ||
+					$model.name.trim() === current?.name}
 				onclick={() => save(true)}><IconForms size={16} aria-hidden="true" />Rename</button
 			>
 			<button

@@ -1,9 +1,10 @@
 import type { SearchHit, SavedViewList } from 'life-ui-core/client';
+import type { StatusHit } from './search-status';
 
 export type PaletteDestination =
 	| { kind: 'table'; table: string; label: string; unavailable?: string }
 	| { kind: 'view'; table: string; id: string; label: string; unavailable?: string };
-export type PaletteEntry = PaletteDestination | ({ kind: 'record' } & SearchHit);
+export type PaletteEntry = PaletteDestination | ({ kind: 'record' } & StatusHit);
 export type NavigationState = {
 	destinations: PaletteDestination[];
 	loading: boolean;

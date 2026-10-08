@@ -176,8 +176,8 @@ try {
   await click(named("summary", "Use a device token"));
   await fill(element("#endpoint"), server.url.href.replace(/\/$/, ""));
   await fill(element("#token"), "fixture");
-  await click(button("Sync now"));
-  await until(`!(${button("Sync now")}).disabled`);
+  await click(button("Connect"));
+  await until(`!(${button("Connect")}).disabled`);
   async function release() {
     await evaluate(`${fixture}.releaseSource();${fixture}.releaseRows();`);
   }

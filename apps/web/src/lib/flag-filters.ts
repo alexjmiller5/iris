@@ -9,8 +9,7 @@ export function flagFilters(properties: Property[]): { flag: Property; reason: P
 		if (flag.type !== 'bool') return [];
 		const words = new Set(flag.description?.match(/[A-Za-z_]\w*/g) ?? []);
 		const reasons = properties.filter(
-			(p) =>
-				p !== flag && p.tbl === flag.tbl && (p.type ?? 'text') === 'text' && words.has(p.col)
+			(p) => p !== flag && p.tbl === flag.tbl && (p.type ?? 'text') === 'text' && words.has(p.col)
 		);
 		return reasons.length === 1 ? [{ flag, reason: reasons[0] }] : [];
 	});
@@ -18,8 +17,7 @@ export function flagFilters(properties: Property[]): { flag: Property; reason: P
 
 const isFlag = (f: Filter, column: string) =>
 	f.column === column && f.op === 'eq' && f.value === true;
-export const flagOn = (filters: Filter[], column: string) =>
-	filters.some((f) => isFlag(f, column));
+export const flagOn = (filters: Filter[], column: string) => filters.some((f) => isFlag(f, column));
 export const toggleFlag = (filters: Filter[], column: string): Filter[] =>
 	flagOn(filters, column)
 		? filters.filter((f) => !isFlag(f, column))

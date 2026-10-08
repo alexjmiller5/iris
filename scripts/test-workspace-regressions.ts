@@ -229,21 +229,21 @@ try {
 		await expect(page.getByRole('button', { name: 'Ascending', exact: true })).toBeVisible();
 	});
 	await check('pending count survives reload and clears after accepted sync', async () => {
-		const pending = page.getByText(/^Pending edits: \d+$/);
+		const pending = page.locator('[data-pending]');
 		await expect(pending).toBeVisible();
-		const before = Number((await pending.innerText()).split(':')[1]);
+		const before = Number(await pending.getAttribute('data-pending'));
 		await page.getByRole('button', { name: 'New record', exact: true }).click();
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Pending proof');
 		await save.click();
 		await expect(save).toBeEnabled();
-		await expect(pending).toHaveText(`Pending edits: ${before + 1}`);
+		await expect(page.locator(`[data-pending="${before + 1}"]`)).toBeVisible();
 		await reopen();
-		await expect(pending).toHaveText(`Pending edits: ${before + 1}`);
+		await expect(page.locator(`[data-pending="${before + 1}"]`)).toBeVisible();
 		await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 		await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 		await page.getByLabel('Device token').fill('fixture');
 		await page.getByRole('button',{name:'Connect',exact:true}).click();
-		await expect(pending).toHaveText('Pending edits: 0');
+		await expect(page.locator('[data-pending="0"]')).toBeVisible();
 	});
 	if (failures.length) throw new Error(`${failures.length} regression(s) failed: ${failures.join('; ')}`);
 } finally {

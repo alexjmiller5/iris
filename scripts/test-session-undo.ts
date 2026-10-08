@@ -132,12 +132,12 @@ async function check(name: string, run: () => Promise<void>) {
       .getByLabel("Hub address")
       .fill(server.url.href.replace(/\/$/, ""));
     await page.getByLabel("Device token").fill("fixture");
-    const sync = page.getByRole("button", { name: "Sync now", exact: true });
-    await sync.click();
-    await expect(sync).toBeEnabled({ timeout: 30000 });
+    await page
+      .getByRole("button", { name: "Connect", exact: true })
+      .click();
     await expect(
       page.getByRole("button", { name: "Fixture record", exact: true }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 30000 });
     await run();
     console.log("PASS: " + name);
   } finally {

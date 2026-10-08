@@ -89,7 +89,8 @@ export function createViewAutosave<T>(
 		chain = chain
 			.then(() => write(snapshot))
 			.catch((error) => {
-				if (!disposed) onerror(error instanceof Error ? error : new Error('The view was not saved.'));
+				if (!disposed)
+					onerror(error instanceof Error ? error : new Error('The view was not saved.'));
 			})
 			.finally(() => {
 				running--;

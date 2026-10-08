@@ -251,7 +251,7 @@ try {
       .getByLabel("Hub address")
       .fill(server.url.href.replace(/\/$/, ""));
     await page.getByLabel("Device token").fill("fixture");
-    const sync = page.getByRole("button", { name: "Sync now", exact: true });
+    const sync = page.getByRole("button", { name: "Connect", exact: true });
     await sync.click();
     await expect(sync).toBeEnabled({ timeout: 30000 }).catch(async (error) => {
       console.error("Connection state:", await page.locator("body").innerText());

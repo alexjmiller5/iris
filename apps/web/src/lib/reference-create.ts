@@ -75,7 +75,10 @@ export function withReference(type: string | null | undefined, raw: string, id: 
 export async function commitCreation(plan: CreationPlan, source: Source, write: Write) {
 	if (withReference(source.type, source.raw, '') === null)
 		throw Error('This reference value cannot be read. Repair it before adding a record.');
-	const row = await write(plan.table, recordPatch(plan.properties, plan.values, null, plan.explicit));
+	const row = await write(
+		plan.table,
+		recordPatch(plan.properties, plan.values, null, plan.explicit)
+	);
 	return { row, value: withReference(source.type, source.raw, String(row.id))! };
 }
 

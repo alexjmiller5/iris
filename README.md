@@ -498,6 +498,17 @@ Launch an Apple app with
 `--demo` for the temporary preview; app-hosted tests use fixture mode as well.
 Unsigned builds are development artifacts, not signed releases or phone installs.
 
+### Widgets, Spotlight, sharing and Shortcuts (iOS)
+
+**Workspace menu > Widgets and Search** chooses which tables and saved views may
+appear in widgets (Table titles, Today, Record count, Quick Add), which tables offer
+record titles to Spotlight, the Shortcuts lookup table (default none) and the daily
+view shown at the top of the sidebar. Lock Screen widgets show counts and generic
+labels only. Quick Add, the share sheet ("Life UI" with a link or text) and the
+Quick Add, Open Today and Look Up shortcuts open the app with a pending draft or
+link; nothing is saved until you choose Save. Spotlight results open through the
+same link banner. Turning a table off removes its titles from Spotlight.
+
 ## Run and verify
 
 Requirements: Bun 1.4.2, just, and for Apple targets Xcode with Swift 6,
@@ -783,9 +794,16 @@ native testing. Both use synthetic records and loopback interfaces only.
 - Ad Hoc distribution uses the manual **Build iOS Ad Hoc** GitHub workflow.
   The existing project CI service account reads the Apple Distribution P12,
   password and App Store Connect API key from the documented Apple Signing vault
-  exception. Set repository variable `IOS_PROVISIONING_PROFILE_ID` to the stable
-  API ID of this app's active `IOS_APP_ADHOC` profile. CI downloads it and verifies
-  the production push entitlement; wildcard profiles cannot enable APNs.
+  exception. The app (`com.alexmiller.life-ui`), widget (`.widgets`) and share
+  (`.share`) App IDs each carry the App Group `group.com.alexmiller.life-ui`;
+  assigning a group to an App ID is a developer-portal step. Mint one explicit
+  `IOS_APP_ADHOC` profile per App ID with the existing distribution certificate and
+  set repository variables `IOS_PROVISIONING_PROFILE_ID`,
+  `IOS_WIDGETS_PROVISIONING_PROFILE_ID` and `IOS_SHARE_PROVISIONING_PROFILE_ID` to
+  their stable API IDs. CI downloads all three and verifies the production push
+  entitlement and the shared App Group; wildcard profiles cannot enable either.
+  Changing the universal app App ID's capabilities invalidates the Mac Developer ID
+  profile too, so replace `MACOS_PROVISIONING_PROFILE_ID` in the same step.
   Store `IOS_DEVICE_ID` in the project ENV item for the intended enrolled phone.
   The only GitHub secret remains `OP_SERVICE_ACCOUNT_TOKEN`.
   CI checks profile eligibility, signs in a temporary keychain and verifies the

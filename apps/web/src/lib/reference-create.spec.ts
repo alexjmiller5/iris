@@ -47,7 +47,9 @@ function localCore() {
 		history: 'tbl TEXT, row_id TEXT, col TEXT, old TEXT, new TEXT, origin TEXT'
 	}))
 		db.exec(`CREATE TABLE ${name} (${system}, ${columns})`);
-	db.exec(`INSERT INTO catalog_tables(id,kind,display) VALUES ('people','table','name'),('companies','table','name')`);
+	db.exec(
+		`INSERT INTO catalog_tables(id,kind,display) VALUES ('people','table','name'),('companies','table','name')`
+	);
 	for (const p of [...people, ...companies])
 		db.prepare(
 			'INSERT INTO catalog_properties(id,tbl,col,type,required,default_value,derived_by) VALUES (?,?,?,?,?,?,?)'
@@ -167,7 +169,12 @@ describe('reference create-in-place', () => {
 			return core.write({ table, patch });
 		};
 		const target = creationTarget(catalog, { ...host, ref_table: 'companies' })!;
-		const handoff = await startCreation(target, 'Initech', { type: 'multi_ref', raw: '["kept"]' }, write);
+		const handoff = await startCreation(
+			target,
+			'Initech',
+			{ type: 'multi_ref', raw: '["kept"]' },
+			write
+		);
 		expect('row' in handoff).toBe(false);
 		// Cancel discards the returned plan: the source draft was never rebuilt.
 		expect(writes).toEqual([]);

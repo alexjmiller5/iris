@@ -220,12 +220,12 @@ describe('advanced groups', () => {
 
 test('chip labels read like sentences', () => {
 	const label = (column: string) => column.charAt(0).toUpperCase() + column.slice(1);
-	expect(describeRule({ column: 'status', op: 'eq', values: ['Done', 'Doing'] }, 'select', label)).toBe(
-		'Status: Done, Doing'
-	);
-	expect(describeRule({ column: 'due', op: 'lt', values: [], relative: 'today' }, 'date', label)).toBe(
-		'Due: before Today'
-	);
+	expect(
+		describeRule({ column: 'status', op: 'eq', values: ['Done', 'Doing'] }, 'select', label)
+	).toBe('Status: Done, Doing');
+	expect(
+		describeRule({ column: 'due', op: 'lt', values: [], relative: 'today' }, 'date', label)
+	).toBe('Due: before Today');
 	expect(describeRule({ column: 'done', op: 'eq', values: ['false'] }, 'bool', label)).toBe(
 		'Done: unchecked'
 	);

@@ -1481,9 +1481,7 @@
 			...(stored?.trash !== undefined ? { trash: stored.trash } : {})
 		};
 	}
-	const viewModified = $derived(
-		!!chosenView && JSON.stringify(savedDefinition()) !== viewBaseline
-	);
+	const viewModified = $derived(!!chosenView && JSON.stringify(savedDefinition()) !== viewBaseline);
 	// The latest revision this tab wrote for each view, so back-to-back saves
 	// never present a stale expectedUpdatedAt.
 	const viewRevisions = new Map<string, string>();
@@ -2812,13 +2810,18 @@
 											popovertarget="view-sort"
 											disabled={busy || navigationLoading || !chosenView}
 											onclick={(e) => (sortAnchor = e.currentTarget)}
-											>{#if sorts.length > 1}<IconArrowsSort size={14} aria-hidden="true" />{sorts.length}
+											>{#if sorts.length > 1}<IconArrowsSort
+													size={14}
+													aria-hidden="true"
+												/>{sorts.length}
 												sorts{:else}{#if first.direction === 'asc'}<IconArrowUp
 														size={14}
 														aria-label="Ascending"
-													/>{:else}<IconArrowDown size={14} aria-label="Descending" />{/if}{viewProperties.find(
-													(p) => p.col === first.column
-												)?.label || first.column}{/if}</button
+													/>{:else}<IconArrowDown
+														size={14}
+														aria-label="Descending"
+													/>{/if}{viewProperties.find((p) => p.col === first.column)?.label ||
+													first.column}{/if}</button
 										>
 									{/if}
 									{#each flags as { flag } (flag.col)}
@@ -2973,7 +2976,8 @@
 										!trash &&
 										!navigationLoading}
 									onaction={runSavedAction}
-									sortOf={(column) => sorts.find((sort) => sort.column === column)?.direction ?? null}
+									sortOf={(column) =>
+										sorts.find((sort) => sort.column === column)?.direction ?? null}
 									onsort={chosenView && !busy && !navigationLoading
 										? (column, direction) => {
 												if (!closeRecord()) return;
@@ -3511,7 +3515,7 @@
 	.sort-chip :global(svg) {
 		color: var(--color-accent);
 	}
-		.search {
+	.search {
 		display: flex;
 		align-items: center;
 		gap: 8px;

@@ -220,9 +220,11 @@
 								<span class="result-heading"
 									><strong
 										>{entry.label || (entry.kind === 'table' ? entry.table : entry.id)}</strong
-									>{#if entry.kind === 'record' && 'status' in entry && entry.status}<span class="lifecycle" title={entry.status.d}
-											>{entry.status.v}</span
-										>{/if}{#if entry.kind !== 'table'}<span class="table">{entry.table}</span>{/if}</span
+									>{#if entry.kind === 'record' && entry.status}<span
+											class="lifecycle"
+											title={entry.status.d}>{entry.status.v}</span
+										>{/if}{#if entry.kind !== 'table'}<span class="table">{entry.table}</span
+										>{/if}</span
 								>
 								{#if entry.kind === 'record' && entry.excerpt}<span class="excerpt"
 										>{entry.excerpt}</span

@@ -202,7 +202,7 @@ try {
   await click("Use a device token");
   await set("#endpoint", server.url.href.replace(/\/$/, ""));
   await set("#token", "fixture");
-  await click("Sync now");
+  await click("Connect");
   await click("widgets", `document.querySelector('nav[aria-label="Tables"]')`);
   await rows(["Fixture record", "Legacy record", "Second record"]);
   if (mode === "all" || mode === "rollover") {

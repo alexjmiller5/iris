@@ -148,7 +148,7 @@ try {
 	await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 	await page.getByLabel('Device token').fill('fixture');
 	await page.getByRole('button',{name:'Connect',exact:true}).click();
-	await expect(page.getByText('Pending edits: 0', { exact: true })).toBeVisible({ timeout: 30000 });
+	await expect(page.locator('[data-pending="0"]')).toBeVisible({ timeout: 30000 });
 	expect(hub.db.query('SELECT body FROM widgets WHERE id=?').get(saved.value.id)).toEqual({ body: 'With history' });
 	expect(browserErrors).toEqual([]);
 	console.log('PASS: schema replay, trusted DDL, create/edit/history and accepted sync still work');

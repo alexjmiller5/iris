@@ -5,7 +5,7 @@
   import WidgetKit
 
   /// Synthetic gallery data only; never a real workspace.
-  private func preview(_ kind: CoreReadPlanKind, rows: String, stale: Bool = false) -> WidgetEntry {
+  private func syntheticEntry(_ kind: CoreReadPlanKind, rows: String, stale: Bool = false) -> WidgetEntry {
     let json = """
       {"workspaceID":"preview","replicaID":"preview","sourceID":"preview","title":"Synthetic daily",
        "rows":\(rows),"dataAsOf":781000000,"partial":false,"effectiveDay":"2026-10-08"}

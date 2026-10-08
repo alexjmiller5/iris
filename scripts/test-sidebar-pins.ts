@@ -65,8 +65,8 @@ try {
     await cdp.click(named('button,summary', 'Use a device token'));
     await cdp.fill(input('Hub address'), hub.server.url.href.replace(/\/$/, ''));
     await cdp.fill(input('Device token'), 'fixture');
-    await cdp.click(named('button', 'Sync now'));
-    await cdp.until(`!!(${named('button', 'Sync now')}) && !(${named('button', 'Sync now')}).disabled`);
+    await cdp.click(named('button', 'Connect'));
+    await cdp.until(`!!(${named('button', 'Connect')}) && !(${named('button', 'Connect')}).disabled`);
   }
   await connect();
   await cdp.click(named('nav[aria-label="Tables"] button', 'widgets'));
@@ -96,7 +96,8 @@ try {
   await expect.poll(() => cdp.evaluate(pinned)).toEqual(['projects', 'widgets']);
   acceptDiscard=true;
   await cdp.click(element('[aria-label="Open pinned projects"]'));
-  await cdp.click(named('button','Sync now'));
+  const pinsResync = await cdp.evaluate("new Date().toISOString()");
+  await cdp.until(`(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${JSON.stringify(pinsResync)}`);
   await expect.poll(()=>hub.db.db.query('SELECT tbl FROM sidebar_pins WHERE deleted_at IS NULL ORDER BY position').all()).toEqual([{tbl:'projects'},{tbl:'widgets'}]);
   await cdp.navigate(address);
   await cdp.until("!!document.querySelector('#svelte-announcer')");

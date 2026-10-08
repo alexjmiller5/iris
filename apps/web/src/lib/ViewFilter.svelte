@@ -62,7 +62,9 @@
 			])
 		];
 		const q = query.trim().toLowerCase();
-		return values.filter((v) => !q || v.toLowerCase().includes(q)).map((v) => ({ id: v, label: v }));
+		return values
+			.filter((v) => !q || v.toLowerCase().includes(q))
+			.map((v) => ({ id: v, label: v }));
 	});
 	function toggle(value: string, on: boolean) {
 		const values = single
@@ -75,7 +77,8 @@
 		onchange({ ...rule, values });
 	}
 	function setOp(op: Rule['op']) {
-		const relative = rule.relative && !['empty', 'not_empty'].includes(op) ? rule.relative : undefined;
+		const relative =
+			rule.relative && !['empty', 'not_empty'].includes(op) ? rule.relative : undefined;
 		onchange({ column: rule.column, op, values: rule.values, ...(relative ? { relative } : {}) });
 	}
 	const dateValue = (value: string) =>

@@ -32,7 +32,7 @@ try {
  await click('Open my workspace');
  for(const label of ['Connect to a hub','Use a device token']){const control=named('button,summary',label);await cdp.until(`!!(${control})`);if(!(await cdp.evaluate(`(${control}).closest('details').open`)))await cdp.click(control);}
  const input=(label:string)=>`(()=>{const e=${named('label',label)};return e?.control??e?.querySelector('input');})()`;
- await cdp.fill(input('Hub address'),server.url.href.replace(/\/$/,''));await cdp.fill(input('Device token'),'fixture');await click('Sync now');
+ await cdp.fill(input('Hub address'),server.url.href.replace(/\/$/,''));await cdp.fill(input('Device token'),'fixture');await click('Connect');
  await cdp.until(`!!(${button('New record')})&&!(${button('New record')}).disabled`);
  const table=(id:string)=>named('button',id,element('nav[aria-label="Tables"]'));
  const openTable=async(id:string)=>{await cdp.click(table(id));await cdp.until(`!!(${named('h1',id)})`);};
@@ -42,7 +42,8 @@ try {
  await cdp.until("document.body.innerText.includes('Default view saved.')");
  await openTable('views');await openTable('widgets');await waitSelected('preferred-opaque');
  await cdp.until("document.querySelector('[aria-label=\"Records\"]')?.innerText.includes('Fixture record')===true && document.querySelector('[aria-label=\"Records\"]')?.innerText.includes('Second record')===false");
- await click('Sync now');
+ const defaultResync=await cdp.evaluate('new Date().toISOString()');
+ await cdp.until(`(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${js(defaultResync)}`);
  await expect.poll(()=>db.db.query('SELECT view_id FROM view_defaults WHERE tbl=? AND deleted_at IS NULL').get('widgets')?.view_id).toBe('preferred-opaque');
  // An explicit view wins over the persisted pointer, including after an OPFS reopen.
  await cdp.navigate(new URL('/workspace?table=widgets&view=other-opaque',url).href);await click('Open my workspace');await waitSelected('other-opaque');

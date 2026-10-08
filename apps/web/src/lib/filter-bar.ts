@@ -35,9 +35,7 @@ export function opLabel(op: Filter['op'], type: string): string {
 		}[op];
 	if (type === 'number' || type === 'int')
 		return { eq: '=', ne: '≠', lt: '<', gt: '>', lte: '≤', gte: '≥', contains: 'contains' }[op];
-	return { eq: 'is', ne: 'is not', contains: 'contains', lt: '<', gt: '>', lte: '≤', gte: '≥' }[
-		op
-	];
+	return { eq: 'is', ne: 'is not', contains: 'contains', lt: '<', gt: '>', lte: '≤', gte: '≥' }[op];
 }
 
 export function defaultRule(column: string, type: string): Rule {
@@ -63,7 +61,10 @@ export function ruleClause(
 	const { column, op } = rule;
 	if (!needsValue(rule))
 		return {
-			clause: rule.relative && op !== 'empty' && op !== 'not_empty' ? { column, op, relative: 'today' } : { column, op },
+			clause:
+				rule.relative && op !== 'empty' && op !== 'not_empty'
+					? { column, op, relative: 'today' }
+					: { column, op },
 			error: ''
 		};
 	try {
@@ -204,5 +205,7 @@ export function describeRule(
 	if (type === 'bool') return `${name}: ${values[0] === 'true' ? 'checked' : 'unchecked'}`;
 	const text = values.map(valueLabel).join(', ');
 	const plain = rule.op === 'contains' || (rule.op === 'eq' && type !== 'number' && type !== 'int');
-	return plain ? `${name}: ${text}` : `${name}: ${opLabel(rule.op, type).replace(/^is /, '')} ${text}`;
+	return plain
+		? `${name}: ${text}`
+		: `${name}: ${opLabel(rule.op, type).replace(/^is /, '')} ${text}`;
 }

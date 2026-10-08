@@ -186,6 +186,36 @@ import Testing
     await model.close()
   }
 
+  @Test func hostPreparesTheDraftWhileTheOpenedTableIsStillLoading() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let library = WidgetLibrary(root: root.appendingPathComponent("shared"))
+    let model = WorkspaceModel(
+      localURL: { root.appendingPathComponent("local.sqlite") },
+      credentialStore: MemoryHubCredentials(nil), widgetLibrary: library)
+    await model.open()
+    do {
+      try model.prepareWidgets()
+      try #require(
+        await model.widgets!.setSelections(
+          [NativeWidgetSelection(table: "notes", viewID: nil)], partial: false))
+      let source = try #require(try library.sources().first { $0.kind == .list })
+      let request = try #require(
+        try library.store(workspaceID: source.workspaceID)
+          .stageQuickAdd(id: UUID(), sourceID: source.id, text: "Loading", column: "body"))
+      // Navigation to the source table starts its row reload; the draft must not wait for it.
+      let reload = Task { await model.reload() }
+      let editor = try await model.prepareQuickAdd(request)
+      await reload.value
+      #expect(editor.draft.values["body"] == "Loading")
+    } catch {
+      await model.close()
+      throw error
+    }
+    await model.close()
+  }
+
   @Test func hostRefusesUnavailableFieldWithoutRemovingPendingInput() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

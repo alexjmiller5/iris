@@ -134,7 +134,10 @@
 		const first = properties[0];
 		if (!first) return;
 		rule = null;
-		group = { ref: null, draft: { match: 'all', rules: [defaultRule(first.col, first.type ?? 'text')] } };
+		group = {
+			ref: null,
+			draft: { match: 'all', rules: [defaultRule(first.col, first.type ?? 'text')] }
+		};
 		editGroup(group.draft);
 		void openEditor();
 	}

@@ -78,7 +78,7 @@ try {
     `(()=>{const e=${named("label", label)};return e?.control??e?.querySelector('input');})()`;
   await cdp.fill(input("Hub address"), server.url.href.replace(/\/$/, ""));
   await cdp.fill(input("Device token"), "fixture");
-  await click("Sync now");
+  await click("Connect");
   await cdp.until(
     `!!(${button("New record")}) && !(${button("New record")}).disabled`,
   );

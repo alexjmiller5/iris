@@ -94,7 +94,7 @@ try {
     `(()=>{const e=${named("label", label)};return e?.control??e?.querySelector('input');})()`;
   await cdp.fill(input("Hub address"), server.url.href.replace(/\/$/, ""));
   await cdp.fill(input("Device token"), "fixture");
-  await click("Sync now");
+  await click("Connect");
   await cdp.until(
     `!!(${button("New record")}) && !(${button("New record")}).disabled`,
   );
@@ -207,7 +207,10 @@ try {
     `(${column("Todo")})?.innerText.includes('Legacy record')===true`,
   );
   await cdp.until(`(${select("Move Legacy record")})?.value==='Todo'`);
-  await click("Sync now");
+  const presentationResync = await cdp.evaluate("new Date().toISOString()");
+  await cdp.until(
+    `(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${js(presentationResync)}`,
+  );
   await expect
     .poll(
       () =>

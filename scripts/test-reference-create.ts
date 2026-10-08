@@ -62,6 +62,8 @@ try {
 	page.setDefaultTimeout(8000);
 	page.on('dialog', (dialog) => void dialog.accept().catch(() => {}));
 	await page.setViewportSize({ width: 1280, height: 960 });
+	// Other agents edit this checkout concurrently; never let dev-server reloads restart the fixture.
+	await page.routeWebSocket(/:\/\/[^/]+\/(\?token=|$)/, () => {});
 	await page.goto(new URL('/', url).href);
 	const cdp = await page.context().newCDPSession(page);
 	await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'all' });
@@ -229,6 +231,8 @@ try {
 		}
 	});
 } finally {
+	for (const page of browser.contexts().flatMap((c) => c.pages()))
+		if (page.url().startsWith(origin)) await page.unrouteAll().catch(() => {});
 	await browser.close();
 	server.stop(true);
 	db.db.close();

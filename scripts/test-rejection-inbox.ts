@@ -61,7 +61,7 @@ await page.addInitScript(() => {
 const summary = () => page.locator(".rejections summary");
 const reviewButtons = () =>
   page.getByRole("button", { name: "Review rejected edit", exact: true });
-const sync = () => page.getByRole("button", { name: "Sync now", exact: true });
+const sync = () => page.getByRole("button", { name: "Connect", exact: true });
 async function leave() {
   const close = page!.getByRole("button", {
     name: "Close record",

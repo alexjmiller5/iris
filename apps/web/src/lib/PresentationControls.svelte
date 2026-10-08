@@ -80,7 +80,9 @@
 				value={value.endDateColumn ?? ''}
 				onchange={(e) => {
 					const { endDateColumn, ...rest } = value;
-					onchange(e.currentTarget.value ? { ...rest, endDateColumn: e.currentTarget.value } : rest);
+					onchange(
+						e.currentTarget.value ? { ...rest, endDateColumn: e.currentTarget.value } : rest
+					);
 				}}
 			>
 				<option value="">No end date</option>{#each dates as p}<option value={p.col}

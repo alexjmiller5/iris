@@ -20,7 +20,7 @@ try{
   network=await page.context().newCDPSession(page);
   await network.send('Network.enable');
   await network.send('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:-1,uploadThroughput:-1});
-  await expect(page.getByText('Device offline - edits stay here',{exact:true})).toBeVisible();
+  await expect(page.getByLabel(/^Sync status: Offline/)).toBeVisible();
   await page.getByRole('button',{name:'New record',exact:true}).click();
   await page.getByRole('textbox',{name:'Title',exact:true}).fill(title);
   await page.getByLabel('Body',{exact:true}).fill('# Local to hub');
@@ -31,7 +31,7 @@ try{
   await expect(page.getByRole('alert')).toHaveCount(0);
   await page.getByRole('button',{name:'Close record',exact:true}).click();
   await expect(page.getByRole('complementary',{name:'Record editor',exact:true})).toHaveCount(0);
-  await expect(page.getByText(/^Pending edits: [1-9]\d*$/)).toBeVisible();
+  await expect(page.locator('[data-pending]:not([data-pending="0"])')).toBeVisible();
   await network.send('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});
   await network.detach();
   network=undefined;

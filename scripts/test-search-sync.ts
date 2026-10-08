@@ -33,7 +33,7 @@ try {
  await page.getByText('Connect to a hub', {exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
  await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
  await page.getByLabel('Device token').fill('fixture');
- const sync = page.getByRole('button', {name:'Sync now', exact:true});
+ const sync = page.getByRole('button', {name:'Connect', exact:true});
  await sync.click();
  await expect(page.getByRole('button', {name:'Find records'})).toBeEnabled({timeout:15000});
  await page.getByRole('button', {name:'widgets', exact:true}).click();

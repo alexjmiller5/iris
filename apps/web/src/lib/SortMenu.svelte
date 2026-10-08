@@ -111,7 +111,8 @@
 						class="grip"
 						aria-label={`Reorder ${label(sort.column)} sort. Use the arrow keys to move it.`}
 						onpointerdown={(e) => startDrag(index, e)}
-						onkeydown={(e) => keyMove(index, e)}><IconGripVertical size={16} aria-hidden="true" /></button
+						onkeydown={(e) => keyMove(index, e)}
+						><IconGripVertical size={16} aria-hidden="true" /></button
 					>
 					<select
 						aria-label={`Sort ${index + 1} property`}
