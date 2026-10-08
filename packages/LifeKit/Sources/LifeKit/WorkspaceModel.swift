@@ -1950,11 +1950,14 @@ final class WorkspaceModel {
         if changed {
           syncDataRevision += 1
           await reload()
-        } else if let status = try? await client.status(),
-          client === self.client, generation == workspaceGeneration
-        {
-          // A quiet periodic round refreshes only the counters behind the pill.
-          syncStatus = status
+        } else {
+          // A quiet round leaves rows alone; coverage and counters can still change.
+          await refreshWriteability()
+          if let status = try? await client.status(), client === self.client,
+            generation == workspaceGeneration
+          {
+            syncStatus = status
+          }
         }
         return true
       } catch {

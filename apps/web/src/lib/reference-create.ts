@@ -30,7 +30,9 @@ export function creationTarget(
 	const table = catalog.tables.find((t) => t.id === source.ref_table);
 	if (!table || table.readOnly || isReadOnlyTable(String(table.id), table)) return null;
 	const display = typeof table.display === 'string' ? table.display : '';
-	const properties = catalog.properties.filter((p) => p.tbl === table.id);
+	const properties = catalog.properties
+		.filter((p) => p.tbl === table.id)
+		.sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.col.localeCompare(b.col));
 	const title = properties.find((p) => p.col === display);
 	if (!title || managed.has(display) || title.derived_by || title.deprecated) return null;
 	return { table: String(table.id), display, properties };

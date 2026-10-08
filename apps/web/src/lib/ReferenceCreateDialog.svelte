@@ -22,6 +22,9 @@
 	let dialog: HTMLDialogElement;
 	$effect(() => {
 		dialog?.showModal();
+		// Start where the user has work to do: the first required field without a value.
+		const first = untrack(() => plan.missing[0]?.col);
+		if (first) dialog?.querySelector<HTMLElement>(`#${CSS.escape(`create-${first}`)}`)?.focus();
 	});
 	const label = (p: Property) =>
 		p.label || p.col.charAt(0).toUpperCase() + p.col.slice(1).replaceAll('_', ' ');
@@ -74,6 +77,7 @@
 
 <style>
 	dialog {
+		margin: auto;
 		width: min(32rem, calc(100vw - 32px));
 		max-height: 90vh;
 		padding: 0;

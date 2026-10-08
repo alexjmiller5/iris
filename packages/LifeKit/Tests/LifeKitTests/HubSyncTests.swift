@@ -313,7 +313,8 @@ struct HubSyncTests {
     HubFixture.state.failPull("notes")
     await model.synchronize()
     #expect(model.canWrite)
-    #expect(model.error?.contains("503") == true)
+    #expect(model.syncError?.contains("503") == true)
+    #expect(model.syncPill.kind == .offline)
     #expect(model.editingUnavailable == nil)
     #expect(model.rows.first?.label == "Allowed")
     _ = try await model.save(

@@ -1,7 +1,17 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
 	import { Virtualizer } from 'virtua/svelte';
-	import { IconPlus, IconCopy, IconTrash, IconRestore } from '@tabler/icons-svelte';
+	import {
+		IconPlus,
+		IconCopy,
+		IconTrash,
+		IconRestore,
+		IconArrowUp,
+		IconArrowDown,
+		IconSortAscending,
+		IconSortDescending
+	} from '@tabler/icons-svelte';
+	import { anchored } from './popover';
 	import type { Property, Row, RowAction, ViewLayoutItem } from 'life-ui-core/client';
 	import type { AttachmentOutbox } from './attachments';
 	import FieldEditor from './FieldEditor.svelte';
@@ -40,7 +50,9 @@
 		actions = [],
 		actionLayout = undefined,
 		canRunAction = false,
-		onaction = async () => {}
+		onaction = async () => {},
+		sortOf = () => null,
+		onsort
 	}: {
 		rows: Row[];
 		selectedIds?: string[];
@@ -69,7 +81,19 @@
 		resolveFile?: RetainedFileResolver;
 		attachments?: AttachmentOutbox;
 		onopenlink?(href: string): Promise<boolean>;
+		/** The column's sort direction in the current view, if it is sorted. */
+		sortOf?: (column: string) => 'asc' | 'desc' | null;
+		/** Column header menu: sort the view by this column. */
+		onsort?: (column: string, direction: 'asc' | 'desc') => void;
 	} = $props();
+	const gridId = $props.id();
+	let headerMenu = $state<HTMLElement>(),
+		headerAnchor = $state<HTMLElement>(),
+		headerColumn = $state('');
+	function sortBy(direction: 'asc' | 'desc') {
+		headerMenu?.hidePopover();
+		onsort?.(headerColumn, direction);
+	}
 	let root: HTMLDivElement, virtualizer: Virtualizer<Row>;
 	let scrollRef: HTMLDivElement | undefined = $state();
 	let cursor = $state<CellKey | null>(null);
@@ -330,6 +354,22 @@
 	</div>
 {/snippet}
 <div bind:this={root} class="record-grid">
+	{#if onsort}<div
+			id={`${gridId}-header-menu`}
+			popover="auto"
+			role="menu"
+			aria-label="Column options"
+			class="header-menu"
+			bind:this={headerMenu}
+			use:anchored={{ anchor: () => headerAnchor }}
+		>
+			<button type="button" role="menuitem" onclick={() => sortBy('asc')}
+				><IconSortAscending size={16} aria-hidden="true" />Sort ascending</button
+			>
+			<button type="button" role="menuitem" onclick={() => sortBy('desc')}
+				><IconSortDescending size={16} aria-hidden="true" />Sort descending</button
+			>
+		</div>{/if}
 	<div bind:this={scrollRef} class="grid-scroll">
 		<table
 			role="grid"
@@ -352,12 +392,38 @@
 							/></th
 						>
 					{/if}
-					{#each gridItems as item, index}<th role="columnheader" class:pinned={index === 0}
-							>{item.kind === 'action'
+					{#each gridItems as item, index}{@const title =
+							item.kind === 'action'
 								? actions.find((a) => a.id === item.id)?.label
 								: item.id === properties[0]?.col && !actionLayout
 									? 'Record'
-									: label(properties.find((p) => p.col === item.id)!)}</th
+									: label(properties.find((p) => p.col === item.id)!)}{@const sorted =
+							item.kind === 'column' ? sortOf(item.id) : null}<th
+							role="columnheader"
+							class:pinned={index === 0}
+							aria-sort={sorted === 'asc'
+								? 'ascending'
+								: sorted === 'desc'
+									? 'descending'
+									: undefined}
+							>{#if onsort && item.kind === 'column'}<button
+									type="button"
+									class="column-menu"
+									aria-haspopup="menu"
+									aria-label={`${title} column options`}
+									popovertarget={`${gridId}-header-menu`}
+									onclick={(e) => {
+										headerColumn = item.id;
+										headerAnchor = e.currentTarget;
+									}}
+									><span>{title}</span>{#if sorted === 'asc'}<IconArrowUp
+											size={14}
+											aria-hidden="true"
+										/>{:else if sorted === 'desc'}<IconArrowDown
+											size={14}
+											aria-hidden="true"
+										/>{/if}</button
+								>{:else}{title}{/if}</th
 						>{/each}</tr
 				></thead
 			>
@@ -547,6 +613,72 @@
 	}
 	th.pinned {
 		background: var(--color-bone);
+	}
+	th:has(.column-menu) {
+		padding: 0;
+	}
+	.column-menu {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		width: 100%;
+		height: 100%;
+		padding: 10px 12px;
+		border: 0;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.column-menu span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.column-menu:hover {
+		background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+	}
+	.column-menu :global(svg) {
+		flex: none;
+		color: var(--color-accent);
+	}
+	.header-menu {
+		position: fixed;
+		inset: auto;
+		margin: 0;
+		min-width: 11rem;
+		padding: 4px;
+		border: 1px solid var(--color-rule);
+		border-radius: 8px;
+		background: var(--color-paper);
+		color: var(--color-ink);
+		box-shadow:
+			0 12px 32px -12px rgb(21 24 28 / 0.28),
+			0 2px 6px rgb(21 24 28 / 0.08);
+	}
+	.header-menu button {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		min-height: 36px;
+		padding: 0 8px;
+		border: 0;
+		border-radius: 6px;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		font-size: 13px;
+		text-align: left;
+		cursor: pointer;
+	}
+	.header-menu button:hover,
+	.header-menu button:focus-visible {
+		background: var(--color-bone);
+	}
+	.header-menu :global(svg) {
+		color: var(--color-muted);
 	}
 	.cursor {
 		box-shadow: inset 0 0 0 2px var(--color-accent);

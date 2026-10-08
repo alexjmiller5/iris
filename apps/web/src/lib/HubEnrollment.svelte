@@ -168,6 +168,10 @@
 		display: block;
 		margin: 0.5rem 0;
 	}
+	details button {
+		width: 100%;
+		margin-top: 0.55rem;
+	}
 	input:focus-visible,
 	button:focus-visible,
 	a:focus-visible,

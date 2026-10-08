@@ -131,6 +131,7 @@ function place(
 	ref: ChipRef | null,
 	clause: Filter | FilterGroup | null
 ): { state: FilterState; ref: ChipRef | null } {
+	if (!clause && !ref) return { state, ref: null };
 	const filters = [...state.filters],
 		groups = [...state.groups];
 	const isGroup = !!clause && 'match' in clause;

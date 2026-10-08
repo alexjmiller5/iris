@@ -60,7 +60,7 @@ try {
 	const page = workspacePage(browser.contexts().flatMap((c) => c.pages()), url);
 	if (!page) throw new Error('Open the dedicated reference-create fixture page first.');
 	page.setDefaultTimeout(8000);
-	page.on('dialog', (dialog) => dialog.accept());
+	page.on('dialog', (dialog) => void dialog.accept().catch(() => {}));
 	await page.setViewportSize({ width: 1280, height: 960 });
 	await page.goto(new URL('/', url).href);
 	const cdp = await page.context().newCDPSession(page);
@@ -89,7 +89,7 @@ try {
 			await editor.getByRole('button', { name: 'Close record', exact: true }).click();
 		await page.getByRole('button', { name: 'meetings', exact: true }).click();
 		await page.getByRole('button', { name: 'Planning sync', exact: true }).click();
-		await expect(editor.getByLabel('Host', { exact: true })).toHaveValue('person-ada');
+		await expect(editor.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Planning sync');
 	}
 	async function check(name: string, run: () => Promise<void>) {
 		try {
@@ -115,20 +115,20 @@ try {
 		await expect(create('Katherine Johnson')).toBeVisible();
 		await shot('offer');
 		await create('Katherine Johnson').click();
-		const host = editor.getByLabel('Host', { exact: true });
-		await expect(host.locator('option:checked')).toHaveText('Katherine Johnson');
+		await expect(
+			editor.getByLabel('Host', { exact: true }).locator('option:checked')
+		).toHaveText('Katherine Johnson');
 		await expect(create('Katherine Johnson')).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'Undo last saved change', exact: true })).toBeEnabled();
 		await shot('created-ref');
 		await editor.getByRole('button', { name: 'Save record', exact: true }).click();
-		await expect(page.getByRole('status').filter({ hasText: 'Saved on this device' })).toBeVisible();
+		await expect(editor.getByText('Edit record / Saved', { exact: true })).toBeVisible();
 		expect(peopleNamed('Katherine Johnson')).toEqual([]);
 		offline = false;
-		await pushed(() => peopleNamed('Katherine Johnson').length === 1);
-		const [person] = peopleNamed('Katherine Johnson');
-		expect(person?.role).toBe('Friend');
-		const meeting = db.db.query("SELECT host FROM meetings WHERE id='meeting-1'").get() as { host: string };
-		expect(meeting.host).toBe(person?.id);
+		const host = () =>
+			(db.db.query("SELECT host FROM meetings WHERE id='meeting-1'").get() as { host: string }).host;
+		await pushed(() => host() === peopleNamed('Katherine Johnson')[0]?.id);
+		expect(peopleNamed('Katherine Johnson')[0]?.role).toBe('Friend');
 	});
 
 	await check('multi_ref creation appends the new id after existing selections', async () => {
@@ -141,7 +141,7 @@ try {
 		]);
 		await shot('created-multi');
 		await editor.getByRole('button', { name: 'Save record', exact: true }).click();
-		await expect(page.getByRole('status').filter({ hasText: 'Saved on this device' })).toBeVisible();
+		await expect(editor.getByText('Edit record / Saved', { exact: true })).toBeVisible();
 		const attendees = () =>
 			(db.db.query("SELECT attendees FROM meetings WHERE id='meeting-1'").get() as { attendees: string })
 				.attendees;
@@ -155,6 +155,7 @@ try {
 		const dialog = page.getByRole('dialog', { name: 'New record', exact: true });
 		await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Initech');
 		await expect(dialog.getByLabel('Domain', { exact: true })).toHaveValue('');
+		await expect(dialog.getByLabel('Domain', { exact: true })).toBeFocused();
 		await shot('handoff');
 		await dialog.getByRole('button', { name: 'Save record', exact: true }).click();
 		await expect(dialog.getByRole('alert')).toContainText('domain');
@@ -166,7 +167,7 @@ try {
 		);
 		await shot('handoff-saved');
 		await editor.getByRole('button', { name: 'Save record', exact: true }).click();
-		await expect(page.getByRole('status').filter({ hasText: 'Saved on this device' })).toBeVisible();
+		await expect(editor.getByText('Edit record / Saved', { exact: true })).toBeVisible();
 	});
 
 	await check('cancel leaves the source draft and the target table untouched', async () => {

@@ -96,6 +96,9 @@
 	import ColumnSettings from '$lib/ColumnSettings.svelte';
 	import SavedViews from '$lib/SavedViews.svelte';
 	import ViewControls from '$lib/ViewControls.svelte';
+	import FilterBar from '$lib/FilterBar.svelte';
+	import SortMenu from '$lib/SortMenu.svelte';
+	import { createViewAutosave } from '$lib/saved-views';
 	import { queryDefinition } from '$lib/view-controls';
 	import { calendarContext } from '$lib/calendar-context';
 	import { untrack } from 'svelte';
@@ -381,8 +384,7 @@
 		return {
 			table: table || null,
 			view: chosenView?.id ?? null,
-			row: editing && selected ? String(selected.id) : null,
-			...(!chosenView || viewModified ? { state: viewDefinition() } : {})
+			row: editing && selected ? String(selected.id) : null
 		};
 	}
 	async function reflectLocation(replace = false) {
@@ -416,7 +418,7 @@
 			catalog = resolved.catalog;
 			table = resolved.table;
 			graphVisible = false;
-			applyView(resolved.view, resolved.definition ?? undefined);
+			applyView(resolved.view);
 			defaultViewNotice = resolved.defaultNotice;
 			if (resolved.row) trash = !!resolved.row.deleted_at;
 			if (resolved.row) edit(resolved.row, false);
@@ -460,9 +462,7 @@
 	let skipped = $state<string[]>([]),
 		maxRows = $state(50000),
 		included = $state<Record<string, boolean>>({});
-	let sort = $state('id'),
-		descending = $state(false),
-		offset = $state(0);
+	let offset = $state(0);
 	let columns = $state<string[] | null>(null),
 		widths = $state<Record<string, number>>({});
 	let savedViews = $state<SavedViewRecord[]>([]),
@@ -471,15 +471,12 @@
 		viewBaseline = $state('');
 	let viewVersion = 0,
 		viewsRequest = 0;
-	let importedSort = $state<Sort[] | null>(null);
+	let sorts = $state<Sort[]>([]);
 	let filterGroups = $state<FilterGroup[]>([]),
 		actions = $state<RowAction[]>([]),
 		actionLayout = $state<ViewLayoutItem[] | undefined>(),
 		timeZone = $state('UTC'),
 		dayStartMinutes = $state(0);
-	const sortClauses = $derived(
-		importedSort ?? [{ column: sort, direction: descending ? ('desc' as const) : ('asc' as const) }]
-	);
 	let references = $state<Record<string, Row[]>>({}),
 		referenceSearch = $state<Record<string, string>>({});
 	let optionValues = $state<Record<string, string[]>>({});
@@ -489,33 +486,15 @@
 	let exportContext = $state('');
 	let exportRefreshes = $state(0);
 	const referenceRequests: Record<string, number> = {};
-	let filterColumn = $state(''),
-		filterOp = $state<Filter['op']>('eq'),
-		filterValue = $state(''),
-		filters = $state<Filter[]>([]);
+	let filters = $state<Filter[]>([]);
 	const currentExportContext = $derived(
-		JSON.stringify([table, search, trash, filters, sortClauses, offset])
+		JSON.stringify([table, search, trash, filters, sorts, offset])
 	);
-	const filterLabels: Record<Filter['op'], string> = {
-		eq: 'is',
-		ne: 'is not',
-		empty: 'is empty',
-		not_empty: 'is not empty',
-		contains: 'contains',
-		gt: 'greater than',
-		gte: 'at least',
-		lt: 'less than',
-		lte: 'at most'
-	};
-	const describeFilter = (filter: Filter) =>
-		`${properties.find((p) => p.col === filter.column)?.label || filter.column} ${filterLabels[filter.op]}${filter.relative === 'today' ? ' Today' : filter.value === undefined ? '' : ` ${filter.value}`}`;
-	const system = new Set(['id', 'created_at', 'updated_at', 'deleted_at', 'hub_at']);
 	const properties = $derived(
 		catalog.properties
 			.filter((p) => p.tbl === table && !system.has(p.col))
 			.sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.col.localeCompare(b.col))
 	);
-	const filterType = $derived(properties.find((p) => p.col === filterColumn)?.type ?? 'text');
 	const current = $derived(catalog.tables.find((t) => t.id === table));
 	const display = $derived(typeof current?.display === 'string' ? current.display : null);
 	const viewProperties = $derived([
@@ -742,8 +721,7 @@
 			];
 		}
 		widths = sizes;
-		void reflectLocation(true);
-		void loadRows().catch((e) => (error = message(e)));
+		viewChanged();
 	}
 	const rules = $derived(catalog.rules.filter((r) => r.tbl === table || r.scope === 'estate'));
 	const readOnly = $derived(isReadOnlyTable(table, current));
@@ -1326,7 +1304,7 @@
 				table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
 				const target = table,
 					version = editorVersion;
-				const preferred = await workspace.request('getViewDefault', { table: target });
+				const preferred = await openDefaultView(workspace, target);
 				if (database !== workspace || table !== target || editorVersion !== version) return;
 				applyView(preferred.view);
 				defaultViewNotice = preferred.unavailable;
@@ -1338,6 +1316,7 @@
 		}
 	}
 	function resetView() {
+		void viewAutosave.flush();
 		exportSnapshot = null;
 		undoPaused = false;
 		gridDraft = null;
@@ -1359,11 +1338,9 @@
 		search = '';
 		trash = false;
 		offset = 0;
-		sort = 'id';
-		descending = false;
 		columns = null;
 		widths = {};
-		importedSort = null;
+		sorts = [];
 		filterGroups = [];
 		actions = [];
 		actionLayout = undefined;
@@ -1383,9 +1360,6 @@
 		actionReferenceSearch = {};
 		viewsRequest++;
 		filters = [];
-		filterColumn = '';
-		filterOp = 'eq';
-		filterValue = '';
 		error = '';
 		notice = '';
 	}
@@ -1394,6 +1368,7 @@
 		showFind(false);
 		busy = true;
 		connectedHub = null;
+		await viewAutosave.flush();
 		resetView();
 		try {
 			database?.close();
@@ -1474,13 +1449,72 @@
 			...(actionLayout ? { layout: actionLayout } : {}),
 			columns: [...new Set([display ?? 'id', ...visibleColumns])],
 			filters,
-			sort: sortClauses,
+			sort: sorts,
 			search,
 			trash,
 			widths
 		});
 	}
-	const viewModified = $derived(!!chosenView && JSON.stringify(viewDefinition()) !== viewBaseline);
+	/** What autosave writes: search and trash are browsing state, so the stored
+	 * values are kept as they are. */
+	function savedDefinition(): SavedViewDefinition {
+		const { search: _search, trash: _trash, ...live } = viewDefinition();
+		const stored = chosenView?.definition;
+		return {
+			...live,
+			...(stored?.search !== undefined ? { search: stored.search } : {}),
+			...(stored?.trash !== undefined ? { trash: stored.trash } : {})
+		};
+	}
+	const viewModified = $derived(
+		!!chosenView && JSON.stringify(savedDefinition()) !== viewBaseline
+	);
+	// The latest revision this tab wrote for each view, so back-to-back saves
+	// never present a stale expectedUpdatedAt.
+	const viewRevisions = new Map<string, string>();
+	const viewAutosave = createViewAutosave(
+		() => ({
+			workspace: database,
+			view: chosenView,
+			definition: savedDefinition(),
+			baseline: viewBaseline
+		}),
+		async ({ workspace, view, definition, baseline }) => {
+			const text = JSON.stringify(definition);
+			if (!workspace || !view?.updated_at || text === baseline) return;
+			const saved = await workspace.request('saveView', {
+				table: view.tbl,
+				name: view.name,
+				definition,
+				id: view.id,
+				expectedUpdatedAt: viewRevisions.get(view.id) ?? view.updated_at
+			});
+			if (saved.updated_at) viewRevisions.set(saved.id, saved.updated_at);
+			if (database !== workspace) return;
+			savedViews = savedViews.map((v) => (v.id === saved.id ? saved : v));
+			if (chosenView?.id === saved.id) {
+				chosenView = saved;
+				viewBaseline = text;
+			}
+		},
+		(e) => (error = `The view was not saved: ${message(e)}`)
+	);
+	onDestroy(() => viewAutosave.dispose());
+	/** Plain table navigation opens the table's default view, creating it when
+	 * the table has none. A failure falls back to reading the preference. */
+	async function openDefaultView(workspace: WorkspaceDatabase, target: string) {
+		try {
+			return await workspace.request('ensureDefaultView', { table: target });
+		} catch {
+			return workspace.request('getViewDefault', { table: target });
+		}
+	}
+	/** A view-definition change: apply it to the query now and save it soon. */
+	function viewChanged() {
+		offset = 0;
+		viewAutosave.change();
+		loadRows().catch((e) => (error = message(e)));
+	}
 	async function editCatalog<M extends 'saveCatalogProperty' | 'saveCatalogRule'>(
 		method: M,
 		args: M extends 'saveCatalogProperty' ? SaveCatalogPropertyArgs : SaveCatalogRuleArgs
@@ -1542,7 +1576,9 @@
 		}
 		return true;
 	}
-	function applyView(view: SavedViewRecord | null, transient?: SavedViewDefinition) {
+	function applyView(view: SavedViewRecord | null) {
+		// Save the outgoing view before its settings are replaced.
+		void viewAutosave.flush();
 		gridDraft = null;
 		gridContext++;
 		editorVersion++;
@@ -1553,7 +1589,7 @@
 		draft = {};
 		savedDraft = '';
 		bodyFailure = '';
-		const definition = transient ?? view?.definition;
+		const definition = view?.definition;
 		columns = definition?.columns?.filter((col) => col !== (display ?? 'id')) ?? null;
 		widths = { ...definition?.widths };
 		filters = definition?.filters?.map((filter) => ({ ...filter })) ?? [];
@@ -1568,16 +1604,11 @@
 		loadBoardOptions();
 		search = definition?.search ?? '';
 		trash = definition?.trash ?? false;
-		importedSort = definition?.sort?.map((clause) => ({ ...clause })) ?? null;
-		sort = importedSort?.[0]?.column ?? 'id';
-		descending = importedSort?.[0]?.direction === 'desc';
+		sorts = definition?.sort?.map((clause) => ({ ...clause })) ?? [];
 		offset = 0;
-		filterColumn = '';
-		filterValue = '';
 		chosenView = view ?? null;
-		viewBaseline = transient
-			? JSON.stringify(view?.definition ?? {})
-			: JSON.stringify(viewDefinition());
+		if (view?.updated_at) viewRevisions.set(view.id, view.updated_at);
+		viewBaseline = JSON.stringify(savedDefinition());
 		error = '';
 	}
 	async function setDefaultView(id: string | null, related = false) {
@@ -1618,10 +1649,11 @@
 		const workspace = database,
 			target = table,
 			version = viewVersion;
+		await viewAutosave.flush();
 		const selectedView = chosenView;
 		if (update && !selectedView?.updated_at)
 			throw new Error('Reopen this view before updating it.');
-		const definition = viewDefinition();
+		const definition = savedDefinition();
 		busy = true;
 		writing = true;
 		try {
@@ -1629,8 +1661,14 @@
 				table: target,
 				name,
 				definition,
-				...(update ? { id: selectedView!.id, expectedUpdatedAt: selectedView!.updated_at! } : {})
+				...(update
+					? {
+							id: selectedView!.id,
+							expectedUpdatedAt: viewRevisions.get(selectedView!.id) ?? selectedView!.updated_at!
+						}
+					: {})
 			});
+			if (saved.updated_at) viewRevisions.set(saved.id, saved.updated_at);
 			if (workspace !== database || table !== target || version !== viewVersion) return;
 			chosenView = saved;
 			viewBaseline = JSON.stringify(definition);
@@ -1648,6 +1686,7 @@
 		const workspace = database,
 			target = table,
 			version = viewVersion;
+		await viewAutosave.flush();
 		const selectedView = chosenView;
 		if (id !== selectedView?.id || !selectedView.updated_at)
 			throw new Error('Reopen this view before deleting it.');
@@ -1655,9 +1694,14 @@
 		busy = true;
 		writing = true;
 		try {
-			await workspace.request('deleteView', { id, expectedUpdatedAt: selectedView.updated_at });
+			await workspace.request('deleteView', {
+				id,
+				expectedUpdatedAt: viewRevisions.get(id) ?? selectedView.updated_at
+			});
+			const fallback = await openDefaultView(workspace, target);
 			if (workspace !== database || table !== target || version !== viewVersion) return;
-			applyView(null);
+			applyView(fallback.view);
+			defaultViewNotice = fallback.unavailable;
 			await refresh();
 			await reflectLocation();
 			notice = 'View deleted; records kept';
@@ -1667,40 +1711,6 @@
 				writing = false;
 			}
 		}
-	}
-	async function applyFilter() {
-		let value: Filter['value'] = filterValue;
-		if (!['empty', 'not_empty'].includes(filterOp)) {
-			if (filterType === 'bool') {
-				if (!['true', 'false'].includes(filterValue)) {
-					error = 'Choose True or False for this filter.';
-					return;
-				}
-				value = filterValue === 'true';
-			} else if (['number', 'int'].includes(filterType)) {
-				if (!filterValue.trim() || !Number.isFinite(Number(filterValue))) {
-					error = 'Enter a number for this filter.';
-					return;
-				}
-				value = Number(filterValue);
-			}
-		}
-		error = '';
-		filters = filterColumn
-			? [
-					...filters,
-					{
-						column: filterColumn,
-						op: filterOp,
-						...(['empty', 'not_empty'].includes(filterOp) ? {} : { value })
-					}
-				]
-			: [];
-		await find();
-	}
-	async function removeFilter(index?: number) {
-		filters = index === undefined ? [] : filters.filter((_, i) => i !== index);
-		await find();
 	}
 	function edit(row: Row | null, reflect = true, discardConfirmed = false): boolean {
 		if (!discardConfirmed && !discard()) return false;
@@ -1859,6 +1869,14 @@
 		}
 	}
 	async function undoLastSavedChange() {
+		if (!database || busy || navigationLoading) return;
+		if ($viewAutosave.pending) {
+			// Undo reverts the latest view edit, so it must be saved first.
+			const workspace = database;
+			await viewAutosave.flush();
+			if (database !== workspace) return;
+			undoAction = (await workspace.request('undoStatus', {})).action;
+		}
 		if (!database || !undoAction || busy || navigationLoading) return;
 		const workspace = database,
 			action = undoAction;
@@ -2257,7 +2275,7 @@
 		catalog = resolved.catalog;
 		table = resolved.table;
 		graphVisible = false;
-		applyView(resolved.view, resolved.definition ?? undefined);
+		applyView(resolved.view);
 		defaultViewNotice = resolved.defaultNotice;
 		if (resolved.row) {
 			trash = !!resolved.row.deleted_at;
@@ -2375,7 +2393,13 @@
 />
 <svelte:window
 	onkeydown={(event) => {
-		if (savedUndoShortcut(event) && undoAction && !busy && !navigationLoading && !bodySaving) {
+		if (
+			savedUndoShortcut(event) &&
+			(undoAction || $viewAutosave.pending) &&
+			!busy &&
+			!navigationLoading &&
+			!bodySaving
+		) {
 			event.preventDefault();
 			void undoLastSavedChange();
 			return;
@@ -2392,8 +2416,10 @@
 	}}
 	ononline={() => (online = true)}
 	onoffline={() => (online = false)}
+	onpagehide={() => void viewAutosave.flush()}
 	onbeforeunload={(e) => {
-		if (dirty || writing || bodySaving) {
+		if (dirty || writing || bodySaving || $viewAutosave.pending) {
+			void viewAutosave.flush();
 			e.preventDefault();
 			e.returnValue = '';
 		}
@@ -2576,17 +2602,19 @@
 							token = '';
 						}}>Switch workspace</button
 					>
-					<SyncStatus
-						{demo}
-						connected={!!connectedHub}
-						{online}
-						syncing={connecting || syncSlow}
-						pending={pendingEdits}
-						rejected={rejectedCount}
-						{lastSync}
-						error={syncError}
-						onaction={syncAction}
-					/>
+					<div class="pill-dock">
+						<SyncStatus
+							{demo}
+							connected={!!connectedHub}
+							{online}
+							syncing={connecting || syncSlow}
+							pending={pendingEdits}
+							rejected={rejectedCount}
+							{lastSync}
+							error={syncError}
+							onaction={syncAction}
+						/>
+					</div>
 				</div>
 			</aside>
 			<main class="records">
@@ -2776,7 +2804,7 @@
 						/>
 						<ViewControls
 							properties={viewProperties}
-							sorts={sortClauses}
+							sorts={sorts}
 							{filters}
 							groups={filterGroups}
 							{actions}
@@ -3247,6 +3275,11 @@
 	}
 	.tables {
 		min-width: 0;
+		box-sizing: border-box;
+		position: sticky;
+		top: 0;
+		height: 100svh;
+		overflow-y: auto;
 		background: var(--color-paper);
 		border-right: 1px solid var(--color-rule);
 		padding: 24px 16px;
@@ -3297,6 +3330,14 @@
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
+	}
+	/* The one sync status stays in view while the sidebar scrolls. */
+	.pill-dock {
+		position: sticky;
+		bottom: -24px;
+		margin: 0 -16px -24px;
+		padding: 10px 16px 14px;
+		background: var(--color-paper);
 	}
 	.connect {
 		font-size: 12px;
@@ -3553,6 +3594,9 @@
 			grid-template-rows: auto 1fr;
 		}
 		.tables {
+			position: static;
+			height: auto;
+			overflow: visible;
 			padding: 16px;
 			border-right: 0;
 			border-bottom: 1px solid var(--color-rule);

@@ -1,21 +1,12 @@
 <script lang="ts">
-	import type {
-		Property,
-		Sort,
-		FilterGroup,
-		RowAction,
-		ViewLayoutItem,
-		Filter
-	} from 'life-ui-core/client';
-	import ViewFilter from './ViewFilter.svelte';
+	import type { Property, RowAction, ViewLayoutItem } from 'life-ui-core/client';
 	import FieldEditor from './FieldEditor.svelte';
-	import { editSort, parseDayStart } from './view-controls';
+	import { parseDayStart } from './view-controls';
 	import { cellPatch, rawValue } from './record-grid';
+	// View options that are not filters or sorts. Changes apply and save like
+	// every other view change.
 	let {
 		properties,
-		sorts,
-		filters = [],
-		groups,
 		actions,
 		layout,
 		timeZone,
@@ -28,9 +19,6 @@
 		onchange
 	}: {
 		properties: Property[];
-		sorts: Sort[];
-		filters?: Filter[];
-		groups: FilterGroup[];
 		actions: RowAction[];
 		layout?: ViewLayoutItem[];
 		timeZone: string;
@@ -41,9 +29,6 @@
 		onactionsearch?: (action: RowAction, property: Property, query: string) => void;
 		disabled?: boolean;
 		onchange: (patch: {
-			sorts?: Sort[];
-			groups?: FilterGroup[];
-			filters?: Filter[];
 			actions?: RowAction[];
 			layout?: ViewLayoutItem[];
 			timeZone?: string;
@@ -72,9 +57,6 @@
 		[next[index], next[index + delta]] = [next[index + delta], next[index]];
 		return next;
 	}
-	function group(index: number, patch: Partial<FilterGroup>) {
-		onchange({ groups: groups.map((g, i) => (i === index ? { ...g, ...patch } : g)) });
-	}
 	function action(index: number, patch: Partial<RowAction>) {
 		onchange({ actions: actions.map((a, i) => (i === index ? { ...a, ...patch } : a)) });
 	}
@@ -88,122 +70,11 @@
 			error = (e as Error).message;
 		}
 	}
-	function newRule() {
-		return { column: properties[0]?.col ?? 'id', op: 'empty' as const };
-	}
 </script>
 
 <fieldset {disabled} class="view-controls">
-	<legend>View options</legend>
 	<details>
-		<summary>Sort order ({sorts.length})</summary>
-		<div class="sorts" aria-label="Sort order">
-			{#each sorts as sort, index}
-				<div class="line">
-					<select
-						aria-label={index === 0 ? 'Sort by' : `Sort by ${index + 1}`}
-						value={sort.column}
-						onchange={(e) =>
-							onchange({
-								sorts: editSort(sorts, index, { column: e.currentTarget.value, mode: undefined })
-							})}
-						>{#each properties as p}<option value={p.col}>Sort by {p.label || p.col}</option
-							>{/each}</select
-					>
-					<button
-						type="button"
-						onclick={() =>
-							onchange({
-								sorts: editSort(sorts, index, {
-									direction: sort.direction === 'asc' ? 'desc' : 'asc'
-								})
-							})}>{sort.direction === 'asc' ? 'Ascending' : 'Descending'}</button
-					>
-					{#if ['select', 'multi_select'].includes(properties.find((p) => p.col === sort.column)?.type ?? '')}<select
-							aria-label={`Sort comparison ${index + 1}`}
-							value={sort.mode ?? 'value'}
-							onchange={(e) =>
-								onchange({
-									sorts: editSort(sorts, index, { mode: e.currentTarget.value as Sort['mode'] })
-								})}
-							><option value="value">Value order</option><option value="options"
-								>Option order</option
-							></select
-						>{/if}
-					<button
-						type="button"
-						aria-label={`Move sort ${index + 1} up`}
-						disabled={index === 0}
-						onclick={() => onchange({ sorts: move(sorts, index, -1) })}>Move up</button
-					>
-					<button
-						type="button"
-						aria-label={`Remove sort ${index + 1}`}
-						onclick={() => onchange({ sorts: sorts.filter((_, i) => i !== index) })}>Remove</button
-					>
-				</div>
-			{/each}
-			<button
-				type="button"
-				disabled={sorts.length >= 16}
-				onclick={() =>
-					onchange({
-						sorts: [
-							...sorts,
-							{
-								column: properties.find((p) => !sorts.some((s) => s.column === p.col))?.col ?? 'id',
-								direction: 'asc'
-							}
-						]
-					})}>Add sort</button
-			>
-		</div>
-	</details>
-	<details>
-		<summary>Filter groups{groups.length ? ` (${groups.length})` : ''}</summary>
-		<p>Match every group, together with the individual filters below.</p>
-		{#if filters.length}<fieldset>
-				<legend>Match all individual filters</legend>{#each filters as filter, index}<ViewFilter
-						{filter}
-						{properties}
-						onchange={(f) => onchange({ filters: filters.map((v, i) => (i === index ? f : v)) })}
-						onremove={() => onchange({ filters: filters.filter((_, i) => i !== index) })}
-					/>{/each}
-			</fieldset>{/if}
-		{#each groups as g, index}
-			<fieldset>
-				<legend>Group {index + 1}</legend>
-				<select
-					aria-label={`Group ${index + 1} match`}
-					value={g.match}
-					onchange={(e) => group(index, { match: e.currentTarget.value as FilterGroup['match'] })}
-					><option value="all">Match all</option><option value="any">Match any</option></select
-				>
-				{#each g.filters as filter, rule}<ViewFilter
-						{filter}
-						{properties}
-						onchange={(f) =>
-							group(index, { filters: g.filters.map((v, i) => (i === rule ? f : v)) })}
-						onremove={() => group(index, { filters: g.filters.filter((_, i) => i !== rule) })}
-					/>{/each}
-				<button
-					type="button"
-					disabled={g.filters.length >= 64}
-					onclick={() => group(index, { filters: [...g.filters, newRule()] })}>Add rule</button
-				>
-				<button
-					type="button"
-					onclick={() => onchange({ groups: groups.filter((_, i) => i !== index) })}
-					>Remove group</button
-				>
-			</fieldset>
-		{/each}
-		<button
-			type="button"
-			disabled={groups.length >= 16}
-			onclick={() => onchange({ groups: [...groups, { match: 'any', filters: [newRule()] }] })}
-			>Add filter group</button
-		>
+		<summary>Today</summary>
 		<label
 			>Today timezone <input
 				aria-label="Today timezone"
@@ -231,7 +102,7 @@
 	</details>
 	<details>
 		<summary>Row actions{actions.length ? ` (${actions.length})` : ''}</summary>
-		<p>Save the view to use these buttons. Each button applies its saved values to one record.</p>
+		<p>Each button applies its saved values to one record.</p>
 		{#each actions as a, index (a.id)}
 			<fieldset>
 				<legend>Action {index + 1}</legend>

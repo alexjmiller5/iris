@@ -18,8 +18,8 @@ const people: Property[] = [
 	{ tbl: 'people', col: 'email', type: 'email' }
 ];
 const companies: Property[] = [
-	{ tbl: 'companies', col: 'name', type: 'text', required: 1 },
-	{ tbl: 'companies', col: 'domain', type: 'text', required: 1 },
+	{ tbl: 'companies', col: 'domain', type: 'text', required: 1, sort: 1 },
+	{ tbl: 'companies', col: 'name', type: 'text', required: 1, sort: 0 },
 	{ tbl: 'companies', col: 'score', type: 'int', derived_by: 'http:score' }
 ];
 const catalog = {

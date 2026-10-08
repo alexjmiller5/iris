@@ -93,7 +93,9 @@ struct EnrollmentConnectionTests {
     await model.resumeConnection()
     #expect(model.connection == stored)
     #expect(model.isReplica)
-    #expect(model.error != nil, "The failed sync should remain visible alongside cached records")
+    #expect(
+      model.syncPill.kind == .offline,
+      "The failed sync should remain visible alongside cached records")
     model.table = "notes"
     await model.reload()
     #expect(!model.rows.isEmpty)
@@ -174,7 +176,8 @@ struct EnrollmentConnectionTests {
     await task.value
     #expect(model.client === replacement && model.rows == rows)
     #expect(
-      model.error == nil, "An old connection's failure must not become the new workspace's error")
+      model.error == nil && model.syncError == nil,
+      "An old connection's failure must not become the new workspace's error")
     #expect(!model.syncing)
     try await old?.close()
     await model.close()

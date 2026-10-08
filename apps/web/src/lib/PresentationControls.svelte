@@ -1,5 +1,14 @@
 <script lang="ts">
 	import type { Property, ViewPresentation } from 'life-ui-core/client';
+	import {
+		IconCalendar,
+		IconCalendarDue,
+		IconCalendarMonth,
+		IconLayoutColumns,
+		IconLayoutGrid,
+		IconPhoto,
+		IconTable
+	} from '@tabler/icons-svelte';
 	let {
 		value,
 		properties,
@@ -21,6 +30,14 @@
 	);
 	const groups = $derived(properties.filter((p) => p.type === 'select' && !p.deprecated));
 	const label = (p: Property) => p.label || p.col;
+	const LayoutIcon = $derived(
+		{
+			table: IconTable,
+			calendar: IconCalendarMonth,
+			gallery: IconLayoutGrid,
+			board: IconLayoutColumns
+		}[value.kind]
+	);
 	function kind(kind: ViewPresentation['kind']) {
 		onchange(
 			kind === 'calendar'
@@ -33,51 +50,47 @@
 </script>
 
 <div class="controls">
-	<label
-		>Layout<select
+	<span class="select"
+		><LayoutIcon size={16} aria-hidden="true" /><select
 			aria-label="View layout"
 			{disabled}
 			value={value.kind}
 			onchange={(e) => kind(e.currentTarget.value as ViewPresentation['kind'])}
 		>
-			<option value="table">Table</option><option value="calendar" disabled={!dates.length}
-				>Calendar</option
-			>
-			<option value="gallery">Gallery</option><option value="board" disabled={!groups.length}
-				>Board</option
-			>
-		</select></label
+			<option value="table">Table</option>
+			<option value="calendar" disabled={!dates.length}>Calendar</option>
+			<option value="gallery">Gallery</option>
+			<option value="board" disabled={!groups.length}>Board</option>
+		</select></span
 	>
 	{#if value.kind === 'calendar'}
-		<label
-			>Date<select
+		<span class="select"
+			><IconCalendar size={16} aria-hidden="true" /><select
 				aria-label="Calendar date property"
 				{disabled}
 				value={value.dateColumn}
 				onchange={(e) => onchange({ ...value, dateColumn: e.currentTarget.value })}
 				>{#each dates as p}<option value={p.col}>{label(p)}</option>{/each}</select
-			></label
+			></span
 		>
-		<label
-			>End date<select
+		<span class="select"
+			><IconCalendarDue size={16} aria-hidden="true" /><select
 				aria-label="Calendar end date property"
 				{disabled}
 				value={value.endDateColumn ?? ''}
 				onchange={(e) => {
 					const { endDateColumn, ...rest } = value;
-					onchange(
-						e.currentTarget.value ? { ...rest, endDateColumn: e.currentTarget.value } : rest
-					);
+					onchange(e.currentTarget.value ? { ...rest, endDateColumn: e.currentTarget.value } : rest);
 				}}
 			>
-				<option value="">Single date</option>{#each dates as p}<option value={p.col}
-						>{label(p)}</option
+				<option value="">No end date</option>{#each dates as p}<option value={p.col}
+						>Ends {label(p)}</option
 					>{/each}
-			</select></label
+			</select></span
 		>
 	{:else if value.kind === 'gallery'}
-		<label
-			>Cover<select
+		<span class="select"
+			><IconPhoto size={16} aria-hidden="true" /><select
 				aria-label="Gallery cover property"
 				{disabled}
 				value={value.coverColumn ?? ''}
@@ -87,36 +100,53 @@
 				}}
 			>
 				<option value="">No cover</option>{#each covers as p}<option value={p.col}
-						>{label(p)}</option
+						>Cover: {label(p)}</option
 					>{/each}
-			</select></label
+			</select></span
 		>
 	{:else if value.kind === 'board'}
-		<label
-			>Group by<select
+		<span class="select"
+			><IconLayoutColumns size={16} aria-hidden="true" /><select
 				aria-label="Board group property"
 				{disabled}
 				value={value.groupColumn}
 				onchange={(e) => onchange({ ...value, groupColumn: e.currentTarget.value })}
-				>{#each groups as p}<option value={p.col}>{label(p)}</option>{/each}</select
-			></label
+				>{#each groups as p}<option value={p.col}>Group by {label(p)}</option>{/each}</select
+			></span
 		>
 	{/if}
 </div>
 
 <style>
 	.controls {
-		display: flex;
-		gap: 12px;
-		flex-wrap: wrap;
-		margin: 12px 0;
+		display: contents;
 	}
-	label {
-		display: grid;
-		gap: 4px;
-		font-size: 0.8rem;
+	.select {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		min-width: 0;
+	}
+	.select :global(svg) {
+		position: absolute;
+		left: 0.5625rem;
+		color: var(--color-muted);
+		pointer-events: none;
 	}
 	select {
-		min-width: 140px;
+		min-height: 2.25rem;
+		max-width: 12rem;
+		padding: 0 0.5rem 0 1.875rem;
+		border: 1px solid var(--color-rule);
+		border-radius: var(--radius-field);
+		background: var(--color-paper);
+		color: var(--color-ink);
+		font: inherit;
+		font-size: 0.8125rem;
+		cursor: pointer;
+	}
+	select:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 </style>

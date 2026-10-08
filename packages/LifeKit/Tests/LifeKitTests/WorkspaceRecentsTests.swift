@@ -147,7 +147,7 @@ struct WorkspaceRecentsTests {
     for (index, endpoint) in ["https://first.invalid", "https://second.invalid"].enumerated() {
       credentials.value = HubCredentials(endpoint: endpoint, token: "fixture-device")
       await model.resumeConnection()
-      #expect(model.isReplica && model.error != nil)
+      #expect(model.isReplica && model.syncError != nil)
       let recents = try #require(model.recents)
       await recents.refresh()
       #expect(recents.destinations == [expected[index]])

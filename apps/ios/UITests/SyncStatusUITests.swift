@@ -2,7 +2,8 @@ import XCTest
 
 @MainActor
 final class SyncStatusUITests: XCTestCase {
-  func testStatusShowsProgressAndCancelsHeldSyncWithoutClosingWorkspace() async throws {
+  /// One pill reports every automatic-sync state; no surface offers a manual sync.
+  func testPillReportsSyncingSyncedOfflinePendingAndRejectedWithoutSyncButtons() async throws {
     continueAfterFailure = false
     let env = ProcessInfo.processInfo.environment
     try XCTSkipUnless(
@@ -17,7 +18,11 @@ final class SyncStatusUITests: XCTestCase {
         from: XCTUnwrap(URL(string: endpoint + "/fixture/" + action)))
       return (try JSONSerialization.jsonObject(with: data) as? [String: Bool])?["waiting"] ?? false
     }
-    addTeardownBlock { _ = try await gate("release") }
+    addTeardownBlock {
+      _ = try await gate("release")
+      _ = try await gate("mode/offline")
+    }
+    _ = try await gate("mode/accept")
     _ = try await gate("hold")
     let app = XCUIApplication()
     app.launchArguments = ["--normal-startup"]
@@ -31,24 +36,51 @@ final class SyncStatusUITests: XCTestCase {
       try await Task.sleep(for: .milliseconds(50))
     }
     XCTAssertTrue(waiting)
-    app.buttons["workspace-status"].tap()
-    let cancel = app.buttons["cancel-sync"]
-    XCTAssertTrue(cancel.waitForExistence(timeout: 5))
-    XCTAssertTrue(app.staticTexts["sync-phase"].exists)
-    XCTAssertTrue(app.staticTexts["sync-elapsed"].exists)
-    XCTAssertFalse(app.buttons["sync-now"].isEnabled)
-    capture(app, "sync-progress-held")
-    cancel.tap()
-    XCTAssertTrue(cancel.waitForNonExistence(timeout: 10))
-    XCTAssertTrue(app.buttons["sync-now"].isEnabled)
-    XCTAssertFalse(app.staticTexts["Needs attention"].exists)
-    let serverStillHeld = try await gate("status")
-    XCTAssertTrue(
-      serverStillHeld, "Client cancellation must finish before the controlled server release")
-    capture(app, "sync-cancelled-workspace-retained")
+    let pill = app.navigationBars["notes"].buttons["workspace-status"]
+    expect(pill, "Syncing")
+    capture(app, "pill-syncing")
+    pill.tap()
+    XCTAssertTrue(app.staticTexts["sync-phase"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.buttons["cancel-sync"].exists)
+    XCTAssertFalse(app.buttons["sync-now"].exists)
+    capture(app, "status-sheet-syncing")
     app.buttons["status-done"].tap()
-    XCTAssertTrue(app.navigationBars["notes"].exists)
-    XCTAssertTrue(app.buttons["quick-find"].isEnabled)
+
+    _ = try await gate("release")
+    expect(pill, "Synced")
+    capture(app, "pill-synced")
+
+    _ = try await gate("mode/offline")
+    expect(pill, "Offline")
+    app.buttons["inline-property-title"].firstMatch.tap()
+    let title = app.textFields["field-title"]
+    XCTAssertTrue(title.waitForExistence(timeout: 5))
+    title.tap()
+    title.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+    title.typeText(" kept offline")
+    app.buttons["inline-save"].tap()
+    expect(pill, "Offline · 1 pending")
+    XCTAssertFalse(app.staticTexts["Saving…"].exists)
+    capture(app, "pill-offline-pending")
+
+    // Returning to the foreground retries at once instead of waiting out the backoff.
+    _ = try await gate("mode/reject")
+    XCUIDevice.shared.press(.home)
+    app.activate()
+    expect(pill, "1 rejected")
+    capture(app, "pill-rejected")
+    pill.tap()
+    XCTAssertTrue(app.navigationBars["Issues"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.buttons["refresh-rejected-edits"].exists)
+    capture(app, "pill-opens-rejection-inbox")
+  }
+
+  private func expect(_ pill: XCUIElement, _ value: String) {
+    let state = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value == %@", value), object: pill)
+    XCTAssertEqual(
+      XCTWaiter.wait(for: [state], timeout: 20), .completed,
+      "Pill stayed \(String(describing: pill.value)) instead of \(value)")
   }
 
   private func capture(_ app: XCUIApplication, _ name: String) {

@@ -10,6 +10,12 @@ export function parseDayStart(time: string): number {
 export function editSort(sorts: Sort[], index: number, patch: Partial<Sort>): Sort[] {
 	return sorts.map((sort, i) => (i === index ? { ...sort, ...patch } : { ...sort }));
 }
+/** Move one item to a new index, keeping the rest in order. */
+export function moveItem<T>(list: T[], from: number, to: number): T[] {
+	const next = [...list];
+	next.splice(to, 0, ...next.splice(from, 1));
+	return next;
+}
 export function initialFilterValue(type: string): string {
 	return ['number', 'int'].includes(type) ? '0' : type === 'bool' ? 'false' : '';
 }

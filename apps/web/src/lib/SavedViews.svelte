@@ -1,8 +1,15 @@
 <script lang="ts">
-	import { onDestroy, tick } from 'svelte';
-	import { IconDeviceFloppy, IconTrash } from '@tabler/icons-svelte';
+	import { onDestroy, tick, type Snippet } from 'svelte';
+	import {
+		IconCopyPlus,
+		IconDots,
+		IconForms,
+		IconLayoutList,
+		IconTrash
+	} from '@tabler/icons-svelte';
 	import type { SavedViewRecord } from 'life-ui-core/client';
 	import { createSavedViewsModel } from './saved-views';
+	import { anchored } from './popover';
 
 	// Key this component by table/workspace so even two empty lists have distinct lifetimes.
 	let {
@@ -13,16 +20,21 @@
 		modified,
 		onchoose,
 		onsave,
-		ondelete
+		ondelete,
+		children
 	}: {
 		list: SavedViewRecord[];
 		unavailable: string | null;
 		busy: boolean;
 		selected?: string | null;
+		/** Changes are waiting to be saved. */
 		modified: boolean;
 		onchoose: (id: string | null) => Promise<boolean | void>;
+		/** update renames the selected view; otherwise a new view is created. */
 		onsave: (name: string, update: boolean) => Promise<void>;
 		ondelete: (id: string) => Promise<void>;
+		/** More settings shown in the view menu. */
+		children?: Snippet;
 	} = $props();
 
 	const id = $props.id();
@@ -35,6 +47,7 @@
 	const canUpdate = $derived(canDelete && !!current?.view && !current.unavailable);
 	let select: HTMLSelectElement;
 	let input: HTMLInputElement;
+	let menuButton = $state<HTMLButtonElement>();
 	let deleteButton: HTMLButtonElement;
 	let cancelButton = $state<HTMLButtonElement>();
 	let mounted = true;
@@ -97,25 +110,39 @@
 </script>
 
 <div class="saved-views" role="group" aria-label="Saved views" aria-busy={locked}>
-	<div class="fields">
-		<label class="view">
-			View
-			<select
-				bind:this={select}
-				aria-label="View"
-				value={selected ?? ''}
-				disabled={locked}
-				onchange={choose}
-			>
-				<option value="">All records</option>
-				{#if selected && !current}<option value={selected} disabled>Unavailable view</option>{/if}
-				{#each list as view (view.id)}
-					<option value={view.id} disabled={!!reason(view)}
-						>{view.name}{reason(view) ? ` (${reason(view)})` : ''}</option
-					>
-				{/each}
-			</select>
-		</label>
+	<span class="select"
+		><IconLayoutList size={16} aria-hidden="true" /><select
+			bind:this={select}
+			aria-label="View"
+			value={selected ?? ''}
+			disabled={locked}
+			onchange={choose}
+		>
+			{#if !selected}<option value="">All records</option>{/if}
+			{#if selected && !current}<option value={selected} disabled>Unavailable view</option>{/if}
+			{#each list as view (view.id)}
+				<option value={view.id} disabled={!!reason(view)}
+					>{view.name}{reason(view) ? ` (${reason(view)})` : ''}</option
+				>
+			{/each}
+		</select></span
+	>
+	<button
+		bind:this={menuButton}
+		type="button"
+		class="menu-button"
+		popovertarget={`${id}-menu`}
+		aria-label="View settings"><IconDots size={16} aria-hidden="true" /></button
+	>
+	{#if modified}<span class="modified" aria-hidden="true">Saving…</span>{/if}
+	<div
+		id={`${id}-menu`}
+		popover="auto"
+		class="menu"
+		role="dialog"
+		aria-label="View settings"
+		use:anchored={{ anchor: () => menuButton }}
+	>
 		<label class="name">
 			View name
 			<input
@@ -130,16 +157,16 @@
 		<div class="actions">
 			<button
 				type="button"
+				disabled={locked || !canUpdate || !$model.name.trim() || $model.name.trim() === current?.name}
+				onclick={() => save(true)}><IconForms size={16} aria-hidden="true" />Rename</button
+			>
+			<button
+				type="button"
 				disabled={locked || !!unavailable || !$model.name.trim()}
 				onclick={() => save(false)}
 			>
-				<IconDeviceFloppy size={16} aria-hidden="true" />Save as
+				<IconCopyPlus size={16} aria-hidden="true" />Save as new view
 			</button>
-			<button
-				type="button"
-				disabled={locked || !canUpdate || !$model.name.trim()}
-				onclick={() => save(true)}>Update selected</button
-			>
 			<button
 				bind:this={deleteButton}
 				type="button"
@@ -149,35 +176,35 @@
 				<IconTrash size={16} aria-hidden="true" />Delete view
 			</button>
 		</div>
+		{#if $model.confirming && current}
+			<div
+				class="confirmation"
+				role="group"
+				aria-label="Confirm deletion"
+				aria-describedby={`${id}-delete-help`}
+			>
+				<p id={`${id}-delete-help`}>Delete “{current.name}”? Your records will be kept.</p>
+				<div class="actions">
+					<button
+						bind:this={cancelButton}
+						type="button"
+						disabled={locked}
+						onclick={() => confirm(false)}>Cancel deletion</button
+					>
+					<button class="danger" type="button" disabled={locked || !canDelete} onclick={remove}
+						>Confirm delete</button
+					>
+				</div>
+			</div>
+		{/if}
+		{#if $model.error}<p class="error" role="alert">{$model.error}</p>{/if}
+		{@render children?.()}
 	</div>
-	{#if modified}<span class="modified">Modified</span>{/if}
 	{#if unavailable}<p class="hint">Saved views are unavailable. {unavailable}</p>{/if}
 	{#if selected && !current}<p class="hint">
-			This view is no longer available. Choose All records or another view.
+			This view is no longer available. Choose another saved view.
 		</p>
 	{:else if current && reason(current)}<p class="hint">{reason(current)}</p>{/if}
-	{#if $model.confirming && current}
-		<div
-			class="confirmation"
-			role="group"
-			aria-label="Confirm deletion"
-			aria-describedby={`${id}-delete-help`}
-		>
-			<p id={`${id}-delete-help`}>Delete “{current.name}”? Your records will be kept.</p>
-			<div class="actions">
-				<button
-					bind:this={cancelButton}
-					type="button"
-					disabled={locked}
-					onclick={() => confirm(false)}>Cancel deletion</button
-				>
-				<button class="danger" type="button" disabled={locked || !canDelete} onclick={remove}
-					>Confirm delete</button
-				>
-			</div>
-		</div>
-	{/if}
-	{#if $model.error}<p class="error" role="alert">{$model.error}</p>{/if}
 	<p class="status" role="status">
 		{$model.pending === 'choose'
 			? 'Opening view…'
@@ -192,25 +219,31 @@
 <style>
 	.saved-views {
 		position: relative;
+		display: inline-flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.25rem;
 		min-width: 0;
 		color: var(--color-ink);
 		font-size: 0.8125rem;
 	}
-	.fields {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: flex-end;
-		gap: 0.75rem;
-	}
-	label {
-		display: grid;
-		gap: 0.375rem;
+	.select {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
 		min-width: 0;
-		font-weight: 500;
 	}
-	.view,
-	.name {
-		flex: 1 1 12rem;
+	.select :global(svg) {
+		position: absolute;
+		left: 0.5625rem;
+		color: var(--color-muted);
+		pointer-events: none;
+	}
+	.select select {
+		max-width: 14rem;
+		padding-left: 1.875rem;
+		font-weight: 600;
+		cursor: pointer;
 	}
 	input,
 	select {
@@ -225,12 +258,52 @@
 		font: inherit;
 		font-weight: 400;
 	}
+	.menu-button {
+		display: inline-grid;
+		place-items: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		border: 1px solid var(--color-rule);
+		border-radius: var(--radius-field);
+		background: var(--color-paper);
+		color: var(--color-ink);
+		cursor: pointer;
+	}
+	.menu-button:hover {
+		background: var(--color-bone);
+	}
+	.menu {
+		position: fixed;
+		inset: auto;
+		margin: 0;
+		width: min(28rem, calc(100vw - 1rem));
+		overflow-y: auto;
+		padding: 0.75rem;
+		border: 1px solid var(--color-rule);
+		border-radius: 0.5rem;
+		background: var(--color-paper);
+		color: var(--color-ink);
+		box-shadow:
+			0 12px 32px -12px rgb(21 24 28 / 0.28),
+			0 2px 6px rgb(21 24 28 / 0.08);
+		font-size: 0.8125rem;
+	}
+	.menu:popover-open {
+		display: grid;
+		gap: 0.75rem;
+	}
+	label {
+		display: grid;
+		gap: 0.375rem;
+		min-width: 0;
+		font-weight: 500;
+	}
 	.actions {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
-	button {
+	.actions button {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -244,7 +317,7 @@
 		font: inherit;
 		cursor: pointer;
 	}
-	button:not(:disabled):hover {
+	.actions button:not(:disabled):hover {
 		background: var(--color-bone);
 	}
 	button:disabled,
@@ -254,16 +327,14 @@
 		cursor: default;
 	}
 	.modified {
-		display: inline-block;
-		margin-top: 0.5rem;
-		padding: 0.125rem 0.5rem;
-		border-radius: var(--radius-field);
-		color: var(--color-accent);
-		background: var(--color-accent-soft);
+		padding: 0 0.25rem;
+		color: var(--color-muted);
+		font-size: 0.75rem;
 	}
 	.hint,
 	.error {
-		margin: 0.5rem 0 0;
+		flex-basis: 100%;
+		margin: 0;
 		overflow-wrap: anywhere;
 		line-height: 1.5;
 	}
@@ -275,11 +346,10 @@
 		color: var(--color-violation);
 	}
 	.confirmation {
-		margin-top: 0.75rem;
 		padding: 0.75rem;
 		border: 1px solid var(--color-rule);
 		border-radius: var(--radius-field);
-		background: var(--color-paper);
+		background: var(--color-bone);
 	}
 	.confirmation p {
 		margin: 0 0 0.75rem;

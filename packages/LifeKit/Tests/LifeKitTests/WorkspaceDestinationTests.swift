@@ -32,7 +32,8 @@ struct WorkspaceDestinationTests {
     model.filters = [WorkspaceFilter(column: "title", operation: .contains, value: "unsaved")]
     let table = try await resolver.resolve(NativeDestination(table: "notes"), isCurrent: { true })
     _ = try model.activateDestination(table, workspace: client, generation: model.workspaceGeneration)
-    #expect(model.table == "notes" && model.appliedView == nil && model.search.isEmpty && !model.trash)
+    #expect(model.table == "notes" && model.appliedView?.name == "Default view")
+    #expect(model.search.isEmpty && !model.trash)
     #expect(model.filters.isEmpty && model.sortRules.isEmpty)
     await model.close()
   }
