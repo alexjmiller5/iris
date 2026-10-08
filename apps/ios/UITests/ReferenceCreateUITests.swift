@@ -47,6 +47,8 @@ final class ReferenceCreateUITests: XCTestCase {
     XCTAssertTrue(app.buttons["Remove Grace Hopper"].exists)
     XCTAssertLessThan(app.buttons["Remove Grace Hopper"].frame.minY, selected.frame.minY)
     capture(app, "ios-created-multi")
+    // iOS hides the picker's toolbar while its bottom search field is active.
+    tap(app.buttons["close"])
     tap(app.navigationBars.buttons["Done"])
 
     // A required field without a default opens the editor; Cancel keeps the relation.

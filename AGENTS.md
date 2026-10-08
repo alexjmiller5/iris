@@ -479,8 +479,11 @@ Native requests retain SQLite ownership
 across every transaction and local await. HTTP outside a transaction suspends
 its request owner so complete foreground requests can run; the HTTP continuation
 resumes through that same queue, never inside another request's transaction.
-Close waits for every suspended owner, and queued duplicate syncs do not block
-eligible foreground requests before close. Keep the sync file lock while suspended.
+Close refuses new HTTP and cancels every outstanding transport (sync, services,
+Resolve, online reads). SQLite closes only after suspended owners unwind; any
+still suspended after a 5-second grace is failed and reported as dropped, so close
+never waits on the hub. Queued duplicate syncs do not block eligible foreground
+requests before close. Keep the sync file lock while suspended.
 Native destination waits stay visible outside scrolling content and offer Cancel.
 Cancellation invalidates only the navigation request and immediately releases its
 controls; late results and old defers must not affect a newer request. It never
@@ -556,7 +559,8 @@ editor; Return edits the selected row's title. The explicit open action and row
 menu retain the full editor. Column header menus sort or seed a property filter.
 Keep active drafts and their action controls mounted through catalog/row refreshes;
 measure editor height before retiling the row. Disable workspace replacement and
-new-record actions while an inline editor is active. Property help popovers belong
+new-record actions while an inline editor is active. Close workspace is always
+enabled and dismisses open surfaces itself; edits are already journaled. Property help popovers belong
 to their individual buttons.
 RecordEditorModel capture preparation retains its handoff UUID in the ordinary
 recoverable creation journal. Pending delivery retries preserve edits and refuse
@@ -709,9 +713,9 @@ persisted local saves before the response is released.
 NativeWorkspace serializes whole database operations across every open instance
 of the same file, yielding ownership only
 at transaction-free HTTP boundaries. Suspended requests capture their transport;
-responses reenter behind complete foreground operations. Close waits for every
-suspended owner, while duplicate sync requests do not block local requests ahead
-of close. The sync file lock lasts through suspension. Progress carries phase,
+responses reenter behind complete foreground operations. Close cancels their
+transport and waits at most its grace for them to unwind, while duplicate sync
+requests do not block local requests ahead of close. The sync file lock lasts through suspension. Progress carries phase,
 table, page, row count and start time only. Cancel unwinds transport without
 resetting checkpoints or discarding local changes. Synchronous JSC callback failures
 reject only their captured request; roll back an unfinished transaction before

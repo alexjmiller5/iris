@@ -596,7 +596,7 @@ public final class NativeWorkspace {
       owner.control?.deadline?.cancel()
       if owner.method == "sync" { syncLock = nil }
       diagnostics.finish(owner.diagnosticID)
-      continue; droppedOnClose.append(owner.method)
+      droppedOnClose.append(owner.method)
       owner.continuation.resume(
         throwing: WorkspaceError(
           message: "The workspace closed before the hub replied.", violations: []))
