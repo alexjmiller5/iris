@@ -21,11 +21,13 @@ import Testing
       do {
         let workspace = try #require(model.client)
         let existing = try await workspace.listViews(table: "notes").views
-        var view = existing.first { $0.name == "Synthetic daily" && $0.deletedAt == nil }
+        // One view per zone, so a later run never inherits an earlier boundary.
+        let name = "Synthetic daily " + zone
+        var view = existing.first { $0.name == name && $0.deletedAt == nil }
         if view == nil {
           view = try await workspace.saveView(
             CoreSaveViewArgs(
-              table: "notes", name: "Synthetic daily",
+              table: "notes", name: name,
               definition: CoreSavedViewDefinition(
                 version: 2, columns: ["title"],
                 filters: [CoreFilter(column: "updated_at", op: .eq, relative: .today)],
@@ -53,7 +55,8 @@ import Testing
       await model.close()
     }
 
-    /// The system index holds the enabled table's titles as deep-link identities.
+    /// After app launches and terminations, the system index still holds the enabled
+    /// table's titles as deep-link identities (no refresh here).
     @Test(
       .enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_WIDGET_SIMULATOR"] != nil))
     func spotlightIndexHoldsEnabledTitles() async throws {
@@ -67,34 +70,6 @@ import Testing
       #expect(found.count == 1)
       #expect(found.first?.uniqueIdentifier.hasPrefix("life://open/v1?") == true)
       #expect(found.first?.attributeSet.title == "Quick Add fixture saved")
-    }
-
-    @Test(
-      .enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_SPOTLIGHT_PROBE"] != nil))
-    func spotlightProbe() async throws {
-      func item(_ id: String) -> CSSearchableItem {
-        let attributes = CSSearchableItemAttributeSet(contentType: .text)
-        attributes.title = "Probe " + id
-        return CSSearchableItem(uniqueIdentifier: id, domainIdentifier: "probe", attributeSet: attributes)
-      }
-      let named = CSSearchableIndex(name: "LifeUI", protectionClass: .complete)
-      let unprotected = CSSearchableIndex(name: "LifeUIProbe")
-      try await named.indexSearchableItems([item("named-complete")])
-      try await unprotected.indexSearchableItems([item("named-default")])
-      try await CSSearchableIndex.default().indexSearchableItems([item("default")])
-      try await Task.sleep(for: .seconds(3))
-      for text in ["title == \"Probe*\"", "Probe*"] {
-        let context = CSSearchQueryContext()
-        context.fetchAttributes = ["title"]
-        var found: [String] = []
-        for try await result in CSSearchQuery(queryString: text, queryContext: context).results {
-          found.append(result.item.uniqueIdentifier)
-        }
-        print("PROBE \(text): \(found.sorted())")
-      }
-      for index in [named, unprotected, CSSearchableIndex.default()] {
-        try await index.deleteSearchableItems(withDomainIdentifiers: ["probe"])
-      }
     }
   #endif
 }

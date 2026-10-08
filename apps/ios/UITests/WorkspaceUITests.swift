@@ -560,8 +560,11 @@ final class WorkspaceUITests: XCTestCase {
     openLocalWorkspace(app)
     tapWhenReady(app.buttons["saved-views"])
     tapWhenReady(app.buttons["Imported order"])
-    let zulu = app.staticTexts["Viewfixture Zulu"].firstMatch
-    let alpha = app.staticTexts["Viewfixture Alpha"].firstMatch
+    // Each record row's open button is labelled by the record title.
+    let zulu = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Viewfixture Zulu"))
+      .firstMatch
+    let alpha = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Viewfixture Alpha"))
+      .firstMatch
     XCTAssertTrue(zulu.waitForExistence(timeout: 5))
     XCTAssertTrue(alpha.waitForExistence(timeout: 5))
     XCTAssertLessThan(zulu.frame.minY, alpha.frame.minY)

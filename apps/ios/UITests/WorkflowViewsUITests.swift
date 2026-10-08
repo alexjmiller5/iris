@@ -38,7 +38,8 @@ final class WorkflowViewsUITests: XCTestCase {
     XCTAssertTrue(review.waitForNonExistence(timeout: 5))
     views.tap()
     app.buttons["Default view"].tap()
-    let record = app.buttons["Viewfixture Alpha"]
+    let record = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Viewfixture Alpha"))
+      .firstMatch
     XCTAssertTrue(record.waitForExistence(timeout: 5))
     record.tap()
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))

@@ -374,6 +374,20 @@ never while a filter or sort popover is open. Context changes, unload and Undo
 flush it first, so Cmd-Z reverts the latest view edit. Search and Trash are browsing
 state and are not saved.
 
+The native `FilterBar` (iPhone and Mac) sits above the records with Filter and Sort
+popovers and a chip row. Filter is a searchable property list (Add filter group
+inside) that adds a chip and pushes its type editor: select options as checkmarks,
+text, number, date with Today, Boolean and the existing reference picker. Chips edit
+on tap and remove with x; Sort holds ordered rules with direction toggles and drag
+reorder. Edits apply to the query at once; chips without a usable value neither
+filter nor save. Closing a popover or the Views sheet, or removing a chip, calls
+`WorkspaceModel.scheduleViewSave` (400 ms). It captures the request, so navigating
+away still saves the view it was made in, uses the applied revision and ordinary
+`saveView` (Undo) and keeps the stored search and Trash. Close and Undo
+(`undoLatest`) flush it first. Layout heads the Views sheet; row actions and the
+Today boundary live under Row actions and Today. All records appears only when the
+table has no available saved view.
+
 A Boolean property whose catalog description names exactly one sibling text column
 is a flag with a reason (`flag-filters.ts`, `CatalogField.flagFilters`). Web and
 native bars offer it as a dashed quick-filter chip that adds the ordinary `eq true`
@@ -556,7 +570,8 @@ and scrollable so they cannot consume the grid. Native column resizing is tempor
 persisted layout comes from the saved-view definition. The AppKit grid supports
 macOS 14 onward. Double-click edits the clicked property in the shared inline
 editor; Return edits the selected row's title. The explicit open action and row
-menu retain the full editor. Column header menus sort or seed a property filter.
+menu retain the full editor. Column header menus sort (saved like the Sort popover)
+or add a property's filter chip and open its editor.
 Keep active drafts and their action controls mounted through catalog/row refreshes;
 measure editor height before retiling the row. Disable workspace replacement and
 new-record actions while an inline editor is active. Close workspace is always
@@ -682,7 +697,8 @@ flows. Run the full applicable suites after the final source change. Use an
 isolated simulator if another project is driving the shared default device.
 iOS record screens use inline navigation titles and no extra top list content
 margin; keep title, controls and first list row separate and compact.
-iOS uses native bottom toolbar actions for Views, Filter, Find and Schema graph;
+iOS uses native bottom toolbar actions for Views, Find and Schema graph (Filter and
+Sort are in the bar above the records);
 workspace actions are in the ellipsis Menu and full sync/location details in the
 read-only status sheet. One `SyncPill` (Mac sidebar bottom, iPhone bottom-bar status
 slot, Mac menu bar) is the only sync surface: Synced, Syncing (only while rows move, edits upload

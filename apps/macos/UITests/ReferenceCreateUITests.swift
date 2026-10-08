@@ -6,6 +6,10 @@ import XCTest
 final class ReferenceCreateUITests: XCTestCase {
   func testPickersCreateRecordsInPlaceAndHandRequiredFieldsToTheEditor() throws {
     continueAfterFailure = false
+    try XCTSkipUnless(
+      ProcessInfo.processInfo.environment["LIFE_UI_TEST_CATALOG_CLEAN_HOST"] == "1",
+      "Use a disposable clean host; normal startup must never inspect an enrolled user's credentials."
+    )
     let path = ProcessInfo.processInfo.environment["LIFE_UI_TEST_REFERENCE_CREATE_DATABASE"]
     try XCTSkipUnless(path != nil, "Prepare the synthetic reference-create fixture first.")
     let file = URL(fileURLWithPath: try XCTUnwrap(path))
@@ -19,6 +23,9 @@ final class ReferenceCreateUITests: XCTestCase {
       app.menuItems["New Window"].click()
     }
     defer { app.terminate() }
+    // The clean runner can retain the preceding test's synthetic file selection.
+    let previous = app.buttons["Close workspace"]
+    if previous.waitForExistence(timeout: 3) { previous.click() }
     // Never replace the app's local replica: open the external fixture file.
     let open = app.buttons["Open a local database…"]
     XCTAssertTrue(open.waitForExistence(timeout: 10))

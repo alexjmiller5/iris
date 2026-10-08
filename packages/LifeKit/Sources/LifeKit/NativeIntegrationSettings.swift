@@ -242,16 +242,22 @@ struct LookupHit: Sendable {
       private let index = CSSearchableIndex(name: "LifeUI")
     #endif
 
+    /// One batch: a refresh interrupted by relaunch or termination keeps the previous
+    /// titles instead of leaving the table's domain empty.
     func replace(domain: String, items: [SpotlightItem]) async throws {
-      try await index.deleteSearchableItems(withDomainIdentifiers: [domain])
-      guard !items.isEmpty else { return }
-      try await index.indexSearchableItems(
-        items.map {
-          let attributes = CSSearchableItemAttributeSet(contentType: .text)
-          attributes.title = $0.title
-          return CSSearchableItem(
-            uniqueIdentifier: $0.id, domainIdentifier: domain, attributeSet: attributes)
-        })
+      index.beginBatch()
+      // Inside a batch, operations commit at endBatch; their own completions are not needed.
+      index.deleteSearchableItems(withDomainIdentifiers: [domain], completionHandler: nil)
+      if !items.isEmpty {
+        index.indexSearchableItems(
+          items.map {
+            let attributes = CSSearchableItemAttributeSet(contentType: .text)
+            attributes.title = $0.title
+            return CSSearchableItem(
+              uniqueIdentifier: $0.id, domainIdentifier: domain, attributeSet: attributes)
+          }, completionHandler: nil)
+      }
+      try await index.endBatch(withClientState: Data())
     }
 
     func remove(domains: [String]) async throws {

@@ -455,8 +455,10 @@ people/companies/meetings workspace from `bun scripts/reference-create-fixture.t
 its data container's `Library/Application Support/life-ui/local.sqlite` and run
 `-only-testing:LifeUIUITests/ReferenceCreateUITests` with
 `TEST_RUNNER_LIFE_UI_TEST_REFERENCE_CREATE_SIMULATOR` set to that UDID. On macOS,
-set `TEST_RUNNER_LIFE_UI_TEST_REFERENCE_CREATE_DATABASE` to the generated file; the
-test opens it through the file picker and needs an unlocked console session.
+set `TEST_RUNNER_LIFE_UI_TEST_REFERENCE_CREATE_DATABASE` to the generated file and
+`TEST_RUNNER_LIFE_UI_TEST_CATALOG_CLEAN_HOST=1` on a disposable host; the test opens
+the file through the picker, needs an unlocked console and runs in CI's clean-runner
+XCUI step.
 The browser version is `bun scripts/test-reference-create.ts /path/to/life-data`
 on `http://life-ui-reference-create.localhost:5244/workspace?review`.
 

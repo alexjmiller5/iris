@@ -48,6 +48,13 @@ import XCTest
     if back.waitForExistence(timeout: 5) { back.tap() }
     let section = app.buttons["daily-section"]
     XCTAssertTrue(section.waitForExistence(timeout: 15))
+    if ProcessInfo.processInfo.environment["LIFE_UI_TEST_DAILY_AFTER_BOUNDARY"] != nil {
+      // Rows saved before the configured 03:00 boundary roll out of Today with the app closed.
+      XCTAssertTrue(app.staticTexts["No matching records"].waitForExistence(timeout: 15))
+      XCTAssertFalse(app.buttons["daily-row"].exists)
+      keep(app, "daily-section-after-boundary")
+      return
+    }
     let row = app.buttons["daily-row"].firstMatch
     XCTAssertTrue(row.waitForExistence(timeout: 15))
     let table = app.buttons["sidebar-table-notes"]
