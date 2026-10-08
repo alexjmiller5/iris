@@ -696,6 +696,9 @@ persisted as `lifeui.sidebarHidden`; compact iPhone switches sidebar and detail.
 The Mac status item (`WorkspaceMenuBar`, opt-out in Settings) mirrors the most
 recently active window: Open, Quick Find, five recents and pinned tables by title
 only. Its commands reach that window through the guarded navigation paths.
+MenuBarExtra writes `isInserted` back on every scene update; bind it through a
+setter that ignores unchanged values, and publish focused values that compare
+equal across renders, or the Mac main menu rebuilds forever at launch.
 Keep active errors and incomplete-table notices visible. Do not
 reintroduce a permanent multiline sync footer. The graph sheet shares the offline
 WebKit coordinator and bundled FK/group component with macOS; dismiss first,
