@@ -55,3 +55,66 @@ export function createSavedViewsModel() {
 		}
 	};
 }
+
+/** Saves the applied view like a Notion cell: every change applies at once and
+ * is written after a quiet period, but not while a popover is open. `capture`
+ * snapshots the view synchronously, so a later context change cannot leak into
+ * it; writes never overlap. A failed write is reported once; the next change
+ * retries. */
+export function createViewAutosave<T>(
+	capture: () => T,
+	write: (snapshot: T) => Promise<void>,
+	onerror: (error: Error) => void,
+	delay = 500
+) {
+	const { subscribe, set } = writable({ pending: false });
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let dirty = false,
+		held = false,
+		running = 0,
+		disposed = false;
+	let chain = Promise.resolve();
+	const publish = () => set({ pending: !disposed && (dirty || running > 0) });
+	function arm() {
+		clearTimeout(timer);
+		if (!held && dirty && !disposed) timer = setTimeout(() => void flush(), delay);
+	}
+	function flush(): Promise<void> {
+		clearTimeout(timer);
+		if (!dirty || disposed) return chain;
+		dirty = false;
+		const snapshot = capture();
+		running++;
+		publish();
+		chain = chain
+			.then(() => write(snapshot))
+			.catch((error) => {
+				if (!disposed) onerror(error instanceof Error ? error : new Error('The view was not saved.'));
+			})
+			.finally(() => {
+				running--;
+				publish();
+			});
+		return chain;
+	}
+	return {
+		subscribe,
+		flush,
+		change() {
+			if (disposed) return;
+			dirty = true;
+			publish();
+			arm();
+		},
+		hold(open: boolean) {
+			held = open;
+			if (open) clearTimeout(timer);
+			else arm();
+		},
+		dispose() {
+			disposed = true;
+			clearTimeout(timer);
+			publish();
+		}
+	};
+}

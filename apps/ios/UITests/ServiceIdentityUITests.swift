@@ -35,7 +35,9 @@ final class ServiceIdentityUITests: XCTestCase {
       rows.first { Data(($0["id"] as? String ?? "").utf8) == Data([0x65, 0xcc, 0x81]) })
     XCTAssertTrue(read["read_at"] is String)
     XCTAssertTrue(unread["read_at"] is NSNull)
-    app.navigationBars["Notifications"].buttons["Refresh"].tap()
+    // No manual refresh: reopening the inbox reloads it.
+    app.navigationBars["Notifications"].buttons.element(boundBy: 0).tap()
+    app.buttons["hub-notifications"].tap()
     XCTAssertTrue(first.waitForExistence(timeout: 10))
     XCTAssertTrue(app.staticTexts["Opaque second notice"].exists)
   }

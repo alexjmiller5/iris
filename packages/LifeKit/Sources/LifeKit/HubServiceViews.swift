@@ -90,10 +90,6 @@ struct HubUsageView: View {
     }
     .formStyle(.grouped)
     .navigationTitle("Usage")
-    .toolbar {
-      Button("Refresh", systemImage: "arrow.clockwise") { Task { await services.refreshUsage() } }
-        .disabled(services.usageRefreshing)
-    }
     .task { await services.refreshUsage() }
   }
 
@@ -144,7 +140,6 @@ struct HubNotificationsView: View {
         Text("The feed below, if any, is from the last successful refresh.")
           .font(.caption).foregroundStyle(.secondary)
       }
-      if services.refreshing { ProgressView("Refreshing…") }
       if let feed = services.feed, feed.notifications.isEmpty {
         ContentUnavailableView("No notifications", systemImage: "bell")
           .frame(maxWidth: .infinity)
@@ -171,10 +166,6 @@ struct HubNotificationsView: View {
       }
     }
     .navigationTitle("Notifications")
-    .toolbar {
-      Button("Refresh", systemImage: "arrow.clockwise") { Task { await services.refresh() } }
-        .disabled(services.refreshing)
-    }
     .task { await services.refresh() }
   }
 

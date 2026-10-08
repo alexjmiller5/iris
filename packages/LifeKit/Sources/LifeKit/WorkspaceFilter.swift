@@ -32,6 +32,17 @@ struct WorkspaceFilter: Identifiable, Equatable {
     importedText = value
   }
 
+  /// Chips apply as they are edited. One without a usable value stays visible
+  /// but neither filters nor saves, like an unfinished Notion filter.
+  func activeCoreFilter(field: CatalogField?) -> CoreFilter? {
+    if operation != .empty, operation != .notEmpty, !today, value.isEmpty,
+      imported == nil || importedText != value
+    {
+      return nil
+    }
+    return try? coreFilter(field: field)
+  }
+
   static func operations(for type: String) -> [CoreFilterOp] {
     switch type {
     case "int", "number": [.eq, .ne, .gt, .gte, .lt, .lte, .empty, .notEmpty]
@@ -105,6 +116,12 @@ struct WorkspaceFilterGroup: Identifiable, Equatable {
     filters = group.filters.map { filter in
       WorkspaceFilter(filter, field: fields.first { $0.id == filter.column })
     }
+  }
+  func activeCore(fields: [CatalogField]) -> CoreFilterGroup? {
+    let active = filters.compactMap { filter in
+      filter.activeCoreFilter(field: fields.first { $0.id == filter.column })
+    }
+    return active.isEmpty ? nil : CoreFilterGroup(match: match, filters: active)
   }
   func core(fields: [CatalogField]) throws -> CoreFilterGroup {
     CoreFilterGroup(

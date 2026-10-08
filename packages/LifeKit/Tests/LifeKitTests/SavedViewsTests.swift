@@ -218,7 +218,10 @@ struct SavedViewsTests {
     #expect(model.visibleRecordColumns == ["status", "title"])
     try model.applyViewOptions(sortColumn: "status", ascending: true, filters: [], context: context)
     try await model.saveCurrentView(name: "Renamed layout", update: true, context: context)
-    let persisted = try #require(try await context.workspace.listViews(table: "notes").views.first)
+    let persisted = try #require(
+      try await context.workspace.listViews(table: "notes").views.first {
+        $0.byteExactID == imported.byteExactID
+      })
     #expect(persisted.definition?.columns == ["status", "title"])
     #expect(persisted.definition?.widths == ["status": 160, "title": 360])
     #expect(
@@ -250,7 +253,9 @@ struct SavedViewsTests {
         definition: CoreSavedViewDefinition(version: 1, search: "remote"),
         id: applied.id, expectedUpdatedAt: appliedRevision))
     try await model.refreshSavedViews(context: context)
-    #expect(model.savedViews.first?.updatedAt == remote.updatedAt)
+    #expect(
+      model.savedViews.first { $0.byteExactID == applied.byteExactID }?.updatedAt
+        == remote.updatedAt)
     #expect(model.appliedView?.updatedAt == applied.updatedAt)
     await #expect(throws: WorkspaceError.self) {
       try await model.saveCurrentView(name: "Stale update", update: true, context: context)
@@ -259,12 +264,13 @@ struct SavedViewsTests {
       try await model.deleteSavedView(applied, context: context)
     }
     #expect(
-      try await context.workspace.listViews(table: "notes").views.first?.name == "Changed elsewhere"
-    )
+      try await context.workspace.listViews(table: "notes").views.first {
+        $0.byteExactID == applied.byteExactID
+      }?.name == "Changed elsewhere")
     try model.applySavedView(remote, context: context)
     try await model.deleteSavedView(remote, context: context)
     #expect(model.appliedView == nil)
-    #expect(model.savedViews.isEmpty)
+    #expect(model.savedViews.map(\.name) == ["Default view"])
     await model.close()
   }
 
@@ -282,7 +288,8 @@ struct SavedViewsTests {
     await #expect(throws: WorkspaceError.self) {
       try await model.saveCurrentView(name: "Wrong table", update: false, context: context)
     }
-    #expect(try await context.workspace.listViews(table: "notes").views.isEmpty)
+    #expect(
+      try await context.workspace.listViews(table: "notes").views.map(\.name) == ["Default view"])
     await model.close()
   }
 

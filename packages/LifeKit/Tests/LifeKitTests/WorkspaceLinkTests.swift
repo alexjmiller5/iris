@@ -27,7 +27,9 @@ struct WorkspaceLinkTests {
     #expect(model.search == "Synthetic query")
     #expect(model.appliedView == saved)
     #expect(model.viewModified)
-    #expect(try await workspace.listViews(table: context.table).views == [saved])
+    #expect(
+      try await workspace.listViews(table: context.table).views.filter { $0.name != "Default view" }
+        == [saved])
     #expect(try await workspace.status() == before)
     await model.close()
   }

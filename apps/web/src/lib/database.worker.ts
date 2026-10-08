@@ -337,7 +337,7 @@ async function dispatch(request: DatabaseRequest) {
 		}
 		databaseName = name;
 		channel = new BroadcastChannel(`life-ui:database:${name}`);
-		channel.onmessage = () => respond({ changed: true });
+		channel.onmessage = ({ data }) => respond({ changed: data?.changed ?? true });
 		return snapshot();
 	}
 	if (method === 'close') {
@@ -438,6 +438,8 @@ async function dispatch(request: DatabaseRequest) {
 			return local.undo(args);
 		case 'undoStatus':
 			return local.undoStatus(args);
+		case 'status':
+			return syncStatus(db);
 		case 'writeability':
 			return local.writeability(args);
 		case 'sync': {
@@ -494,7 +496,13 @@ scope.onmessage = ({ data }) => {
 				dispatch(data as DatabaseRequest)
 			);
 			respond({ id: data.id, result });
+			// Background sync polls every few seconds; only a sync that moved data refreshes views.
+			const synced = result as { pulled?: number; pushed?: number; rejected?: unknown[] };
 			if (
+				(data.method !== 'sync' ||
+					!!synced.pulled ||
+					!!synced.pushed ||
+					!!synced.rejected?.length) &&
 				[
 					'write',
 					'runRowAction',
@@ -511,8 +519,8 @@ scope.onmessage = ({ data }) => {
 					'moveTablePin'
 				].includes(data.method)
 			) {
-				channel?.postMessage({ changed: true });
-				respond({ changed: true });
+				channel?.postMessage({ changed: data.method });
+				respond({ changed: data.method });
 			}
 		} catch (error) {
 			const e = error as Error & { violations?: unknown };
@@ -528,7 +536,7 @@ scope.onmessage = ({ data }) => {
 			// fail after those changes. The caller owns its refresh/error; notify
 			// the other tabs without racing that error with a second local refresh.
 			if (data?.method === 'sync' && connection !== undefined) {
-				channel?.postMessage({ changed: true });
+				channel?.postMessage({ changed: 'sync' });
 			}
 		}
 	});

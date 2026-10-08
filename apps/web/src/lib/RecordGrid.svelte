@@ -325,7 +325,7 @@
 				}}>Save cell</button
 			><button type="button" disabled={busy || cellState.phase === 'saving'} onclick={discardCell}
 				>Discard</button
-			><small>{cellState.phase === 'saving' ? 'Saving…' : 'Esc saves'}</small>
+			>
 		</div>
 	</div>
 {/snippet}

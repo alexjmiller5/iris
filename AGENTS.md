@@ -175,12 +175,23 @@ certificates to compensate for a missing profile.
 Ordinary changes never bump a version or push a release tag.
 
 iOS Ad Hoc distribution uses the manual `build-ios.yml` workflow with existing
-Apple Signing distribution material and the project CI service account. It downloads the app-specific `IOS_APP_ADHOC` profile identified by repository
-variable `IOS_PROVISIONING_PROFILE_ID` using the existing App Store Connect key.
-It checks the production APNs entitlement and the intended `IOS_DEVICE_ID` project ENV field against the profile, signs using a
-temporary runner keychain, verifies the exported IPA and uploads only age-encrypted
+Apple Signing distribution material and the project CI service account. It downloads
+one explicit `IOS_APP_ADHOC` profile per target with the existing App Store Connect
+key: repository variables `IOS_PROVISIONING_PROFILE_ID` (app),
+`IOS_WIDGETS_PROVISIONING_PROFILE_ID` and `IOS_SHARE_PROVISIONING_PROFILE_ID`.
+`scripts/sign-ios.py` maps each profile to its target by exact App ID, requires one
+team, device, shared certificate and the App Group set declared by every target's
+entitlements file, and checks that each declared entitlement (production APNs on the
+app, `LIFE_WIDGET_APP_GROUP` everywhere) is granted and survives export. project.yml
+names the profile settings `IOS_PROFILE` and `IOS_<BUNDLE SUFFIX>_PROFILE`. It also
+checks the intended `IOS_DEVICE_ID` project ENV field, signs using a temporary runner
+keychain, verifies app and extension versions match, and uploads only age-encrypted
 output with one-day retention. The required `artifact_recipient` dispatch input is
 a public age recipient; its temporary private identity stays with the operator.
+App Group assignment to App IDs is a developer-portal step; profiles are minted
+afterwards with the existing distribution certificate. The universal app App ID is
+shared with the Mac Developer ID profile, so a capability change requires replacing
+`MACOS_PROVISIONING_PROFILE_ID` as well.
 An IPA embeds a profile containing enrolled device IDs, so plaintext IPA artifacts
 are forbidden on this public repository. Each workflow run stamps and verifies
 the exported build number as run.attempt after project generation. OTA manifests

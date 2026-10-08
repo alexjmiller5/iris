@@ -71,8 +71,7 @@ final class LargeMarkdownNavigationUITests: XCTestCase {
         let waiting = try await gate(endpoint, "status")
         XCTAssertTrue(waiting, "Notes must open before the held sync response is released")
         app.buttons["workspace-status"].tap()
-        XCTAssertTrue(app.buttons["cancel-sync"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["sync-now"].isEnabled)
+        XCTAssertTrue(app.staticTexts["sync-phase"].waitForExistence(timeout: 5))
         app.buttons["status-done"].tap()
       }
       if pass == 0 {

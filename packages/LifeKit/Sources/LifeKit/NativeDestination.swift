@@ -35,7 +35,10 @@ struct NativeResolvedDestination: Sendable {
   let row: WorkspaceRow?
   var defaultNotice: String? = nil
   var definition: CoreSavedViewDefinition? = nil
-  var label: String { row?.label ?? view?.name ?? destination.table }
+  // A plain table opens on its default saved view but is still labelled by table.
+  var label: String {
+    row?.label ?? (destination.viewID == nil ? nil : view?.name) ?? destination.table
+  }
   var isTrashed: Bool {
     guard let deleted = row?.record["deleted_at"] else { return false }
     return deleted != .null
@@ -53,7 +56,7 @@ struct NativeDestinationResolver {
   init(workspace: NativeWorkspace) {
     self.init(
       catalog: workspace.catalog, listViews: workspace.listViews, rows: workspace.rows,
-      preferred: workspace.getViewDefault, resolveDefinition: workspace.resolveViewDefinition)
+      preferred: workspace.ensureDefaultView, resolveDefinition: workspace.resolveViewDefinition)
   }
 
   init(

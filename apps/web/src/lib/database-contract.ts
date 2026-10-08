@@ -82,6 +82,7 @@ export interface DatabaseOperations {
 	write: { args: CoreArgs<'write'>; result: CoreResult<'write'> };
 	undo: { args: CoreArgs<'undo'>; result: CoreResult<'undo'> };
 	undoStatus: { args: CoreArgs<'undoStatus'>; result: CoreResult<'undoStatus'> };
+	status: { args: Record<string, never>; result: CoreResult<'status'> };
 	writeability: { args: CoreArgs<'writeability'>; result: CoreResult<'writeability'> };
 	sync: { args: CoreArgs<'sync'> & { token: string }; result: CoreResult<'sync'> };
 }

@@ -51,9 +51,9 @@ final class TableNavigationUITests: XCTestCase {
     tap(app.buttons["inline-save"], app)
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 5), app.debugDescription)
     tap(app.buttons["workspace-status"], app)
-    XCTAssertTrue(app.buttons["sync-now"].exists)
-    XCTAssertFalse(
-      app.buttons["sync-now"].isEnabled, "The sync must still be active after the save")
+    XCTAssertTrue(
+      app.staticTexts["sync-phase"].waitForExistence(timeout: 5),
+      "The sync must still be active after the save")
     tap(app.buttons["status-done"], app)
     tap(
       app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", savedTitle)).firstMatch, app)

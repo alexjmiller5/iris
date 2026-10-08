@@ -42,9 +42,6 @@
 		disposed = true;
 		void model?.cancel();
 	});
-	export function connectManual() {
-		return model?.manual({ endpoint, token });
-	}
 	function changedEndpoint() {
 		void model?.cancel();
 	}
@@ -98,9 +95,12 @@
 			autocomplete="off"
 			disabled={disabled || pending}
 		/>
-		<p class="hint">
-			Use a dedicated full device token, then choose Sync now. It stays in memory for this session.
-		</p>
+		<button
+			type="button"
+			onclick={() => void model?.manual({ endpoint, token })}
+			disabled={disabled || pending || !endpoint || !token}>Connect</button
+		>
+		<p class="hint">Use a dedicated full device token. It stays in memory for this session.</p>
 	</details>
 </div>
 

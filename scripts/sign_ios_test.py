@@ -26,13 +26,71 @@ def profile():
 
 
 class SigningTests(unittest.TestCase):
-    def test_push_profile_requires_production_entitlement(self):
+    def test_declared_profile_entitlements_are_required(self):
         m = load()
+        declared = {'aps-environment': 'production'}
         for value in [None, 'development']:
             p = profile()
             p['Entitlements']['aps-environment'] = value
             with self.assertRaises(ValueError):
-                m.validate_profile(p, 'com.example.App', 'synthetic-device')
+                m.validate_entitlements(declared, p['Entitlements'])
+        m.validate_entitlements(declared, profile()['Entitlements'])
+
+    def test_declared_entitlements_expand_target_build_settings(self):
+        m = load()
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / 'Signing').mkdir()
+            (Path(root) / 'Signing/App.entitlements').write_bytes(plistlib.dumps({
+                'aps-environment': 'production',
+                'com.apple.security.application-groups': ['$(APP_GROUP)']}))
+            settings = {'PROJECT_DIR': root, 'CODE_SIGN_ENTITLEMENTS': 'Signing/App.entitlements',
+                        'APP_GROUP': 'group.com.example.App'}
+            self.assertEqual(m.target_entitlements(settings), {
+                'aps-environment': 'production',
+                'com.apple.security.application-groups': ['group.com.example.App']})
+            self.assertEqual(m.target_entitlements({'PROJECT_DIR': root}), {})
+            with self.assertRaises(KeyError):
+                m.target_entitlements({k: v for k, v in settings.items() if k != 'APP_GROUP'})
+
+    def test_each_target_gets_exactly_its_own_profile(self):
+        m = load()
+        import copy
+        app = profile()
+        app['Entitlements']['application-identifier'] = 'TESTTEAM.com.example.App'
+        widget = copy.deepcopy(app)
+        widget['UUID'] = 'widget-profile'
+        widget['Entitlements']['application-identifier'] = 'TESTTEAM.com.example.App.widgets'
+        bundles = ['com.example.App', 'com.example.App.widgets']
+        self.assertEqual(m.profiles_for_targets(bundles, [widget, app]),
+                         {'com.example.App': app, 'com.example.App.widgets': widget})
+        wildcard = copy.deepcopy(app)
+        wildcard['Entitlements']['application-identifier'] = 'TESTTEAM.com.example.*'
+        for supplied in [[app], [app, widget, copy.deepcopy(widget)], [wildcard, widget],
+                         [app, widget, wildcard]]:
+            with self.subTest(count=len(supplied)), self.assertRaises(ValueError):
+                m.profiles_for_targets(bundles, supplied)
+
+    def test_extension_profile_setting_names_follow_bundle_suffix(self):
+        m = load()
+        self.assertEqual(m.profile_setting('com.example.App', 'com.example.App'), 'IOS_PROFILE')
+        self.assertEqual(m.profile_setting('com.example.App', 'com.example.App.widgets'),
+                         'IOS_WIDGETS_PROFILE')
+        self.assertEqual(m.profile_setting('com.example.App', 'com.example.App.share-in'),
+                         'IOS_SHARE_IN_PROFILE')
+        for bundle in ['com.example.Other.widgets', 'com.example.App.a.b']:
+            with self.subTest(bundle=bundle), self.assertRaises(ValueError):
+                m.profile_setting('com.example.App', bundle)
+
+    def test_signing_material_installs_and_removes_every_profile(self):
+        m = load()
+        def command(*args, **kwargs):
+            return b'"original.keychain-db"' if args[:2] == ('security', 'list-keychains') and '-s' not in args else b''
+        with tempfile.TemporaryDirectory() as root, patch.object(m, 'run', side_effect=command):
+            directory = Path(root)
+            with m.signing_material(b'p12', 'password', {'app-uuid': b'a', 'widget-uuid': b'w'}, directory):
+                self.assertEqual((directory / 'app-uuid.mobileprovision').read_bytes(), b'a')
+                self.assertEqual((directory / 'widget-uuid.mobileprovision').read_bytes(), b'w')
+            self.assertEqual(list(directory.iterdir()), [])
 
     def test_extension_profiles_require_same_team_device_group_and_certificate(self):
         m = load()
@@ -101,6 +159,24 @@ class SigningTests(unittest.TestCase):
                     m.verify_app_tree(app, 'com.example.App', 'TESTTEAM', 'fingerprint', None,
                                       expected, ['group.com.example.App'])
 
+    def test_exported_targets_keep_their_declared_entitlements(self):
+        m = load()
+        with tempfile.TemporaryDirectory() as root:
+            app = Path(root) / 'Fixture.app'
+            app.mkdir()
+            (app / 'Info.plist').write_bytes(plistlib.dumps({
+                'CFBundleIdentifier': 'com.example.App', 'CFBundleVersion': '1.1',
+                'CFBundleShortVersionString': '0.1.0'}))
+            declared = {'com.example.App': {'aps-environment': 'production'}}
+            with patch.object(m, 'verify_app', return_value={'aps-environment': 'production'}):
+                m.verify_app_tree(app, 'com.example.App', 'TESTTEAM', 'fingerprint', None,
+                                  {'com.example.App': 'app-profile'}, [], declared)
+            for signed in [{}, {'aps-environment': 'development'}]:
+                with self.subTest(signed=signed), patch.object(m, 'verify_app', return_value=signed):
+                    with self.assertRaises(ValueError):
+                        m.verify_app_tree(app, 'com.example.App', 'TESTTEAM', 'fingerprint', None,
+                                          {'com.example.App': 'app-profile'}, [], declared)
+
     def test_ad_hoc_profile_matches_bundle_and_selected_device(self):
         m = load()
         self.assertEqual(m.validate_profile(profile(), 'com.example.App', 'synthetic-device'),
@@ -143,7 +219,7 @@ class SigningTests(unittest.TestCase):
             profiles = Path(root) / 'profiles'
             profiles.mkdir()
             with self.assertRaisesRegex(RuntimeError, 'archive failed'):
-                with m.signing_material(b'p12', 'password', b'profile', 'fixture-profile', profiles):
+                with m.signing_material(b'p12', 'password', {'fixture-profile': b'profile'}, profiles):
                     self.assertTrue((profiles / 'fixture-profile.mobileprovision').exists())
                     raise RuntimeError('archive failed')
             self.assertFalse((profiles / 'fixture-profile.mobileprovision').exists())
@@ -152,7 +228,7 @@ class SigningTests(unittest.TestCase):
             existing = profiles / 'fixture-profile.mobileprovision'
             existing.write_bytes(b'existing')
             with self.assertRaises(FileExistsError):
-                with m.signing_material(b'p12', 'password', b'profile', 'fixture-profile', profiles):
+                with m.signing_material(b'p12', 'password', {'fixture-profile': b'profile'}, profiles):
                     pass
             self.assertEqual(existing.read_bytes(), b'existing')
 
@@ -204,7 +280,7 @@ class SigningTests(unittest.TestCase):
             return b'"original.keychain-db"' if args[:2] == ('security', 'list-keychains') and '-s' not in args else b''
         with tempfile.TemporaryDirectory() as root, patch.object(m, 'run', side_effect=command):
             with self.assertRaises(RuntimeError):
-                with m.signing_material(b'p12', 'password', b'profile', 'fixture-profile', Path(root)):
+                with m.signing_material(b'p12', 'password', {'fixture-profile': b'profile'}, Path(root)):
                     self.fail('Must not reach signing')
             self.assertTrue(any(c[:2] == ('security', 'delete-keychain') for c in calls))
             self.assertIn(('security', 'list-keychains', '-d', 'user', '-s', 'original.keychain-db'), calls)

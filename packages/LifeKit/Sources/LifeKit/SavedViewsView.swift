@@ -39,13 +39,19 @@ struct SavedViewsView: View {
           } label: {
             Label("Properties", systemImage: "slider.horizontal.3")
           }.accessibilityIdentifier("view-properties")
+          NavigationLink {
+            WorkspaceOptionsView(model: model)
+          } label: {
+            Label("Layout and actions", systemImage: "square.grid.2x2")
+          }.accessibilityIdentifier("view-layout-actions")
         } footer: {
-          Text(
-            "Choose the order and visibility of properties, then save or update a view to keep your layout."
-          )
+          Text("Changes apply now and save to the current view when you close this sheet.")
         }
         Section {
-          Button("All records") { choose(nil) }
+          // Tables open on a saved view; the transient catalog view is only a fallback.
+          if !model.savedViews.contains(where: { $0.unavailable == nil }) {
+            Button("All records") { choose(nil) }
+          }
           ForEach(model.savedViews, id: \.byteExactID) { saved in
             HStack(alignment: .top) {
               VStack(alignment: .leading, spacing: 4) {
@@ -170,6 +176,7 @@ struct SavedViewsView: View {
         if let action = model.undoAction { undo(action) }
       }
       .task { await refresh() }
+      .onDisappear { model.scheduleViewSave() }
       .onChange(of: name) { notice = nil }
       .onChange(of: model.workspaceGeneration) { dismiss() }
       .onChange(of: model.table) { dismiss() }

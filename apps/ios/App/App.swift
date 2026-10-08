@@ -14,5 +14,6 @@ struct LifeUIApp: App {
             && !ProcessInfo.processInfo.arguments.contains("--normal-startup"))
       )
     }
+    .commands { WorkspaceCommands() }
   }
 }

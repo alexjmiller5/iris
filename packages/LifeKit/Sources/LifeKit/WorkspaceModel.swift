@@ -26,6 +26,8 @@ final class WorkspaceModel {
         localSyncRevision = 0
         uploadedSyncRevision = 0
         automaticRetryAfter = .distantPast
+        syncError = nil
+        cliSyncBound = false
         linkBinding = nil
         linkIdentityStore = nil
         linkError = nil
@@ -369,6 +371,31 @@ final class WorkspaceModel {
   private var automaticRetryAfter = Date.distantPast
   private var localSyncRevision = 0
   private var uploadedSyncRevision = 0
+  /// Connectivity from the host's path monitor. Offline pauses automatic rounds.
+  private(set) var online = true
+  /// The last automatic round's failure. Shown only through the sync pill.
+  private(set) var syncError: String?
+  /// Bumped when a round received or sent data, so views refresh only then.
+  private(set) var syncDataRevision = 0
+  /// A shared CLI file whose own background service owns sync.
+  private(set) var cliSyncBound = false
+
+  var syncPill: SyncPill {
+    SyncPill.make(
+      replica: isReplica, syncing: syncing, movedRows: syncProgress?.processedRows ?? 0,
+      online: online, failure: syncError.map(SyncFailure.init), status: syncStatus,
+      cliBound: cliSyncBound)
+  }
+
+  /// Coming back online pulls immediately instead of waiting out a failure backoff.
+  func setOnline(_ value: Bool) {
+    guard value != online else { return }
+    online = value
+    guard value, automaticSyncSession != nil, !syncing else { return }
+    automaticRetryAfter = .distantPast
+    automaticSyncTask?.cancel()
+    automaticSyncTask = Task { @MainActor [weak self] in await self?.synchronize() }
+  }
 
   @discardableResult
   func undo(_ action: CoreUndoAction, context: WorkspaceEditingContext?) async throws
@@ -580,6 +607,7 @@ final class WorkspaceModel {
     relatedViewDefault = nil
     defaultViewNotice = nil
     savingView = false
+    viewSaveError = nil
     search = ""
     trash = false
     sortColumn = ""
@@ -793,10 +821,10 @@ final class WorkspaceModel {
   func currentViewDefinition() throws -> CoreSavedViewDefinition {
     var definition = appliedView?.definition ?? CoreSavedViewDefinition(version: 1)
     let fields = viewFields
-    let currentFilters = try filters.map { filter in
-      try filter.coreFilter(field: fields.first { $0.id == filter.column })
+    let currentFilters = filters.compactMap { filter in
+      filter.activeCoreFilter(field: fields.first { $0.id == filter.column })
     }
-    let groups = try filterGroups.map { try $0.core(fields: fields) }
+    let groups = filterGroups.compactMap { $0.activeCore(fields: fields) }
     if groups != (definition.groups ?? []) {
       definition.groups = groups
       definition.version = 2
@@ -1023,6 +1051,100 @@ final class WorkspaceModel {
         ? $0.byteExactID.lexicographicallyPrecedes($1.byteExactID) : $0.name < $1.name
     }
     await reloadAfterCommit(workspace: context.workspace, generation: workspace, query: queryKey)
+  }
+
+  // MARK: Filter bar
+
+  @discardableResult
+  func addFilter(column: String) -> UUID {
+    let type = viewFields.first { $0.id == column }?.type ?? "text"
+    let filter = WorkspaceFilter(column: column, operation: WorkspaceFilter.operations(for: type)[0])
+    filters.append(filter)
+    return filter.id
+  }
+  func removeFilter(_ id: UUID) { filters.removeAll { $0.id == id } }
+  @discardableResult
+  func addFilterGroup(column: String) -> UUID {
+    let type = viewFields.first { $0.id == column }?.type ?? "text"
+    let group = WorkspaceFilterGroup(filters: [
+      WorkspaceFilter(column: column, operation: WorkspaceFilter.operations(for: type)[0])
+    ])
+    filterGroups.append(group)
+    return group.id
+  }
+  func removeFilterGroup(_ id: UUID) { filterGroups.removeAll { $0.id == id } }
+  /// Header menus and the Sort popover: a chosen column becomes the primary sort.
+  func setSort(column: String, ascending: Bool) {
+    sortColumn = column
+    sortAscending = ascending
+  }
+  func setSorts(_ sorts: [CoreSort]) { sortRules = sorts }
+
+  // Filter/sort edits apply immediately. Their saved-view write is debounced,
+  // revision-checked and undoable. The request is captured when scheduled, so
+  // navigating away before it fires still saves the view it was made in.
+  private struct PendingViewSave {
+    let context: WorkspaceEditingContext
+    let args: CoreSaveViewArgs
+  }
+  private var pendingViewSave: PendingViewSave?
+  private var viewSaveTimer: Task<Void, Never>?
+  private var viewSaveInFlight: Task<Void, Never>?
+  private(set) var viewSaveError: String?
+  var hasPendingViewSave: Bool { pendingViewSave != nil }
+
+  func scheduleViewSave(after delay: Duration = .milliseconds(400)) {
+    viewSaveTimer?.cancel()
+    guard let context = editingContext, let applied = appliedView, let revision = applied.updatedAt,
+      let definition = try? currentViewDefinition(), definition != applied.definition,
+      TimeZone(identifier: viewTimeZone) != nil
+    else {
+      pendingViewSave = nil
+      return
+    }
+    pendingViewSave = PendingViewSave(
+      context: context,
+      args: CoreSaveViewArgs(
+        table: context.table, name: applied.name, definition: definition, id: applied.id,
+        expectedUpdatedAt: revision))
+    viewSaveTimer = Task { [weak self] in
+      do { try await Task.sleep(for: delay) } catch { return }
+      await self?.flushViewSave()
+    }
+  }
+
+  func flushViewSave() async {
+    await viewSaveInFlight?.value
+    guard let pending = pendingViewSave else { return }
+    pendingViewSave = nil
+    viewSaveTimer?.cancel()
+    // Unstructured so a later debounce cancellation never interrupts a write.
+    let task = Task { await self.commitViewSave(pending) }
+    viewSaveInFlight = task
+    await task.value
+  }
+
+  private func commitViewSave(_ pending: PendingViewSave) async {
+    let context = pending.context
+    let id = pending.args.id.map { Data($0.utf8) }
+    do {
+      if context.workspace === client, context.table == table,
+        appliedView.map({ Data($0.id.utf8) }) == id
+      {
+        while savingView || undoing { try await Task.sleep(for: .milliseconds(50)) }
+        // A manual save or Undo may already have settled the change.
+        guard viewModified, let applied = appliedView, Data(applied.id.utf8) == id else { return }
+        try await saveCurrentView(name: applied.name, update: true, context: context)
+      } else {
+        _ = try await context.workspace.saveView(pending.args)
+        if context.workspace === client { recordLocalChange() }
+      }
+      viewSaveError = nil
+    } catch {
+      if context.workspace === client, context.table == table {
+        viewSaveError = error.localizedDescription
+      }
+    }
   }
 
   func deleteSavedView(_ saved: CoreSavedViewRecord, context: WorkspaceEditingContext?) async throws
@@ -1323,6 +1445,7 @@ final class WorkspaceModel {
       }
       client = workspace
       widgetWorkspaceURL = demo ? nil : URL(fileURLWithPath: path)
+      cliSyncBound = (try? localObserver?.cliHubBound()) ?? false
       if !demo {
         do {
           linkIdentityStore = try NativeLinkIdentityStore(
@@ -1344,7 +1467,7 @@ final class WorkspaceModel {
       search = ""
       trash = false
       if let table {
-        let preferred = try await workspace.getViewDefault(table: table)
+        let preferred = try await workspace.ensureDefaultView(table: table)
         if client === workspace {
           try installSavedView(
             preferred.view,
@@ -1614,6 +1737,7 @@ final class WorkspaceModel {
           guard !Task.isCancelled, generation == workspaceGeneration, client === workspace else {
             return
           }
+          cliSyncBound = (try? observer.cliHubBound()) ?? false
           if error == nil { observer.acknowledge(version) }
         }
       } catch is CancellationError { return } catch {
@@ -1790,7 +1914,6 @@ final class WorkspaceModel {
     }
     // Keep the last advisory while offline work continues. The core writer
     // rechecks live metadata/coverage atomically for every actual save.
-    error = nil
     let receipt: Result<WorkspaceSyncResult, Error>
     do {
       receipt = .success(
@@ -1814,13 +1937,25 @@ final class WorkspaceModel {
         let updatedCatalog = try await client.catalog()
         guard client === self.client, generation == workspaceGeneration else { return false }
         syncResult = result
-        catalog = updatedCatalog
+        syncError = nil
+        let changed =
+          updatedCatalog != catalog || result.pulled > 0 || result.pushed > 0
+          || !result.rejected.isEmpty
+        if updatedCatalog != catalog { catalog = updatedCatalog }
         if !tables.contains(where: { $0["id"]?.text == table }) {
           table =
             tables.first(where: { $0["readOnly"] == .bool(false) })?["id"]?.text
             ?? tables.first?["id"]?.text
         }
-        await reload()
+        if changed {
+          syncDataRevision += 1
+          await reload()
+        } else if let status = try? await client.status(),
+          client === self.client, generation == workspaceGeneration
+        {
+          // A quiet periodic round refreshes only the counters behind the pill.
+          syncStatus = status
+        }
         return true
       } catch {
         // Keep the replica and queued edits available offline after a failed request.
@@ -1829,9 +1964,10 @@ final class WorkspaceModel {
         guard client === self.client, generation == workspaceGeneration else { return false }
         if let cachedCatalog { catalog = cachedCatalog }
         if table == nil { table = tables.first?["id"]?.text }
+        syncDataRevision += 1
         await reload()
         guard client === self.client, generation == workspaceGeneration else { return false }
-        self.error = syncCancelledByUser ? nil : error.localizedDescription
+        if !syncCancelledByUser { syncError = error.localizedDescription }
       }
       return false
     }.value
@@ -1845,10 +1981,11 @@ final class WorkspaceModel {
     client?.cancelSync()
   }
 
-  /// The view runs one loop while this workspace is in the foreground. Local
-  /// commits only schedule catch-up; neither saves nor navigation await it.
+  /// The view runs one loop while this workspace is in the foreground: it pulls
+  /// on activation, then every `interval` while online. Local commits only
+  /// schedule catch-up; neither saves nor navigation await it.
   func runAutomaticSync(
-    interval: Duration = .seconds(60), debounce: Duration = .milliseconds(750)
+    interval: Duration = .seconds(2), debounce: Duration = .milliseconds(750)
   ) async {
     guard !Task.isCancelled, client != nil, transport != nil else { return }
     let generation = workspaceGeneration
@@ -1858,12 +1995,13 @@ final class WorkspaceModel {
     automaticSyncDebounce = debounce
     defer { if automaticSyncSession == session { stopAutomaticSync() } }
     attachments?.retry()
+    automaticRetryAfter = .distantPast
     scheduleAutomaticSync()
     while generation == workspaceGeneration, automaticSyncSession == session, !Task.isCancelled {
+      if !syncing, online, Date() >= automaticRetryAfter { await synchronize() }
       do { try await Task.sleep(for: interval) } catch { return }
       guard generation == workspaceGeneration, automaticSyncSession == session, !Task.isCancelled
       else { return }
-      if !syncing, Date() >= automaticRetryAfter { await synchronize() }
     }
   }
 
@@ -1893,7 +2031,7 @@ final class WorkspaceModel {
         let delay = self.automaticRetryAfter.timeIntervalSinceNow
         if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
       } catch { return }
-      guard !Task.isCancelled, generation == self.workspaceGeneration,
+      guard !Task.isCancelled, generation == self.workspaceGeneration, self.online,
         self.automaticSyncSession == session, self.localSyncRevision > self.uploadedSyncRevision
       else { return }
       await self.synchronize()
@@ -1916,6 +2054,7 @@ final class WorkspaceModel {
   }
 
   func close() async {
+    await flushViewSave()
     attachments?.stop()
     attachments = nil
     stopAutomaticSync()

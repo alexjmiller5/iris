@@ -18,6 +18,13 @@
 	import { editRevision } from '$lib/record-revision';
 	import { reconcileUndo } from '$lib/record-undo';
 	import FieldEditor from '$lib/FieldEditor.svelte';
+	import ReferenceCreateDialog from '$lib/ReferenceCreateDialog.svelte';
+	import {
+		commitCreation,
+		creationTarget,
+		startCreation,
+		type CreationPlan
+	} from '$lib/reference-create';
 	import { createRetainedFileResolver } from '$lib/retained-files';
 	import RejectedEdits from '$lib/RejectedEdits.svelte';
 	import type { RejectionSnapshot } from '$lib/rejection-inbox';
@@ -45,7 +52,8 @@
 	import {
 		IconDatabase,
 		IconPlus,
-		IconRefresh,
+		IconLayoutSidebarLeftCollapse,
+		IconLayoutSidebarLeftExpand,
 		IconTrash,
 		IconArrowLeft,
 		IconArrowUpRight,
@@ -75,8 +83,9 @@
 	import SchemaGraph from '$lib/SchemaGraph.svelte';
 	import HubServices from '$lib/HubServices.svelte';
 	import HubEnrollment from '$lib/HubEnrollment.svelte';
+	import SyncStatus from '$lib/SyncStatus.svelte';
+	import { SyncScheduler, leadership } from '$lib/sync-status';
 	import type { HubConnection } from '$lib/device-enrollment';
-	let enrollment = $state<HubEnrollment>();
 	let enrolling = $state(false);
 	import SearchDialog from '$lib/SearchDialog.svelte';
 	import {
@@ -281,6 +290,12 @@
 	let writing = $state(false);
 	let catalogEditing = $state(false);
 	let undoAction = $state<UndoAction | null>(null);
+	let referenceCreation = $state<{
+		property: Property;
+		plan: CreationPlan;
+		version: number;
+		error: string;
+	} | null>(null);
 	let undoPaused = $state(false);
 	let bodySaving = $state(false),
 		bodyFailure = $state('');
@@ -600,7 +615,6 @@
 			});
 			if (database === workspace && table === target && editorVersion === version) {
 				selected = stored;
-				notice = 'Cell saved on this device';
 				await refresh().catch((e) => {
 					error = `Cell saved. Could not refresh records: ${message(e)}`;
 				});
@@ -832,6 +846,48 @@
 		!!(selected && p.immutable) ||
 		readOnly ||
 		blocked;
+	const creatable = (p: Property) =>
+		(p.type === 'ref' || p.type === 'multi_ref') && !locked(p) && !!creationTarget(catalog, p);
+	/** Create a related record through the ordinary writer and add its exact id to the draft. */
+	async function createReference(p: Property, text: string, plan?: CreationPlan) {
+		const target = creationTarget(catalog, p);
+		if (!database || !target || busy || !editing || locked(p)) return;
+		const workspace = database,
+			version = editorVersion;
+		const write = (table: string, patch: Row) => workspace.request('write', { table, patch });
+		const source = { type: p.type, raw: draft[p.col] ?? '' };
+		busy = true;
+		writing = true;
+		error = '';
+		try {
+			const result = plan
+				? await commitCreation(plan, source, write)
+				: await startCreation(target, text, source, write);
+			if (database !== workspace || editorVersion !== version) return;
+			if (!('row' in result)) {
+				referenceCreation = { property: p, plan: result, version, error: '' };
+				return;
+			}
+			referenceCreation = null;
+			draft[p.col] = result.value;
+			if (!selected) explicitCreation = new Set([...explicitCreation, p.col]);
+			references[p.col] = [
+				...(references[p.col] ?? []).filter((row) => row.id !== result.row.id),
+				result.row
+			];
+			notice = `Created ${refTitle(p, result.row)} on this device. Save the record to keep the link.`;
+			await refresh();
+		} catch (e) {
+			if (database !== workspace) return;
+			if (referenceCreation) referenceCreation.error = message(e);
+			else error = message(e);
+		} finally {
+			if (database === workspace) {
+				busy = false;
+				writing = false;
+			}
+		}
+	}
 	const list = (value: string) => {
 		try {
 			const parsed = JSON.parse(value || '[]');
@@ -1014,7 +1070,7 @@
 			if (!current()) return;
 			if (!found[0] || found[0].id !== entry.rowID)
 				throw new Error(
-					'This record is not available locally. Include its table and sync before repairing the edit.'
+					'This record is not available locally. Include its table to download it before repairing the edit.'
 				);
 			const latest = await workspace.request('snapshot');
 			if (!current()) return;
@@ -1038,7 +1094,7 @@
 				draft[p.col] =
 					value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value);
 			}
-			notice = 'Review the rejected values, save your correction, then sync.';
+			notice = 'Review the rejected values, then save your correction.';
 			const openedVersion = editorVersion;
 			await Promise.all([loadRows(), loadViews()]);
 			if (database !== workspace || editorVersion !== openedVersion) return;
@@ -1081,7 +1137,6 @@
 			draft = {};
 			savedDraft = '';
 			await loadRows();
-			notice = 'Action saved on this device';
 		} catch (e) {
 			if (database === workspace && viewVersion === version) error = message(e);
 		} finally {
@@ -1385,6 +1440,7 @@
 			editing = false;
 			await refresh();
 			database.addEventListener('change', () => {
+				dataRevision++;
 				void refresh().catch((e) => (error = message(e)));
 			});
 			const linked = new URL(window.location.href);
@@ -1580,7 +1636,6 @@
 			viewBaseline = JSON.stringify(definition);
 			await refresh();
 			await reflectLocation();
-			notice = 'View saved on this device';
 		} finally {
 			if (database === workspace) {
 				busy = false;
@@ -1650,6 +1705,7 @@
 	function edit(row: Row | null, reflect = true, discardConfirmed = false): boolean {
 		if (!discardConfirmed && !discard()) return false;
 		explicitCreation = new Set();
+		referenceCreation = null;
 		copiedCreation = null;
 		undoPaused = false;
 		editorVersion++;
@@ -1790,7 +1846,6 @@
 			draft = rowDraft(stored);
 			savedDraft = JSON.stringify(draft);
 			bodyFailure = '';
-			notice = 'Saved on this device';
 			undoPaused = false;
 			await refresh();
 			await reflectLocation(true);
@@ -1912,14 +1967,6 @@
 			}
 		}
 	}
-	async function syncNow() {
-		if (!database || busy || enrolling) return;
-		if (!connectedHub || connectedHub.endpoint !== endpoint || connectedHub.token !== token) {
-			await enrollment?.connectManual();
-			return;
-		}
-		await syncConnection(connectedHub, () => true).catch(() => {});
-	}
 	async function syncConnection(candidate: HubConnection, isCurrent: () => boolean) {
 		if (!database || busy || !isCurrent()) throw new Error('Connection is no longer current.');
 		const workspace = database;
@@ -1928,8 +1975,9 @@
 		let accepted = false;
 		let failure: unknown;
 		busy = true;
+		connecting = true;
 		error = '';
-		notice = 'Syncing';
+		syncError = '';
 		try {
 			const hub = createHttpHub(candidate.endpoint, candidate.token, fetch);
 			connection = { endpoint: hub.endpoint, token: candidate.token };
@@ -1940,21 +1988,14 @@
 			});
 			if (!current()) return;
 			accepted = true;
-			try {
-				localStorage.setItem('life-ui:replica', JSON.stringify({ maxRows, tables: included }));
-			} catch {
-				/* Preference storage does not affect sync. */
-			}
-			notice = result.rejected.length
-				? 'Some edits need attention'
-				: `Synced: ${result.pulled} received, ${result.pushed} sent`;
+			saveReplicaPreferences();
 		} catch (e) {
 			if (!current()) return;
 			// Core binding checks precede HTTP. A cap still permits usage/notifications.
 			accepted = !!connection && message(e) === 'hub HTTP 429';
 			failure = e;
 			error = message(e);
-			notice = 'Sync did not finish. Local records remain available.';
+			syncError = error;
 		} finally {
 			if (current()) {
 				// A refresh failure must not revoke a successfully installed credential.
@@ -1970,8 +2011,135 @@
 				}
 			}
 			if (database === workspace) busy = false;
+			connecting = false;
 		}
 		if (current() && !accepted) throw failure ?? new Error('Connection failed.');
+	}
+
+	// Sync runs by itself: push 750 ms after a write, pull every 2 s while this tab is visible.
+	let connecting = $state(false),
+		syncSlow = $state(false),
+		syncError = $state(''),
+		syncRevision = $state(0),
+		dataRevision = $state(0);
+	let wakeSync = () => {};
+	let savedReplica = '';
+	function saveReplicaPreferences() {
+		const next = JSON.stringify({ maxRows, tables: included });
+		if (next === savedReplica) return;
+		try {
+			localStorage.setItem('life-ui:replica', next);
+			savedReplica = next;
+		} catch {
+			/* Preference storage does not affect sync. */
+		}
+	}
+	async function backgroundSync(workspace: WorkspaceDatabase, connection: HubConnection) {
+		const slow = setTimeout(() => (syncSlow = true), 600);
+		try {
+			await workspace.request('sync', {
+				...connection,
+				maxRows,
+				tables: $state.snapshot(included)
+			});
+			if (database !== workspace) return;
+			syncError = '';
+			saveReplicaPreferences();
+			// A sync that moved rows refreshes through the change event; this keeps the pill current.
+			const status = await workspace.request('status');
+			if (database !== workspace) return;
+			lastSync = status.lastSuccessfulSync;
+			pendingEdits = status.pendingUiEdits;
+			rejectedCount = status.rejected;
+			if (status.skippedTables.join('\n') !== skipped.join('\n')) await refresh();
+			syncRevision++;
+		} catch (e) {
+			if (database === workspace) syncError = message(e);
+			throw e;
+		} finally {
+			clearTimeout(slow);
+			syncSlow = false;
+		}
+	}
+	$effect(() => {
+		const workspace = database,
+			connection = connectedHub;
+		if (!workspace || !connection || demo) return;
+		let leader = false;
+		const scheduler = new SyncScheduler(
+			{
+				ready: () =>
+					leader &&
+					database === workspace &&
+					connectedHub === connection &&
+					document.visibilityState === 'visible' &&
+					navigator.onLine,
+				run: () => backgroundSync(workspace, connection)
+			},
+			() => {}
+		);
+		// One visible tab runs the loop; the others refresh from its change broadcasts.
+		const lead = leadership(navigator.locks, 'life-ui:sync-leader:workspace', (on) => {
+			leader = on;
+			if (on) scheduler.wake();
+		});
+		const wake = () => {
+			lead.want(document.visibilityState === 'visible');
+			scheduler.wake();
+		};
+		const changed = (event: Event) => {
+			if ((event as CustomEvent).detail !== 'sync') scheduler.wrote();
+		};
+		wakeSync = wake;
+		workspace.addEventListener('change', changed);
+		document.addEventListener('visibilitychange', wake);
+		window.addEventListener('online', wake);
+		window.addEventListener('focus', wake);
+		wake();
+		return () => {
+			wakeSync = () => {};
+			scheduler.stop();
+			lead.want(false);
+			workspace.removeEventListener('change', changed);
+			document.removeEventListener('visibilitychange', wake);
+			window.removeEventListener('online', wake);
+			window.removeEventListener('focus', wake);
+		};
+	});
+	function syncAction(action: 'rejected' | 'connect') {
+		if (action === 'connect') {
+			const panel = document.getElementById('hub-connect') as HTMLDetailsElement | null;
+			if (panel) panel.open = true;
+			panel?.querySelector('summary')?.focus();
+			return;
+		}
+		graphVisible = false;
+		void tick().then(() => {
+			const panel = document.getElementById('rejected-edits') as HTMLDetailsElement | null;
+			if (!panel) return;
+			panel.open = true;
+			panel.scrollIntoView({ block: 'nearest' });
+			panel.querySelector('summary')?.focus();
+		});
+	}
+
+	let sidebarCollapsed = $state(false),
+		shortcutKey = $state('⌘');
+	onMount(() => {
+		if (!/Mac|iPhone|iPad/.test(navigator.platform)) shortcutKey = 'Ctrl+';
+		try {
+			sidebarCollapsed = localStorage.getItem('life-ui:sidebar') === 'collapsed';
+		} catch {
+			/* The sidebar opens by default. */
+		}
+	});
+	function toggleSidebar() {
+		sidebarCollapsed = !sidebarCollapsed;
+		try {
+			localStorage.setItem('life-ui:sidebar', sidebarCollapsed ? 'collapsed' : 'open');
+		} catch {
+			/* The choice lasts for this page only. */
+		}
 	}
 	async function find() {
 		offset = 0;
@@ -2184,6 +2352,21 @@
 	>
 {/snippet}
 
+{#snippet sidebarToggle()}
+	<button
+		type="button"
+		class="secondary icon-button sidebar-toggle"
+		aria-controls="workspace-sidebar"
+		aria-expanded={!sidebarCollapsed}
+		aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+		title={`${sidebarCollapsed ? 'Show' : 'Hide'} sidebar (${shortcutKey}\\)`}
+		onclick={toggleSidebar}
+		>{#if sidebarCollapsed}<IconLayoutSidebarLeftExpand
+				size={18}
+			/>{:else}<IconLayoutSidebarLeftCollapse size={18} />{/if}</button
+	>
+{/snippet}
+
 <svelte:head><title>Workspace | Life UI</title></svelte:head>
 <svelte:document
 	onvisibilitychange={() => {
@@ -2195,6 +2378,11 @@
 		if (savedUndoShortcut(event) && undoAction && !busy && !navigationLoading && !bodySaving) {
 			event.preventDefault();
 			void undoLastSavedChange();
+			return;
+		}
+		if ((event.metaKey || event.ctrlKey) && event.key === '\\' && opened) {
+			event.preventDefault();
+			toggleSidebar();
 			return;
 		}
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && opened) {
@@ -2261,6 +2449,16 @@
 			onnavigate={openSearchDestination}
 		/>
 	{/if}
+	{#if referenceCreation && referenceCreation.version === editorVersion}
+		{@const creation = referenceCreation}
+		<ReferenceCreateDialog
+			plan={creation.plan}
+			error={creation.error}
+			busy={writing}
+			oncancel={() => (referenceCreation = null)}
+			onsave={(plan) => createReference(creation.property, '', plan)}
+		/>
+	{/if}
 	{#if catalogEditing}
 		<CatalogEditor
 			{table}
@@ -2271,16 +2469,18 @@
 		/>
 	{/if}
 	<fieldset class="workspace-controls" disabled={writing} aria-label="Workspace controls">
-		<div class="data-shell">
-			<aside class="tables">
-				<a
-					class="wordmark"
-					href="/"
-					aria-disabled={writing}
-					onclick={(event) => {
-						if (writing) event.preventDefault();
-					}}><IconDatabase size={22} /> Life UI</a
-				>
+		<div class="data-shell" class:collapsed={sidebarCollapsed}>
+			<aside class="tables" id="workspace-sidebar" hidden={sidebarCollapsed}>
+				<div class="sidebar-head">
+					<a
+						class="wordmark"
+						href="/"
+						aria-disabled={writing}
+						onclick={(event) => {
+							if (writing) event.preventDefault();
+						}}><IconDatabase size={22} /> Life UI</a
+					>{@render sidebarToggle()}
+				</div>
 				<div class="workspace-label">
 					{demo ? 'Sample workspace' : 'My workspace'}<span
 						>{demo ? 'Example data' : 'Stored on this device'}</span
@@ -2324,70 +2524,73 @@
 						}
 					}}>{graphVisible ? 'Records' : 'Table graph'}</button
 				>
-				<div class="sync-state" aria-live="polite">
-					<span class="dot"></span>{busy ? 'Working' : notice || 'Local workspace'}<small
-						>{lastSync
-							? `Last sync ${new Date(lastSync).toLocaleString()}`
-							: 'No sync completed yet'}</small
+				<div class="sidebar-foot">
+					{#if !demo}
+						{#key connectedHub}<HubServices
+								connection={connectedHub}
+								{syncRevision}
+								canReview={!busy &&
+									!writing &&
+									!bodySaving &&
+									!dirty &&
+									!gridDraft &&
+									pendingEdits === 0}
+							/>{/key}
+						<details class="connect" id="hub-connect">
+							<summary>Connect to a hub</summary>
+							{#if database}{#key database}<HubEnrollment
+										core={database}
+										bind:endpoint
+										bind:token
+										bind:pending={enrolling}
+										disabled={busy}
+										onconnect={syncConnection}
+									/>{/key}{/if}
+							<label for="max-rows">Automatic sync row limit</label><input
+								id="max-rows"
+								type="number"
+								min="0"
+								step="1"
+								bind:value={maxRows}
+								onchange={() => wakeSync()}
+							/>
+							<p class="hint">
+								Larger tables stay out of automatic sync. Catalogs always sync. Local rows are
+								retained.
+							</p>
+						</details>
+					{/if}
+					<button
+						class="secondary leave"
+						onclick={() => {
+							if (!discard()) return;
+							database?.close();
+							database = null;
+							pins.setWorkspace(null);
+							recentsRequest++;
+							recentDestinations = [];
+							recentEntries = [];
+							opened = false;
+							showFind(false);
+							resetView();
+							token = '';
+						}}>Switch workspace</button
 					>
-					<small>Pending edits: {pendingEdits}</small>
+					<SyncStatus
+						{demo}
+						connected={!!connectedHub}
+						{online}
+						syncing={connecting || syncSlow}
+						pending={pendingEdits}
+						rejected={rejectedCount}
+						{lastSync}
+						error={syncError}
+						onaction={syncAction}
+					/>
 				</div>
-				{#if !demo}
-					{#key connectedHub}<HubServices
-							connection={connectedHub}
-							canReview={!busy &&
-								!writing &&
-								!bodySaving &&
-								!dirty &&
-								!gridDraft &&
-								pendingEdits === 0}
-						/>{/key}
-					<details class="connect">
-						<summary>Connect to a hub</summary>
-						{#if database}{#key database}<HubEnrollment
-									core={database}
-									bind:this={enrollment}
-									bind:endpoint
-									bind:token
-									bind:pending={enrolling}
-									disabled={busy}
-									onconnect={syncConnection}
-								/>{/key}{/if}
-						<label for="max-rows">Automatic sync row limit</label><input
-							id="max-rows"
-							type="number"
-							min="0"
-							step="1"
-							bind:value={maxRows}
-						/>
-						<p class="hint">
-							Larger tables stay out of automatic sync. Catalogs always sync. Local rows are
-							retained.
-						</p>
-						<button onclick={syncNow} disabled={busy || enrolling || !endpoint || !token}
-							><IconRefresh size={16} /> Sync now</button
-						>
-					</details>
-				{/if}
-				<p class="hint">{online ? 'Network available' : 'Device offline - edits stay here'}</p>
-				<button
-					class="secondary leave"
-					onclick={() => {
-						if (!discard()) return;
-						database?.close();
-						database = null;
-						pins.setWorkspace(null);
-						recentsRequest++;
-						recentDestinations = [];
-						recentEntries = [];
-						opened = false;
-						showFind(false);
-						resetView();
-						token = '';
-					}}>Switch workspace</button
-				>
 			</aside>
 			<main class="records">
+				{#if sidebarCollapsed}{@render sidebarToggle()}{/if}
 				{#if !editing && (table || undoAction)}<div class="link-toolbar">
 						{#if table && !editing}
 							<button
@@ -2400,6 +2603,7 @@
 						{@render undoButton()}
 					</div>{/if}
 				{#if navigationLoading}<p role="status" class="hint">Opening link…</p>{/if}
+				{#if notice}<p role="status" class="hint">{notice}</p>{/if}
 				{#if error}<p role="alert" class="failure">{error}</p>{/if}
 				{#if graphVisible}<SchemaGraph
 						tables={catalog.tables}
@@ -2421,7 +2625,7 @@
 								class="secondary"
 								onclick={() => {
 									included = { ...included, [table]: true };
-									notice = 'Table included. Sync now to download its records.';
+									wakeSync();
 								}}>Include this table</button
 							>
 						</div>{/if}
@@ -2431,7 +2635,7 @@
 								const next = { ...included };
 								delete next[table];
 								included = next;
-								notice = 'Automatic size rule restored. Sync to apply it.';
+								wakeSync();
 							}}>Use automatic size rule</button
 						>{/if}
 					<header class="records-heading">
@@ -2456,7 +2660,7 @@
 						>
 					</header>
 					{#if !table}<div class="empty">
-							Connect to your hub in the sidebar and sync to bring your tables to this device.
+							Connect to your hub in the sidebar to bring your tables to this device.
 						</div>{/if}
 					{#if table}
 						{#key table}
@@ -2845,6 +3049,7 @@
 											label: refTitle(p, row)
 										}))}
 										onsearch={(query) => loadReferences(p, query)}
+										oncreate={creatable(p) ? (text) => createReference(p, text) : undefined}
 									/>
 								{/key}
 								{#if p.type === 'ref' || p.type === 'multi_ref'}
@@ -2954,6 +3159,7 @@
 					</form>
 					{#if selected && database}{#key `${editorVersion}:${selected.id}:${JSON.stringify([catalog, skipped])}`}<IncomingReferences
 								core={database}
+								revision={dataRevision}
 								{table}
 								rowId={String(selected.id)}
 								disabled={busy || navigationLoading || relationOpening === editorVersion}
@@ -3067,25 +3273,30 @@
 		font-weight: 400;
 		margin-top: 5px;
 	}
-	.sync-state {
-		margin-top: auto;
-		font-size: 12px;
-		line-height: 1.6;
+	.data-shell.collapsed {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.tables[hidden] {
+		display: none;
+	}
+	.sidebar-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+	.sidebar-toggle {
+		display: inline-flex;
 		color: var(--color-muted);
-		padding: 0 8px;
 	}
-	.dot {
-		display: inline-block;
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--color-valid);
-		margin-right: 7px;
+	.records > .sidebar-toggle {
+		margin-bottom: 12px;
 	}
-	.sync-state small {
-		display: block;
-		margin-top: 4px;
-		font-size: 11px;
+	.sidebar-foot {
+		margin-top: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
 	}
 	.connect {
 		font-size: 12px;
@@ -3349,14 +3560,6 @@
 		}
 		.workspace-label {
 			display: none;
-		}
-		.sync-state {
-			padding: 0;
-			margin-top: 0;
-		}
-		.sync-state small {
-			display: inline;
-			margin-left: 8px;
 		}
 		.records {
 			padding: 22px 16px;

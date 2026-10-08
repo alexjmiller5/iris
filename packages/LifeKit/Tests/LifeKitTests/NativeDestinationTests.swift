@@ -63,7 +63,9 @@ struct NativeDestinationTests {
       definition: CoreSavedViewDefinition(version: 1, columns: ["title"], search: "not-this-record")))
     let resolver = NativeDestinationResolver(workspace: workspace)
     let table = try await resolver.resolve(NativeDestination(table: "notes"), isCurrent: { true })
-    #expect(table.label == "notes" && table.view == nil && table.row == nil && !table.isTrashed)
+    // Plain navigation opens the catalog default saved view, never another saved query.
+    #expect(table.label == "notes" && table.row == nil && !table.isTrashed)
+    #expect(table.view?.name == "Default view" && table.view?.definition == CoreSavedViewDefinition(version: 1))
     let renamed = try await workspace.saveView(CoreSaveViewArgs(table: "notes", name: "Renamed view",
       definition: CoreSavedViewDefinition(version: 1, columns: ["status"], search: "still-excluded"),
       id: view.id, expectedUpdatedAt: view.updatedAt))
@@ -284,7 +286,9 @@ extension NativeDestinationTests {
       CoreDeleteViewArgs(id: saved.id, expectedUpdatedAt: saved.updatedAt!))
     let fallback = try await resolver.resolve(
       NativeDestination(table: "notes"), isCurrent: { true })
-    #expect(fallback.view == nil)
+    // The unavailable preference keeps its row and notice; the table still opens on
+    // the catalog default saved view.
+    #expect(fallback.view?.name == "Default view")
     #expect(fallback.defaultNotice?.isEmpty == false)
     #expect(try await workspace.getViewDefault(table: "notes").viewId == saved.id)
     try await workspace.close()

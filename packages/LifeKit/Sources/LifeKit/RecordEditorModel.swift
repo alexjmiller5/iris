@@ -257,7 +257,6 @@ final class RecordEditorModel {
   var status: String {
     if let failure { return failure }
     if undoing { return "Undoing saved change…" }
-    if saving { return "Saving…" }
     if isTrashed { return "This record is in the trash. Restore it before saving your draft." }
     if autosavePaused { return "Autosave paused. Review your draft, then save the record." }
     if isNew { return "Draft · Save the record to keep it" }

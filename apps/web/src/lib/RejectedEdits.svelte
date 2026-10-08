@@ -24,7 +24,7 @@
 </script>
 
 {#if $model.total || $model.error}
-	<details class="rejections">
+	<details class="rejections" id="rejected-edits">
 		<summary>{$model.total} rejected edits need attention</summary>
 		<p role="status">Showing {$model.entries.length} of {$model.total} rejected edits</p>
 		{#each $model.entries as entry (JSON.stringify([entry.table, entry.rowID]))}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { IconX, IconRefresh, IconArrowLeft, IconArrowUpRight } from '@tabler/icons-svelte';
+	import { IconX, IconArrowLeft, IconArrowUpRight } from '@tabler/icons-svelte';
 	import type { Property, RemoteRowsPage, RemoteRowResult } from 'life-ui-core/client';
 	import MarkdownEditor from './components/MarkdownEditor.svelte';
 	import { createRemoteBrowser } from './remote-browser';
@@ -113,9 +113,6 @@
 					/><button disabled={$model.loading || !recordID} type="submit">Find ID</button>
 				</div>
 			</form>
-			<button class="refresh" disabled={$model.loading} onclick={() => model.refresh()}
-				><IconRefresh size={16} /> Refresh</button
-			>
 		</div>
 		<p role="status">
 			{$model.loading ? 'Loading online records…' : `${$model.rows.length} records loaded`}
@@ -314,9 +311,6 @@
 		}
 		form {
 			flex-basis: 100%;
-		}
-		.refresh {
-			margin-left: auto;
 		}
 	}
 </style>

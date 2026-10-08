@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "dd24dd6ecbb094bf0ea9d391be40fb3ed008fd107b106d925ea05ab4c4aa39e2";
+export declare const CORE_CONTRACT_HASH = "eff8d83d3f975a319e437c01141fcae058de2b6b18193eaae5388ac209ffd0b1";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -1250,6 +1250,10 @@ export interface CoreOperations {
         result: SidebarPinList;
     };
     getViewDefault: {
+        args: GetViewDefaultArgs;
+        result: ViewDefault;
+    };
+    ensureDefaultView: {
         args: GetViewDefaultArgs;
         result: ViewDefault;
     };

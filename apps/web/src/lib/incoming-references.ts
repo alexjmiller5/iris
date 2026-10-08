@@ -90,6 +90,29 @@ export function createIncomingReferences(
 				if (current(version)) groupUpdate(key, { loading: false, error: message(e) });
 			}
 		},
+		/** Data changed underneath: re-read opened groups' first page, keeping the list open. */
+		async reload() {
+			const version = generation;
+			await Promise.all(
+				state.groups
+					.filter((g) => g.loaded && !g.loading)
+					.map(async (group) => {
+						try {
+							const receipt = await readPage(group.source, 0);
+							if (current(version))
+								groupUpdate(group.key, {
+									source: receipt.source,
+									viewUnavailable: receipt.viewUnavailable,
+									rows: receipt.rows,
+									nextOffset: receipt.nextOffset,
+									error: ''
+								});
+						} catch (e) {
+							if (current(version)) groupUpdate(group.key, { error: message(e) });
+						}
+					})
+			);
+		},
 		dispose() {
 			disposed = true;
 			generation++;

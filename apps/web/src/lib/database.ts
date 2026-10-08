@@ -20,7 +20,8 @@ export class WorkspaceDatabase extends EventTarget {
 				return;
 			}
 			if (data.changed) {
-				this.dispatchEvent(new Event('change'));
+				// detail: the database method that changed data, here or in another tab.
+				this.dispatchEvent(new CustomEvent('change', { detail: data.changed }));
 				return;
 			}
 			const pending = this.pending.get(data.id);

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import ChangesetReview from './governance/ChangesetReview.svelte';
-	import { IconBell, IconSettings, IconX, IconRefresh } from '@tabler/icons-svelte';
+	import { IconBell, IconSettings, IconX } from '@tabler/icons-svelte';
 	import {
 		createHttpHub,
 		readUsage,
@@ -14,8 +14,13 @@
 
 	let {
 		connection,
-		canReview = false
-	}: { connection: { endpoint: string; token: string } | null; canReview?: boolean } = $props();
+		canReview = false,
+		syncRevision = 0
+	}: {
+		connection: { endpoint: string; token: string } | null;
+		canReview?: boolean;
+		syncRevision?: number;
+	} = $props();
 	let section = $state<'notifications' | 'settings' | null>(null);
 	let dialog: HTMLDialogElement;
 	let feed = $state<NotificationFeed | null>(null);
@@ -108,6 +113,12 @@
 		if (next === 'settings') void refreshUsage();
 		else void refreshFeed();
 	}
+	// An open panel follows the background sync loop.
+	$effect(() => {
+		if (!syncRevision) return;
+		if (section === 'settings') void refreshUsage();
+		else if (section === 'notifications') void refreshFeed();
+	});
 	onMount(() => {
 		if (!connection) return;
 		active = true;
@@ -167,9 +178,6 @@
 						? 'Loading notifications…'
 						: 'Notifications unavailable'}
 			</p>
-			<button disabled={refreshing || marking} onclick={refreshFeed}
-				><IconRefresh size={16} /> Refresh</button
-			>
 			<button disabled={!unread || refreshing || marking} onclick={() => markRead()}
 				>Mark all read</button
 			>
@@ -203,9 +211,6 @@
 	{:else if section === 'settings'}
 		<div class="actions">
 			<h3>Usage</h3>
-			<button disabled={loadingUsage} onclick={refreshUsage}
-				><IconRefresh size={16} /> Refresh usage</button
-			>
 		</div>
 		<p class="muted">Usage for this hub deployment.</p>
 		{#if usageError}<p role="alert" class="failure">

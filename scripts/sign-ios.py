@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Archive one iOS app with an existing Ad Hoc identity; never install or publish."""
+"""Archive one iOS app and its extensions with existing Ad Hoc identities; never install or publish."""
 import argparse
 import base64
 import hashlib
@@ -29,8 +29,6 @@ def run(*args, env=None):
 
 def validate_profile(profile, bundle, device):
     entitlements = profile.get('Entitlements', {})
-    if entitlements.get('aps-environment') != 'production':
-        raise ValueError('Production Apple push entitlement required')
     expiration = profile.get('ExpirationDate')
     teams = profile.get('TeamIdentifier', [])
     identifier = entitlements.get('application-identifier', '')
@@ -64,6 +62,47 @@ def identity_for_profile(keychain, profile):
     raise ValueError('No valid distribution private-key identity matches the profile')
 
 
+def target_entitlements(settings):
+    """A target's declared entitlements with $(SETTING) references resolved; unknown fails."""
+    path = settings.get('CODE_SIGN_ENTITLEMENTS')
+    if not path:
+        return {}
+    declared = plistlib.loads((Path(settings['PROJECT_DIR']) / path).read_bytes())
+
+    def expand(value):
+        if isinstance(value, list):
+            return [expand(entry) for entry in value]
+        if isinstance(value, str):
+            return re.sub(r'\$[({](\w+)[)}]', lambda match: settings[match.group(1)], value)
+        return value
+    return {key: expand(value) for key, value in declared.items()}
+
+
+def profile_setting(app_bundle, bundle):
+    """Build setting naming a target's profile: IOS_PROFILE, or IOS_<SUFFIX>_PROFILE for
+    an extension `<app>.<suffix>`; project.yml references the same names."""
+    if bundle == app_bundle:
+        return 'IOS_PROFILE'
+    suffix = bundle.removeprefix(app_bundle + '.')
+    if suffix == bundle or not re.fullmatch(r'[A-Za-z0-9-]+', suffix):
+        raise ValueError('Extension bundle must be a direct child of the app bundle')
+    return f"IOS_{suffix.upper().replace('-', '_')}_PROFILE"
+
+
+def profiles_for_targets(bundles, profiles):
+    """Exactly one explicit (non-wildcard) profile per target and none left over."""
+    selected = {}
+    for profile in profiles:
+        identifier = profile.get('Entitlements', {}).get('application-identifier', '')
+        bundle = identifier.partition('.')[2]
+        if bundle not in bundles or bundle in selected:
+            raise ValueError('Each signing profile must authorize exactly one distinct target')
+        selected[bundle] = profile
+    if set(selected) != set(bundles):
+        raise ValueError('Every app and extension target needs its own signing profile')
+    return selected
+
+
 def validate_profile_set(profiles, device, required_groups):
     """Every embedded executable needs its own validated capability grant."""
     if not profiles or (len(profiles) > 1 and not required_groups):
@@ -94,7 +133,7 @@ def validate_profile_set(profiles, device, required_groups):
 
 
 @contextmanager
-def signing_material(p12, password, profile_bytes, uuid, profiles):
+def signing_material(p12, password, profile_files, profiles):
     original = shlex.split(run('security', 'list-keychains', '-d', 'user').decode())
     with tempfile.TemporaryDirectory(prefix='ios-signing-') as temporary, ExitStack() as cleanup:
         root = Path(temporary)
@@ -112,11 +151,12 @@ def signing_material(p12, password, profile_bytes, uuid, profiles):
         run('security', 'set-key-partition-list', '-S', 'apple-tool:,apple:,codesign:', '-k', key_password, keychain)
         run('security', 'list-keychains', '-d', 'user', '-s', keychain, *original)
         profiles.mkdir(parents=True, exist_ok=True)
-        installed = profiles / f'{uuid}.mobileprovision'
-        with installed.open('xb') as stream:
-            cleanup.callback(installed.unlink)
-            installed.chmod(0o600)
-            stream.write(profile_bytes)
+        for uuid, profile_bytes in profile_files.items():
+            installed = profiles / f'{uuid}.mobileprovision'
+            with installed.open('xb') as stream:
+                cleanup.callback(installed.unlink)
+                installed.chmod(0o600)
+                stream.write(profile_bytes)
         yield keychain
 
 
@@ -160,8 +200,7 @@ def verify_app(app, bundle, team, fingerprint, device, expected_uuid=None):
     prefix = profile['Entitlements']['application-identifier'].partition('.')[0]
     if (entitlements.get('application-identifier') != f'{prefix}.{bundle}'
             or entitlements.get('com.apple.developer.team-identifier') != team
-            or entitlements.get('get-task-allow', False) is not False
-            or entitlements.get('aps-environment') != 'production'):
+            or entitlements.get('get-task-allow', False) is not False):
         raise ValueError('Exported signing entitlements do not match distribution identity')
     validate_entitlements(entitlements, profile['Entitlements'])
     with tempfile.TemporaryDirectory(prefix='ios-cert-') as temporary:
@@ -172,7 +211,8 @@ def verify_app(app, bundle, team, fingerprint, device, expected_uuid=None):
     return entitlements
 
 
-def verify_app_tree(app, bundle, team, fingerprint, device, expected_profiles, required_groups):
+def verify_app_tree(app, bundle, team, fingerprint, device, expected_profiles, required_groups,
+                    declared=None):
     """Verify every extension individually; --deep alone does not prove its claims."""
     info = plistlib.loads((app / 'Info.plist').read_bytes())
     versions = (info.get('CFBundleShortVersionString'), info.get('CFBundleVersion'))
@@ -200,40 +240,62 @@ def verify_app_tree(app, bundle, team, fingerprint, device, expected_profiles, r
         groups = entitlements.get('com.apple.security.application-groups', [])
         if set(groups) != set(required_groups):
             raise ValueError('App and extension App Groups do not match the required grant')
+        for key, value in (declared or {}).get(identifier, {}).items():
+            if entitlements.get(key) != value:
+                raise ValueError('Exported target lost a declared entitlement')
 
 
 def build(project, scheme, output):
     p12 = base64.b64decode(os.environ['IOS_CERTIFICATE_P12_BASE64'], validate=True)
     password = os.environ['IOS_CERTIFICATE_PASSWORD']
-    profile_bytes = base64.b64decode(os.environ['IOS_PROFILE_BASE64'], validate=True)
+    # The app profile first, then one explicit profile per embedded extension.
+    encoded = [os.environ['IOS_PROFILE_BASE64'], *os.environ.get('IOS_EXTENSION_PROFILES_BASE64', '').split()]
     device = os.environ.get('IOS_DEVICE_ID') or None
     base = ['xcodebuild', '-project', project, '-scheme', scheme, '-configuration', 'Release']
     settings = json.loads(run(*base, '-sdk', 'iphoneos', '-showBuildSettings', '-json'))
-    apps = [entry['buildSettings'] for entry in settings
-            if entry['buildSettings'].get('WRAPPER_EXTENSION') == 'app']
+    targets = [entry['buildSettings'] for entry in settings
+               if entry['buildSettings'].get('WRAPPER_EXTENSION') in ('app', 'appex')]
+    apps = [target for target in targets if target['WRAPPER_EXTENSION'] == 'app']
     if len(apps) != 1:
         raise ValueError('Exactly one application target is supported')
     bundle = apps[0]['PRODUCT_BUNDLE_IDENTIFIER']
+    declared = {target['PRODUCT_BUNDLE_IDENTIFIER']: target_entitlements(target) for target in targets}
+    groups = {tuple(sorted(entitlements.get('com.apple.security.application-groups', [])))
+              for entitlements in declared.values()}
+    if len(declared) != len(targets) or len(groups) != 1:
+        raise ValueError('App and extensions need distinct bundles and one shared App Group set')
+    required_groups = list(groups.pop())
     with tempfile.TemporaryDirectory(prefix='ios-archive-') as temporary:
         root = Path(temporary)
-        source_profile = root / 'source.mobileprovision'
-        source_profile.write_bytes(profile_bytes)
-        profile = plistlib.loads(run('security', 'cms', '-D', '-i', source_profile))
-        team, uuid = validate_profile(profile, bundle, device)
+        decoded = []
+        for index, value in enumerate(encoded):
+            data = base64.b64decode(value, validate=True)
+            source = root / f'source-{index}.mobileprovision'
+            source.write_bytes(data)
+            decoded.append((plistlib.loads(run('security', 'cms', '-D', '-i', source)), data))
+        selected = profiles_for_targets(list(declared), [profile for profile, _ in decoded])
+        team, certificates = validate_profile_set(selected, device, required_groups)
+        for target, profile in selected.items():
+            # Declared capabilities (push, App Groups) must be granted, not silently dropped.
+            validate_entitlements(declared[target], profile['Entitlements'])
+        uuids = {target: profile['UUID'] for target, profile in selected.items()}
         profiles = Path.home() / 'Library/Developer/Xcode/UserData/Provisioning Profiles'
-        with signing_material(p12, password, profile_bytes, uuid, profiles) as keychain:
-            fingerprint = identity_for_profile(keychain, profile)
-            env = dict(os.environ, IOS_PROFILE=uuid)
-            # IOS_PROFILE is referenced only on the app target in project.yml.
+        files = {profile['UUID']: data for profile, data in decoded}
+        with signing_material(p12, password, files, profiles) as keychain:
+            fingerprint = identity_for_profile(keychain, {'DeveloperCertificates': certificates})
+            # project.yml references IOS_PROFILE on the app and IOS_<SUFFIX>_PROFILE on extensions.
+            names = {profile_setting(bundle, target): uuid for target, uuid in uuids.items()}
+            env = dict(os.environ, **names)
             archive = root / 'App.xcarchive'
             run(*base, '-destination', 'generic/platform=iOS', '-archivePath', archive,
                 '-derivedDataPath', root / 'DerivedData', 'CODE_SIGN_STYLE=Manual',
-                f'DEVELOPMENT_TEAM={team}', f'CODE_SIGN_IDENTITY={fingerprint}', f'IOS_PROFILE={uuid}',
+                f'DEVELOPMENT_TEAM={team}', f'CODE_SIGN_IDENTITY={fingerprint}',
+                *(f'{name}={uuid}' for name, uuid in names.items()),
                 f'OTHER_CODE_SIGN_FLAGS=--keychain {shlex.quote(str(keychain))}', 'archive', env=env)
             export_options = root / 'ExportOptions.plist'
             export_options.write_bytes(plistlib.dumps({
                 'method': 'release-testing', 'signingStyle': 'manual', 'teamID': team,
-                'signingCertificate': fingerprint, 'provisioningProfiles': {bundle: uuid},
+                'signingCertificate': fingerprint, 'provisioningProfiles': uuids,
                 'manageAppVersionAndBuildNumber': False,
             }))
             exported = root / 'export'
@@ -250,7 +312,7 @@ def build(project, scheme, output):
             apps = list((extracted / 'Payload').glob('*.app'))
             if len(apps) != 1:
                 raise ValueError('Expected exactly one exported app')
-            verify_app_tree(apps[0], bundle, team, fingerprint, device, {bundle: uuid}, [])
+            verify_app_tree(apps[0], bundle, team, fingerprint, device, uuids, required_groups, declared)
             output = Path(output)
             output.mkdir(parents=True, exist_ok=True)
             destination = output / 'App.ipa'

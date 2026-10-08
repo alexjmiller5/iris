@@ -229,3 +229,23 @@ test('metadata failure stays visible and supports a manual refresh', async () =>
 	expect(get(model).error).toBe('');
 	expect(get(model).groups).toHaveLength(1);
 });
+
+test('reload refreshes opened groups in place without collapsing the list', async () => {
+	let rows = [row('one')];
+	const model = create(
+		async () => [source, { ...source, column: 'reviewer', label: 'Reviewer' }],
+		async (target) => ({ source: target, rows, nextOffset: null })
+	);
+	await model.refresh();
+	const [opened, closed] = get(model).groups;
+	await model.load(opened.key);
+	rows = [row('one'), row('two')];
+	await model.reload();
+	const state = get(model);
+	expect(state.loading).toBe(false);
+	expect(state.groups.map((g) => [g.loaded, g.rows.map((r) => r.record.id)])).toEqual([
+		[true, ['one', 'two']],
+		[false, []]
+	]);
+	expect(state.groups[1].key).toBe(closed.key);
+});

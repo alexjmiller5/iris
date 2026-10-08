@@ -5,7 +5,8 @@
 	import MarkdownEditor from './components/MarkdownEditor.svelte';
 	import { retainedFileKey, type RetainedFileResolver } from './retained-files';
 	import { onDestroy } from 'svelte';
-	import { IconX } from '@tabler/icons-svelte';
+	import { IconPlus, IconX } from '@tabler/icons-svelte';
+	import { creationOffer } from './reference-create';
 	let {
 		id,
 		property,
@@ -15,6 +16,7 @@
 		references = [],
 		showReferenceSelections = true,
 		onsearch,
+		oncreate,
 		onchange,
 		resolveFile,
 		attachments,
@@ -28,6 +30,8 @@
 		references?: { id: string; label: string }[];
 		showReferenceSelections?: boolean;
 		onsearch?(query: string): void;
+		/** Offered only when the host can create a record in the target table. */
+		oncreate?(text: string): void;
 		onchange?(value: string): void;
 		resolveFile?: RetainedFileResolver;
 		attachments?: AttachmentOutbox;
@@ -56,6 +60,8 @@
 	const selected = $derived(
 		property.type === 'multi_ref' ? [...new Set(list(value))] : [value].filter(Boolean)
 	);
+	let query = $state('');
+	const creation = $derived(oncreate && !disabled ? creationOffer(query, references) : null);
 	function change(raw: string) {
 		value = raw;
 		onchange?.(raw);
@@ -160,8 +166,17 @@
 			aria-label={`Search ${label}`}
 			placeholder="Search related records"
 			{disabled}
-			oninput={(event) => onsearch?.(event.currentTarget.value)}
+			oninput={(event) => {
+				query = event.currentTarget.value;
+				onsearch?.(query);
+			}}
 		/>
+		{#if creation}<button
+				class="field-link create"
+				type="button"
+				onclick={() => oncreate?.(creation)}
+				><IconPlus size={14} aria-hidden="true" />Create “{creation}”</button
+			>{/if}
 		{#if property.type === 'ref'}
 			<select
 				{id}
@@ -408,6 +423,12 @@
 	}
 	.field-link {
 		color: var(--color-ink);
+	}
+	.create {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		overflow-wrap: anywhere;
 	}
 	small {
 		color: var(--color-muted);

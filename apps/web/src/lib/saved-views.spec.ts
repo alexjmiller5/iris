@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
-import { describe, expect, it } from 'vitest';
-import { createSavedViewsModel } from './saved-views';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createSavedViewsModel, createViewAutosave } from './saved-views';
 
 function deferred() {
 	let resolve!: (value?: boolean) => void;
@@ -133,5 +133,100 @@ describe('saved-view interactions', () => {
 			})
 		).toBe(false);
 		expect(calls).toBe(0);
+	});
+});
+
+describe('view autosave', () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+	let state = 0;
+	const capture = () => ++state;
+
+	it('coalesces rapid changes into one save after the debounce', async () => {
+		const write = vi.fn(async (_: number) => {});
+		const autosave = createViewAutosave(capture, write, () => {}, 500);
+		autosave.change();
+		autosave.change();
+		await vi.advanceTimersByTimeAsync(499);
+		autosave.change();
+		await vi.advanceTimersByTimeAsync(499);
+		expect(write).not.toHaveBeenCalled();
+		expect(get(autosave).pending).toBe(true);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(write).toHaveBeenCalledTimes(1);
+		expect(get(autosave).pending).toBe(false);
+	});
+
+	it('waits while a popover is open and saves soon after it closes', async () => {
+		const write = vi.fn(async (_: number) => {});
+		const autosave = createViewAutosave(capture, write, () => {}, 300);
+		autosave.hold(true);
+		autosave.change();
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(write).not.toHaveBeenCalled();
+		autosave.hold(false);
+		await vi.advanceTimersByTimeAsync(300);
+		expect(write).toHaveBeenCalledTimes(1);
+		autosave.hold(true);
+		autosave.hold(false);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(write).toHaveBeenCalledTimes(1);
+	});
+
+	it('flush captures the view at once and never overlaps an in-flight write', async () => {
+		const releases: (() => void)[] = [];
+		const write = vi.fn(
+			(_: number) =>
+				new Promise<void>((resolve) => {
+					releases.push(resolve);
+				})
+		);
+		const autosave = createViewAutosave(capture, write, () => {}, 500);
+		autosave.change();
+		const before = state;
+		const first = autosave.flush();
+		expect(state).toBe(before + 1);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(write).toHaveBeenCalledTimes(1);
+		autosave.change();
+		const second = autosave.flush();
+		expect(state).toBe(before + 2);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(write).toHaveBeenCalledTimes(1);
+		releases[0]();
+		await first;
+		await vi.advanceTimersByTimeAsync(0);
+		expect(write).toHaveBeenLastCalledWith(before + 2);
+		expect(get(autosave).pending).toBe(true);
+		releases[1]();
+		await second;
+		expect(get(autosave).pending).toBe(false);
+	});
+
+	it('reports a failed save once and waits for the next change before retrying', async () => {
+		const write = vi.fn(async (_: number) => {
+			throw new Error('The view changed; reload before retrying.');
+		});
+		const onerror = vi.fn();
+		const autosave = createViewAutosave(capture, write, onerror, 100);
+		autosave.change();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(write).toHaveBeenCalledTimes(1);
+		expect(onerror).toHaveBeenCalledWith(
+			expect.objectContaining({ message: expect.stringMatching(/changed/) })
+		);
+		autosave.change();
+		await vi.advanceTimersByTimeAsync(100);
+		expect(write).toHaveBeenCalledTimes(2);
+	});
+
+	it('drops pending work after disposal', async () => {
+		const write = vi.fn(async (_: number) => {});
+		const autosave = createViewAutosave(capture, write, () => {}, 100);
+		autosave.change();
+		autosave.dispose();
+		await autosave.flush();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(write).not.toHaveBeenCalled();
 	});
 });

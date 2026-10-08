@@ -45,33 +45,43 @@ struct WorkspaceStatusSheet: View {
           }
         }
         if model.isReplica {
-          Section("Sync") {
+          Section {
+            LabeledContent("Status") {
+              Text(model.syncPill.title).accessibilityIdentifier("sync-pill-detail")
+            }
             SyncSummary(model: model)
             if !model.skippedTables.isEmpty || !(model.syncResult?.rejected.isEmpty ?? true) {
               SyncDetails(model: model)
             }
-            if model.syncing {
-              if let progress = model.syncProgress {
-                LabeledContent("Activity") {
-                  Text(progress.phase).accessibilityIdentifier("sync-phase")
-                }
-                if let table = progress.table {
-                  LabeledContent("Table", value: table)
-                }
-                if progress.page > 0 {
-                  LabeledContent("Pages", value: progress.page.formatted())
-                }
-                LabeledContent("Rows processed", value: progress.processedRows.formatted())
-                LabeledContent("Elapsed") {
-                  Text(progress.startedAt, style: .timer)
-                    .monospacedDigit().accessibilityIdentifier("sync-elapsed")
-                }
+            if model.syncing, let progress = model.syncProgress {
+              LabeledContent("Activity") {
+                Text(progress.phase).accessibilityIdentifier("sync-phase")
               }
-              Button("Cancel sync") { model.cancelSync() }
-                .accessibilityIdentifier("cancel-sync")
+              if let table = progress.table {
+                LabeledContent("Table", value: table)
+              }
+              if progress.page > 0 {
+                LabeledContent("Pages", value: progress.page.formatted())
+              }
+              LabeledContent("Rows processed", value: progress.processedRows.formatted())
+              LabeledContent("Elapsed") {
+                Text(progress.startedAt, style: .timer)
+                  .monospacedDigit().accessibilityIdentifier("sync-elapsed")
+              }
             }
-            Button("Sync now") { Task { await model.synchronize() } }
-              .disabled(model.syncing).accessibilityIdentifier("sync-now")
+            if let failure = model.syncError {
+              Text(failure).foregroundStyle(.secondary).textSelection(.enabled)
+                .accessibilityIdentifier("sync-error")
+            }
+          } header: {
+            Text("Sync")
+          } footer: {
+            Text("Changes sync automatically every few seconds while Life UI is open and online.")
+          }
+        } else if model.cliSyncBound {
+          Section("Sync") {
+            Text("The life CLI background service syncs this shared file.")
+              .accessibilityIdentifier("cli-sync")
           }
         }
         if let error = model.error {

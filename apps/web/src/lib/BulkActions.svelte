@@ -78,7 +78,7 @@
 </script>
 
 <details class="bulk-actions">
-	<summary>Selection ({selectedIds.length}){running ? ' · Saving…' : ''}</summary>
+	<summary>Selection ({selectedIds.length})</summary>
 	<div role="group" aria-label="Selected row actions">
 		<p>
 			{selectedIds.length} selected. Each row is saved separately; failed rows stay unchanged. Cancel

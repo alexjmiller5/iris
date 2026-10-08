@@ -3,14 +3,17 @@ import UniformTypeIdentifiers
 
 public struct WorkspaceView: View {
   @Environment(\.scenePhase) private var scenePhase
+  #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+  #endif
+  @AppStorage("lifeui.sidebarHidden") private var sidebarHidden = false
   @State private var model = WorkspaceModel()
   @State private var importing = false
   @State private var settings = false
   @State private var recordExport: RecordExportTarget?
   @State private var rowSelection: RecordSelectionTarget?
-  @State private var options = false
   @State private var catalogEditor: CatalogEditorModel?
-  @State private var filterColumn: String?
+  @State private var filterEditing: FilterBarTarget?
   @State private var savedViews = false
   @State private var showingGraph = false
   @State private var showingStatus = false
@@ -101,7 +104,12 @@ public struct WorkspaceView: View {
       if model.client == nil {
         welcome
       } else {
-        NavigationSplitView(preferredCompactColumn: $preferredColumn) {
+        NavigationSplitView(
+          columnVisibility: Binding(
+            get: { sidebarHidden ? .detailOnly : .all },
+            set: { sidebarHidden = $0 == .detailOnly }),
+          preferredCompactColumn: $preferredColumn
+        ) {
           List {
             Button(action: showQuickFind) {
               Label("Find records", systemImage: "magnifyingglass")
@@ -125,24 +133,20 @@ public struct WorkspaceView: View {
           .navigationSplitViewColumnWidth(min: 200, ideal: 240)
           #if os(iOS)
             .toolbar {
-              ToolbarItem(placement: .bottomBar) { statusButton }
+              ToolbarItem(placement: .bottomBar) { statusPill }
               ToolbarItem(placement: .bottomBar) { Spacer() }
               ToolbarItem(placement: .bottomBar) { workspaceMenu }
             }
           #else
             .safeAreaInset(edge: .bottom) {
               VStack(alignment: .leading, spacing: 8) {
-                Text(model.location).font(.caption).foregroundStyle(.secondary)
-                if model.isReplica {
-                  SyncSummary(model: model)
-                  Button(model.syncing ? "Syncing…" : "Sync now") {
-                    Task { await model.synchronize() }
-                  }
-                  .disabled(model.syncing).accessibilityIdentifier("sync-now")
+                statusPill
+                HStack(spacing: 12) {
+                  Button("Hub connection") { settings = true }.disabled(!canFind)
+                  Button("Close workspace") { Task { await model.close() } }.disabled(!canFind)
                 }
-                Button("Hub connection") { settings = true }.disabled(!canFind)
-                Button("Close workspace") { Task { await model.close() } }.disabled(!canFind)
-              }.padding().frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
+              }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
               .background(.bar)
             }
           #endif
@@ -165,6 +169,7 @@ public struct WorkspaceView: View {
           #endif
         }
         .onChange(of: model.table) { showingGraph = false }
+        .focusedSceneValue(\.toggleSidebar, toggleSidebar)
       }
     }
     .task { if demo { await model.open(demo: true) } else { await model.resumeConnection() } }
@@ -191,18 +196,29 @@ public struct WorkspaceView: View {
       guard !Task.isCancelled else { return }
       await model.runAutomaticSync()
     }
-    .onChange(of: model.syncing) {
-      if !model.syncing {
-        let recents = model.recents
-        let pins = model.pins
-        let inbox = rejectionInbox
-        Task {
-          await pins?.refresh()
-          await recents?.refresh()
-          await inbox?.refresh()
-        }
+    .task(id: scenePhase == .active) {
+      guard scenePhase == .active else { return }
+      for await reachable in networkReachability() { model.setOnline(reachable) }
+    }
+    // Quiet periodic rounds change nothing; refresh dependents only when data moved.
+    .onChange(of: model.syncDataRevision) {
+      let recents = model.recents
+      let pins = model.pins
+      let inbox = rejectionInbox
+      Task {
+        await pins?.refresh()
+        await recents?.refresh()
+        await inbox?.refresh()
       }
     }
+    #if os(macOS)
+      .onChange(of: scenePhase, initial: true) {
+        if scenePhase == .active { WorkspaceMenuBar.shared.attach(model) }
+      }
+      .onDisappear { WorkspaceMenuBar.shared.detach(model) }
+      .onChange(of: WorkspaceMenuBar.shared.requestID, initial: true) { performMenuBarCommand() }
+      .onChange(of: canFind) { performMenuBarCommand() }
+    #endif
     .sheet(
       item: Binding(
         get: { editor?.inlineField == nil ? editor : nil },
@@ -257,8 +273,8 @@ public struct WorkspaceView: View {
           }
         }
       }
-      .sheet(isPresented: $showingStatus) { WorkspaceStatusSheet(model: model) }
     #endif
+    .sheet(isPresented: $showingStatus) { WorkspaceStatusSheet(model: model) }
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
     .sheet(item: $catalogEditor) { CatalogEditorView(model: $0) }
     .sheet(isPresented: $widgetSettings) {
@@ -271,9 +287,6 @@ public struct WorkspaceView: View {
       RecordSelectionView(
         snapshot: target.snapshot, rows: target.rows, workspace: target.workspace,
         writable: target.writable, isCurrent: target.isCurrent, prepare: target.prepare)
-    }
-    .sheet(isPresented: $options, onDismiss: { filterColumn = nil }) {
-      WorkspaceOptionsView(model: model, filterColumn: filterColumn)
     }
     .sheet(isPresented: $savedViews) {
       SavedViewsView(model: model, onChoose: recordNavigationSucceeded)
@@ -389,7 +402,7 @@ public struct WorkspaceView: View {
       && online == nil && quickFind == nil
       && pendingSearchEditor == nil && pendingDuplicateEditor == nil
       && pendingReferenceEditor == nil && rejectionInbox == nil && pendingRejection == nil
-      && !settings && !options && !savedViews && !importing && recordExport == nil
+      && !settings && !savedViews && !importing && recordExport == nil
       && catalogEditor == nil && rowSelection == nil
   }
 
@@ -491,7 +504,7 @@ public struct WorkspaceView: View {
         && navigationRequest == request && model.queryKey == query
         && editor == nil && quickFind == nil && online == nil
         && rejectionInbox == nil && pendingRejection == nil
-        && !settings && !options && !savedViews && !importing
+        && !settings && !savedViews && !importing
     }
     Task {
       defer { if navigationRequest == request { openingDestination = false } }
@@ -664,7 +677,7 @@ public struct WorkspaceView: View {
         && model.queryKey.map({ Data($0.utf8) }) == query
         && editor == nil && quickFind == nil && online == nil
         && pendingSearchEditor == nil && pendingReferenceEditor == nil
-        && !settings && !options && !savedViews && !importing
+        && !settings && !savedViews && !importing
     }
     Task {
       defer { if navigationRequest == request { openingDestination = false } }
@@ -690,7 +703,7 @@ public struct WorkspaceView: View {
       navigationRequest == pending.request && rejectionInbox == nil
         && editor == nil && quickFind == nil && online == nil
         && pendingSearchEditor == nil && pendingReferenceEditor == nil
-        && !settings && !options && !savedViews && !importing
+        && !settings && !savedViews && !importing
     }
     do {
       try model.activateRejectionReview(pending.review, isCurrent: current)
@@ -1091,16 +1104,12 @@ public struct WorkspaceView: View {
             },
             onSort: { column, ascending in
               guard canFind else { return }
-              do {
-                try model.applyViewOptions(
-                  sortColumn: column, ascending: ascending,
-                  filters: model.filters, context: model.editingContext)
-              } catch { model.error = error.localizedDescription }
+              model.setSort(column: column, ascending: ascending)
+              model.scheduleViewSave()
             },
             onFilter: { column in
               guard canFind else { return }
-              filterColumn = column
-              options = true
+              filterEditing = .filter(model.addFilter(column: column))
             }, workspace: model.client, transport: model.imageTransport,
             actions: model.viewActions, layout: model.viewLayout,
             canRunAction: model.canRunRowAction, onAction: runRowAction
@@ -1140,27 +1149,38 @@ public struct WorkspaceView: View {
       .padding(12).frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  #if os(iOS)
-    private var statusButton: some View {
-      Button {
-        showingStatus = true
-      } label: {
-        Label(
-          model.syncing ? "Syncing" : "Workspace status",
-          systemImage: model.syncing ? "arrow.triangle.2.circlepath" : "info.circle"
-        )
-        .labelStyle(.iconOnly)
-      }.accessibilityIdentifier("workspace-status")
+  /// The one sync status: rejected edits open the inbox, everything else the details.
+  private var statusPill: some View {
+    SyncStatusPill(pill: model.syncPill) {
+      if model.syncPill.kind == .rejected && canFind { showRejections() } else { showingStatus = true }
     }
+  }
 
+  /// Cmd+\: the sidebar column on regular widths, the sidebar/detail page on compact iPhone.
+  private func toggleSidebar() {
+    #if os(iOS)
+      if sizeClass == .compact {
+        preferredColumn = preferredColumn == .sidebar ? .detail : .sidebar
+        return
+      }
+    #endif
+    sidebarHidden.toggle()
+  }
+
+  #if os(macOS)
+    private func performMenuBarCommand() {
+      guard canFind, let command = WorkspaceMenuBar.shared.take(for: model) else { return }
+      switch command {
+      case .quickFind: showQuickFind()
+      case .open(let destination): openDestination(destination)
+      }
+    }
+  #endif
+
+  #if os(iOS)
     private var workspaceMenu: some View {
       Menu {
         if model.isReplica {
-          Button {
-            Task { await model.synchronize() }
-          } label: {
-            Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
-          }.disabled(model.syncing).accessibilityIdentifier("sync-now")
           Button {
             guard canFind else { return }
             tableSearchPresented = false
@@ -1225,6 +1245,12 @@ public struct WorkspaceView: View {
 
   private var records: some View {
     recordContent
+      .safeAreaInset(edge: .top, spacing: 0) {
+        if model.table != nil {
+          FilterBar(model: model, editing: $filterEditing, disabled: editor != nil || !canFind)
+            .background(.bar)
+        }
+      }
       .safeAreaInset(edge: .top) {
         if let notice = model.defaultViewNotice {
           Text(notice).font(.caption).foregroundStyle(.secondary).padding(.horizontal)
@@ -1260,17 +1286,6 @@ public struct WorkspaceView: View {
                 Label("Views", systemImage: "rectangle.stack")
               }.disabled(editor != nil || model.client == nil)
                 .accessibilityIdentifier("saved-views")
-              Button {
-                options = true
-              } label: {
-                HStack {
-                  Label("Sort and filter", systemImage: "line.3.horizontal.decrease")
-                  if !model.sortColumn.isEmpty {
-                    Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
-                  }
-                  if !model.filters.isEmpty { Text("\(model.filters.count) active") }
-                }
-              }.disabled(editor != nil).accessibilityIdentifier("view-options")
               catalogEditorButton
               Spacer()
               Button {
@@ -1315,7 +1330,7 @@ public struct WorkspaceView: View {
       .toolbar {
         #if os(iOS)
           ToolbarItemGroup(placement: .primaryAction) {
-            statusButton
+            statusPill
             workspaceMenu
             if model.canWrite && !model.trash {
               Button {
@@ -1334,18 +1349,6 @@ public struct WorkspaceView: View {
                 minWidth: 44, minHeight: 44)
             }.disabled(editor != nil || model.client == nil).accessibilityIdentifier("saved-views")
             Spacer()
-            Button {
-              options = true
-            } label: {
-              Label(
-                "Sort and filter",
-                systemImage: model.filters.isEmpty
-                  ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill"
-              )
-              .labelStyle(.iconOnly)
-            }.disabled(editor != nil).accessibilityIdentifier("view-options")
-              .accessibilityValue("\(model.filters.count) active filters")
-            Spacer()
             Button(action: showQuickFind) {
               Label("Find", systemImage: "magnifyingglass").labelStyle(.iconOnly).frame(
                 minWidth: 44, minHeight: 44)
@@ -1361,14 +1364,6 @@ public struct WorkspaceView: View {
           }
         #else
           ToolbarItemGroup(placement: .primaryAction) {
-            if model.isReplica {
-              Button {
-                Task { await model.synchronize() }
-              } label: {
-                Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
-              }
-              .disabled(model.syncing).accessibilityIdentifier("sync-now")
-            }
             Menu {
               Button {
                 settings = true

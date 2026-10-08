@@ -90,4 +90,13 @@ final class LocalDatabaseObserver {
   }
 
   func acknowledge(_ value: Int) { version = value }
+
+  /// A Life CLI file records its hub here; the CLI's background service then owns sync.
+  func cliHubBound() throws -> Bool {
+    try database.read { db in
+      guard try db.tableExists("_sync_state") else { return false }
+      return try String.fetchOne(db, sql: "SELECT value FROM _sync_state WHERE key = 'hub_url'")?
+        .isEmpty == false
+    }
+  }
 }

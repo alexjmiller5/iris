@@ -14,7 +14,9 @@ struct AutomaticSyncTests {
       try await save(model, title: "First edit")
       try await save(model, title: "Second edit")
       let started = AutoSyncHub.holdNextPush()
-      let loop = Task { await model.runAutomaticSync(debounce: .milliseconds(40)) }
+      let loop = Task {
+        await model.runAutomaticSync(interval: .seconds(60), debounce: .milliseconds(40))
+      }
       loops.append(loop)
       try #require(await started.wait(), "Sync must reach the held push")
       #expect(AutoSyncHub.rounds == 1)
@@ -38,11 +40,8 @@ struct AutomaticSyncTests {
       try #require(model.error == nil)
       let action = try #require(model.undoAction)
       try #require(action.table == "views")
-      AutoSyncHub.reset()
+      try await startForegroundLoop(model, &loops, debounce: .milliseconds(20))
       let started = AutoSyncHub.holdNextPush()
-      let loop = Task { await model.runAutomaticSync(debounce: .milliseconds(20)) }
-      loops.append(loop)
-      await Task.yield()
       runtime.context.evaluateScript(
         """
         const beforeRefreshFailure = LifeNative.request;
@@ -71,9 +70,7 @@ struct AutomaticSyncTests {
 
   @Test func foregroundExitStopsDebounceAndReentrySendsPendingEdits() async throws {
     try await withFixture { model, loops in
-      let loop = Task { await model.runAutomaticSync(debounce: .milliseconds(200)) }
-      loops.append(loop)
-      await Task.yield()
+      let loop = try await startForegroundLoop(model, &loops, debounce: .milliseconds(200))
       // Saving schedules catch-up before awaiting reload. Leave at that boundary,
       // rather than assuming reload finishes within the debounce on a busy runner.
       _ = withObservationTracking {
@@ -88,7 +85,10 @@ struct AutomaticSyncTests {
       try await Task.sleep(for: .milliseconds(250))
       #expect(AutoSyncHub.rounds == 0)
       #expect(try await model.client?.status().pendingUiEdits == 1)
-      let resumed = Task { await model.runAutomaticSync(debounce: .milliseconds(20)) }
+      // Returning to the foreground pulls (and uploads) immediately.
+      let resumed = Task {
+        await model.runAutomaticSync(interval: .seconds(60), debounce: .seconds(30))
+      }
       loops.append(resumed)
       try await waitUntil(model) { AutoSyncHub.rounds >= 1 && !model.syncing }
       #expect(AutoSyncHub.rounds == 1)
@@ -129,7 +129,7 @@ struct AutomaticSyncTests {
       old.cancel()
       // Keep periodic catch-up outside the watchdog so it cannot hide a lost edit trigger.
       let current = Task {
-        await model.runAutomaticSync(debounce: .milliseconds(20))
+        await model.runAutomaticSync(interval: .seconds(60), debounce: .milliseconds(20))
       }
       loops.append(current)
       await Task.yield()
@@ -160,9 +160,7 @@ struct AutomaticSyncTests {
       }
       loops.append(old)
       old.cancel()
-      let current = Task { await model.runAutomaticSync(debounce: .milliseconds(20)) }
-      loops.append(current)
-      await Task.yield()
+      try await startForegroundLoop(model, &loops, debounce: .milliseconds(20))
       release.signal()
       await old.value
       try await save(model, title: "Current foreground edit")
@@ -202,6 +200,78 @@ struct AutomaticSyncTests {
     #expect(modelAfterFailure?.client == nil)
     #expect(loopAfterFailure?.isCancelled == true)
     #expect(!AutoSyncHub.waiting)
+  }
+
+  @Test func activationPullsImmediatelyThenCatchesUpEveryTwoSeconds() async throws {
+    try await withFixture { model, loops in
+      let started = ContinuousClock.now
+      loops.append(Task { await model.runAutomaticSync() })
+      try await waitUntil(model) { AutoSyncHub.rounds >= 1 && !model.syncing }
+      #expect(started.duration(to: .now) < .seconds(1.5), "Activation must not wait an interval")
+      let first = ContinuousClock.now
+      try await waitUntil(model) { AutoSyncHub.rounds >= 2 }
+      let gap = first.duration(to: .now)
+      #expect(gap >= .seconds(1.9) && gap < .seconds(6), "Catch-up cadence was \(gap)")
+    }
+  }
+
+  @Test func offlinePausesSyncAndReconnectingUploadsImmediately() async throws {
+    try await withFixture { model, loops in
+      model.setOnline(false)
+      loops.append(
+        Task {
+          await model.runAutomaticSync(interval: .milliseconds(30), debounce: .milliseconds(20))
+        })
+      try await save(model, title: "Written offline")
+      try await Task.sleep(for: .milliseconds(200))
+      #expect(AutoSyncHub.rounds == 0, "Offline must pause both periodic and edit catch-up")
+      #expect(model.syncPill.title == "Offline · 1 pending")
+      model.setOnline(true)
+      try await waitUntil(model) { AutoSyncHub.rounds >= 1 && !model.syncing }
+      #expect(AutoSyncHub.uploadedTitles == ["Written offline"])
+      #expect(model.syncPill.title == "Synced")
+    }
+  }
+
+  @Test func failedRoundsSurfaceOnlyThroughThePill() async throws {
+    try await withFixture { model, _ in
+      try await save(model, title: "Kept locally")
+      AutoSyncHub.fail(0)
+      await model.synchronize()
+      #expect(model.syncPill.title == "Offline · 1 pending")
+      #expect(model.error == nil, "Connectivity is shown by the pill, not a record notice")
+      AutoSyncHub.fail(429)
+      await model.synchronize()
+      #expect(model.syncPill.title == "Paused: cap reached")
+      AutoSyncHub.fail(nil)
+      await model.synchronize()
+      #expect(model.syncError == nil)
+      #expect(model.syncPill.title == "Synced")
+      #expect(AutoSyncHub.uploadedTitles == ["Kept locally"])
+    }
+  }
+
+  @Test func quietRoundsLeaveLoadedRowsAlone() async throws {
+    try await withFixture { model, _ in
+      let revision = model.syncDataRevision
+      await model.synchronize()
+      #expect(model.syncDataRevision == revision, "A round that moved nothing must not reload")
+      try await save(model, title: "Moved")
+      await model.synchronize()
+      #expect(model.syncDataRevision == revision + 1)
+    }
+  }
+
+  /// Starts the foreground loop, lets its activation round finish, then resets counters.
+  @discardableResult
+  private func startForegroundLoop(
+    _ model: WorkspaceModel, _ loops: inout [Task<Void, Never>], debounce: Duration
+  ) async throws -> Task<Void, Never> {
+    let loop = Task { await model.runAutomaticSync(interval: .seconds(60), debounce: debounce) }
+    loops.append(loop)
+    try await waitUntil(model) { AutoSyncHub.rounds >= 1 && !model.syncing }
+    AutoSyncHub.reset()
+    return loop
   }
 
   private func save(_ model: WorkspaceModel, title: String) async throws {
@@ -361,6 +431,9 @@ private final class AutoSyncHub: URLProtocol, @unchecked Sendable {
   nonisolated(unsafe) private static var titles: [String] = []
   private var savedBytes: Data?
   nonisolated(unsafe) private static var held: AutoSyncHub?
+  /// 0 fails the connection; another value answers every sync route with that status.
+  nonisolated(unsafe) private static var failStatus: Int?
+  static func fail(_ status: Int?) { lock.withLock { failStatus = status } }
   static var uploadedTitles: [String] { lock.withLock { titles } }
   static var rounds: Int { lock.withLock { count } }
   static var waiting: Bool { lock.withLock { held != nil } }
@@ -371,6 +444,7 @@ private final class AutoSyncHub: URLProtocol, @unchecked Sendable {
       heldSignal = nil
       titles = []
       held = nil
+      failStatus = nil
     }
   }
   static func holdNextSchema() -> AutoSyncSignal { holdNext("/v1/schema/pull") }
@@ -400,6 +474,19 @@ private final class AutoSyncHub: URLProtocol, @unchecked Sendable {
   override func stopLoading() { Self.lock.withLock { if Self.held === self { Self.held = nil } } }
   override func startLoading() {
     if request.url?.path == "/v1/schema/pull" { Self.lock.withLock { Self.count += 1 } }
+    if let status = Self.lock.withLock({ Self.failStatus }) {
+      guard status != 0 else {
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+        return
+      }
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: status, httpVersion: "HTTP/1.1",
+        headerFields: ["Content-Type": "application/json"])!
+      client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+      client?.urlProtocol(self, didLoad: Data(#"{"error":"synthetic failure"}"#.utf8))
+      client?.urlProtocolDidFinishLoading(self)
+      return
+    }
     respond()
   }
   private func respond() {

@@ -329,7 +329,7 @@
 							violate this invariant</label
 						>
 					{/if}
-					<button type="submit">{saving ? 'Saving…' : `Save ${mode}`}</button>
+					<button type="submit" disabled={saving}>Save {mode}</button>
 				</fieldset>
 				{#if failure}<p role="alert">{failure}</p>{/if}{#if receipt}<p role="status">
 						{receipt}

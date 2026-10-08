@@ -70,7 +70,7 @@ struct HubConnectionView: View {
                 .textInputAutocapitalization(.never)
               #endif
               .accessibilityIdentifier("hub-token")
-            Button(connecting ? "Connecting…" : "Save and sync") { connect() }
+            Button(connecting ? "Connecting…" : "Connect") { connect() }
               .disabled(busy || endpoint.isEmpty || token.isEmpty)
             Text(
               "Use a dedicated full-scope device token. Operator credentials cannot connect a replica."
@@ -209,12 +209,10 @@ struct SyncSummary: View {
         }
         if let timestamp = status.lastSuccessfulSync { Text("Last successful sync: \(timestamp)") }
       }
-      if model.syncing {
-        Label("Syncing…", systemImage: "arrow.triangle.2.circlepath")
-      } else if let result = model.syncResult {
+      if let result = model.syncResult {
         Text("Last sync: \(result.pulled) received, \(result.pushed) sent.")
       } else {
-        Text("Local replica. Sync when connected.")
+        Text("Local replica. Changes sync automatically when connected.")
       }
       if model.services.connected {
         Button {

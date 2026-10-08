@@ -1,3 +1,4 @@
+import Network
 import SwiftUI
 
 /// Why the last automatic round failed, as far as the user can act on it.
@@ -5,8 +6,7 @@ enum SyncFailure: Equatable {
   case offline, capped, other
 
   /// Transport failures cross the JS core as text; the prefixes are HubTransport's own.
-  init(_ error: Error) {
-    let message = error.localizedDescription
+  init(_ message: String) {
     if message.contains(HubTransport.unreachableMessage) || message.contains("Hub HTTP 5") {
       self = .offline
     } else if message.contains("Hub HTTP 429") {
@@ -19,7 +19,9 @@ enum SyncFailure: Equatable {
 
 /// The one sync summary every surface shows (sidebar, toolbar, menu bar).
 struct SyncPill: Equatable {
-  enum Kind: Equatable { case synced, syncing, pending, offline, rejected, paused, failed, cli, local }
+  enum Kind: Equatable {
+    case synced, syncing, pending, offline, rejected, paused, failed, cli, local
+  }
   let kind: Kind
   let title: String
   let symbol: String
@@ -59,6 +61,16 @@ struct SyncPill: Equatable {
       return SyncPill(kind: .pending, title: "\(pending) pending", symbol: "clock")
     }
     return SyncPill(kind: .synced, title: "Synced", symbol: "checkmark.icloud")
+  }
+}
+
+/// System connectivity changes; offline pauses automatic sync until a path returns.
+func networkReachability() -> AsyncStream<Bool> {
+  AsyncStream { continuation in
+    let monitor = NWPathMonitor()
+    monitor.pathUpdateHandler = { continuation.yield($0.status == .satisfied) }
+    continuation.onTermination = { _ in monitor.cancel() }
+    monitor.start(queue: DispatchQueue(label: "life-ui.network-path"))
   }
 }
 

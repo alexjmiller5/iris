@@ -17,12 +17,9 @@ struct RejectionInboxView: View {
           Text("Rejected edits")
         }
         Text(
-          "Review a record, save your correction, then sync. Edits stay here until sync accepts them."
+          "Review a record and save your correction. Edits stay here until the hub accepts them."
         )
         .font(.caption).foregroundStyle(.secondary)
-        Button("Refresh rejected edits") { Task { await model.refresh() } }
-          .disabled(model.loading || isBusy)
-          .accessibilityIdentifier("refresh-rejected-edits")
       }
       ForEach(model.entries, id: \.inboxID) { entry in
         RejectedEditRow(entry: entry, canReview: !isBusy && !model.loading) {

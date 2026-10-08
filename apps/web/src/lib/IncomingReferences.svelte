@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { IconArrowUpRight, IconRefresh } from '@tabler/icons-svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
+	import { IconArrowUpRight } from '@tabler/icons-svelte';
 	import type { WorkspaceDatabase } from './database';
 	import { calendarContext } from './calendar-context';
 	import { createIncomingReferences } from './incoming-references';
@@ -8,12 +8,14 @@
 		core,
 		table,
 		rowId,
+		revision = 0,
 		disabled = false,
 		onopen
 	}: {
 		core: Pick<WorkspaceDatabase, 'request'>;
 		table: string;
 		rowId: string;
+		revision?: number;
 		disabled?: boolean;
 		onopen(target: { table: string; id: string }, button: HTMLButtonElement): Promise<void>;
 	} = $props();
@@ -39,18 +41,19 @@
 	onMount(() => {
 		void model.refresh();
 	});
+	// Background sync and other tabs change local data; keep opened groups current.
+	let seen = untrack(() => revision);
+	$effect(() => {
+		if (revision === seen) return;
+		seen = revision;
+		void model.reload();
+	});
 	onDestroy(() => model.dispose());
 </script>
 
 <section aria-label="Referenced by" class="incoming">
 	<header>
 		<h3>Referenced by</h3>
-		<button
-			type="button"
-			aria-label="Refresh relationships"
-			disabled={$model.loading}
-			onclick={() => model.refresh()}><IconRefresh size={16} /></button
-		>
 	</header>
 	{#if $model.loading}<p role="status">Loading relationships…</p>
 	{:else if $model.error}<p role="alert">{$model.error}</p>

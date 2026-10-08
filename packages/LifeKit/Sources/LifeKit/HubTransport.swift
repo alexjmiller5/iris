@@ -8,6 +8,8 @@ struct HubReply: Codable, Sendable {
 
 /// No cookies, credential cache, redirects, or URL/token details in failures.
 struct HubTransport: Sendable {
+  /// Every connection-level failure uses this text; the sync pill reads it as offline.
+  static let unreachableMessage = "Hub request failed. Check the connection and try again."
   let endpoint: String
   private let token: String
   private let session: URLSession
@@ -277,8 +279,7 @@ struct HubTransport: Sendable {
     let data: Data
     let response: URLResponse
     do { (data, response) = try await session.data(for: request) } catch {
-      throw WorkspaceError(
-        message: "Hub request failed. Check the connection and try again.", violations: [])
+      throw WorkspaceError(message: Self.unreachableMessage, violations: [])
     }
     guard let response = response as? HTTPURLResponse else {
       throw WorkspaceError(message: "Invalid hub response.", violations: [])

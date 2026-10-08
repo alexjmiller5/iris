@@ -434,8 +434,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.navigationBars["Downloads"].buttons["save-downloads"])
     XCTAssertTrue(app.navigationBars["Hub connection"].waitForExistence(timeout: 5))
     tapWhenReady(app.navigationBars["Hub connection"].buttons["Done"])
-    tapWhenReady(app.buttons["workspace-menu"])
-    tapWhenReady(app.buttons["sync-now"])
+    // Automatic sync applies the saved download choice; there is no manual sync.
     let notice = app.staticTexts["partial-table-notice"]
     XCTAssertTrue(notice.waitForExistence(timeout: 15))
     // Skipping must retain the downloaded record and keep it available offline.
@@ -444,8 +443,6 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
     tapWhenReady(app.buttons["include-table-next-sync"])
     XCTAssertTrue(notice.waitForExistence(timeout: 5))
-    tapWhenReady(app.buttons["workspace-menu"])
-    tapWhenReady(app.buttons["sync-now"])
     XCTAssertTrue(notice.waitForNonExistence(timeout: 15))
     tapWhenReady(app.buttons["workspace-menu"])
     tapWhenReady(app.buttons["Hub connection"])
@@ -1220,11 +1217,8 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertEqual(quantity.value as? String, "7", app.debugDescription)
     let save = app.navigationBars["New record"].buttons["save-record"]
     tapWhenReady(save)
+    // The save uploads automatically after its short debounce.
     tapWhenReady(app.buttons["workspace-status"])
-    XCTAssertTrue(
-      app.staticTexts["1 record waiting to sync."].waitForExistence(timeout: 5),
-      app.debugDescription)
-    tapWhenReady(app.buttons["sync-now"])
     XCTAssertTrue(app.staticTexts["No local edits waiting to sync."].waitForExistence(timeout: 15))
     tapWhenReady(app.buttons["status-done"])
     let shot = XCTAttachment(screenshot: app.screenshot())
@@ -1410,7 +1404,7 @@ final class WorkspaceUITests: XCTestCase {
     for _ in 0..<6 where !token.isHittable { scrollFormUp(form) }
     tapWhenReady(token)
     token.typeText("fixture")
-    let save = app.buttons["Save and sync"]
+    let save = app.buttons["Connect"]
     for _ in 0..<6 where !save.isHittable { scrollFormUp(form) }
     tapWhenReady(save)
   }
