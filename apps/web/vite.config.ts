@@ -15,6 +15,12 @@ export default defineConfig({
 			adapter: adapter()
 		})
 	],
+	// The database worker's dependencies are known up front, so the first open
+	// never stops to re-optimize and reload the page.
+	optimizeDeps: { include: ['wa-sqlite', 'wa-sqlite/src/examples/OPFSCoopSyncVFS.js'] },
+	// Browser checks pin the served page: edits by other tools in a shared checkout
+	// must not reload it mid-test.
+	server: process.env.LIFE_UI_DEV_NO_HMR ? { hmr: false } : undefined,
 	test: {
 		expect: { requireAssertions: true },
 		projects: [

@@ -581,6 +581,9 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.navigationBars["Record"].buttons["Cancel"])
     tapWhenReady(app.buttons["saved-views"])
     let name = app.textFields["saved-view-name"]
+    for _ in 0..<5 where !name.isHittable {
+      scrollFormUp(app.collectionViews["saved-views-form"])
+    }
     tapWhenReady(name)
     name.typeText(" copy")
     let copiedName = try XCTUnwrap(name.value as? String)
@@ -598,6 +601,9 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertTrue(zulu.waitForExistence(timeout: 5))
     XCTAssertLessThan(zulu.frame.minY, alpha.frame.minY)
     tapWhenReady(app.buttons["saved-views"])
+    for _ in 0..<5 where !name.isHittable {
+      scrollFormUp(app.collectionViews["saved-views-form"])
+    }
     tapWhenReady(name)
     name.typeText(" renamed")
     let renamed = try XCTUnwrap(name.value as? String)

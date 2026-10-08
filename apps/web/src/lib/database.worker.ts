@@ -13,6 +13,7 @@ import {
 	initCore,
 	qident,
 	syncStatus,
+	type BackupFiles,
 	type Row,
 	type SqlDriver,
 	type SqlReadStatement,
@@ -177,6 +178,40 @@ const db: SqlDriver = {
 	}
 };
 
+let vfsName = '';
+/** Opens the named OPFS database with the read-only-statement authorizer. */
+async function connect(name: string) {
+	connection = await sqlite.open_v2(name, undefined, vfsName);
+	sqlite.set_authorizer(
+		connection,
+		(_, action, name, detail, database) => {
+			if (dependencyReads && action === SQLite.SQLITE_READ)
+				dependencyReads.push({ name, database });
+			if (!reading) return SQLite.SQLITE_OK;
+			// The authorizer runs during preparation too: reject connection control
+			// and mutating PRAGMAs before they can act. FTS5 reads data_version on reopen.
+			if (action === SQLite.SQLITE_PRAGMA)
+				return ['table_info', 'table_xinfo', 'foreign_key_list', 'data_version'].includes(
+					name?.toLowerCase() ?? ''
+				) ||
+					(readingInventory && ['database_list', 'table_list'].includes(name?.toLowerCase() ?? ''))
+					? SQLite.SQLITE_OK
+					: SQLite.SQLITE_DENY;
+			if (action === SQLite.SQLITE_FUNCTION && detail?.toLowerCase() === 'load_extension')
+				return SQLite.SQLITE_DENY;
+			return [
+				SQLite.SQLITE_SELECT,
+				SQLite.SQLITE_READ,
+				SQLite.SQLITE_FUNCTION,
+				SQLite.SQLITE_RECURSIVE
+			].some((readAction) => readAction === action)
+				? SQLite.SQLITE_OK
+				: SQLite.SQLITE_DENY;
+		},
+		null
+	);
+}
+
 async function seedDemo() {
 	// Synthetic data lives only in the separate, unsyncable demo database.
 	const system = `id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
@@ -253,12 +288,127 @@ async function migrateDemo() {
 	);
 }
 
+// Backup files live in OPFS under backups/<staged|recovery|exports>/<name>;
+// core receives only these references and never sees OPFS itself.
+const BACKUP_REF = /^(staged|recovery|exports)\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+async function backupDirectory(kind: string) {
+	const root = await navigator.storage.getDirectory();
+	const backups = await root.getDirectoryHandle('backups', { create: true });
+	return backups.getDirectoryHandle(kind, { create: true });
+}
+async function backupHandle(ref: string, create = false) {
+	if (!BACKUP_REF.test(ref)) throw new Error('Invalid backup file reference.');
+	const [kind, name] = ref.split('/');
+	return (await backupDirectory(kind)).getFileHandle(name, { create });
+}
+const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+// Long backup actions report progress; the page folds it into the sync pill.
+let progressPhase = '';
+let progressAt = 0;
+function progress(done: number, total: number) {
+	const now = Date.now();
+	if (now - progressAt < 250 && done < total) return;
+	progressAt = now;
+	respond({ progress: { phase: progressPhase, done, total } });
+}
+const writers = new Set<FileSystemSyncAccessHandle>();
+const files: BackupFiles = {
+	open(ref) {
+		let reader: ReadableStreamDefaultReader<string> | undefined;
+		return {
+			async read() {
+				if (!reader) {
+					const file = await (await backupHandle(ref)).getFile();
+					const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+					let done = 0;
+					let stream: ReadableStream<BufferSource> = file.stream().pipeThrough(
+						new TransformStream<Uint8Array<ArrayBuffer>, BufferSource>({
+							transform(chunk, out) {
+								progress((done += chunk.length), file.size);
+								out.enqueue(chunk);
+							}
+						})
+					);
+					// gzip's trailer CRC and length make a damaged copy fail here.
+					if (head[0] === 0x1f && head[1] === 0x8b)
+						stream = stream.pipeThrough(new DecompressionStream('gzip'));
+					reader = stream.pipeThrough(new TextDecoderStream('utf-8', { fatal: true })).getReader();
+				}
+				const { done, value } = await reader.read();
+				return done ? null : value;
+			}
+		};
+	},
+	create(ref) {
+		let handle: FileSystemSyncAccessHandle | undefined;
+		let at = 0;
+		const encoder = new TextEncoder();
+		return {
+			async write(text) {
+				if (!handle) {
+					handle = await (await backupHandle(ref, true)).createSyncAccessHandle();
+					writers.add(handle);
+					handle.truncate(0);
+				}
+				at += handle.write(encoder.encode(text), { at });
+				progress(at, 0);
+			},
+			async close() {
+				if (!handle) return;
+				handle.flush();
+				handle.close();
+				writers.delete(handle);
+			}
+		};
+	}
+};
+/** Closes writers an aborted export or restore left open, then removes its partial file. */
+async function abandon(ref: string) {
+	for (const handle of writers) handle.close();
+	writers.clear();
+	const [kind, name] = ref.split('/');
+	await (await backupDirectory(kind)).removeEntry(name).catch(() => {});
+}
+async function backupFiles(kind: string) {
+	const out: { file: string; bytes: number; modified: number }[] = [];
+	for await (const [name, handle] of (await backupDirectory(kind)) as unknown as AsyncIterable<
+		[string, FileSystemHandle]
+	>) {
+		if (handle.kind !== 'file') continue;
+		const file = await (handle as FileSystemFileHandle).getFile();
+		out.push({ file: `${kind}/${name}`, bytes: file.size, modified: file.lastModified });
+	}
+	return out.sort((a, b) => b.modified - a.modified);
+}
+/** Streams bytes into a backup file through a sync handle, the OPFS API every
+ * browser that can open the workspace also supports. */
+async function copyInto(ref: string, stream: ReadableStream<Uint8Array>) {
+	const handle = await (await backupHandle(ref, true)).createSyncAccessHandle();
+	try {
+		handle.truncate(0);
+		let at = 0;
+		for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>)
+			at += handle.write(chunk, { at });
+		handle.flush();
+	} finally {
+		handle.close();
+	}
+}
+async function hubFor(args: { endpoint: string; token: string }, timeout: number) {
+	if (databaseName === 'life-ui-demo') throw new Error('Sample workspaces have no hub.');
+	return createHttpHub(args.endpoint, args.token, (url, init) =>
+		fetch(url, { ...init, signal: AbortSignal.timeout(timeout) })
+	);
+}
+
 const local = createCoreHandlers(
 	db,
 	() => {
 		throw new Error('No hub connection.');
 	},
-	'life-ui'
+	'life-ui',
+	null,
+	files
 );
 
 async function dispatch(request: DatabaseRequest) {
@@ -286,36 +436,8 @@ async function dispatch(request: DatabaseRequest) {
 		try {
 			const vfs = await OPFSCoopSyncVFS.create('life-ui', module);
 			sqlite.vfs_register(vfs, true);
-			connection = await sqlite.open_v2(name, undefined, vfs.name);
-			sqlite.set_authorizer(
-				connection,
-				(_, action, name, detail, database) => {
-					if (dependencyReads && action === SQLite.SQLITE_READ)
-						dependencyReads.push({ name, database });
-					if (!reading) return SQLite.SQLITE_OK;
-					// The authorizer runs during preparation too: reject connection control
-					// and mutating PRAGMAs before they can act. FTS5 reads data_version on reopen.
-					if (action === SQLite.SQLITE_PRAGMA)
-						return ['table_info', 'table_xinfo', 'foreign_key_list', 'data_version'].includes(
-							name?.toLowerCase() ?? ''
-						) ||
-							(readingInventory &&
-								['database_list', 'table_list'].includes(name?.toLowerCase() ?? ''))
-							? SQLite.SQLITE_OK
-							: SQLite.SQLITE_DENY;
-					if (action === SQLite.SQLITE_FUNCTION && detail?.toLowerCase() === 'load_extension')
-						return SQLite.SQLITE_DENY;
-					return [
-						SQLite.SQLITE_SELECT,
-						SQLite.SQLITE_READ,
-						SQLite.SQLITE_FUNCTION,
-						SQLite.SQLITE_RECURSIVE
-					].some((readAction) => readAction === action)
-						? SQLite.SQLITE_OK
-						: SQLite.SQLITE_DENY;
-				},
-				null
-			);
+			vfsName = vfs.name;
+			await connect(name);
 			await db.transaction(async () => {
 				const isNew = !(await db.all("SELECT name FROM sqlite_master WHERE type='table' LIMIT 1"))
 					.length;
@@ -390,6 +512,95 @@ async function dispatch(request: DatabaseRequest) {
 				fetch(url, { ...init, signal: AbortSignal.timeout(30_000) })
 			);
 			return createCoreHandlers(db, () => hub, 'life-ui').remoteRow(input);
+		}
+		case 'replicaFile': {
+			// The VFS holds the database file open; close it, copy the exact bytes
+			// to a separate file the page can download, then reopen.
+			const name = databaseName!;
+			const ref = `exports/${name}-${stamp()}.sqlite`;
+			await sqlite.close(connection);
+			connection = undefined;
+			try {
+				const root = await navigator.storage.getDirectory();
+				const source = await (await root.getFileHandle(name)).getFile();
+				await copyInto(ref, source.stream());
+			} catch {
+				await abandon(ref);
+				throw new Error('Could not copy the database. Close other Life UI tabs and try again.');
+			} finally {
+				await connect(name);
+			}
+			return (await backupHandle(ref)).getFile();
+		}
+		case 'exportReplica': {
+			const ref = `exports/${databaseName}-${stamp()}.sql`;
+			progressPhase = 'Exporting';
+			try {
+				const summary = await local.exportReplica({ file: ref });
+				return { file: await (await backupHandle(ref)).getFile(), summary };
+			} catch (error) {
+				await abandon(ref);
+				throw error;
+			}
+		}
+		case 'stageBackup': {
+			if (!(args.blob instanceof Blob)) throw new Error('Choose a backup file.');
+			for (const old of await backupFiles('staged'))
+				await (await backupDirectory('staged')).removeEntry(old.file.split('/')[1]);
+			const ref = `staged/${stamp()}-${args.name.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80)}`;
+			await copyInto(ref, args.blob.stream());
+			return ref;
+		}
+		case 'previewRestore':
+			progressPhase = 'Checking backup';
+			return local.previewRestore(args);
+		case 'restoreReplica': {
+			const recovery = `recovery/${databaseName}-before-restore-${stamp()}.sql`;
+			let opens = 0;
+			const open = files.open;
+			// Core reads the backup twice: once to validate, once to apply.
+			files.open = (ref) => {
+				progressPhase = ++opens === 1 ? 'Checking backup' : 'Restoring';
+				return open(ref);
+			};
+			progressPhase = 'Checking backup';
+			try {
+				const create = files.create;
+				files.create = (ref) => {
+					progressPhase = 'Saving recovery copy';
+					return create(ref);
+				};
+				try {
+					const result = await local.restoreReplica({ ...args, recovery });
+					// Keep the three newest recovery copies.
+					for (const old of (await backupFiles('recovery')).slice(3))
+						await (await backupDirectory('recovery')).removeEntry(old.file.split('/')[1]);
+					return { ...result, recoveryFile: recovery };
+				} finally {
+					files.create = create;
+				}
+			} catch (error) {
+				for (const handle of writers) handle.close();
+				writers.clear();
+				throw error;
+			} finally {
+				files.open = open;
+			}
+		}
+		case 'recoveryBackups':
+			return backupFiles('recovery');
+		case 'backupFile':
+			return (await backupHandle(args.file)).getFile();
+		case 'hubBackups': {
+			const hub = await hubFor(args, 30_000);
+			return createCoreHandlers(db, () => hub, 'life-ui').hubBackups({ endpoint: args.endpoint });
+		}
+		case 'createHubBackup': {
+			// The hub exports its whole database first; that takes about a minute.
+			const hub = await hubFor(args, 600_000);
+			return createCoreHandlers(db, () => hub, 'life-ui').createHubBackup({
+				endpoint: args.endpoint
+			});
 		}
 		case 'listSidebarPins':
 			return local.listSidebarPins(args);
@@ -518,7 +729,8 @@ scope.onmessage = ({ data }) => {
 					'saveCatalogRule',
 					'pinTable',
 					'unpinTable',
-					'moveTablePin'
+					'moveTablePin',
+					'restoreReplica'
 				].includes(data.method)
 			) {
 				channel?.postMessage({ changed: data.method });

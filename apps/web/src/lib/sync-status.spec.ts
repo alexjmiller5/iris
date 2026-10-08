@@ -214,3 +214,15 @@ test('pill names exactly one state, in priority order', () => {
 	});
 	expect(syncPill({ ...base, lastSync: null }).title).toBe('No sync completed yet');
 });
+
+test('shows a long backup action in place of sync state', () => {
+	expect(syncPill({ ...base, activity: 'Restoring 42%' })).toMatchObject({
+		label: 'Restoring 42%',
+		tone: 'busy',
+		action: null
+	});
+	expect(syncPill({ ...base, demo: true, activity: 'Exporting' })).toMatchObject({
+		label: 'Exporting'
+	});
+	expect(syncPill({ ...base, activity: '' })).toMatchObject({ label: 'Synced' });
+});

@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "eff8d83d3f975a319e437c01141fcae058de2b6b18193eaae5388ac209ffd0b1";
+export declare const CORE_CONTRACT_HASH = "05cb3db792b18072e09fbe79c1f012a6f3246b3af6356e28d505434ebd6ebb07";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -1072,6 +1072,44 @@ export type ResolvedViewDefinition = {
     definition: SavedViewDefinition;
     view: View;
 };
+export type BackupFileArgs = {
+    file: string;
+};
+export type RestoreArgs = {
+    file: string;
+    recovery: string;
+    confirm: "replace";
+};
+export type BackupTableSummary = {
+    table: string;
+    rows: Count;
+    liveRows: Count;
+    newestUpdatedAt: string | null;
+};
+export type BackupSummary = {
+    version: number;
+    tables: BackupTableSummary[];
+    rows: Count;
+    newestUpdatedAt: string | null;
+    schemaEntries: Count;
+};
+export type RestorePreview = {
+    backup: BackupSummary;
+    current: BackupSummary;
+};
+export type RestoreResult = {
+    restored: BackupSummary;
+    recovery: BackupSummary;
+};
+export type HubBackup = {
+    key: string;
+    taken_at: string;
+    bytes: Count;
+    sha256: string | null;
+};
+export type HubBackupList = {
+    backups: HubBackup[];
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -1284,6 +1322,30 @@ export interface CoreOperations {
     setRelatedViewDefault: {
         args: SetViewDefaultArgs;
         result: ViewDefault;
+    };
+    validateBackup: {
+        args: BackupFileArgs;
+        result: BackupSummary;
+    };
+    previewRestore: {
+        args: BackupFileArgs;
+        result: RestorePreview;
+    };
+    restoreReplica: {
+        args: RestoreArgs;
+        result: RestoreResult;
+    };
+    exportReplica: {
+        args: BackupFileArgs;
+        result: BackupSummary;
+    };
+    hubBackups: {
+        args: EndpointArgs;
+        result: HubBackupList;
+    };
+    createHubBackup: {
+        args: EndpointArgs;
+        result: HubBackup;
     };
 }
 export type CoreMethod = keyof CoreOperations;

@@ -86,6 +86,7 @@
 	import IncomingReferences from '$lib/IncomingReferences.svelte';
 	import SchemaGraph from '$lib/SchemaGraph.svelte';
 	import HubServices from '$lib/HubServices.svelte';
+	import Backup from '$lib/Backup.svelte';
 	import HubEnrollment from '$lib/HubEnrollment.svelte';
 	import SyncStatus from '$lib/SyncStatus.svelte';
 	import { SyncScheduler, leadership } from '$lib/sync-status';
@@ -2056,6 +2057,7 @@
 	}
 
 	// Sync runs by itself: push 750 ms after a write, pull every 2 s while this tab is visible.
+	let backupActivity = $state('');
 	let connecting = $state(false),
 		syncSlow = $state(false),
 		syncError = $state(''),
@@ -2614,6 +2616,23 @@
 							</p>
 						</details>
 					{/if}
+					{#if database}<Backup
+							{database}
+							{demo}
+							connection={connectedHub}
+							canRestore={!busy &&
+								!writing &&
+								!bodySaving &&
+								!dirty &&
+								!gridDraft &&
+								pendingEdits === 0}
+							onactivity={(label) => (backupActivity = label)}
+							onrestored={() => {
+								// Every table was replaced: reopen on the first table, as a fresh workspace does.
+								resetView();
+								table = '';
+							}}
+						/>{/if}
 					<button
 						class="secondary leave"
 						onclick={() => {
@@ -2640,6 +2659,7 @@
 							rejected={rejectedCount}
 							{lastSync}
 							error={syncError}
+							activity={backupActivity}
 							onaction={syncAction}
 						/>
 					</div>

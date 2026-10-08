@@ -12,4 +12,5 @@ export declare function createWriteSession(db: SqlDriver, origin: string): {
     undoStatus: (args: import("./contract.generated.ts").EmptyArgs) => import("./contract.generated.ts").UndoStatus | Promise<import("./contract.generated.ts").UndoStatus>;
     capturedMutation: <A, T>(table: string, input: A, operation: (args: A, capture: (value: WriteCapture) => void) => Promise<T>) => Promise<T>;
     uncapturedMutation: <A, T>(input: A, operation: (args: A) => Promise<T>) => Promise<T>;
+    replaceAll: <T>(operation: () => Promise<T>) => Promise<T>;
 };

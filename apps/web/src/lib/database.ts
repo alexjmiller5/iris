@@ -19,6 +19,10 @@ export class WorkspaceDatabase extends EventTarget {
 				this.stop(new Error('Core contract does not match the database worker. Reload the app.'));
 				return;
 			}
+			if (data.progress) {
+				this.dispatchEvent(new CustomEvent('progress', { detail: data.progress }));
+				return;
+			}
 			if (data.changed) {
 				// detail: the database method that changed data, here or in another tab.
 				this.dispatchEvent(new CustomEvent('change', { detail: data.changed }));

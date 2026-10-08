@@ -101,6 +101,8 @@ export interface PillInput {
 	lastSync: string | null;
 	error: string;
 	now: number;
+	/** A long user-initiated action (backup, export, restore) in progress. */
+	activity?: string;
 }
 export interface Pill {
 	label: string;
@@ -134,6 +136,7 @@ export function syncPill(s: PillInput): Pill {
 		title: t,
 		action
 	});
+	if (s.activity) return pill(s.activity, 'busy', null, s.activity);
 	if (s.demo) return pill('Sample data', 'idle', null, 'The sample workspace never syncs');
 	if (s.rejected) return pill(`${s.rejected} rejected`, 'error', 'rejected');
 	if (!s.online || /fetch|network|load failed|timed out|offline/i.test(s.error))

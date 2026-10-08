@@ -89,6 +89,32 @@ export interface DatabaseOperations {
 	status: { args: Record<string, never>; result: CoreResult<'status'> };
 	writeability: { args: CoreArgs<'writeability'>; result: CoreResult<'writeability'> };
 	sync: { args: CoreArgs<'sync'> & { token: string }; result: CoreResult<'sync'> };
+	/** A byte-exact copy of the workspace's OPFS SQLite file. */
+	replicaFile: { args: Record<string, never>; result: File };
+	exportReplica: {
+		args: Record<string, never>;
+		result: { file: File; summary: CoreResult<'exportReplica'> };
+	};
+	/** Copies a chosen or downloaded backup into OPFS; returns its reference. */
+	stageBackup: { args: { blob: Blob; name: string }; result: string };
+	previewRestore: { args: CoreArgs<'previewRestore'>; result: CoreResult<'previewRestore'> };
+	restoreReplica: {
+		args: Omit<CoreArgs<'restoreReplica'>, 'recovery'>;
+		result: CoreResult<'restoreReplica'> & { recoveryFile: string };
+	};
+	recoveryBackups: {
+		args: Record<string, never>;
+		result: { file: string; bytes: number; modified: number }[];
+	};
+	backupFile: { args: { file: string }; result: File };
+	hubBackups: {
+		args: CoreArgs<'hubBackups'> & { token: string };
+		result: CoreResult<'hubBackups'>;
+	};
+	createHubBackup: {
+		args: CoreArgs<'createHubBackup'> & { token: string };
+		result: CoreResult<'createHubBackup'>;
+	};
 }
 export type DatabaseMethod = keyof DatabaseOperations;
 export type DatabaseArgs<M extends DatabaseMethod> = DatabaseOperations[M]['args'];

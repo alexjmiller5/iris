@@ -39,7 +39,7 @@ test.each([false, true])(
 	'grid offers its guarded %s trash action independently of creation',
 	(trash) => {
 		const window = new Window();
-		const actionLabel = trash ? 'Restore selected record' : 'Trash selected record';
+		const actionLabel = trash ? 'Restore record' : 'Move to trash';
 		window.document.body.innerHTML = render(RecordGrid, {
 			props: {
 				rows: [{ id: 'a', title: 'Alpha' }],
@@ -59,13 +59,13 @@ test.each([false, true])(
 				ontrash: async () => false
 			} as never
 		}).body;
-		expect(
-			window.document.querySelector(`[aria-label="${actionLabel}"]`)?.textContent?.trim()
-		).toBe(trash ? 'Restore record' : 'Move to trash');
+		// Named by its visible text so speech and voice control agree.
+		const action = [...window.document.querySelectorAll('.grid-actions button')].find(
+			(button) => button.textContent?.trim() === actionLabel
+		);
+		expect(action?.hasAttribute('aria-label')).toBe(false);
 		// No row selected yet. In Trash, creation can stay unavailable while Restore exists.
-		expect(
-			window.document.querySelector(`[aria-label="${actionLabel}"]`)?.hasAttribute('disabled')
-		).toBe(true);
+		expect(action?.hasAttribute('disabled')).toBe(true);
 		window.close();
 	}
 );

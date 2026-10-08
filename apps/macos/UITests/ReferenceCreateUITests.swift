@@ -94,7 +94,10 @@ final class ReferenceCreateUITests: XCTestCase {
   }
 
   private func search(_ text: String, app: XCUIApplication) {
-    let field = app.searchFields.firstMatch
+    // The picker's own field, not the workspace window's table search.
+    let field = app.searchFields.matching(
+      NSPredicate(format: "placeholderValue == %@", "Search records")
+    ).firstMatch
     click(field)
     field.typeKey("a", modifierFlags: .command)
     field.typeText(text)

@@ -28,6 +28,7 @@ if (!url) {
   const port = await freePort();
   dev = Bun.spawn(["bun", "run", "--cwd", "apps/web", "dev", "--", "--port", String(port), "--strictPort"], {
     cwd: root,
+    env: { ...process.env, LIFE_UI_DEV_NO_HMR: "1" },
     stdout: "ignore",
     stderr: "ignore",
   });
@@ -48,6 +49,7 @@ const fail = (message: string) => {
 /** One color scheme's walk through every view. */
 async function walk(page: Page, scheme: "light" | "dark") {
   let step = 0;
+  const seen = new Set<string>();
   const audit = async (state: string) => {
     if (!(await page.evaluate(() => "axe" in window))) await page.addScriptTag({ content: axe });
     const { violations } = await page.evaluate(() =>
@@ -56,6 +58,9 @@ async function walk(page: Page, scheme: "light" | "dark") {
       }),
     );
     for (const v of violations as { id: string; impact: string; help: string; nodes: { target: string[]; html: string }[] }[]) {
+      const key = `${v.id} ${v.nodes.map((n) => n.target.join(" ")).join()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       const where = v.nodes.map((n) => `${n.target.join(" ")} ${n.html.slice(0, 120)}`).join("\n    ");
       const line = `${scheme} ${state}: [${v.impact}] ${v.id} - ${v.help}\n    ${where}`;
       if (v.impact === "serious" || v.impact === "critical") fail(line);
@@ -89,10 +94,19 @@ async function walk(page: Page, scheme: "light" | "dark") {
     throw new Error(`${scheme}: ${target} is not reachable with ${back ? "Shift+Tab" : "Tab"}`);
   };
   const focused = (target: Locator) =>
-    target.evaluate((el) => el === document.activeElement || el.contains(document.activeElement));
-  const expectFocus = async (target: Locator, what: string) => {
-    for (let i = 0; i < 20 && !(await focused(target).catch(() => false)); i++) await page.waitForTimeout(100);
-    if (!(await focused(target).catch(() => false))) fail(`${scheme}: focus did not return to ${what}`);
+    target.evaluate((el) => el === document.activeElement || el.contains(document.activeElement)).catch(() => false);
+  const active = () =>
+    page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      return el ? `${el.tagName.toLowerCase()} "${el.getAttribute("aria-label") || el.textContent?.trim().slice(0, 40)}"` : "nothing";
+    });
+  /** Focus must come back to one of `targets` (a closed popover's anchor). */
+  const expectFocus = async (targets: Locator[], what: string) => {
+    for (let i = 0; i < 20; i++) {
+      for (const t of targets) if (await focused(t)) return;
+      await page.waitForTimeout(100);
+    }
+    fail(`${scheme}: focus did not return to ${what}; it is on ${await active()}`);
   };
   const role = (r: Parameters<Page["getByRole"]>[0], name: string | RegExp) =>
     page.getByRole(r, { name, exact: typeof name === "string" }).first();
@@ -125,7 +139,8 @@ async function walk(page: Page, scheme: "light" | "dark") {
   await audit("filter-editor");
   await page.keyboard.press("Escape");
   await editor.waitFor({ state: "hidden" });
-  await expectFocus(page.getByRole("group", { name: "Sort and filters" }), "the filter chip");
+  // A chip without a value is dropped, so focus lands on Filter instead of the chip.
+  await expectFocus([page.getByRole("group", { name: "Sort and filters" }), filter], "the filter chip");
 
   // Sort popover.
   const sort = role("button", "Sort");
@@ -134,7 +149,7 @@ async function walk(page: Page, scheme: "light" | "dark") {
   await page.getByRole("dialog", { name: "Sort" }).waitFor();
   await audit("sort");
   await page.keyboard.press("Escape");
-  await expectFocus(sort, "Sort");
+  await expectFocus([sort], "Sort");
 
   // View switcher menu.
   const settings = role("button", "View settings");
@@ -142,7 +157,7 @@ async function walk(page: Page, scheme: "light" | "dark") {
   await page.keyboard.press("Enter");
   await audit("view-menu");
   await page.keyboard.press("Escape");
-  await expectFocus(settings, "View settings");
+  await expectFocus([settings], "View settings");
 
   // Columns, Export and Selection disclosures.
   for (const name of ["Columns", "Export"]) {
@@ -154,7 +169,7 @@ async function walk(page: Page, scheme: "light" | "dark") {
   }
 
   // Grid: arrows move the cell cursor, Space selects nothing by itself, Enter opens the record.
-  await tabTo(grid);
+  await tabTo(grid.locator('td[tabindex="0"]'));
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowLeft");
   await ring();
@@ -169,17 +184,21 @@ async function walk(page: Page, scheme: "light" | "dark") {
   await tabTo(select, true);
   await page.keyboard.press("Space");
 
-  // Record page with properties and the Markdown editor.
-  await tabTo(grid);
-  await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: /Back to|Close record|Records/ }).first().waitFor();
+  // Record page with properties and the Markdown editor: Cmd/Ctrl+Enter opens it
+  // from the grid, Tab reaches every control without a trap, Escape closes it.
+  await tabTo(grid.locator('td[tabindex="0"]'));
+  await page.keyboard.press("ControlOrMeta+Enter");
+  const close = role("button", "Close record");
+  await close.waitFor();
   await audit("record");
-  for (let i = 0; i < 40; i++) {
-    await page.keyboard.press("Tab");
-    await ring();
-  }
-  await audit("record-after-tabbing");
-  await page.keyboard.press("Escape");
+  await tabTo(close);
+  await tabTo(page.locator('.record-panel [contenteditable="true"]').first());
+  await page.keyboard.type("Typed by keyboard.");
+  await page.locator('[aria-label="Body save status"][data-state="saved"]').waitFor({ state: "attached" });
+  await audit("record-markdown");
+  await tabTo(close);
+  await page.keyboard.press("Enter");
+  await close.waitFor({ state: "hidden" });
 
   // Cmd+K palette.
   await page.locator("body").focus();
@@ -215,7 +234,7 @@ async function walk(page: Page, scheme: "light" | "dark") {
   await page.getByRole("dialog").first().waitFor();
   await audit("catalog-editor");
   await page.keyboard.press("Escape");
-  await expectFocus(catalog, "Edit catalog");
+  await expectFocus([catalog], "Edit catalog");
 
   // Table graph.
   const graph = role("button", "Table graph");
@@ -252,6 +271,14 @@ async function walk(page: Page, scheme: "light" | "dark") {
 
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
+  // Warm up: the first open makes Vite optimize the database worker's
+  // dependencies and reload, which must not happen mid-walk.
+  const warm = await browser.newPage();
+  await warm.goto(url);
+  await warm.getByRole("button", { name: "Try sample workspace" }).click({ timeout: 120_000 });
+  await warm.getByRole("grid", { name: "Records" }).waitFor({ timeout: 120_000 });
+  await warm.waitForTimeout(2000);
+  await warm.context().close();
   for (const scheme of ["light", "dark"] as const) {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
@@ -260,6 +287,10 @@ try {
     });
     const page = await context.newPage();
     page.setDefaultTimeout(30_000);
+    page.on("dialog", (dialog) => {
+      fail(`${scheme}: unexpected ${dialog.type()} "${dialog.message()}"`);
+      void dialog.dismiss();
+    });
     try {
       await walk(page, scheme);
       if (scheme === "dark") {

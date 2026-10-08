@@ -65,12 +65,15 @@ jobs:
             --filter PresentationTests.preparePresentationUIFixture \
             2>&1 | tee "$RUNNER_TEMP/presentation-fixture.log"
           test -s "$presentation"
+          filter_bar="$fixture_dir/filter-bar.sqlite"
+          cp "$presentation" "$filter_bar"
           references="$fixture_dir/reference-create.sqlite"
           bun scripts/reference-create-fixture.ts "$references"
           test -s "$references"
           (cd apps/macos && xcodegen generate --spec project.yml)
           TEST_RUNNER_LIFE_UI_TEST_CATALOG_DATABASE="$fixture" \
           TEST_RUNNER_LIFE_UI_TEST_PRESENTATION_DATABASE="$presentation" \
+          TEST_RUNNER_LIFE_UI_TEST_FILTER_BAR_DATABASE="$filter_bar" \
           TEST_RUNNER_LIFE_UI_TEST_REFERENCE_CREATE_DATABASE="$references" \
           TEST_RUNNER_LIFE_UI_TEST_CATALOG_CLEAN_HOST=1 \
             xcodebuild -project apps/macos/LifeUI.xcodeproj -scheme LifeUI \
@@ -78,6 +81,7 @@ jobs:
               -resultBundlePath "$RUNNER_TEMP/catalog-ui.xcresult" \
               -only-testing:LifeUIUITests/CatalogRecordUITests/testCatalogRuleFailureRetainsDraftAndReadOnlyMetadata \
               -only-testing:LifeUIUITests/PresentationUITests/testCalendarRangesGalleryAndBoardMove \
+              -only-testing:LifeUIUITests/FilterBarUITests/testHeaderChipSortUndoAndRelaunch \
               -only-testing:LifeUIUITests/CatalogEditorUITests/testCatalogEditRetainsInvalidDraftAndRefreshesRecordMetadata \
               -only-testing:LifeUIUITests/RelatedViewsUITests/testMainAndRelatedPreferencesStayIndependentThroughUserControls \
               -only-testing:LifeUIUITests/SidebarMenuBarUITests/testCommandBackslashTogglesPersistedSidebarAndMenuBarItemOpensQuickFind \
@@ -92,10 +96,17 @@ jobs:
           import sys
 
           result = json.loads(pathlib.Path(sys.argv[1]).read_text())
-          if (result.get("passedTests"), result.get("failedTests"), result.get("skippedTests")) != (6, 0, 0):
-              raise SystemExit(f"Expected six executed passing XCUI tests: {result}")
-          print("Verified catalog, presentation, related-view, sidebar/menu-bar and reference-create XCUI tests; no skipped or zero-test success")
+          if (result.get("passedTests"), result.get("failedTests"), result.get("skippedTests")) != (7, 0, 0):
+              raise SystemExit(f"Expected seven executed passing XCUI tests: {result}")
+          print("Verified catalog, presentation, filter-bar, related-view, sidebar/menu-bar and reference-create XCUI tests; no skipped or zero-test success")
           PYVERIFY
+      - name: Keep the synthetic Mac XCUI screenshots
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-xcui-screens
+          path: ${{ runner.temp }}/catalog-ui.xcresult
+          retention-days: 3
       - name: Preserve synthetic catalog failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

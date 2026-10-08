@@ -84,11 +84,16 @@ import XCTest
     // A unique synthetic title saved by the Quick Add acceptance run.
     let title = "Quick Add fixture saved"
     search.typeText(title + "\n")
-    // Only Life UI's own Core Spotlight item, never a web suggestion of the same text.
+    // Only Life UI's own Core Spotlight item (under the app's section), never a web
+    // suggestion with the same text.
+    let header = spotlight.otherElements.matching(
+      NSPredicate(format: "identifier BEGINSWITH 'Identifier:SectionHeader' AND identifier ENDSWITH ',Title:Life UI'")
+    ).firstMatch
+    require(header, in: spotlight, 20)
+    let section = header.identifier.components(separatedBy: ",").first { $0.hasPrefix("Section:") } ?? ""
     let result = spotlight.cells.matching(
-      NSPredicate(format: "label CONTAINS[c] %@ AND NOT (identifier CONTAINS 'Suggestion')", title)
-    ).matching(NSPredicate(format: "label CONTAINS 'Life UI' OR identifier CONTAINS 'com.alexmiller.life-ui'"))
-      .firstMatch
+      NSPredicate(format: "identifier CONTAINS %@ AND label CONTAINS[c] %@", "ResultCell,\(section),", title)
+    ).firstMatch
     require(result, in: spotlight, 20)
     keep(spotlight, "spotlight-title-result")
     result.tap()
@@ -96,6 +101,8 @@ import XCTest
     let open = app.buttons["open-pending-link"]
     XCTAssertTrue(open.waitForExistence(timeout: 15))
     keep(app, "spotlight-link-banner")
+    // A system launch can land on the welcome screen; the link waits for the workspace.
+    if app.buttons["open-local"].exists { app.buttons["open-local"].tap() }
     let ready = NSPredicate(format: "isEnabled == true")
     expectation(for: ready, evaluatedWith: open)
     waitForExpectations(timeout: 15)
