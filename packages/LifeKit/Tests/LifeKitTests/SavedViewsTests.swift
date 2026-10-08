@@ -338,6 +338,55 @@ struct SavedViewsTests {
 }
 
 extension SavedViewsTests {
+  @Test func relatedDefaultIsIndependentAndFiltersFullIncomingRecordsThroughRealCore() async throws
+  {
+    let runtime = try LifeCoreRuntime()
+    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await client.createSample()
+    let topic = try #require(try await client.rows(table: "topics").first)
+    let included = try await client.write(
+      table: "notes",
+      patch: [
+        "title": .string("Linked fixture"), "status": .string("Ready"), "topic": .string(topic.id),
+        "body": .string("Complete linked body"),
+      ])
+    _ = try await client.write(
+      table: "notes",
+      patch: [
+        "title": .string("Excluded fixture"), "status": .string("Draft"),
+        "topic": .string(topic.id),
+      ])
+    let model = WorkspaceModel(credentialStore: MemoryHubCredentials(nil))
+    model.client = client
+    model.catalog = try await client.catalog()
+    model.table = "notes"
+    let context = try #require(model.editingContext)
+    let ordinary = try await client.saveView(
+      CoreSaveViewArgs(
+        table: "notes", name: "Everyday fixture",
+        definition: CoreSavedViewDefinition(
+          version: 1, filters: [CoreFilter(column: "status", op: .eq, value: .string("Draft"))])))
+    let linked = try await client.saveView(
+      CoreSaveViewArgs(
+        table: "notes", name: "Related fixture",
+        definition: CoreSavedViewDefinition(
+          version: 1, columns: ["id"],
+          filters: [CoreFilter(column: "status", op: .eq, value: .string("Ready"))])))
+    try await model.refreshSavedViews(context: context)
+    try await model.setDefaultView(ordinary, context: context)
+    try await model.setDefaultView(linked, context: context, related: true)
+    #expect(model.viewDefault?.viewId == ordinary.id)
+    #expect(model.relatedViewDefault?.viewId == linked.id)
+    let page = try await client.referencedBy(
+      CoreReferencedByArgs(table: "topics", rowId: topic.id, sourceTable: "notes", column: "topic"))
+    #expect(page.rows.map(\.id) == [try #require(included["id"]?.text)])
+    #expect(page.rows.first?.record["body"] == .string("Complete linked body"))
+    let action = try #require(try await client.undoStatus().action)
+    _ = try await model.undo(action, context: context)
+    #expect(model.relatedViewDefault?.viewId == nil)
+    #expect(model.viewDefault?.viewId == ordinary.id)
+    await model.close()
+  }
   @Test func preferredViewReceiptCannotReplaceTableRoundTripState() async throws {
     let runtime = try LifeCoreRuntime()
     let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
@@ -348,10 +397,16 @@ extension SavedViewsTests {
     model.table = "notes"
     let context = try #require(model.editingContext)
     try await model.refreshSavedViews(context: context)
-    let saved = try await client.saveView(CoreSaveViewArgs(table: "notes", name: "Chosen", definition: CoreSavedViewDefinition(version: 1)))
-    runtime.context.evaluateScript("globalThis.originalFinish = __lifeFinish; globalThis.heldReceipt = null; __lifeFinish = (id, reply) => { heldReceipt = [id, reply]; };")
+    let saved = try await client.saveView(
+      CoreSaveViewArgs(
+        table: "notes", name: "Chosen", definition: CoreSavedViewDefinition(version: 1)))
+    runtime.context.evaluateScript(
+      "globalThis.originalFinish = __lifeFinish; globalThis.heldReceipt = null; __lifeFinish = (id, reply) => { heldReceipt = [id, reply]; };"
+    )
     let saving = Task { try await model.setDefaultView(saved, context: context) }
-    while runtime.context.objectForKeyedSubscript("heldReceipt")?.isNull != false { await Task.yield() }
+    while runtime.context.objectForKeyedSubscript("heldReceipt")?.isNull != false {
+      await Task.yield()
+    }
     #expect(model.savingView)
     model.table = "topics"
     model.table = "notes"

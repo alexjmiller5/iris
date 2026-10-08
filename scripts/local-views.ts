@@ -1,6 +1,7 @@
 import { qident } from '../packages/core/client.js';
 import type { SqlDriver, Value } from '../packages/core/index.d.ts';
 import defaults from '../packages/core/schema/view-defaults.json';
+import related from '../packages/core/schema/related-view-defaults.json';
 import viewStorage from '../packages/core/schema/saved-views.json';
 import pinStorage from '../packages/core/schema/sidebar-pins.json';
 import type { Row } from '../packages/core/client.js';
@@ -10,7 +11,8 @@ import type { Row } from '../packages/core/client.js';
 export async function prepareLocalViews(db: SqlDriver): Promise<boolean> {
   const views = await prepareLocalTable(db, viewStorage);
   const preferred = await prepareLocalTable(db, defaults);
-  return views || preferred;
+  const linked = await prepareLocalTable(db, related);
+  return views || preferred || linked;
 }
 export const prepareLocalPins = (db: SqlDriver) => prepareLocalTable(db, pinStorage);
 

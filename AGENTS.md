@@ -10,6 +10,13 @@ Preference changes use displayed revisions, the ordinary writer and Undo. Transi
 setup uses the canonical `view-defaults/v1` manifest; replicas require operator-provisioned
 schema and permitted sync scope. View names and personal lifecycle filters are runtime data.
 
+Related-record defaults select a separate saved-view ID through canonical
+`getRelatedViewDefault`/`setRelatedViewDefault`. Incoming links apply its filters
+and sorting before pagination, retain full live records, and show invalid-pointer
+fallback. Hosts supply the selected definition's calendar policy and saved revision.
+Local/demo setup uses `related-view-defaults/v1`; replicas receive its logged
+schema from the operator. Ordinary table defaults are unaffected.
+
 ## Layout and contracts
 
 - `apps/web`: Svelte 5/SvelteKit, Tailwind 4, Cloudflare Worker static assets.

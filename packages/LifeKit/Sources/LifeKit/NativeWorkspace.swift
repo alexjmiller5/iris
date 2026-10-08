@@ -333,7 +333,18 @@ public final class NativeWorkspace {
     try await decode(CoreRequests.ReferenceSources(args))
   }
   public func referencedBy(_ args: CoreReferencedByArgs) async throws -> CoreReferencedByPage {
-    try await decode(CoreRequests.ReferencedBy(args))
+    let preference = try await getRelatedViewDefault(table: args.sourceTable)
+    var request = args
+    if request.expectedViewUpdatedAt == nil {
+      request.expectedViewUpdatedAt = preference.view?.updatedAt
+    }
+    if request.calendar == nil, let definition = preference.view?.definition,
+      let zone = definition.timeZone
+    {
+      request.calendar = try calendarContext(
+        timeZone: zone, dayStartMinutes: definition.dayStartMinutes ?? 0)
+    }
+    return try await decode(CoreRequests.ReferencedBy(request))
   }
 
   public func resolveSourceLink(_ url: String) async throws -> CoreSourceLinkResult {
@@ -360,11 +371,14 @@ public final class NativeWorkspace {
     }
     return created
   }
-  func resolveViewDefinition(table: String, definition: WorkspaceRecord) async throws -> CoreResolvedViewDefinition {
+  func resolveViewDefinition(table: String, definition: WorkspaceRecord) async throws
+    -> CoreResolvedViewDefinition
+  {
     let args: WorkspaceRecord = ["table": .string(table), "definition": .object(definition)]
     let json = String(decoding: try JSONEncoder().encode(args), as: UTF8.self)
     let result = try await call("resolveViewDefinition", arguments: json)
-    return try JSONDecoder().decode(CoreResolvedViewDefinition.self, from: JSONEncoder().encode(result))
+    return try JSONDecoder().decode(
+      CoreResolvedViewDefinition.self, from: JSONEncoder().encode(result))
   }
   public func listViews(table: String) async throws -> CoreSavedViewList {
     try await decode(CoreRequests.ListViews(CoreListViewsArgs(table: table)))
@@ -374,6 +388,13 @@ public final class NativeWorkspace {
   }
   public func setViewDefault(_ args: CoreSetViewDefaultArgs) async throws -> CoreViewDefault {
     try await decode(CoreRequests.SetViewDefault(args))
+  }
+  public func getRelatedViewDefault(table: String) async throws -> CoreViewDefault {
+    try await decode(CoreRequests.GetRelatedViewDefault(CoreGetViewDefaultArgs(table: table)))
+  }
+  public func setRelatedViewDefault(_ args: CoreSetViewDefaultArgs) async throws -> CoreViewDefault
+  {
+    try await decode(CoreRequests.SetRelatedViewDefault(args))
   }
   func saveCatalogProperty(_ args: CoreSaveCatalogPropertyArgs) async throws -> WorkspaceRecord {
     let result = try await decode(CoreRequests.SaveCatalogProperty(args))

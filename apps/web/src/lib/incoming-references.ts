@@ -9,6 +9,7 @@ export interface ReferenceGroup {
 	loaded: boolean;
 	loading: boolean;
 	error: string;
+	viewUnavailable?: string;
 }
 interface ReferenceState {
 	groups: ReferenceGroup[];
@@ -75,6 +76,7 @@ export function createIncomingReferences(
 				if (current(version))
 					groupUpdate(key, {
 						source: receipt.source,
+						viewUnavailable: receipt.viewUnavailable,
 						rows: [
 							...new Map(
 								[...group.rows, ...receipt.rows].map((row) => [row.record.id, row])

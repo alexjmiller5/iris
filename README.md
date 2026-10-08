@@ -89,6 +89,13 @@ The app edits any catalogued table; it does not infer a catalog for arbitrary
 SQLite files or connect directly to other database engines. System tables
 are read-only. Catalog entries with `kind: system` also remain read-only.
 
+Saved-view controls can select a separate view for related records. It filters
+incoming links independently of the table's everyday default, preserving the
+saved sort order and full records when you open them. Both preferences sync and
+support Undo. Missing or invalid related-view selections show a visible fallback
+to all live linked records. Replicas need the canonical related preference schema
+provisioned by their service operator; ordinary reads never create tables.
+
 Table rules are checked locally before an edit commits. Invalid edits keep the
 draft and leave stored records, history and pending edits unchanged. Rule-checked
 tables need complete local copies of the tables used by their checks. Unrelated

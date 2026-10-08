@@ -6,6 +6,21 @@ import Testing
 
 @MainActor
 struct IncomingReferencesModelTests {
+  @Test func unavailableRelatedViewKeepsFallbackRowsAndPaginationVisible() async throws {
+    let model = make { _ in
+      CoreReferencedByPage(
+        source: source, rows: [row("one", "First")], nextOffset: 20,
+        viewUnavailable: "Related view unavailable; showing all live links.")
+    }
+    await model.refresh()
+    let id = try #require(model.groups.first?.id)
+    await model.load(id)
+    #expect(model.groups.first?.rows.first?.label == "First")
+    #expect(model.groups.first?.error == nil)
+    #expect(model.groups.first?.nextOffset == 20)
+    #expect(
+      model.groups.first?.viewUnavailable == "Related view unavailable; showing all live links.")
+  }
   @MainActor private final class Flag {
     var value: Bool
     init(_ value: Bool) { self.value = value }
