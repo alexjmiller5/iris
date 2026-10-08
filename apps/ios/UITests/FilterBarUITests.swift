@@ -53,7 +53,7 @@ final class FilterBarUITests: XCTestCase {
     XCTAssertTrue(app.buttons["sort-chip"].waitForExistence(timeout: 5))
 
     // The sort's save is the latest change; Undo reverts only it.
-    tap(app.buttons["filter-bar-undo"])
+    tap(app.buttons["undo-saved-change"])
     gone(app.buttons["sort-chip"])
     XCTAssertEqual(app.buttons["filter-chip-0"].label, "Status: Ready")
     capture(app, "ios-5-undo-reverted-sort")

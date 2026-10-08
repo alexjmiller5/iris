@@ -76,8 +76,11 @@ import XCTest
     require(search, in: spotlight, 10)
     // A unique synthetic title saved by the Quick Add acceptance run.
     let title = "Quick Add fixture saved"
-    search.typeText(title)
-    let result = spotlight.cells.matching(NSPredicate(format: "label CONTAINS[c] %@", title))
+    search.typeText(title + "\n")
+    // Only Life UI's own Core Spotlight item, never a web suggestion of the same text.
+    let result = spotlight.cells.matching(
+      NSPredicate(format: "label CONTAINS[c] %@ AND NOT (identifier CONTAINS 'Suggestion')", title)
+    ).matching(NSPredicate(format: "label CONTAINS 'Life UI' OR identifier CONTAINS 'com.alexmiller.life-ui'"))
       .firstMatch
     require(result, in: spotlight, 20)
     keep(spotlight, "spotlight-title-result")

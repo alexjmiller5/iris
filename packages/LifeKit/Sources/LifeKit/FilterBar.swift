@@ -31,7 +31,7 @@ struct FilterBar: View {
         }
         .accessibilityIdentifier("filter-bar-filter")
         .accessibilityHint("Adds a filter to this view")
-        .popover(isPresented: $adding, arrowEdge: .bottom) {
+        .popover(isPresented: $adding, arrowEdge: .top) {
           AddFilterPopover(model: model).compactPopover()
         }
         Button {
@@ -42,24 +42,10 @@ struct FilterBar: View {
         .accessibilityIdentifier("filter-bar-sort")
         .accessibilityValue(
           model.sortRules.isEmpty ? "None" : "\(model.sortRules.count) sorts")
-        .popover(isPresented: $sorting, arrowEdge: .bottom) {
+        .popover(isPresented: $sorting, arrowEdge: .top) {
           SortMenu(model: model).compactPopover()
         }
         Spacer(minLength: 0)
-        if model.hasPendingViewSave || model.undoAction?.table == "views" {
-          Button {
-            Task {
-              do {
-                try await model.undoLatest(context: model.editingContext)
-              } catch { model.error = error.localizedDescription }
-            }
-          } label: {
-            Label("Undo", systemImage: "arrow.uturn.backward")
-          }
-          .disabled(model.undoing || model.savingView)
-          .accessibilityLabel("Undo last saved change")
-          .accessibilityIdentifier("filter-bar-undo")
-        }
       }
       .buttonStyle(.bordered)
       .controlSize(.small)
@@ -141,7 +127,7 @@ struct FilterBar: View {
       model.scheduleViewSave()
     }
     .accessibilityValue(active ? "Active" : "No value yet")
-    .popover(isPresented: presented(.filter(filter.id)), arrowEdge: .bottom) {
+    .popover(isPresented: presented(.filter(filter.id)), arrowEdge: .top) {
       NavigationStack {
         FilterEditor(model: model, filter: filterBinding(filter.id), fields: fields)
       }
@@ -162,7 +148,7 @@ struct FilterBar: View {
       model.removeFilterGroup(group.id)
       model.scheduleViewSave()
     }
-    .popover(isPresented: presented(.group(group.id)), arrowEdge: .bottom) {
+    .popover(isPresented: presented(.group(group.id)), arrowEdge: .top) {
       NavigationStack {
         FilterGroupEditor(model: model, id: group.id, fields: fields)
       }
@@ -289,6 +275,7 @@ struct PropertyPicker<Footer: View>: View {
             Label(field.label, systemImage: field.symbol)
               .foregroundStyle(.primary)
           }
+          .tint(.primary)
           .accessibilityIdentifier("filter-property-\(field.id)")
         }
         if matches.isEmpty { Text("No matching properties").foregroundStyle(.secondary) }

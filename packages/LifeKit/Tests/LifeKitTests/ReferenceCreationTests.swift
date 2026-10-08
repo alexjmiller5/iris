@@ -60,7 +60,9 @@ struct ReferenceCreationTests {
   @Test func readOnlyTargetsAndDerivedOrMissingNamesAreNotCreatable() {
     let field = CatalogField(
       property: ["col": .string("host"), "type": .string("ref"), "ref_table": .string("people")])
-    let table: CoreRow = ["id": .string("people"), "display": .string("name"), "readOnly": .bool(false)]
+    let table: CoreRow = [
+      "id": .string("people"), "display": .string("name"), "readOnly": .bool(false),
+    ]
     let name: CoreRow = ["tbl": .string("people"), "col": .string("name"), "type": .string("text")]
     func target(_ table: CoreRow, _ name: CoreRow = name) -> String? {
       ReferenceCreator.target(of: field, tables: [table], properties: [name])?.display
@@ -140,7 +142,8 @@ struct ReferenceCreationTests {
     let (model, context) = try await sample()
     let existing = try #require(try await topics(context).first { $0.label == "Ideas" })
     let picker = try picker(
-      model, context, "related", value: String(decoding: try JSONEncoder().encode([existing.id]), as: UTF8.self))
+      model, context, "related",
+      value: String(decoding: try JSONEncoder().encode([existing.id]), as: UTF8.self))
     await picker.create("Gardening")
     let created = try #require(try await topics(context).first { $0.label == "Gardening" })
     #expect(picker.selection.ids == [existing.id, created.id])

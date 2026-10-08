@@ -10,23 +10,31 @@ struct SortMenu: View {
 
   var body: some View {
     NavigationStack {
-      List {
-        Section {
-          ForEach(Array(sorts.enumerated()), id: \.element.column) { index, sort in
-            row(sort, index: index)
+      VStack(spacing: 0) {
+        List {
+          Section {
+            ForEach(Array(sorts.enumerated()), id: \.element.column) { index, sort in
+              row(sort, index: index)
+            }
+            .onMove { from, to in
+              var next = sorts
+              next.move(fromOffsets: from, toOffset: to)
+              model.setSorts(next)
+            }
+            if sorts.isEmpty {
+              Text("Records keep their default order.").foregroundStyle(.secondary)
+            }
+          } footer: {
+            if sorts.count > 1 { Text("Drag rules to change their priority.") }
           }
-          .onMove { from, to in
-            var next = sorts
-            next.move(fromOffsets: from, toOffset: to)
-            model.setSorts(next)
-          }
-          if sorts.isEmpty {
-            Text("Records keep their default order.").foregroundStyle(.secondary)
-          }
-        } footer: {
-          if sorts.count > 1 { Text("Drag rules to change their priority.") }
         }
-        Section {
+        #if os(iOS)
+          // Drag handles stay visible, as in Notion; row buttons remain usable.
+          .environment(\.editMode, .constant(.active))
+        #endif
+        Divider()
+        // Outside the List: a Menu in an edit-mode row does not open on iOS.
+        HStack {
           Menu {
             ForEach(fields.filter { field in !sorts.contains { $0.column == field.id } }) {
               field in
@@ -39,15 +47,16 @@ struct SortMenu: View {
           }
           .disabled(sorts.count >= 16)
           .accessibilityIdentifier("add-sort")
+          Spacer()
           if !sorts.isEmpty {
-            Button("Delete all sorts", role: .destructive) { model.setSorts([]) }
+            Button("Delete all", role: .destructive) { model.setSorts([]) }
+              .accessibilityLabel("Delete all sorts")
               .accessibilityIdentifier("clear-sorts")
           }
         }
+        .padding(.horizontal).padding(.vertical, 10)
       }
       #if os(iOS)
-        // Drag handles stay visible, as in Notion; row controls remain usable.
-        .environment(\.editMode, .constant(.active))
         .navigationBarTitleDisplayMode(.inline)
       #endif
       .navigationTitle("Sort")

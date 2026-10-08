@@ -1,3 +1,4 @@
+import CoreSpotlight
 import Foundation
 import Testing
 
@@ -50,6 +51,22 @@ import Testing
         throw error
       }
       await model.close()
+    }
+
+    /// The system index holds the enabled table's titles as deep-link identities.
+    @Test(
+      .enabled(if: ProcessInfo.processInfo.environment["LIFE_UI_TEST_WIDGET_SIMULATOR"] != nil))
+    func spotlightIndexHoldsEnabledTitles() async throws {
+      let environment = ProcessInfo.processInfo.environment
+      try #require(environment["LIFE_UI_TEST_WIDGET_SIMULATOR"] == environment["SIMULATOR_UDID"])
+      let context = CSSearchQueryContext()
+      context.fetchAttributes = ["title"]
+      let query = CSSearchQuery(queryString: "title == \"Quick Add fixture saved\"", queryContext: context)
+      var found: [CSSearchableItem] = []
+      for try await result in query.results { found.append(result.item) }
+      #expect(found.count == 1)
+      #expect(found.first?.uniqueIdentifier.hasPrefix("life://open/v1?") == true)
+      #expect(found.first?.attributeSet.title == "Quick Add fixture saved")
     }
   #endif
 }

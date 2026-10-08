@@ -867,8 +867,16 @@ public struct WorkspaceView: View {
     if let action = editor?.inlineField == nil ? model.undoAction : editor?.inlineUndo {
       Button {
         let context = model.editingContext
+        let inline = editor?.inlineField != nil
         Task {
-          do { try await model.undo(action, context: context) } catch {
+          do {
+            // Outside inline editing, a pending view save lands first so Undo reverts it.
+            if inline {
+              try await model.undo(action, context: context)
+            } else {
+              try await model.undoLatest(context: context)
+            }
+          } catch {
             model.error = error.localizedDescription
           }
         }

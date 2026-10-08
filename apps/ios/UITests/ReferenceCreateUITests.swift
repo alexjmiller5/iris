@@ -21,8 +21,10 @@ final class ReferenceCreateUITests: XCTestCase {
     tap(query)
     query.typeText("Planning sync")
     tap(
-      app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'quick-find-result-meetings-'"))
-        .firstMatch)
+      app.buttons.matching(
+        NSPredicate(format: "identifier BEGINSWITH 'quick-find-result-meetings-'")
+      )
+      .firstMatch)
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 10))
 
     // An exact name offers no creation; new text creates and selects the record.
@@ -66,7 +68,8 @@ final class ReferenceCreateUITests: XCTestCase {
     capture(app, "ios-handoff")
     tap(app.buttons["create-reference-save"])
     XCTAssertTrue(
-      app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'domain is required'")).firstMatch
+      app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'domain is required'"))
+        .firstMatch
         .waitForExistence(timeout: 10))
     XCTAssertFalse(app.staticTexts["create-reference-failure"].exists)
     capture(app, "ios-handoff-validation")
