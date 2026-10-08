@@ -204,7 +204,7 @@
 			{#if entries.some((entry) => entry.kind === group.kind)}
 				<div role="group" aria-label={group.label}>
 					<!-- The group carries the name; a listbox may only contain options. -->
-					<h3 aria-hidden="true">{group.label}</h3>
+					<div class="group-label" aria-hidden="true">{group.label}</div>
 					{#each entries as entry, index (entryKey(entry))}
 						{#if entry.kind === group.kind}
 							<button
@@ -284,7 +284,7 @@
 		font-size: 1.5rem;
 		font-weight: 650;
 	}
-	h3 {
+	.group-label {
 		margin: 0.8rem 0.8rem 0.25rem;
 		font-size: 0.75rem;
 		font-weight: 600;
