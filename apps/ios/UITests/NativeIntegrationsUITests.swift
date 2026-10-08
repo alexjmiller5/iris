@@ -65,9 +65,12 @@ import XCTest
   func testSpotlightTitleOpensItsRowThroughTheLinkBanner() throws {
     let app = try application()
     XCUIDevice.shared.press(.home)
-    let pill = springboard.buttons["Search"]
+    let pill = springboard.otherElements["spotlight-pill"]
     if pill.waitForExistence(timeout: 5) { pill.tap() } else { springboard.swipeDown() }
-    let search = springboard.searchFields.firstMatch
+    let search = springboard.descendants(matching: .any).matching(
+      NSPredicate(format: "elementType == %d OR elementType == %d",
+        XCUIElement.ElementType.searchField.rawValue, XCUIElement.ElementType.textField.rawValue)
+    ).firstMatch
     require(search, in: springboard, 10)
     search.typeText("A place to start")
     let result = springboard.buttons.matching(
