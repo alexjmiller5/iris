@@ -810,9 +810,10 @@ modals the host unmounts instead of closing call `onDestroy(focusReturn())`.
 `LIFE_UI_DEV_NO_HMR=1` keeps a shared checkout's edits from reloading the page
 under test. Native `AccessibilityAuditUITests` (iOS at AX5 text, and Mac with
 keyboard flows: Cmd+K, Cmd+S, Cmd+\, Escape) run Xcode's accessibility audit on
-each screen and attach its element tree. The Markdown island sizes its rem scale
-from `-apple-system-body` on touch screens so it follows Dynamic Type, and the
-record page's editor height is a `@ScaledMetric`.
+each screen and attach its element tree. On touch screens the Markdown island's
+document text uses `-apple-system-body`, so it follows Dynamic Type, with headings
+capped a step above it and spacing on the fixed rem scale; the record page's editor
+height is a `@ScaledMetric`.
 
 ## Shared local Mac workspace
 
