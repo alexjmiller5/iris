@@ -98,8 +98,11 @@ final class AccessibilityAuditUITests: XCTestCase {
     shot.lifetime = .keepAlways
     add(shot)
     try app.performAccessibilityAudit(for: .all) { issue in
-      let element = issue.element.map { "\($0.elementType.rawValue) \"\($0.label)\" \($0.identifier)" }
-      XCTFail("\(screen): \(issue.auditType) \(issue.compactDescription) on \(element ?? "?")")
+      let element = issue.element.map {
+        "\($0.elementType.rawValue) \"\($0.label)\" \($0.identifier) \($0.frame)"
+      }
+      XCTFail(
+        "\(screen): \(issue.compactDescription) on \(element ?? "?"): \(issue.detailedDescription)")
       return true
     }
   }

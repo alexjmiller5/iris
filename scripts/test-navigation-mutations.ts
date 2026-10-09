@@ -93,6 +93,13 @@ const mutations = [
     test: "absent targets",
   },
   {
+    name: "graph groups are not persisted",
+    file: page,
+    before: "\t\t\t\t\tJSON.stringify(groups)\n",
+    after: "\t\t\t\t\t'{}'\n",
+    test: "graph groups",
+  },
+  {
     name: "URL record projection drops hidden properties",
     file: model,
     before: "filters: [{ column: 'id', op: 'eq', value: destination.row }],",

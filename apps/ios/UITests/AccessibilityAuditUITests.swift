@@ -35,7 +35,7 @@ final class AccessibilityAuditUITests: XCTestCase {
     tap(app.navigationBars["Saved views"].buttons.firstMatch)
 
     tap(app.buttons["quick-find"])
-    let find = app.searchFields.firstMatch
+    let find = app.textFields["quick-find-query"]
     XCTAssertTrue(find.waitForExistence(timeout: 5))
     find.typeText("place")
     try audit(app, "quick-find")
@@ -97,8 +97,11 @@ final class AccessibilityAuditUITests: XCTestCase {
     shot.lifetime = .keepAlways
     add(shot)
     try app.performAccessibilityAudit(for: .all) { issue in
-      let element = issue.element.map { "\($0.elementType.rawValue) \"\($0.label)\" \($0.identifier)" }
-      XCTFail("\(screen): \(issue.auditType) \(issue.compactDescription) on \(element ?? "?")")
+      let element = issue.element.map {
+        "\($0.elementType.rawValue) \"\($0.label)\" \($0.identifier) \($0.frame)"
+      }
+      XCTFail(
+        "\(screen): \(issue.compactDescription) on \(element ?? "?"): \(issue.detailedDescription)")
       return true
     }
   }

@@ -82,14 +82,14 @@ struct SyncStatusPill: View {
   var body: some View {
     Button(action: action) {
       // Toolbars collapse a Label to its icon; the pill always shows its words.
+      // The words carry the state, so they keep full contrast; the symbol is tinted.
       HStack(spacing: 4) {
-        Image(systemName: pill.symbol)
-        Text(pill.title)
+        Image(systemName: pill.symbol).foregroundStyle(tint)
+        Text(pill.title).foregroundStyle(.primary)
       }
       .font(.caption.weight(.medium))
       .lineLimit(1)
       .fixedSize()
-      .foregroundStyle(tint)
       #if os(macOS)
         .padding(.horizontal, 8).padding(.vertical, 3)
         .background(tint.opacity(0.12), in: .capsule)
@@ -99,6 +99,8 @@ struct SyncStatusPill: View {
       .buttonStyle(.plain)
     #endif
     .accessibilityIdentifier("workspace-status")
+    // A bar item cannot grow with Dynamic Type; a long press shows it large.
+    .accessibilityShowsLargeContentViewer()
     .accessibilityLabel(pill.title)
     .accessibilityHint("Shows sync details")
     .help("Show sync details")

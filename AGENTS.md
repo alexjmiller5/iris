@@ -704,6 +704,21 @@ Run the package suite with `swift test --no-parallel`: independent MainActor/JSC
 fixtures otherwise starve each other’s admission watchdogs. Keep explicit
 concurrent tasks inside tests and their assertions unchanged.
 
+Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
+`LIFE_UI_DEV_NO_HMR=1` dev server; usage in the README):
+- `check-a11y.ts`: keyboard and axe walk of every view, light and dark (`just check`).
+- `test-filter-bar.ts`: filter chips, sorts, autosave and Undo on the sample workspace.
+- `test-auto-sync.ts`: background push/pull, offline pending, sync leader, sidebar toggle.
+- `test-notes-views.ts`: preferred and related-record views, flag quick filter, status search.
+- `test-workspace-regressions.ts`: write locks, SQL defaults, dynamic options, typed
+  filters, columns, workspace switch, pending count; `test-workspace-mutations.ts` breaks each.
+- `test-workspace-navigation.ts`: URL destinations, history guards, held replies, graph
+  groups, Copy link; `test-navigation-mutations.ts` breaks each.
+- `test-saved-views.ts`: projection, Save as new view, Rename conflict, Delete, sample views.
+- `test-view-defaults.ts`: preferred view, explicit view links, deleted-preference notice.
+- `test-view-options.ts`: Today boundary/timezone, group rule types, row actions guard.
+- `test-view-presentations.ts`: Calendar, Gallery and Board layouts with synced moves.
+
 `project.yml` is authoritative; generated Xcode projects and Info.plists are
 ignored. Child justfiles expose platform run/test/check/build. Caches and derived
 data live outside the synced source tree with environment overrides. Do not

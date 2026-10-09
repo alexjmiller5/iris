@@ -210,8 +210,8 @@ import XCTest
     if lockScreen.waitForExistence(timeout: 3) { lockScreen.tap() }
     let slots = poster.buttons.matching(identifier: "grouped-widgets-reticle-view")
     require(slots.firstMatch, in: poster, 15)
-    let slot = try XCTUnwrap(slots.allElementsBoundByIndex.first(where: \.isHittable))
-    slot.tap()
+    // PosterBoard reports its reticles as not hittable; tap the slot's own frame.
+    slots.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     // The widget picker can belong to PosterBoard or SpringBoard depending on the release.
     let lifeUI = poster.descendants(matching: .any).matching(
       NSPredicate(format: "label CONTAINS 'Life UI'")).firstMatch

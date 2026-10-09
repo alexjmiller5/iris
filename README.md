@@ -587,8 +587,6 @@ disconnecting; product links intentionally discard `review` and `observer` flags
 LIFE_UI_TEST_CDP=http://127.0.0.1:9333 LIFE_UI_TEST_URL=http://127.0.0.1:5261/workspace \
   LIFE_UI_TEST_SHOTS=/tmp/shots bun scripts/test-filter-bar.ts
 
-LIFE_UI_TEST_URL=http://127.0.0.1:5196/workspace bun scripts/test-workspace.ts
-
 # Separate test origin keeps integration fixtures out of another workspace.
 bun scripts/test-hub.ts /path/to/life-data
 bun run dev -- --port 5197
@@ -612,6 +610,7 @@ bun scripts/test-sql-integrity.ts /path/to/life-data
 bun scripts/test-search.ts
 bun scripts/test-search-sync.ts /path/to/life-data
 bun scripts/test-saved-views.ts /path/to/life-data
+bun scripts/test-view-options.ts /path/to/life-data   # optional: rollover|options|actions
 bun scripts/test-table-invariants.ts /path/to/life-data
 bun scripts/test-read-dependencies.ts /path/to/life-data
 bun scripts/test-remote-browse.ts /path/to/life-data
@@ -627,17 +626,26 @@ LIFE_UI_TEST_URL=http://127.0.0.1:5291/workspace bun scripts/test-backup.ts /pat
 # Open http://life-ui-navigation.localhost:5224/workspace?review in its own page.
 bun scripts/test-workspace-navigation.ts /path/to/life-data
 bun scripts/test-navigation-mutations.ts /path/to/life-data
+# These two attach to one owned page by its CDP target ID (from /json/list):
+# http://life-ui-navigation.localhost:5274/workspace?review, then
+# http://life-ui-presentations.localhost:5252/workspace?review.
+LIFE_UI_TEST_TARGET=<owned-CDP-page-id> bun scripts/test-view-defaults.ts /path/to/life-data
+LIFE_UI_TEST_TARGET=<owned-CDP-page-id> bun scripts/test-view-presentations.ts /path/to/life-data
 # Run the dev server on 5237 and open an owned page at
 # http://life-ui-navigation.localhost:5237/workspace?review&proposal=synthetic-review
 LIFE_UI_TEST_TARGET=<owned-CDP-page-id> bun scripts/test-review-navigation.ts
 ```
 
-The first test covers validation, Markdown persistence, relations, trash,
-restore, filtering, draft protection, light/dark mobile layouts and graph
-navigation. The second serves the actual hub Worker against synthetic SQLite,
-then verifies an offline browser edit reaches the hub. Rejection checks cover
-repair and retry; regression checks cover pending saves, SQL defaults, dynamic
-options, workspace switching and durable pending counts. The regression runner
+The filter bar check covers property search, chip editing, sorts, saving and
+Undo on the sample workspace. The sync check serves the actual hub Worker against
+synthetic SQLite, then verifies an offline browser edit reaches the hub. Rejection
+checks cover repair and retry; regression checks cover write locks, SQL defaults,
+dynamic options, typed filter chips, column settings, workspace switching and
+durable pending counts (`test-workspace-mutations.ts` proves each case can fail).
+Saved-view checks cover projection, Save as new view, Rename conflicts and Delete;
+view-default checks cover the preferred view, explicit view links and a deleted
+preferred view. Run the dev server with `LIFE_UI_DEV_NO_HMR=1` so edits in a shared
+checkout never reload the page under test. The regression runner
 clears data only on a reserved `life-ui-*.localhost` test hostname from
 `scripts/test-origin.ts`, with `/workspace?review`. Ordinary localhost and
 remote origins are rejected before connecting to Chrome. SQL integrity checks reject
@@ -949,8 +957,10 @@ before using its actions; local edits retain the normal undo and sync behavior.
 The workflow browser regression uses a reserved disposable origin and synthetic
 hub state: `LIFE_UI_TEST_URL=<reserved-url> bun scripts/test-workflow-views.ts <life-data-checkout>`.
 It checks grouped conditions, configured day-boundary/foreground refresh, actions
-and reopen. `scripts/test-view-options.ts` also covers policy persistence, typed
-filter changes, live action choices and stale displayed-view rejection.
+and reopen. `scripts/test-view-options.ts <life-data-checkout> [all|rollover|options|actions]`
+(same `LIFE_UI_TEST_URL`) covers the day boundary with the app's own rollover timer,
+timezone and foreground refresh, group rules switching between numeric and Boolean
+properties, live action choices and stale displayed-view rejection.
 `scripts/test-notes-views.ts <life-data-checkout>` (same `LIFE_UI_TEST_URL`/`_TARGET`
 variables; optional `LIFE_UI_TEST_SHOTS=<dir>`) seeds a synthetic lifecycle table and
 checks the preferred default view, a separate related-record view, a flag quick

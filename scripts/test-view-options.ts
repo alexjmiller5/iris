@@ -10,7 +10,7 @@ import { disposableOrigin, workspacePage } from "./test-origin";
 const expect = base.configure({ timeout: 15000 });
 const url =
   process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-markdown.localhost:5252/workspace?review";
+  "http://life-ui-markdown.localhost:5198/workspace?review";
 const origin = disposableOrigin(url);
 const source = process.argv[2];
 if (!source) throw Error("Provide the Life Data source checkout");

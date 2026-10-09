@@ -186,3 +186,56 @@ jobs:
             ${{ runner.temp }}/quick-add-*.xcresult
           retention-days: 3
           if-no-files-found: ignore
+      # Accessibility audits run even when a sibling XCUI step failed, so their
+      # verdict and evidence (element trees, AX5 screenshots) are always reported.
+      - name: Accessibility audit XCUI (Mac, keyboard)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          (cd apps/macos && xcodegen generate --spec project.yml)
+          xcodebuild -project apps/macos/LifeUI.xcodeproj -scheme LifeUI \
+            -derivedDataPath "$RUNNER_TEMP/catalog-derived" -destination 'platform=macOS' \
+            -resultBundlePath "$RUNNER_TEMP/a11y-mac.xcresult" \
+            -only-testing:LifeUIUITests/AccessibilityAuditUITests \
+            -test-timeouts-enabled YES -maximum-test-execution-time-allowance 300 \
+            CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/a11y-mac.log"
+          xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/a11y-mac.xcresult" \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); c=(r.get("passedTests"),r.get("failedTests"),r.get("skippedTests")); sys.exit(f"Expected one passing Mac audit: {r}") if c!=(1,0,0) else print("Mac accessibility audit passed")'
+      - name: Accessibility audit XCUI (iPhone, AX5 text)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          runtime_type="$(xcrun simctl list devices available --json | python3 -c 'import json,sys
+          for runtime, values in json.load(sys.stdin)["devices"].items():
+              for d in values:
+                  if ".iOS-" in runtime and d.get("isAvailable") and d.get("name", "").startswith("iPhone"):
+                      print(runtime, d["deviceTypeIdentifier"]); raise SystemExit(0)
+          raise SystemExit("No installed iPhone simulator runtime")')"
+          read -r runtime device_type <<< "$runtime_type"
+          simulator="$(xcrun simctl create "Accessibility audit $GITHUB_RUN_ID" "$device_type" "$runtime")"
+          trap 'xcrun simctl shutdown "$simulator" >/dev/null 2>&1 || true; xcrun simctl delete "$simulator"' EXIT
+          xcrun simctl boot "$simulator"
+          xcrun simctl bootstatus "$simulator" -b
+          (cd apps/ios && xcodegen generate --spec project.yml)
+          xcodebuild -project apps/ios/LifeUI.xcodeproj -scheme LifeUI \
+            -derivedDataPath "$RUNNER_TEMP/catalog-ios-derived" \
+            -destination "platform=iOS Simulator,id=$simulator" -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/a11y-ios.xcresult" \
+            -only-testing:LifeUIUITests/AccessibilityAuditUITests \
+            -test-timeouts-enabled YES -maximum-test-execution-time-allowance 600 \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES \
+            test 2>&1 | tee "$RUNNER_TEMP/a11y-ios.log"
+          xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/a11y-ios.xcresult" \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); c=(r.get("passedTests"),r.get("failedTests"),r.get("skippedTests")); sys.exit(f"Expected two passing iPhone audits: {r}") if c!=(2,0,0) else print("iPhone accessibility audits passed")'
+      - name: Keep the accessibility audit evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: accessibility-audit
+          path: |
+            ${{ runner.temp }}/a11y-*.log
+            ${{ runner.temp }}/a11y-*.xcresult
+          retention-days: 7
+          if-no-files-found: ignore

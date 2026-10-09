@@ -261,7 +261,8 @@ struct PropertyPicker<Footer: View>: View {
   var body: some View {
     List {
       Section {
-        TextField("Search properties", text: $query)
+        // Wraps instead of clipping at large text sizes.
+        TextField("Search properties", text: $query, axis: .vertical)
           .accessibilityIdentifier("filter-property-search")
           #if os(iOS)
             .textInputAutocapitalization(.never)

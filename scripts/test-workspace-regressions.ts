@@ -302,6 +302,7 @@ try {
 		await page.keyboard.press('Escape');
 		await expect(chips.getByRole('button', { name: 'Quantity: = 42', exact: true })).toBeVisible();
 		await page.getByLabel('Search records').fill('Fixture');
+		await expect(shown(1)).toBeVisible();
 		await page.getByRole('button', { name: 'Trash', exact: true }).click();
 		await expect(page.getByRole('button', { name: 'All records', exact: true })).toBeVisible();
 		await page.getByRole('button', { name: 'Switch workspace', exact: true }).click();

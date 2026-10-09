@@ -666,6 +666,32 @@ try {
       },
     ],
     [
+      "graph groups persist per workspace and a graph table opens its records",
+      async () => {
+        const graph = page.getByRole("group", {
+          name: "Catalog tables and reference relationships",
+        });
+        await page
+          .getByRole("button", { name: "Table graph", exact: true })
+          .click();
+        await page.getByText("Group tables", { exact: true }).click();
+        const group = page.getByLabel("Group for projects", { exact: true });
+        await group.fill("Synthetic group");
+        await group.blur();
+        await expect(graph.getByText("Synthetic group", { exact: true })).toBeVisible();
+        await opened(page.url(), true);
+        await page
+          .getByRole("button", { name: "Table graph", exact: true })
+          .click();
+        await expect(graph.getByText("Synthetic group", { exact: true })).toBeVisible();
+        await graph.getByRole("button", { name: /^projects\b/ }).click();
+        await expect(
+          page.getByRole("heading", { name: "projects", exact: true }),
+        ).toBeVisible();
+        await expect.poll(() => query().get("table")).toBe("projects");
+      },
+    ],
+    [
       "link controls fit desktop and narrow screens",
       async () => {
         const screenshots = process.env.LIFE_UI_TEST_SCREENSHOTS;

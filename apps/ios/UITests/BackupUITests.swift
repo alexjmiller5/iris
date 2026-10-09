@@ -67,10 +67,16 @@ final class BackupUITests: XCTestCase {
     capture(app, "ios-restore-undone")
   }
 
+  /// The menu can swallow a tap while it animates or a system prompt passes; retry.
   private func openBackup(_ app: XCUIApplication) {
-    tap(app.buttons["workspace-menu"])
-    tap(app.buttons["Hub connection"])
-    tap(app.buttons["backup-settings"])
+    let link = app.buttons["backup-settings"]
+    for _ in 0..<3 where !link.exists {
+      tap(app.buttons["workspace-menu"])
+      let item = app.buttons["Hub connection"]
+      if item.waitForExistence(timeout: 5) { item.tap() }
+      _ = link.waitForExistence(timeout: 5)
+    }
+    tap(link)
     XCTAssertTrue(app.navigationBars["Backup"].waitForExistence(timeout: 10))
   }
 
