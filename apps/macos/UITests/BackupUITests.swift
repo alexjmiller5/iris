@@ -112,7 +112,8 @@ final class BackupUITests: XCTestCase {
     // A save panel's own file-name field is also a text field in the sheet.
     let location = app.sheets.textFields.matching(identifier: "PathTextField").firstMatch
     XCTAssertTrue(location.waitForExistence(timeout: 5), app.debugDescription)
-    location.click()
+    // The field opens focused with its previous path selected; replace all of it.
+    location.typeKey("a", modifierFlags: .command)
     location.typeText(path)
     location.typeKey(.return, modifierFlags: [])
     // The first Return can only accept a path completion; Go submits it.
