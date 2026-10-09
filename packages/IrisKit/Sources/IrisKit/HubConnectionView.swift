@@ -11,7 +11,8 @@ struct HubConnectionView: View {
   @State private var manual = false
   @State private var enrollment: EnrollmentModel?
   @State private var active = true
-  @State private var renamed = (try? ApplicationSupport.root()).map(ApplicationSupport.renamed) ?? false
+  @State private var renamed =
+    (try? ApplicationSupport.root()).map(ApplicationSupport.renamed) ?? false
 
   private var busy: Bool {
     connecting || enrollment?.phase == .waiting || enrollment?.phase == .installing
@@ -111,6 +112,9 @@ struct HubConnectionView: View {
             )
             .font(.caption).foregroundStyle(.secondary)
           }
+        }
+        if connecting, model.syncing, let progress = model.syncProgress {
+          Section("Downloading") { SyncProgressRows(progress: progress) }
         }
         if let failure { Text(failure).foregroundStyle(.red).textSelection(.enabled) }
       }
@@ -228,7 +232,9 @@ struct SyncSummary: View {
         if status.rejected > 0 {
           Text("\(status.rejected) records need attention.").foregroundStyle(.red)
         }
-        if let timestamp = status.lastSuccessfulSync { Text("Last successful sync: \(timestamp)") }
+        if let timestamp = status.lastSuccessfulSync {
+          Text("Last successful sync: \(serviceDate(timestamp))")
+        }
       }
       if let result = model.syncResult {
         Text("Last sync: \(result.pulled) received, \(result.pushed) sent.")

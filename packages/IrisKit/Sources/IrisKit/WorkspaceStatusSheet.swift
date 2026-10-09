@@ -54,41 +54,7 @@ struct WorkspaceStatusSheet: View {
               SyncDetails(model: model)
             }
             if model.syncing, let progress = model.syncProgress {
-              LabeledContent("Activity") {
-                Text(progress.phase).accessibilityIdentifier("sync-phase")
-              }
-              if let table = progress.table {
-                LabeledContent("Table", value: table)
-              }
-              if progress.tablesTotal > 0 {
-                LabeledContent(
-                  "Tables left",
-                  value:
-                    "\((progress.tablesTotal - progress.tablesDone).formatted()) of \(progress.tablesTotal.formatted())"
-                )
-                .accessibilityIdentifier("sync-tables-left")
-              }
-              if let expected = progress.rowsExpected, expected > 0 {
-                LabeledContent(
-                  "Rows downloaded",
-                  value: "\(progress.rowsReceived.formatted()) of \(expected.formatted())")
-              } else {
-                LabeledContent("Rows processed", value: progress.processedRows.formatted())
-              }
-              if let remaining = progress.remaining(at: .now) {
-                LabeledContent("Time left") {
-                  Text(
-                    remaining < 60
-                      ? "Under a minute"
-                      : "About \(Duration.seconds(remaining.rounded()).formatted(.units(allowed: [.hours, .minutes], width: .wide, maximumUnitCount: 2)))"
-                  )
-                  .accessibilityIdentifier("sync-time-left")
-                }
-              }
-              LabeledContent("Elapsed") {
-                Text(progress.startedAt, style: .timer)
-                  .monospacedDigit().accessibilityIdentifier("sync-elapsed")
-              }
+              SyncProgressRows(progress: progress)
             }
             if let failure = model.syncError {
               Text(failure).foregroundStyle(.secondary).textSelection(.enabled)
@@ -118,6 +84,50 @@ struct WorkspaceStatusSheet: View {
           Button("Done") { dismiss() }.accessibilityIdentifier("status-done")
         }
       }
+    }
+  }
+}
+
+/// Where a running sync stands; the status sheet and the connection sheet
+/// (whose Connect runs the first download) both show it.
+struct SyncProgressRows: View {
+  let progress: WorkspaceSyncProgress
+  var body: some View {
+    LabeledContent("Activity") {
+      Text(progress.phase).accessibilityIdentifier("sync-phase")
+    }
+    if let table = progress.table {
+      LabeledContent("Table", value: table)
+    }
+    if progress.tablesTotal > 0 {
+      LabeledContent(
+        "Tables",
+        value: progress.tablesDone >= progress.tablesTotal
+          ? "All \(progress.tablesTotal.formatted()) done"
+          : "\((progress.tablesTotal - progress.tablesDone).formatted()) left of \(progress.tablesTotal.formatted())"
+      )
+      .accessibilityIdentifier("sync-tables-left")
+    }
+    if let expected = progress.rowsExpected, expected > 0 {
+      LabeledContent(
+        "Rows downloaded",
+        value: "\(progress.rowsReceived.formatted()) of \(expected.formatted())")
+    } else {
+      LabeledContent("Rows processed", value: progress.processedRows.formatted())
+    }
+    if let remaining = progress.remaining(at: .now) {
+      LabeledContent("Time left") {
+        Text(
+          remaining < 60
+            ? "Under a minute"
+            : "About \(Duration.seconds(remaining.rounded()).formatted(.units(allowed: [.hours, .minutes], width: .wide, maximumUnitCount: 2)))"
+        )
+        .accessibilityIdentifier("sync-time-left")
+      }
+    }
+    LabeledContent("Elapsed") {
+      Text(progress.startedAt, style: .timer)
+        .monospacedDigit().accessibilityIdentifier("sync-elapsed")
     }
   }
 }

@@ -21,11 +21,11 @@ final class AccessibilityAuditUITests: XCTestCase {
     tap(app.buttons["filter-property-status"])
     XCTAssertTrue(app.buttons["filter-option-Ready"].waitForExistence(timeout: 5))
     try audit(app, "filter-editor")
-    tap(app.otherElements["PopoverDismissRegion"])
+    dismissPopover(app, app.buttons["filter-option-Ready"])
 
     present(app, app.buttons["filter-bar-sort"], app.buttons["add-sort"])
     try audit(app, "sort")
-    tap(app.otherElements["PopoverDismissRegion"])
+    dismissPopover(app, app.buttons["add-sort"])
 
     tap(app.buttons["saved-views"])
     XCTAssertTrue(app.navigationBars["Saved views"].waitForExistence(timeout: 5))
@@ -199,6 +199,19 @@ final class AccessibilityAuditUITests: XCTestCase {
       add(shot)
     }
     XCTFail("\(control.identifier) did not present its contents", file: file, line: line)
+  }
+
+  /// Taps outside the open popover until `content` is gone, at most twice; like
+  /// `present`, the audit just before can swallow the first tap.
+  private func dismissPopover(
+    _ app: XCUIApplication, _ content: XCUIElement, file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    for _ in 1...2 {
+      tap(app.otherElements["PopoverDismissRegion"], file: file, line: line)
+      if content.waitForNonExistence(timeout: 5) { return }
+    }
+    XCTFail("the popover over \(content.identifier) did not close", file: file, line: line)
   }
 
   /// Lazy record forms create rows below the fold only when scrolled to.

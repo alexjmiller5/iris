@@ -178,7 +178,7 @@ struct HubNotificationsView: View {
   }
 }
 
-private func serviceDate(_ value: String) -> String {
+func serviceDate(_ value: String) -> String {
   let parser = ISO8601DateFormatter()
   parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
   guard let date = parser.date(from: value) else { return value }
