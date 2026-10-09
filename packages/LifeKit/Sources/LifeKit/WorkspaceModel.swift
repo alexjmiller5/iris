@@ -400,9 +400,47 @@ final class WorkspaceModel {
   }
   /// A shared CLI file whose own background service owns sync.
   private(set) var cliSyncBound = false
+  /// A long backup action in progress (copy, export, restore); the pill shows it.
+  var backupActivity: String?
+  /// The SQLite file behind this workspace; nil for the in-memory sample.
+  var databaseFile: URL? { widgetWorkspaceURL }
+  /// An explicitly opened file, such as the CLI's life.db: its owner restores it.
+  private(set) var openedExternalFile = false
+  /// Whether a whole-replica restore would discard nothing unsaved or unsynced.
+  var canReplaceReplica: Bool {
+    client != nil && !loading && !writingRecord && !undoing && !savingView && !syncing
+      && (syncStatus?.pendingUiEdits ?? 0) == 0
+  }
+
+  /// After a whole-replica restore: reread the catalog and open the first table on its
+  /// default view, as a fresh open does, then sync the restored rows soon.
+  func reloadAfterRestore() async {
+    guard let client else { return }
+    do {
+      resetView()
+      undoAction = nil
+      catalog = try await client.catalog()
+      table =
+        tables.first(where: { $0["id"]?.text == "notes" })?["id"]?.text ?? tables.first?["id"]?.text
+      if let table {
+        let preferred = try await client.ensureDefaultView(table: table)
+        try installSavedView(
+          preferred.view,
+          context: WorkspaceEditingContext(workspace: client, table: table, draftStore: draftStore))
+        defaultViewNotice = preferred.unavailable
+      }
+      syncStatus = try await client.status()
+      await pins?.refresh()
+      await reload()
+      recordLocalChange()
+    } catch { self.error = error.localizedDescription }
+  }
 
   var syncPill: SyncPill {
-    SyncPill.make(
+    if let backupActivity {
+      return SyncPill(kind: .syncing, title: backupActivity, symbol: "externaldrive")
+    }
+    return SyncPill.make(
       replica: isReplica, syncing: syncing, movedRows: syncProgress?.processedRows ?? 0,
       online: online, failure: syncError.map(SyncFailure.init), status: syncStatus,
       cliBound: cliSyncBound)
@@ -1511,6 +1549,7 @@ final class WorkspaceModel {
       }
       client = workspace
       widgetWorkspaceURL = demo ? nil : URL(fileURLWithPath: path)
+      openedExternalFile = !demo && url != nil
       cliSyncBound = (try? localObserver?.cliHubBound()) ?? false
       if !demo {
         do {
@@ -1979,6 +2018,7 @@ final class WorkspaceModel {
     client = prepared
     linkBinding = .replica(canonicalEndpoint: hub.endpoint)
     widgetWorkspaceURL = path
+    openedExternalFile = false
     do { try configureWidgets(createIdentity: false) } catch { linkError = error.localizedDescription }
     configureRecents(store: NativeRecentsStore(root: root, workspace: path))
     catalog = nextCatalog

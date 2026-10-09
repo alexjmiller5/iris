@@ -17,7 +17,9 @@ public final class SQLiteBridge {
 
   /// NativeWorkspace keeps its normal file-gate turn until this backup ends.
   /// SQLite performs the coherent copy off MainActor; the live file is never moved.
-  func exportWidgetSnapshot(to url: URL) async throws {
+  func exportWidgetSnapshot(
+    to url: URL, budget: Int64? = 536_870_912, deadline: Duration? = .seconds(5)
+  ) async throws {
     let source = database
     let work = Task.detached(priority: .utility) {
       guard url.isFileURL else {
@@ -45,7 +47,7 @@ public final class SQLiteBridge {
         let pageSize = try Int64.fetchOne(db, sql: "PRAGMA page_size") ?? 0
         return pages.multipliedReportingOverflow(by: pageSize)
       }
-      guard !size.overflow, size.partialValue > 0, size.partialValue <= 536_870_912 else {
+      guard !size.overflow, size.partialValue > 0, size.partialValue <= budget ?? .max else {
         throw WorkspaceError(
           message: "Workspace exceeds the widget snapshot budget.", violations: [])
       }
@@ -55,7 +57,7 @@ public final class SQLiteBridge {
         try source.backup(to: destination, pagesPerStep: 128) { progress in
           if !progress.isCompleted {
             try Task.checkCancellation()
-            if started.duration(to: .now) > .seconds(5) { throw CancellationError() }
+            if let deadline, started.duration(to: .now) > deadline { throw CancellationError() }
           }
         }
         try Task.checkCancellation()

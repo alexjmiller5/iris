@@ -76,6 +76,14 @@ public final class NativeWorkspace {
   private var closed = false
   private var droppedOnClose: [String] = []
   private let diagnostics = NativeWorkspaceDiagnostics()
+  // Backup files opened by core during the active request; closed or abandoned at completion.
+  private var dumpReaders: [Int: DumpFileReader] = [:]
+  private var dumpWriters: [Int: DumpFileWriter] = [:]
+  private var nextDump = 0
+  private var backupOpens = 0
+  /// Phase, bytes done and bytes total (0 when unknown) of a long backup action.
+  var onBackupProgress: ((String, Int64, Int64) -> Void)?
+  private var progressReported = ContinuousClock.now
   private var referenceReadPending = false
   private var referenceWaiters: [(UUID, CheckedContinuation<Void, Error>)] = [] {
     didSet { diagnostics.setPassiveGateWaiterCount(referenceWaiters.count) }
@@ -266,6 +274,93 @@ public final class NativeWorkspace {
     runtime.context.setObject(get, forKeyedSubscript: "__lifeGet" as NSString)
     runtime.context.setObject(finish, forKeyedSubscript: "__lifeFinish" as NSString)
     runtime.context.setObject(yield, forKeyedSubscript: "__lifeYield" as NSString)
+    installDumpBridge()
+  }
+
+  /// Core's BackupFiles adapter. References are file paths this host put in the
+  /// request arguments; gzip and UTF-8 are handled here, never in core.
+  private func installDumpBridge() {
+    let fail: (String) -> Void = { [weak self] message in
+      guard let context = self?.runtime.context else { return }
+      context.exception = JSValue(newErrorFromMessage: message, in: context)
+    }
+    let open: @convention(block) (String) -> Int = { [weak self] path in
+      guard let self, self.active != nil, path.hasPrefix("/") else {
+        fail("Backup files are available only during a backup request.")
+        return -1
+      }
+      do {
+        let reader = try DumpFileReader(url: URL(fileURLWithPath: path))
+        self.backupOpens += 1
+        self.nextDump += 1
+        self.dumpReaders[self.nextDump] = reader
+        return self.nextDump
+      } catch { fail(error.localizedDescription) }
+      return -1
+    }
+    let read: @convention(block) (Int) -> Any = { [weak self] id in
+      guard let self, let reader = self.dumpReaders[id] else {
+        fail("The backup file is closed.")
+        return NSNull()
+      }
+      do {
+        guard let text = try reader.next() else {
+          self.dumpReaders[id] = nil
+          return NSNull()
+        }
+        let restoring = self.active?.method == "restoreReplica" && self.backupOpens > 1
+        self.reportBackup(restoring ? "Restoring" : "Checking backup", reader.readBytes, reader.totalBytes)
+        return text
+      } catch {
+        self.dumpReaders[id] = nil
+        fail(error.localizedDescription)
+        return NSNull()
+      }
+    }
+    let create: @convention(block) (String) -> Int = { [weak self] path in
+      guard let self, self.active != nil, path.hasPrefix("/") else {
+        fail("Backup files are available only during a backup request.")
+        return -1
+      }
+      do {
+        let writer = try DumpFileWriter(url: URL(fileURLWithPath: path))
+        self.nextDump += 1
+        self.dumpWriters[self.nextDump] = writer
+        return self.nextDump
+      } catch { fail(error.localizedDescription) }
+      return -1
+    }
+    let write: @convention(block) (Int, String) -> Void = { [weak self] id, text in
+      guard let self, let writer = self.dumpWriters[id] else { return fail("The backup file is closed.") }
+      do {
+        try writer.write(text)
+        let phase = self.active?.method == "restoreReplica" ? "Saving recovery copy" : "Exporting"
+        self.reportBackup(phase, writer.writtenBytes, 0)
+      } catch { fail("The backup could not be written: \(error.localizedDescription)") }
+    }
+    let close: @convention(block) (Int) -> Void = { [weak self] id in
+      guard let self else { return }
+      self.dumpReaders[id] = nil
+      guard let writer = self.dumpWriters.removeValue(forKey: id) else { return }
+      do { try writer.close() } catch {
+        writer.abandon()
+        fail("The backup could not be saved: \(error.localizedDescription)")
+      }
+    }
+    for (name, function) in [
+      ("__lifeDumpOpen", open as Any), ("__lifeDumpRead", read), ("__lifeDumpCreate", create),
+      ("__lifeDumpWrite", write), ("__lifeDumpClose", close),
+    ] {
+      runtime.context.setObject(function, forKeyedSubscript: name as NSString)
+    }
+  }
+
+  private func reportBackup(_ phase: String, _ done: Int64, _ total: Int64) {
+    guard let onBackupProgress, progressReported.duration(to: .now) > .milliseconds(200) else {
+      return
+    }
+    progressReported = .now
+    onBackupProgress(phase, done, total)
   }
 
   public func catalog() async throws -> WorkspaceCatalog {
@@ -378,6 +473,40 @@ public final class NativeWorkspace {
     _ = try await call(
       "widgetBackup", arguments: String(decoding: JSONEncoder().encode(url.path), as: UTF8.self),
       cancellableRead: true)
+  }
+  /// A consistent SQLite copy of this workspace's file, for saving or sharing.
+  public func copyReplica(to url: URL) async throws {
+    guard url.isFileURL else {
+      throw WorkspaceError(message: "The copy needs a file destination.", violations: [])
+    }
+    _ = try await call(
+      "replicaBackup", arguments: String(decoding: JSONEncoder().encode(url.path), as: UTF8.self))
+  }
+  public func exportReplica(to url: URL) async throws -> CoreBackupSummary {
+    try await decode(CoreRequests.ExportReplica(CoreBackupFileArgs(file: url.path)))
+  }
+  public func validateBackup(file: URL) async throws -> CoreBackupSummary {
+    try await decode(CoreRequests.ValidateBackup(CoreBackupFileArgs(file: file.path)))
+  }
+  public func previewRestore(file: URL) async throws -> CoreRestorePreview {
+    try await decode(CoreRequests.PreviewRestore(CoreBackupFileArgs(file: file.path)))
+  }
+  /// Callers pass the confirmation word the user typed; core refuses anything else.
+  public func restoreReplica(file: URL, recovery: URL, confirm: String) async throws
+    -> CoreRestoreResult
+  {
+    try await decode(
+      CoreRequests.RestoreReplica(
+        CoreRestoreArgs(file: file.path, recovery: recovery.path, confirm: confirm)))
+  }
+  func hubBackups(using transport: HubTransport) async throws -> CoreHubBackupList {
+    try await decode(
+      CoreRequests.HubBackups(CoreEndpointArgs(endpoint: transport.endpoint)), transport: transport)
+  }
+  func createHubBackup(using transport: HubTransport) async throws -> CoreHubBackup {
+    try await decode(
+      CoreRequests.CreateHubBackup(CoreEndpointArgs(endpoint: transport.endpoint)),
+      transport: transport)
   }
   public func pinTable(_ args: CorePinTableArgs) async throws -> CoreSidebarPinList {
     try await decode(CoreRequests.PinTable(args))
@@ -647,7 +776,7 @@ public final class NativeWorkspace {
         onDiagnosticID?(diagnosticID)
         var insertion = requests.endIndex
         if !referenceRead, transport == nil, method != "sync", method != "close",
-          method != "widgetBackup"
+          method != "widgetBackup", method != "replicaBackup"
         {
           // Local foreground work may pass only trailing passive-label reads.
           // Foreground FIFO, transport, sync, close and HTTP resumptions stay ordered.
@@ -730,12 +859,15 @@ public final class NativeWorkspace {
       complete(.failure(error))
       return
     }
-    if request.method == "widgetBackup" {
+    if request.method == "widgetBackup" || request.method == "replicaBackup" {
       do {
         let path = try JSONDecoder().decode(String.self, from: Data(request.arguments.utf8))
+        let widget = request.method == "widgetBackup"
         Task { [self] in
           do {
-            try await database.exportWidgetSnapshot(to: URL(fileURLWithPath: path))
+            try await database.exportWidgetSnapshot(
+              to: URL(fileURLWithPath: path), budget: widget ? 536_870_912 : nil,
+              deadline: widget ? .seconds(5) : nil)
             complete(.success(.null))
           } catch { complete(.failure(error)) }
         }
@@ -800,6 +932,11 @@ public final class NativeWorkspace {
       syncLock = nil
       active?.control?.deadline?.cancel()
     }
+    // A finished request never leaves a backup file open or a partial copy behind.
+    dumpReaders.removeAll()
+    for writer in dumpWriters.values { writer.abandon() }
+    dumpWriters.removeAll()
+    backupOpens = 0
     let continuation = active?.continuation
     diagnostics.finish(active?.diagnosticID)
     active = nil

@@ -536,6 +536,8 @@ public struct WorkspaceView: View {
     Task {
       defer { if navigationRequest == request { openingDestination = false } }
       do {
+        // A view edit saves before leaving it; an in-flight autosave would refuse navigation.
+        await model.flushViewSave()
         let resolved = try await NativeDestinationResolver(workspace: workspace).resolve(
           destination, isCurrent: current)
         guard current() else { return }

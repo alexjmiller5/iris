@@ -59,11 +59,14 @@ final class ReferenceCreateUITests: XCTestCase {
     XCTAssertTrue(added.waitForExistence(timeout: 10))
     XCTAssertLessThan(app.buttons["Remove Grace Hopper"].frame.minY, added.frame.minY)
     capture(app, "mac-created-multi")
-    click(app.buttons["Done"].firstMatch)
+    // The sheet's native back control returns to the record form.
+    click(app.sheets.buttons["Back"].firstMatch)
+    XCTAssertTrue(app.buttons["field-attendees"].waitForExistence(timeout: 10))
+    XCTAssertTrue(label("attendees", app: app).contains("Dorothy Vaughan"))
 
     // A required field without a default opens the editor; Cancel keeps the relation.
     // Empty optional properties start collapsed on saved records.
-    if !app.buttons["field-company"].exists { click(app.buttons["Empty properties"].firstMatch) }
+    if !app.buttons["field-company"].exists { expandEmptyProperties(app) }
     click(app.buttons["field-company"])
     search("Globex", app: app)
     click(app.buttons["create-reference-company"])
@@ -101,6 +104,19 @@ final class ReferenceCreateUITests: XCTestCase {
     click(field)
     field.typeKey("a", modifierFlags: .command)
     field.typeText(text)
+  }
+
+  private func expandEmptyProperties(_ app: XCUIApplication) {
+    let title = app.sheets.staticTexts.matching(
+      NSPredicate(format: "label == %@ OR value == %@", "Empty properties", "Empty properties")
+    ).firstMatch
+    XCTAssertTrue(title.waitForExistence(timeout: 10))
+    // A Form DisclosureGroup is an outline row: open it with its triangle.
+    let row = title.frame.midY
+    let triangle = app.sheets.disclosureTriangles.allElementsBoundByIndex.first {
+      abs($0.frame.midY - row) < 16
+    }
+    if let triangle { triangle.click() } else { title.click() }
   }
 
   private func label(_ column: String, app: XCUIApplication) -> String {

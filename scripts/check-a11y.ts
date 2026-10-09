@@ -3,15 +3,21 @@
 // Escape only; every focused control must show a focus ring, Escape must hand
 // focus back, and axe-core must report no serious or critical violation.
 //   bun scripts/check-a11y.ts            (starts its own dev server and headless Chrome)
+//   bun scripts/check-a11y.ts <life-data-checkout>
+//                                        also walks a workspace connected to a synthetic
+//                                        hub: sync pill states, notifications, usage,
+//                                        attachments and rejected edits
 //   LIFE_UI_TEST_SHOTS=<dir>             keeps a screenshot per step
 //   LIFE_UI_TEST_URL=<origin>/workspace  uses an already running dev server
 import { chromium, type Locator, type Page } from "@playwright/test";
+import { servicesHub } from "./services-hub";
 import { mkdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 
 const root = new URL("..", import.meta.url).pathname;
 const axe = readFileSync(`${root}node_modules/axe-core/axe.min.js`, "utf8");
 const shots = process.env.LIFE_UI_TEST_SHOTS;
+const source = process.argv[2];
 if (shots) mkdirSync(shots, { recursive: true });
 
 async function freePort() {
@@ -46,8 +52,8 @@ const fail = (message: string) => {
   console.log(`not ok - ${message}`);
 };
 
-/** One color scheme's walk through every view. */
-async function walk(page: Page, scheme: "light" | "dark") {
+/** Keyboard and audit helpers bound to one page and color scheme. */
+function tools(page: Page, scheme: string) {
   let step = 0;
   const seen = new Set<string>();
   const audit = async (state: string) => {
@@ -78,8 +84,11 @@ async function walk(page: Page, scheme: "light" | "dark") {
       const s = getComputedStyle(el);
       const outline = s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0;
       const shadow = s.boxShadow !== "none";
+      // Date and time inputs pass focus to their own parts (the picker button),
+      // which Chrome rings natively.
+      const native = el instanceof HTMLInputElement && /date|time|month|week/.test(el.type);
       const name = el.getAttribute("aria-label") || el.textContent?.trim().slice(0, 40) || el.tagName;
-      return { ok: outline || shadow, name: `${el.tagName.toLowerCase()} "${name}"` };
+      return { ok: outline || shadow || native, name: `${el.tagName.toLowerCase()} "${name}"` };
     });
     if (result && !result.ok) fail(`${scheme}: no visible focus indicator on ${result.name}`);
   };
@@ -110,7 +119,12 @@ async function walk(page: Page, scheme: "light" | "dark") {
   };
   const role = (r: Parameters<Page["getByRole"]>[0], name: string | RegExp) =>
     page.getByRole(r, { name, exact: typeof name === "string" }).first();
+  return { audit, ring, tabTo, expectFocus, role };
+}
 
+/** One color scheme's walk through every view of the sample workspace. */
+async function sampleWalk(page: Page, scheme: string) {
+  const { audit, ring, tabTo, expectFocus, role } = tools(page, scheme);
   await page.goto(url!);
   await audit("landing");
   const sample = role("button", "Try sample workspace");
@@ -124,6 +138,37 @@ async function walk(page: Page, scheme: "light" | "dark") {
   await grid.waitFor({ timeout: 120_000 });
   await page.waitForURL(/[?&]view=/);
   await audit("table");
+  // Setup through the core like any client, not the UI: a date so Calendar has
+  // something to place.
+  await page.evaluate(async () => {
+    const { WorkspaceDatabase } = await import("/src/lib/database.ts");
+    const db = new WorkspaceDatabase();
+    try {
+      await db.request("open", { demo: true });
+      // Every walk runs in a fresh browser context, so the property is always new.
+      await db.request("saveCatalogProperty", {
+        table: "notes",
+        column: "due",
+        expectedUpdatedAt: null,
+        fields: { label: "Due", type: "date" },
+        addColumn: true,
+      });
+      const [row] = await db.request("rows", { view: { table: "notes", limit: 1 } });
+      const today = new Date().toISOString().slice(0, 10);
+      await db.request("write", { table: "notes", patch: { id: row.id, due: today }, expectedUpdatedAt: row.updated_at });
+    } finally {
+      db.close();
+    }
+  });
+  await page.reload();
+  await sample.waitFor();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("Try sample workspace") && !b.disabled),
+  );
+  await tabTo(sample);
+  await page.keyboard.press("Enter");
+  await grid.waitFor({ timeout: 120_000 });
+  await page.waitForURL(/[?&]view=/);
 
   // Filter: property search, chip editor, Escape back to the chip.
   const filter = role("button", "Filter");
@@ -196,7 +241,15 @@ async function walk(page: Page, scheme: "light" | "dark") {
   await page.keyboard.type("Typed by keyboard.");
   await page.locator('[aria-label="Body save status"][data-state="saved"]').waitFor({ state: "attached" });
   await audit("record-markdown");
-  await tabTo(close);
+  // The page-capture viewer: an ordinary note is not a capture, so it explains why.
+  const capture = role("button", "View page capture");
+  await tabTo(capture);
+  await page.keyboard.press("Enter");
+  await page.getByRole("dialog", { name: "Page capture" }).waitFor();
+  await audit("page-capture");
+  await page.keyboard.press("Escape");
+  await expectFocus([capture], "View page capture");
+  await tabTo(close, true);
   await page.keyboard.press("Enter");
   await close.waitFor({ state: "hidden" });
 
@@ -215,7 +268,7 @@ async function walk(page: Page, scheme: "light" | "dark") {
 
   // Layouts.
   const layout = page.getByRole("combobox", { name: "View layout" });
-  for (const name of ["Gallery", "Board", "Table"]) {
+  for (const name of ["Calendar", "Gallery", "Board", "Table"]) {
     await tabTo(layout, true);
     await layout.selectOption({ label: name });
     await page.waitForTimeout(400);
@@ -271,6 +324,102 @@ async function walk(page: Page, scheme: "light" | "dark") {
   await audit("connect");
 }
 
+/** A personal workspace connected to a synthetic hub through the keyboard. */
+async function hubWalk(page: Page, scheme: string) {
+  const { audit, tabTo, expectFocus, role } = tools(page, scheme);
+  const fixture = await servicesHub(source!, source!, new URL(url!).origin);
+  try {
+    // A file property, so the record shows the attachment control.
+    const stamp = new Date().toISOString();
+    fixture.db.db
+      .query("UPDATE catalog_properties SET type='file',updated_at=?,hub_at=? WHERE tbl='widgets' AND col='quantity'")
+      .run(stamp, stamp);
+    await page.goto(url!);
+    const mine = role("button", "Open my workspace");
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("Open my workspace") && !b.disabled),
+    );
+    await tabTo(mine);
+    await page.keyboard.press("Enter");
+    const connect = page.locator("summary", { hasText: "Connect to a hub" });
+    await connect.waitFor({ timeout: 120_000 });
+    await tabTo(connect, true);
+    await page.keyboard.press("Enter");
+    await tabTo(page.getByLabel("Hub address"));
+    await page.keyboard.type(fixture.server.url.href.replace(/\/$/, ""));
+    const tokenSummary = page.locator("summary", { hasText: "Use a device token" });
+    await tabTo(tokenSummary);
+    await page.keyboard.press("Enter");
+    await tabTo(page.getByLabel("Device token"));
+    await page.keyboard.type("fixture");
+    await tabTo(role("button", "Connect"));
+    await page.keyboard.press("Enter");
+    await page.getByRole("heading", { name: "widgets", exact: true }).waitFor({ timeout: 60_000 });
+    const pill = page.getByLabel(/^Sync status:/);
+    await page.waitForFunction(() => document.querySelector('[aria-label="Sync status: Synced"]'), null, { timeout: 30_000 });
+    await audit("hub-synced");
+
+    for (const [name, state] of [[/^Notifications/, "notifications"], ["Settings", "settings-usage"]] as const) {
+      const button = role("button", name);
+      await tabTo(button, true);
+      await page.keyboard.press("Enter");
+      await page.getByRole("dialog").first().waitFor();
+      await page.waitForTimeout(500);
+      await audit(state);
+      await page.keyboard.press("Escape");
+      await expectFocus([button], state);
+    }
+
+    const grid = page.getByRole("grid", { name: "Records" });
+    await tabTo(grid.locator('td[tabindex="0"]'));
+    await page.keyboard.press("ControlOrMeta+Enter");
+    const close = role("button", "Close record");
+    await close.waitFor();
+    await page.locator('.record-panel input[type="file"]').first().waitFor({ state: "attached" });
+    await audit("record-attachment");
+    await tabTo(close, true);
+    await page.keyboard.press("Enter");
+    await close.waitFor({ state: "hidden" });
+
+    // Offline with a pending edit, then the hub refuses it: Offline · 1 pending,
+    // then 1 rejected and the rejected-edits inbox.
+    // The probe's worker loads before going offline: the dev server serves it.
+    await page.evaluate(async () => {
+      const { WorkspaceDatabase } = await import("/src/lib/database.ts");
+      const db = new WorkspaceDatabase();
+      await db.request("open");
+      (window as unknown as { probe: typeof db }).probe = db;
+    });
+    await page.context().setOffline(true);
+    await page.evaluate(async () => {
+      const db = (window as unknown as { probe: { request: (m: string, a: unknown) => Promise<unknown>; close(): void } }).probe;
+      await db.request("write", { table: "widgets", patch: { title: "Refused offline edit" } });
+      db.close();
+    });
+    await page.waitForFunction(() => document.querySelector('[aria-label^="Sync status: Offline"]'), null, { timeout: 30_000 });
+    await audit("hub-offline-pending");
+    const later = new Date().toISOString();
+    fixture.db.db
+      .query("UPDATE catalog_properties SET pattern='Allowed',updated_at=?,hub_at=? WHERE tbl='widgets' AND col='title'")
+      .run(later, later);
+    await page.context().setOffline(false);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await page.waitForFunction(() => document.querySelector('[aria-label$="rejected"]'), null, { timeout: 60_000 });
+    await audit("hub-rejected");
+    await tabTo(pill, true);
+    await page.keyboard.press("Enter");
+    const review = role("button", "Review rejected edit");
+    await review.waitFor();
+    await audit("rejected-edits");
+    await tabTo(review);
+    await page.keyboard.press("Enter");
+    await close.waitFor();
+    await audit("rejection-review");
+  } finally {
+    fixture.server.stop(true);
+  }
+}
+
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
   // Warm up: the first open makes Vite optimize the database worker's
@@ -294,7 +443,7 @@ try {
       void dialog.dismiss();
     });
     try {
-      await walk(page, scheme);
+      await sampleWalk(page, scheme);
       if (scheme === "dark") {
         const endless = await page.evaluate(
           () => document.getAnimations().filter((a) => a.effect?.getTiming().iterations === Infinity).length,
@@ -306,6 +455,18 @@ try {
       if (shots) await page.screenshot({ path: `${shots}/${scheme}-failed.png` });
     } finally {
       await context.close();
+    }
+    if (!source) continue;
+    const hub = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: scheme });
+    const hubPage = await hub.newPage();
+    hubPage.setDefaultTimeout(30_000);
+    try {
+      await hubWalk(hubPage, `${scheme} hub`);
+    } catch (error) {
+      fail(String(error));
+      if (shots) await hubPage.screenshot({ path: `${shots}/${scheme}-hub-failed.png` });
+    } finally {
+      await hub.close();
     }
   }
 } finally {

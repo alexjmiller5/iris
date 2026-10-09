@@ -144,4 +144,24 @@ struct FilterBarTests {
     #expect(model.appliedView?.byteExactID == opened.byteExactID)
     await model.close()
   }
+
+  @Test func navigationSettlesAnInFlightViewSaveInsteadOfRefusing() async throws {
+    let model = WorkspaceModel()
+    await model.open(demo: true)
+    let client = try #require(model.client)
+    _ = model.addFilter(column: "status")
+    model.filters[0].value = "Draft"
+    model.scheduleViewSave(after: .zero)
+    let inFlight = Task { await model.flushViewSave() }
+    while !model.savingView { await Task.yield() }
+    #expect(throws: WorkspaceError.self) {
+      try model.requireNavigationReady(workspace: client, generation: model.workspaceGeneration)
+    }
+    await model.flushViewSave()
+    try model.requireNavigationReady(workspace: client, generation: model.workspaceGeneration)
+    #expect(model.appliedView?.definition?.filters?.count == 1)
+    await inFlight.value
+    await model.close()
+  }
 }
+

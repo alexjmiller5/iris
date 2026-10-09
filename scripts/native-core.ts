@@ -1,6 +1,6 @@
 import { prepareLocalCatalog } from './local-catalog';
 import { CORE_CONTRACT_HASH, createCoreHandlers, validateRow } from '../packages/core/client.js';
-import type { CoreArgs, CoreMethod, CoreResult, Row, SqlDriver, Value, ServiceHub, SqlReadStatement, SqlReadContext } from '../packages/core/index.d.ts';
+import type { BackupFiles, CoreArgs, CoreMethod, CoreResult, Row, SqlDriver, Value, ServiceHub, SqlReadStatement, SqlReadContext } from '../packages/core/index.d.ts';
 import { createSample } from './native-sample';
 import { prepareLocalViews, prepareLocalPins } from './local-views';
 
@@ -16,6 +16,12 @@ declare function __lifeYield(callback: () => void): void;
 declare function __lifePost(route: string, body: string, callback: (json: string) => void): void;
 declare function __lifeGet(route: string, callback: (json: string) => void): void;
 declare function __lifeFinish(id: number, json: string): void;
+// Backup files: the host opens paths it supplied, inflates gzip and decodes UTF-8.
+declare function __lifeDumpOpen(file: string): number;
+declare function __lifeDumpRead(id: number): string | null;
+declare function __lifeDumpCreate(file: string): number;
+declare function __lifeDumpWrite(id: number, text: string): void;
+declare function __lifeDumpClose(id: number): void;
 
 // The Swift facade owns whole database operations. HTTP awaits yield ownership
 // only outside transactions; their callbacks resume after foreground work.
@@ -61,7 +67,34 @@ function hub(endpoint: unknown): ServiceHub {
   };
 }
 
-const handlers = createCoreHandlers(db, hub, 'life-ui');
+const files: BackupFiles = {
+  open(file) {
+    let id: number | undefined;
+    return {
+      async read() {
+        await turn();
+        id ??= __lifeDumpOpen(file);
+        return __lifeDumpRead(id);
+      },
+    };
+  },
+  create(file) {
+    let id: number | undefined;
+    return {
+      async write(text) {
+        await turn();
+        id ??= __lifeDumpCreate(file);
+        __lifeDumpWrite(id, text);
+      },
+      async close() {
+        id ??= __lifeDumpCreate(file);
+        __lifeDumpClose(id);
+      },
+    };
+  },
+};
+
+const handlers = createCoreHandlers(db, hub, 'life-ui', null, files);
 
 function invoke<M extends CoreMethod>(method: M, args: CoreArgs<M>): CoreResult<M> | Promise<CoreResult<M>> {
   return handlers[method](args);

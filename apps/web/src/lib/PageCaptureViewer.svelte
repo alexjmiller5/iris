@@ -291,6 +291,6 @@
 		font-size: 0.875rem;
 	}
 	[role='alert'] {
-		color: var(--color-danger, #b42318);
+		color: var(--color-violation);
 	}
 </style>

@@ -76,11 +76,9 @@ import XCTest
     if pill.waitForExistence(timeout: 5) { pill.tap() } else { springboard.swipeDown() }
     // Spotlight's field and results live in their own process on current iOS.
     let spotlight = XCUIApplication(bundleIdentifier: "com.apple.Spotlight")
-    let search = spotlight.descendants(matching: .any).matching(
-      NSPredicate(format: "elementType == %d OR elementType == %d",
-        XCUIElement.ElementType.searchField.rawValue, XCUIElement.ElementType.textField.rawValue)
-    ).firstMatch
+    let search = spotlight.textFields["SpotlightSearchField"]
     require(search, in: spotlight, 10)
+    search.tap()
     // A unique synthetic title saved by the Quick Add acceptance run.
     let title = "Quick Add fixture saved"
     search.typeText(title + "\n")

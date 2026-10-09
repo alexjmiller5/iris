@@ -121,6 +121,21 @@ workspace menus open the system destination picker, with CSV metadata saved
 separately from the same capture. Exports contain no attachment bytes and provide
 no restore operation.
 
+Backup, export and restore (Settings > Backup on native, the sidebar Backup dialog on
+web) call core's `exportReplica`, `previewRestore`, `restoreReplica`, `hubBackups` and
+`createHubBackup` (life-data `docs/backups.md`). Hosts own files only: web keeps them
+in OPFS `backups/<staged|recovery|exports>/` behind the worker's `BackupFiles`
+adapter; native passes file paths to `__lifeDump*` bridge functions backed by
+`DumpFiles.swift` (gzip inflate with CRC/length check, whole UTF-8 chunks, writes
+published on close). Download replica copies the OPFS file while the worker's
+connection is closed, or GRDB's backup of the native file; the sample is in memory
+on native and has no file. Hub backups download through the enrolled transport
+and are checked against the listed size and SHA-256. Restore needs the typed word
+`replace`, no open edits and no pending local writes; core writes a recovery copy
+first and the newest three are kept as Undo. A CLI-owned shared file shows its
+path and `life export` instead. Progress folds into the sync pill.
+`scripts/test-backup.ts` drives the web flow against the real hub Worker.
+
 Web row checkboxes select exact IDs on the loaded page. Bulk property changes and
 soft-deletes use fresh full rows and revision-checked shared writes, one row at a
 time. Preserve separate succeeded/failed/unattempted receipts; cancellation stops

@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -13,6 +14,9 @@ struct HubTransport: Sendable {
   let endpoint: String
   private let token: String
   private let session: URLSession
+  /// Backup routes outlast the ordinary budget: the hub exports its whole database
+  /// before answering, and a download can be hundreds of megabytes.
+  private let backupSession: URLSession
 
   init(endpoint: String, token: String, configuration: URLSessionConfiguration = .ephemeral) throws
   {
@@ -49,6 +53,56 @@ struct HubTransport: Sendable {
     configuration.timeoutIntervalForResource = 60
     session = URLSession(
       configuration: configuration, delegate: RefuseRedirects(), delegateQueue: nil)
+    let long = configuration.copy() as! URLSessionConfiguration
+    long.timeoutIntervalForRequest = 600
+    long.timeoutIntervalForResource = 3600
+    backupSession = URLSession(
+      configuration: long, delegate: RefuseRedirects(), delegateQueue: nil)
+  }
+
+  static let backupKey =
+    #"^(?:daily|weekly|monthly|yearly|manual)/[a-z][a-z0-9-]*-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.sql\.gz$"#
+
+  /// Downloads one listed hub backup's gzip bytes to `destination`, checking the
+  /// listed size and SHA-256 before anything is placed there.
+  func downloadBackup(_ backup: CoreHubBackup, to destination: URL) async throws {
+    guard backup.key.range(of: Self.backupKey, options: .regularExpression) != nil,
+      let url = URL(string: endpoint + "/v1/backups/" + backup.key)
+    else { throw WorkspaceError(message: "Invalid hub backup.", violations: []) }
+    var request = URLRequest(url: url)
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    let temporary: URL
+    let response: URLResponse
+    do { (temporary, response) = try await backupSession.download(for: request) } catch {
+      if Task.isCancelled || error is CancellationError { throw CancellationError() }
+      throw WorkspaceError(message: Self.unreachableMessage, violations: [])
+    }
+    defer { try? FileManager.default.removeItem(at: temporary) }
+    guard let reply = response as? HTTPURLResponse else {
+      throw WorkspaceError(message: "Invalid hub response.", violations: [])
+    }
+    guard (200..<300).contains(reply.statusCode) else {
+      throw WorkspaceError(message: "Hub HTTP \(reply.statusCode).", violations: [])
+    }
+    let file = try FileHandle(forReadingFrom: temporary)
+    defer { try? file.close() }
+    var hash = SHA256()
+    var bytes = 0
+    while let chunk = try file.read(upToCount: 1 << 20), !chunk.isEmpty {
+      hash.update(data: chunk)
+      bytes += chunk.count
+    }
+    guard bytes == backup.bytes else {
+      throw WorkspaceError(message: "The downloaded backup is incomplete.", violations: [])
+    }
+    if let expected = backup.sha256,
+      hash.finalize().map({ String(format: "%02x", $0) }).joined() != expected
+    {
+      throw WorkspaceError(
+        message: "The downloaded backup does not match its checksum.", violations: [])
+    }
+    try? FileManager.default.removeItem(at: destination)
+    try FileManager.default.moveItem(at: temporary, to: destination)
   }
 
   var imageRequestIdentity: ObjectIdentifier { ObjectIdentifier(session) }
@@ -278,6 +332,7 @@ struct HubTransport: Sendable {
     }
     let data: Data
     let response: URLResponse
+    let session = body != nil && route == "/v1/backups" ? backupSession : self.session
     do { (data, response) = try await session.data(for: request) } catch {
       throw WorkspaceError(message: Self.unreachableMessage, violations: [])
     }

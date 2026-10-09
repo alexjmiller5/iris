@@ -622,6 +622,9 @@ bun scripts/test-partial-sync.ts /path/to/life-data
 bun scripts/test-reference-navigation.ts /path/to/life-data
 # Only while owning that checkout and its dev server: temporarily mutate the route.
 bun scripts/test-reference-mutations.ts /path/to/life-data
+# Backup dialog: replica download, SQL export, hub backups, restore and undo. It
+# serves the real hub Worker itself and launches its own headless Chrome.
+LIFE_UI_TEST_URL=http://127.0.0.1:5291/workspace bun scripts/test-backup.ts /path/to/life-data
 # Open http://life-ui-navigation.localhost:5224/workspace?review in its own page.
 bun scripts/test-workspace-navigation.ts /path/to/life-data
 bun scripts/test-navigation-mutations.ts /path/to/life-data

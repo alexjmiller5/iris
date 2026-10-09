@@ -7,7 +7,7 @@ const route = 'apps/web/src/routes/workspace/+page.svelte';
 const worker = 'apps/web/src/lib/database.worker.ts';
 const mutations: { name: string; file: string; test: string; edits: [string | RegExp, string][] }[] = [
 	{ name: 'write locks removed', file: route, test: 'write in flight locks', edits: [
-		['disabled={writing} aria-label="Workspace controls"', 'disabled={false} aria-label="Workspace controls"'],
+		['class="workspace-controls" disabled={writing}', 'class="workspace-controls" disabled={false}'],
 		[/writing\s*\|\|\s*!!p\.derived_by/, '!!p.derived_by']
 	] },
 	{ name: 'canonical draft reconciliation removed', file: route, test: 'canonical SQL', edits: [

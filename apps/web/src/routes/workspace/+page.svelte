@@ -2524,7 +2524,9 @@
 			onrule={async (args) => await editCatalog('saveCatalogRule', args)}
 		/>
 	{/if}
-	<fieldset class="workspace-controls" disabled={writing} aria-label="Workspace controls">
+	<!-- The fieldset only disables every control while a write is in flight; it is
+	     not a group, so the sidebar and records stay top-level landmarks. -->
+	<fieldset class="workspace-controls" disabled={writing} role="none">
 		<div class="data-shell" class:collapsed={sidebarCollapsed}>
 			<aside class="tables" id="workspace-sidebar" hidden={sidebarCollapsed}>
 				<div class="sidebar-head">

@@ -28,6 +28,15 @@ struct HubConnectionView: View {
             }.accessibilityIdentifier("hub-downloads")
           }
         }
+        if model.client != nil {
+          Section {
+            NavigationLink {
+              BackupView(model: model)
+            } label: {
+              Label("Backup", systemImage: "externaldrive")
+            }.accessibilityIdentifier("backup-settings")
+          }
+        }
         if model.services.connected {
           Section("This deployment") {
             NavigationLink {
