@@ -115,6 +115,12 @@ final class BackupUITests: XCTestCase {
     location.click()
     location.typeText(path)
     location.typeKey(.return, modifierFlags: [])
+    // The first Return can only accept a path completion; Go submits it.
+    for _ in 0..<3 where !location.waitForNonExistence(timeout: 2) {
+      let go = app.sheets.buttons.matching(NSPredicate(format: "title == 'Go' OR label == 'Go'"))
+        .firstMatch
+      if go.exists, go.isHittable { go.click() } else { location.typeKey(.return, modifierFlags: []) }
+    }
   }
 
   private func expectMessage(_ app: XCUIApplication, _ text: String) {
