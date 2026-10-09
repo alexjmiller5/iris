@@ -172,12 +172,18 @@ private struct QuickFindEntryRow: View {
   let opening: Bool
   /// Secondary text loses contrast on the tinted selection, so it turns primary there.
   let selected: Bool
+  @Environment(\.dynamicTypeSize) private var textSize
 
   var body: some View {
     HStack(alignment: .top) {
       VStack(alignment: .leading, spacing: 4) {
         Text(entry.label).font(.headline).foregroundStyle(.primary).lineLimit(2)
-        HStack(spacing: 4) {
+        // Kind, table and status stack at accessibility sizes instead of breaking words.
+        let caption =
+          textSize.isAccessibilitySize
+          ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+          : AnyLayout(HStackLayout(spacing: 4))
+        caption {
           if entry.id.rowID != nil {
             Text("Record")
           } else if entry.id.viewID != nil {
