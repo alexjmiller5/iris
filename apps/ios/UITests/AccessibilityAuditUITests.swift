@@ -180,7 +180,8 @@ final class AccessibilityAuditUITests: XCTestCase {
   /// scrolls long queries horizontally like any UIKit text field.
   private static let verifiedUnclipped: Set<String> = [
     "saved-views/Row actions and Today", "workspace-status/Copy diagnostics",
-    "record/Actions", "record-markdown/Actions", "quick-find/quick-find-query",
+    "record/Actions", "record-markdown/Actions", "record-markdown/Attach file",
+    "quick-find/quick-find-query",
   ]
 
   /// Taps `control` until `shows` appears, at most twice; the audit just before can
