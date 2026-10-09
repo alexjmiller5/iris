@@ -59,8 +59,7 @@ final class BackupUITests: XCTestCase {
     let app = launch(["--demo"])
     defer { app.terminate() }
     // The supported external-file picker on the welcome screen; never the app's own replica.
-    click(app.descendants(matching: .any).matching(identifier: "workspace-menu").firstMatch)
-    click(app.menuItems["Close workspace"])
+    click(app.buttons["Close workspace"])
     click(app.buttons["Open a local database…"])
     XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
     goTo(app, database)
@@ -85,9 +84,9 @@ final class BackupUITests: XCTestCase {
     return app
   }
 
+  /// On the Mac, Hub connection sits in the sidebar's bottom bar beside the sync pill.
   private func openBackup(_ app: XCUIApplication) {
-    click(app.descendants(matching: .any).matching(identifier: "workspace-menu").firstMatch)
-    click(app.menuItems["Hub connection"])
+    click(app.buttons["Hub connection"])
     click(app.descendants(matching: .any)["backup-settings"].firstMatch)
     XCTAssertTrue(app.buttons["backup-export-sql"].waitForExistence(timeout: 10))
   }
