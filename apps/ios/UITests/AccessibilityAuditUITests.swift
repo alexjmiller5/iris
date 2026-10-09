@@ -147,6 +147,13 @@ final class AccessibilityAuditUITests: XCTestCase {
     if keyboard.exists, keyboard.frame.insetBy(dx: 0, dy: -50).intersects(frame) {
       return "covered by the system keyboard or its suggestions"
     }
+    if #unavailable(iOS 27), issue.auditType == .hitRegion,
+      element.label == "Group tables" || element.label.hasPrefix("Relationship details")
+    {
+      // Graph disclosures: WebKit before iOS 27 reports a <summary>'s text line as its
+      // frame; its touch box is 44 px (SchemaGraph.svelte, checked in the DOM).
+      return "summary frame reported as its text line"
+    }
     if issue.auditType == .hitRegion, [.staticText, .other].contains(element.elementType) {
       // Text and drawing inside a web view are not controls; their buttons are checked.
       return "not a control"
