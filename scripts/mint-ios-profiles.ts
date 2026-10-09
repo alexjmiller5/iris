@@ -2,8 +2,10 @@
 // Developer ID profile that shares the universal app App ID) with the existing
 // certificates, after the App Group is assigned in the developer portal.
 // Prints `VARIABLE=<profile id>` lines for `gh variable set`; never profile content.
+// `--register` instead creates any missing App ID with the capabilities its
+// entitlements need, so the App Group can then be assigned in the portal.
 //
-//   op run --env-file=<operator tpl> -- bun scripts/mint-ios-profiles.ts
+//   op run --env-file=<operator tpl> -- bun scripts/mint-ios-profiles.ts [--register]
 //
 // Env: ASC_KEY_P8_BASE64, ASC_KEY_ID, ASC_ISSUER_ID (App Store Connect key) and
 // IOS_DEVICE_ID (the enrolled phone's UDID, from the project ENV item).
@@ -40,6 +42,38 @@ const one = (rows: any[], what: string) => {
   if (rows.length !== 1) throw new Error(`Expected exactly one ${what}, found ${rows.length}`);
   return rows[0];
 };
+
+// The universal app App ID also signs the Mac app; extensions are iOS only.
+const appIds = [
+  { identifier: app, name: 'Iris', platform: 'UNIVERSAL', capabilities: ['PUSH_NOTIFICATIONS', 'APP_GROUPS'] },
+  { identifier: app + '.widgets', name: 'Iris Widgets', platform: 'IOS', capabilities: ['APP_GROUPS'] },
+  { identifier: app + '.share', name: 'Iris Share', platform: 'IOS', capabilities: ['APP_GROUPS'] },
+];
+if (process.argv.includes('--register')) {
+  for (const wanted of appIds) {
+    let bundle = (await api('GET', `/bundleIds?filter[identifier]=${wanted.identifier}&limit=200`)).data
+      .find((b: any) => b.attributes.identifier === wanted.identifier);
+    if (!bundle) {
+      bundle = (await api('POST', '/bundleIds', {
+        data: { type: 'bundleIds', attributes: { identifier: wanted.identifier, name: wanted.name, platform: wanted.platform } },
+      })).data;
+      console.log(`registered ${wanted.identifier}`);
+    }
+    const enabled = new Set((await api('GET', `/bundleIds/${bundle.id}/bundleIdCapabilities`)).data
+      .map((c: any) => c.attributes.capabilityType));
+    for (const capabilityType of wanted.capabilities.filter((c) => !enabled.has(c))) {
+      await api('POST', '/bundleIdCapabilities', {
+        data: {
+          type: 'bundleIdCapabilities', attributes: { capabilityType },
+          relationships: { bundleId: { data: { type: 'bundleIds', id: bundle.id } } },
+        },
+      });
+      console.log(`enabled ${capabilityType} on ${wanted.identifier}`);
+    }
+  }
+  console.log(`Next: create ${group} in the developer portal and assign it to all three App IDs, then rerun without --register.`);
+  process.exit(0);
+}
 
 const udid = process.env.IOS_DEVICE_ID ?? '';
 if (!/^[A-Za-z0-9-]+$/.test(udid)) throw new Error('IOS_DEVICE_ID is required');

@@ -855,8 +855,10 @@ native testing. Both use synthetic records and loopback interfaces only.
   entitlement and the shared App Group; wildcard profiles cannot enable either.
   Changing the universal app App ID's capabilities invalidates the Mac Developer ID
   profile too, so replace `MACOS_PROVISIONING_PROFILE_ID` in the same step.
-  `scripts/mint-ios-profiles.ts` mints all four with the existing certificates and
-  prints the variable values; it refuses profiles that lack the App Group.
+  `scripts/mint-ios-profiles.ts --register` creates any missing App ID with its push
+  and App Group capabilities; after the group is assigned in the portal, the script
+  without the flag mints all four with the existing certificates and prints the
+  variable values; it refuses profiles that lack the App Group.
   Store `IOS_DEVICE_ID` in the project ENV item for the intended enrolled phone.
   The only GitHub secret remains `OP_SERVICE_ACCOUNT_TOKEN`.
   CI checks profile eligibility, signs in a temporary keychain and verifies the
