@@ -17,6 +17,10 @@ settings:
 packages:
   LifeKit:
     path: ../../packages/LifeKit
+  # Shared tests import GRDB directly; same requirement as LifeKit's manifest.
+  GRDB:
+    url: https://github.com/groue/GRDB.swift.git
+    from: 7.0.0
 targets:
   LifeUI:
     type: application
@@ -125,6 +129,7 @@ targets:
       - package: LifeKit
       - package: LifeKit
         product: LifeWidgets
+      - package: GRDB
   LifeUIUITests:
     type: bundle.ui-testing
     platform: iOS

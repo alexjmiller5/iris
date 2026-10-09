@@ -638,6 +638,8 @@ try {
           .getByRole("button", { name: "Fixture record", exact: true })
           .click();
         await expect.poll(() => query().get("row")).toBe("fixture-record");
+        const view = query().get("view");
+        expect(view).toBeTruthy();
         await follow(
           page.url() +
             "&token=fixture-secret&search=fixture-private#fixture-private",
@@ -655,7 +657,7 @@ try {
           navigator.clipboard.readText(),
         );
         expect(copied).toBe(
-          origin + "/workspace?table=widgets&row=fixture-record",
+          `${origin}/workspace?${new URLSearchParams({ table: "widgets", view: view!, row: "fixture-record" })}`,
         );
         await opened(copied);
         await expect(

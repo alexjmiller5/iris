@@ -16,8 +16,8 @@ const mutations = [
   {
     name: "closed editor leaves its row in the URL",
     file: page,
-    before: "void reflectLocation();\n\t\treturn true;",
-    after: "return true;",
+    before: "navigationLoading = false;\n\t\tvoid reflectLocation();\n\t\treturn true;",
+    after: "navigationLoading = false;\n\t\treturn true;",
     test: "graph and trash",
   },
   {
@@ -31,8 +31,9 @@ const mutations = [
     name: "lookup permits a source write",
     file: page,
     before:
-      "disabled={busy || navigationLoading || readOnly || blocked || trash}",
-    after: "disabled={busy || readOnly || blocked || trash}",
+      "navigationLoading ||\n\t\t\t\t\t\t\t\t\treadOnly ||\n\t\t\t\t\t\t\t\t\tblocked ||\n\t\t\t\t\t\t\t\t\tselected?.deleted_at != null}><IconDeviceFloppy",
+    after:
+      "readOnly ||\n\t\t\t\t\t\t\t\t\tblocked ||\n\t\t\t\t\t\t\t\t\tselected?.deleted_at != null}><IconDeviceFloppy",
     test: "pending linked lookup",
   },
   {

@@ -771,6 +771,23 @@ Native graph changes must regenerate the bundled island.
 unrelated web files must not change native artifacts. Verify this with
 `bun scripts/test-island-builds.ts` before publishing regenerated resources.
 
+Accessibility is checked, not assumed. `scripts/check-a11y.ts` (in `just check`
+and CI) starts its own dev server and headless Chrome and walks every web view
+of the sample workspace with Tab/Enter/Space/Escape in light and dark (dark with
+reduced motion): each focus stop needs a visible ring, Escape returns focus to
+the opener, and axe-core allows no serious or critical violation. Given a
+life-data checkout it also walks a hub-connected workspace (sync pill states,
+notifications, usage, attachments, rejected edits). Name controls by their
+visible text (axe's label-in-name rule); give icon-only buttons an aria-label;
+listboxes hold only options. Popovers return focus through `anchored()`;
+modals the host unmounts instead of closing call `onDestroy(focusReturn())`.
+`LIFE_UI_DEV_NO_HMR=1` keeps a shared checkout's edits from reloading the page
+under test. Native `AccessibilityAuditUITests` (iOS at AX5 text, and Mac with
+keyboard flows: Cmd+K, Cmd+S, Cmd+\, Escape) run Xcode's accessibility audit on
+each screen and attach its element tree. The Markdown island sizes its rem scale
+from `-apple-system-body` on touch screens so it follows Dynamic Type, and the
+record page's editor height is a `@ScaledMetric`.
+
 ## Shared local Mac workspace
 
 An explicitly opened database is remembered in a private security-scoped bookmark.

@@ -111,6 +111,42 @@ import XCTest
     keep(app, "spotlight-row-opened")
   }
 
+  /// Gallery discovery, Home Screen placement and a widget tap into the app.
+  func testGalleryAddsATodayWidgetThatOpensTheApp() throws {
+    let app = try application()
+    XCUIDevice.shared.press(.home)
+    springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)).press(forDuration: 2)
+    let edit = springboard.buttons["Edit"]
+    if edit.waitForExistence(timeout: 8) { edit.tap() }
+    let add = springboard.buttons["Add Widget"]
+    require(add, in: springboard, 10)
+    add.tap()
+    let search = springboard.searchFields.firstMatch
+    require(search, in: springboard, 15)
+    search.tap()
+    search.typeText("Life UI")
+    let entry = springboard.descendants(matching: .any).matching(
+      NSPredicate(format: "label BEGINSWITH 'Life UI'")
+    ).element(boundBy: 1)
+    require(entry, in: springboard, 15)
+    keep(springboard, "widget-gallery-search")
+    entry.tap()
+    let addWidget = springboard.buttons.matching(NSPredicate(format: "label == 'Add Widget'")).firstMatch
+    require(addWidget, in: springboard, 15)
+    keep(springboard, "widget-gallery-life-ui")
+    addWidget.tap()
+    let done = springboard.buttons["Done"]
+    if done.waitForExistence(timeout: 10) { done.tap() }
+    keep(springboard, "home-screen-widget")
+    let widget = springboard.descendants(matching: .any).matching(
+      NSPredicate(format: "identifier CONTAINS[c] 'LifeUI' OR label CONTAINS 'Records' OR label CONTAINS 'Synthetic'")
+    ).firstMatch
+    require(widget, in: springboard, 15)
+    widget.tap()
+    XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+    keep(app, "widget-opened-app")
+  }
+
   func testShareSheetPreparesADraftThatOpensUnsaved() throws {
     let app = try application()
     let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")

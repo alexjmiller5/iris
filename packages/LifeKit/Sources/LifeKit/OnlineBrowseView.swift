@@ -48,7 +48,7 @@ struct OnlineBrowseView: View {
                 if model.opening.map({ Data($0.utf8) }) == row.byteExactID {
                   ProgressView()
                 } else {
-                  Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                  Image(systemName: "chevron.right").foregroundStyle(.tertiary).accessibilityHidden(true)
                 }
               }.frame(minHeight: 36).contentShape(.rect)
             }

@@ -360,8 +360,12 @@
 		opacity: 0.5;
 		cursor: default;
 	}
+	/* Matches the sidebar's other secondary buttons (Table graph, Switch workspace). */
 	.open {
 		width: 100%;
+		justify-content: center;
+		font-size: 13px;
+		font-weight: 600;
 	}
 	.danger:not(:disabled) {
 		color: var(--color-on-accent);

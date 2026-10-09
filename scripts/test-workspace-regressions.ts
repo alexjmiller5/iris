@@ -1,4 +1,4 @@
-import { chromium, expect } from '@playwright/test';
+import { chromium, expect as base } from '@playwright/test';
 import { installCoreSchemas, logDDL, regressionHub } from './workspace-regression-hub';
 import { disposableOrigin, workspacePage } from './test-origin';
 
@@ -6,6 +6,8 @@ import { disposableOrigin, workspacePage } from './test-origin';
 // workspace switching and durable pending counts on a synthetic hub workspace.
 // Open the reserved review page in a disposable Chrome first; this runner clears
 // only that origin's storage. LIFE_UI_TEST_CASE runs the cases whose name contains it.
+// Shared build hosts can be slow; waits are generous, never fixed sleeps.
+const expect = base.configure({ timeout: 15000 });
 const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-write-fixes.localhost:5196/workspace?review';
 const source = process.argv[2];
 if (!source) throw new Error('Usage: bun scripts/test-workspace-regressions.ts <life-data-checkout>');
@@ -22,7 +24,7 @@ const failures: string[] = [];
 try {
 	const page = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
 	if (!page) throw new Error(`Open the dedicated test page first: ${url}`);
-	page.setDefaultTimeout(5000);
+	page.setDefaultTimeout(15000);
 	await page.bringToFront();
 	await page.setViewportSize({ width: 1280, height: 960 });
 	page.on('dialog', dialog => dialog.accept());

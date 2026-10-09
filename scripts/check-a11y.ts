@@ -298,6 +298,16 @@ async function sampleWalk(page: Page, scheme: string) {
   await audit("table-graph");
   await page.keyboard.press("Enter");
 
+  // Backup, export and restore dialog.
+  const backup = role("button", "Backup");
+  await tabTo(backup, true);
+  await page.keyboard.press("Enter");
+  await page.getByRole("dialog").first().waitFor();
+  await page.waitForTimeout(500);
+  await audit("backup");
+  await page.keyboard.press("Escape");
+  await expectFocus([backup], "Backup");
+
   // Collapsed sidebar via Cmd+\.
   await page.locator("body").focus();
   await page.keyboard.press("ControlOrMeta+\\");

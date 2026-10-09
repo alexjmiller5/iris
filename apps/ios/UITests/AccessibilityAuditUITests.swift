@@ -54,10 +54,9 @@ final class AccessibilityAuditUITests: XCTestCase {
     let open = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
       .firstMatch
     tap(open)
-    let rich = app.webViews.textViews["Body"]
-    XCTAssertTrue(rich.waitForExistence(timeout: 10))
+    XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 10))
     try audit(app, "record")
-    for _ in 0..<8 where !rich.isHittable { app.swipeUp() }
+    reveal(app, app.webViews.textViews["Body"])
     try audit(app, "record-markdown")
   }
 
@@ -75,8 +74,7 @@ final class AccessibilityAuditUITests: XCTestCase {
         .firstMatch
       tap(open)
       let rich = app.webViews.textViews["Body"]
-      XCTAssertTrue(rich.waitForExistence(timeout: 10), app.debugDescription)
-      for _ in 0..<8 where !rich.isHittable { app.swipeUp() }
+      reveal(app, rich)
       let shot = XCTAttachment(screenshot: app.screenshot())
       shot.name = "rich-editor-\(size ?? "default")"
       shot.lifetime = .keepAlways
@@ -103,6 +101,17 @@ final class AccessibilityAuditUITests: XCTestCase {
       XCTFail("\(screen): \(issue.auditType) \(issue.compactDescription) on \(element ?? "?")")
       return true
     }
+  }
+
+  /// Lazy record forms create rows below the fold only when scrolled to.
+  private func reveal(
+    _ app: XCUIApplication, _ element: XCUIElement, file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    for _ in 0..<12 where !(element.waitForExistence(timeout: 1) && element.isHittable) {
+      app.swipeUp()
+    }
+    XCTAssertTrue(element.isHittable, app.debugDescription, file: file, line: line)
   }
 
   private func tap(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {

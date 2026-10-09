@@ -371,7 +371,7 @@ private struct FilterRuleForm: View {
             Text(choice).foregroundStyle(.primary)
             Spacer()
             if Data(filter.value.utf8) == Data(choice.utf8) {
-              Image(systemName: "checkmark").foregroundStyle(.tint)
+              Image(systemName: "checkmark").foregroundStyle(.tint).accessibilityHidden(true)
             }
           }
           .contentShape(Rectangle())

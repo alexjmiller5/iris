@@ -130,7 +130,9 @@ private struct ReferencePickerView: View {
             HStack {
               Text(row.label).foregroundStyle(.primary)
               Spacer()
-              if model.selection.contains(row.id) { Image(systemName: "checkmark") }
+              if model.selection.contains(row.id) {
+                Image(systemName: "checkmark").accessibilityHidden(true)
+              }
             }.contentShape(.rect)
           }
           .accessibilityAddTraits(model.selection.contains(row.id) ? [.isSelected] : [])

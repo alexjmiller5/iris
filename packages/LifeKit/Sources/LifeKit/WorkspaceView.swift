@@ -1491,6 +1491,8 @@ private struct RecordEditor: View {
   let isCurrent: @MainActor () -> Bool
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.openURL) private var openURL
+  /// The record page's Markdown editor grows with Dynamic Type, up to a cap.
+  @ScaledMetric(relativeTo: .body) private var markdownHeight: CGFloat = 320
   @State private var editor: RecordEditorModel
   @State private var inlineMarkdown: InlineMarkdownEditor?
   @State private var referenceNavigation: ReferenceNavigationModel?
@@ -1951,6 +1953,7 @@ private struct RecordEditor: View {
               Button("Save") { save() }.disabled(
                 saving || editor.recovery != nil || editor.needsReview
               )
+              .keyboardShortcut("s", modifiers: .command)
               .accessibilityIdentifier("save-record")
             }
           }
@@ -2104,7 +2107,7 @@ private struct RecordEditor: View {
         fieldLabel(field).font(.subheadline).foregroundStyle(.secondary)
         if editor.recovery == nil {
           let markdown = editor.markdownEditor(for: field)
-          InlineMarkdownField(editor: markdown, height: 320)
+          InlineMarkdownField(editor: markdown, height: min(markdownHeight, 640))
             .onAppear { configureMarkdownActions(markdown) }
             .accessibilityIdentifier("field-\(field.id)")
           Text(editor.status).font(.caption).foregroundStyle(.secondary)
