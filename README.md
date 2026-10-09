@@ -628,6 +628,9 @@ LIFE_UI_TEST_URL=http://127.0.0.1:5291/workspace bun scripts/test-backup.ts /pat
 # Open http://life-ui-navigation.localhost:5224/workspace?review in its own page.
 bun scripts/test-workspace-navigation.ts /path/to/life-data
 bun scripts/test-navigation-mutations.ts /path/to/life-data
+# Run the dev server on 5237 and open an owned page at
+# http://life-ui-navigation.localhost:5237/workspace?review&proposal=synthetic-review
+LIFE_UI_TEST_TARGET=<owned-CDP-page-id> bun scripts/test-review-navigation.ts
 ```
 
 The first test covers validation, Markdown persistence, relations, trash,

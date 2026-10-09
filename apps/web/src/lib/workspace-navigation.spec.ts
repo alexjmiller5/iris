@@ -208,3 +208,33 @@ it('links carry identities only; old view-settings parameters are ignored', () =
 		)
 	).toEqual({ table: 'things', view: null, row: null });
 });
+
+it('retains a review proposal through internal workspace reflection without copying credentials into shared destinations', () => {
+	const current = new URL(
+		'https://example.test/workspace?proposal=review%2Fcaf%C3%A9&token=private&search=personal#secret'
+	);
+	const destination = { table: null, view: null, row: null };
+	expect(destinationURL(current, destination, true).href).toBe(
+		'https://example.test/workspace?proposal=review%2Fcaf%C3%A9'
+	);
+	expect(destinationURL(current, destination).href).toBe('https://example.test/workspace');
+	expect(
+		destinationURL(
+			new URL('https://example.test/workspace?proposal=' + 'é'.repeat(128)),
+			destination,
+			true
+		).searchParams.get('proposal')
+	).toBe('é'.repeat(128));
+	for (const query of [
+		'proposal=',
+		'proposal=a&proposal=b',
+		'proposal=%00',
+		'proposal=%7f',
+		'proposal=' + 'é'.repeat(129),
+		'proposal=' + 'x'.repeat(257)
+	]) {
+		expect(() =>
+			destinationURL(new URL('https://example.test/workspace?' + query), destination, true)
+		).toThrow();
+	}
+});
