@@ -24,8 +24,7 @@ final class BackupUITests: XCTestCase {
     let sheet = app.sheets.firstMatch
     XCTAssertTrue(sheet.waitForExistence(timeout: 30), app.debugDescription)
     goTo(app, saveDir)
-    sheet.buttons["Save"].firstMatch.click()
-    XCTAssertTrue(sheet.waitForNonExistence(timeout: 10), app.debugDescription)
+    confirmPanel(app)
     expectMessage(app, "Exported")
     let saved = try FileManager.default.contentsOfDirectory(atPath: saveDir)
     XCTAssertEqual(saved.filter { $0.hasSuffix(".sql") }.count, 1, "\(saved)")
@@ -34,7 +33,7 @@ final class BackupUITests: XCTestCase {
     click(app.buttons["backup-choose-file"])
     XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
     goTo(app, dump)
-    app.sheets.buttons["Open"].firstMatch.click()
+    confirmPanel(app)
     let notes = app.descendants(matching: .any)["restore-row-notes"].firstMatch
     XCTAssertTrue(notes.waitForExistence(timeout: 30), app.debugDescription)
     XCTAssertFalse(app.buttons["restore-apply"].isEnabled, "Restore needs the typed word")
@@ -63,7 +62,7 @@ final class BackupUITests: XCTestCase {
     click(app.buttons["Open a local database…"])
     XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
     goTo(app, database)
-    app.sheets.buttons["Open"].firstMatch.click()
+    confirmPanel(app)
     openBackup(app)
     let path = app.descendants(matching: .any)["backup-shared-path"].firstMatch
     XCTAssertTrue(path.waitForExistence(timeout: 10), app.debugDescription)
@@ -99,13 +98,19 @@ final class BackupUITests: XCTestCase {
     expectMessage(app, "Restored")
   }
 
+  /// Open or Save, unless Return in Go to folder already chose the file. A blind click
+  /// at a closed panel's old position would land on the window behind it.
+  private func confirmPanel(_ app: XCUIApplication) {
+    let ok = app.sheets.buttons.matching(identifier: "OKButton").firstMatch
+    if ok.waitForExistence(timeout: 3), ok.isHittable, ok.isEnabled { ok.click() }
+    XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 15), app.debugDescription)
+  }
+
   /// Go to a folder or file in an open or save panel.
   private func goTo(_ app: XCUIApplication, _ path: String) {
     app.typeKey("g", modifierFlags: [.command, .shift])
     // A save panel's own file-name field is also a text field in the sheet.
-    let location = app.sheets.textFields.matching(
-      NSPredicate(format: "identifier != 'saveAsNameTextField'")
-    ).firstMatch
+    let location = app.sheets.textFields.matching(identifier: "PathTextField").firstMatch
     XCTAssertTrue(location.waitForExistence(timeout: 5), app.debugDescription)
     location.click()
     location.typeText(path)
