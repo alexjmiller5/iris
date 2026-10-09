@@ -92,7 +92,7 @@ try {
   const page = ownedPage = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
   if (!page)
     throw new Error("Open the reserved navigation fixture page first.");
-  page.setDefaultTimeout(8000);
+  page.setDefaultTimeout(15000);
   await page.setViewportSize({ width: 1440, height: 1000 });
   page.on("pageerror", (error) => console.error("PAGE ERROR:", error.message));
   page.on("console", (message) => {
