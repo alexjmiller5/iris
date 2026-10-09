@@ -569,6 +569,10 @@ private final class FixtureState: @unchecked Sendable {
       }
       let body = try JSONDecoder().decode(WorkspaceRecord.self, from: bytes)
       let table = body["table"]?.text ?? ""
+      func asked(_ body: WorkspaceRecord) -> [String] {
+        if case .array(let names) = body["tables"] { return names.compactMap { $0.text } }
+        return []
+      }
       let data: JSONValue
       switch request.url!.path {
       case "/v1/schema/pull": data = .object(["entries": .array(schema.map(JSONValue.object))])
@@ -577,7 +581,9 @@ private final class FixtureState: @unchecked Sendable {
       case "/v1/cursor":
         // Advertises batched pulls, as the deployed hub does.
         data = .object([
-          "max_hub_at": .string(""), "tables": .object(tables.mapValues { _ in .string("") }),
+          // Every table asked gets a mark, as the deployed hub answers: core asks for
+          // all of its tables, including ones this hub never seeded.
+          "max_hub_at": .string(""), "tables": .object(asked(body).reduce(into: [:]) { $0[$1] = .string("") }),
           "pull_batch": .object([
             "items": .number(50), "rows": .number(5000), "bytes": .number(4_194_304),
           ]),

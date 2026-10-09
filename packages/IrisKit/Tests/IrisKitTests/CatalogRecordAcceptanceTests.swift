@@ -215,10 +215,10 @@ private final class CatalogAcceptanceHub: URLProtocol, @unchecked Sendable {
       case "/v1/stats":
         data = .object(["tables": .object(source.tables.mapValues { .number(Double($0.count)) })])
       case "/v1/cursor":
-        data = .object([
-          "max_hub_at": .string(""),
-          "tables": .object(source.tables.mapValues { _ in .string("") }),
-        ])
+        // Every table asked gets a mark, as the deployed hub answers.
+        var marks: [String: JSONValue] = [:]
+        if case .array(let names) = body["tables"] { for name in names.compactMap({ $0.text }) { marks[name] = .string("") } }
+        data = .object(["max_hub_at": .string(""), "tables": .object(marks)])
       case "/v1/rows/pull":
         let rows = source.tables[body["table"]?.text ?? ""] ?? []
         let limit = Int(body["limit"]?.text ?? "1000") ?? 1000
