@@ -73,6 +73,7 @@ final class GzipInflater {
   private var header = Data()
   private var headerDone = false
   private var deflateEnded = false
+  /// The last 8 bytes seen: the member's CRC-32 and length once input ends.
   private var trailer = Data()
   private var crc: UInt32 = 0xFFFF_FFFF
   private var size: UInt32 = 0
@@ -92,18 +93,17 @@ final class GzipInflater {
       header = Data()
       headerDone = true
     }
-    if deflateEnded {
-      trailer.append(input)
-      return Data()
-    }
-    return try inflate(input, finalize: false)
+    // Withhold the trailer from the decoder: it is the final 8 bytes of the file.
+    let data = trailer + input
+    trailer = Data(data.suffix(8))
+    return try inflate(Data(data.dropLast(8)), finalize: false)
   }
 
   func finish() throws -> Data {
-    guard headerDone else { throw Self.damaged }
+    guard headerDone, trailer.count == 8 else { throw Self.damaged }
     let tail = deflateEnded ? Data() : try inflate(Data(), finalize: true)
     // One member only: what CompressionStream and the hub write.
-    guard deflateEnded, trailer.count == 8 else { throw Self.damaged }
+    guard deflateEnded else { throw Self.damaged }
     let word = { (offset: Int) -> UInt32 in
       self.trailer.dropFirst(offset).prefix(4).enumerated().reduce(UInt32(0)) {
         $0 | UInt32($1.element) << (8 * UInt32($1.offset))
@@ -141,8 +141,9 @@ final class GzipInflater {
         }
         switch status {
         case COMPRESSION_STATUS_END:
+          // Anything after the DEFLATE end but before the trailer is not one gzip member.
+          guard !deflateEnded, stream.src_size == 0 else { throw Self.damaged }
           deflateEnded = true
-          trailer.append(UnsafeBufferPointer(start: stream.src_ptr, count: stream.src_size))
           return
         case COMPRESSION_STATUS_OK:
           if stream.src_size == 0 && stream.dst_size > 0 {

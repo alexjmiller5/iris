@@ -44,6 +44,28 @@ export async function regressionHub(source: string, origin: string, port = 0, op
 	return { server, db, auth };
 }
 
+/** Apply DDL to the hub and its schema log, as an operator migration would. */
+export function logDDL(db: any, ddl: string) {
+	db.db.exec(ddl);
+	db.db.query('INSERT INTO _schema_log(applied_at,ddl) VALUES (?,?)').run('2026-01-01T00:00:00.000Z', ddl);
+}
+
+/** Install core's canonical storage manifests (saved-views, view-defaults, ...) as logged hub schema. */
+export async function installCoreSchemas(db: any, source: string, names: string[]) {
+	for (const column of ['source', 'source_ref'])
+		if (!db.db.query("SELECT 1 FROM pragma_table_info('catalog_properties') WHERE name=?").get(column))
+			logDDL(db, `ALTER TABLE catalog_properties ADD COLUMN ${column} TEXT`);
+	for (const name of names) {
+		const storage = await Bun.file(resolve(source, `core/schema/${name}.json`)).json();
+		for (const ddl of storage.ddl) logDDL(db, ddl);
+		for (const [table, rows] of [['catalog_tables', [storage.table]], ['catalog_properties', storage.properties]] as const)
+			for (const row of rows) {
+				const keys = Object.keys(row);
+				db.db.query(`INSERT INTO ${table}(${keys.map(k => `"${k}"`).join(',')}) VALUES (${keys.map(() => '?').join(',')})`).run(...Object.values(row) as any[]);
+			}
+	}
+}
+
 if (import.meta.main) {
 	if (!process.argv[2]) throw new Error('Usage: bun scripts/workspace-regression-hub.ts <life-data-checkout>');
 	const { server } = await regressionHub(process.argv[2], process.env.LIFE_UI_TEST_ORIGIN ?? 'http://life-ui-write-fixes.localhost:5196', Number(process.env.LIFE_UI_TEST_HUB_PORT ?? 5203));

@@ -52,6 +52,13 @@
 	:global(body:has(.native-editor)) {
 		background: var(--color-paper);
 	}
+	/* On iPhone the editor's rem sizes follow the reader's Dynamic Type body size,
+	   which WebKit tracks live; the Mac keeps the 16px base. */
+	@media (pointer: coarse) {
+		:global(html:has(.native-editor)) {
+			font: -apple-system-body;
+		}
+	}
 	.native-editor :global(.markdown-editor) {
 		border: 0;
 		border-radius: 0;

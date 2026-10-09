@@ -5,6 +5,8 @@
 //   LIFE_UI_TEST_URL=http://127.0.0.1:5291/workspace LIFE_UI_TEST_SHOTS=<dir> \
 //     bun scripts/test-backup.ts <life-data-checkout>
 // It launches its own headless Chrome with a fresh profile (clean OPFS).
+// `bun scripts/test-backup.ts <life-data-checkout> --serve` runs only the hub
+// for the native BackupUITests (TEST_RUNNER_LIFE_UI_TEST_BACKUP_HUB).
 import { chromium, expect as base, type Page } from '@playwright/test';
 import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
@@ -107,6 +109,11 @@ const origin = new URL(url).origin;
 const env = { DB: db, AUTH_DB: auth, HUB_TOKEN: 'operator-fixture', CORS_ORIGINS: origin, BACKUPS: bucket, ACCOUNT_ID: 'acct', BACKUP_API_TOKEN: 'fixture', BACKUP_DATABASES: { life: 'synthetic' }, BACKUP_DATA_DATABASE: 'life' };
 const hub = Bun.serve({ hostname: '127.0.0.1', port, fetch: (request) => worker.fetch(request, env, { waitUntil(p: Promise<unknown>) { void p.catch(() => {}); } }) });
 const hubUrl = hub.url.href.replace(/\/$/, '');
+// `--serve`: only the hub, for the native BackupUITests (token "fixture").
+if (process.argv.includes('--serve')) {
+	console.log(`Synthetic backup hub listening at ${hubUrl}`);
+	await new Promise(() => {});
+}
 
 // --- a disposable headless Chrome -------------------------------------------
 const chrome = Bun.spawn(['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '--headless=new', `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${join(scratch, 'chrome')}`, '--no-first-run', '--window-size=1280,900', 'about:blank'], { stdout: 'ignore', stderr: 'ignore' });

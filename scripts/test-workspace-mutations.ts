@@ -5,10 +5,12 @@ if (!source) throw new Error('Usage: bun scripts/test-workspace-mutations.ts <li
 const checkOnly = process.argv.includes('--check');
 const route = 'apps/web/src/routes/workspace/+page.svelte';
 const worker = 'apps/web/src/lib/database.worker.ts';
+const field = 'apps/web/src/lib/FieldEditor.svelte';
+const bar = 'apps/web/src/lib/filter-bar.ts';
 const mutations: { name: string; file: string; test: string; edits: [string | RegExp, string][] }[] = [
 	{ name: 'write locks removed', file: route, test: 'write in flight locks', edits: [
 		['class="workspace-controls" disabled={writing}', 'class="workspace-controls" disabled={false}'],
-		[/writing\s*\|\|\s*!!p\.derived_by/, '!!p.derived_by']
+		[/\n\t\twriting \|\|\n\t\tselected\?\.deleted_at/, '\n\t\tselected?.deleted_at']
 	] },
 	{ name: 'canonical draft reconciliation removed', file: route, test: 'canonical SQL', edits: [
 		['draft = rowDraft(stored);', '/* mutation: leave the draft unchanged */']
@@ -16,14 +18,25 @@ const mutations: { name: string; file: string; test: string; edits: [string | Re
 	{ name: 'dynamic options excluded', file: worker, test: 'dynamic options are available', edits: [
 		['return local.options(args);', 'return (await readCatalog(db)).properties.find(p => p.tbl === args.table && p.col === args.column)?.options?.map(o => o.v) ?? [];']
 	] },
-	{ name: 'legacy selected values omitted', file: route, test: 'unknown selections', edits: [
-		["...(p.type === 'multi_select' ? list(draft[p.col]) : [draft[p.col]].filter(Boolean))", '...[]']
+	{ name: 'legacy selected values omitted', file: field, test: 'unknown selections', edits: [
+		['...(multi ? list(value) : [value].filter(Boolean))', '...[]']
 	] },
-	{ name: 'old filters retained', file: route, test: 'workspace switch resets', edits: [
-		['filters = [];', '/* mutation: keep filters */']
+	{ name: 'old search and trash retained', file: route, test: 'workspace switch resets', edits: [
+		["\t\tsearch = '';\n\t\ttrash = false;\n", ''],
+		["search = definition?.search ?? '';", 'search = definition?.search ?? search;'],
+		['trash = definition?.trash ?? false;', 'trash = definition?.trash ?? trash;']
 	] },
 	{ name: 'pending count frozen', file: route, test: 'pending count', edits: [
 		['pendingEdits = state.status.pendingUiEdits;', 'pendingEdits = 0;']
+	] },
+	{ name: 'removing one chip drops the others', file: bar, test: 'combined filters', edits: [
+		['} else filters.splice(ref.index, 1);', '} else filters.splice(0);']
+	] },
+	{ name: 'boolean filters always match checked', file: bar, test: 'boolean filters', edits: [
+		["if (type === 'bool') return raw === 'true';", "if (type === 'bool') return true;"]
+	] },
+	{ name: 'empty numeric input becomes zero', file: bar, test: 'empty numeric', edits: [
+		["rule.values.filter((v) => v.trim() !== '').map((v) => parse(v, type))", 'rule.values.map((v) => parse(v, type))']
 	] }
 ];
 for (const mutation of mutations) {

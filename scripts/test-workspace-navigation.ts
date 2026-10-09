@@ -342,23 +342,28 @@ try {
         await expect.poll(() => query().get("view")).toBe("project-view");
         const address = page.url();
         await page
+          .getByRole("button", { name: "View settings", exact: true })
+          .click();
+        const menu = page.getByRole("dialog", {
+          name: "View settings",
+          exact: true,
+        });
+        await menu
           .getByRole("textbox", { name: "View name", exact: true })
           .fill("Renamed headlines");
-        await page
-          .getByRole("button", { name: "Update selected", exact: true })
-          .click();
-        await expect(
-          page.getByRole("button", { name: "Update selected", exact: true }),
-        ).toBeEnabled();
+        await menu.getByRole("button", { name: "Rename", exact: true }).click();
+        const views = page.getByRole("combobox", { name: "View", exact: true });
+        await expect(views.locator("option:checked")).toHaveText(
+          "Renamed headlines",
+        );
+        await page.keyboard.press("Escape");
         expect(page.url()).toBe(address);
         await home();
         await follow(address);
-        await expect(
-          page.getByRole("combobox", { name: "View", exact: true }),
-        ).toHaveValue("project-view");
-        await expect(
-          page.getByRole("textbox", { name: "View name", exact: true }),
-        ).toHaveValue("Renamed headlines");
+        await expect(views).toHaveValue("project-view");
+        await expect(views.locator("option:checked")).toHaveText(
+          "Renamed headlines",
+        );
       },
     ],
     [

@@ -1,6 +1,6 @@
 import Foundation
-import GRDB
 import LifeExtensionSupport
+import SQLite3
 import Testing
 
 @testable import LifeKit
@@ -23,6 +23,14 @@ struct DumpFileTests {
   @Test func gzipAndPlainDumpsReadAsTheSameText() throws {
     #expect(try read(Self.gzip) == Self.text)
     #expect(try read(Data(Self.text.utf8)) == Self.text)
+  }
+
+  @Test func gzipInflatesWhenFedOneByteAtATime() throws {
+    let inflater = GzipInflater()
+    var out = Data()
+    for byte in Self.gzip { out.append(try inflater.feed(Data([byte]))) }
+    out.append(try inflater.finish())
+    #expect(String(decoding: out, as: UTF8.self) == Self.text)
   }
 
   @Test func damagedOrTruncatedGzipIsRefused() throws {
@@ -125,14 +133,18 @@ struct DumpFileTests {
     let copy = root.appendingPathComponent("copy.sqlite")
     try await workspace.copyReplica(to: copy)
     try await workspace.close()
-    let queue = try DatabaseQueue(path: copy.path)
-    let (pages, size, notes) = try await queue.read { db in
-      (
-        try Int.fetchOne(db, sql: "PRAGMA page_count")!, try Int.fetchOne(db, sql: "PRAGMA page_size")!,
-        try Int.fetchOne(db, sql: "SELECT count(*) FROM notes")!
-      )
+    var db: OpaquePointer?
+    #expect(sqlite3_open_v2(copy.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
+    defer { sqlite3_close(db) }
+    func integer(_ sql: String) -> Int {
+      var statement: OpaquePointer?
+      sqlite3_prepare_v2(db, sql, -1, &statement, nil)
+      defer { sqlite3_finalize(statement) }
+      return sqlite3_step(statement) == SQLITE_ROW ? Int(sqlite3_column_int64(statement, 0)) : -1
     }
-    try queue.close()
+    let (pages, size, notes) = (
+      integer("PRAGMA page_count"), integer("PRAGMA page_size"), integer("SELECT count(*) FROM notes")
+    )
     let bytes = try #require(try copy.resourceValues(forKeys: [.fileSizeKey]).fileSize)
     #expect(bytes == pages * size)
     #expect(notes > 0)
