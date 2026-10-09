@@ -707,7 +707,8 @@ concurrent tasks inside tests and their assertions unchanged.
 Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
 `LIFE_UI_DEV_NO_HMR=1` dev server; usage in the README):
 - `check-a11y.ts`: keyboard and axe walk of every view, light and dark (`just check`).
-- `test-filter-bar.ts`: filter chips, sorts, autosave and Undo on the sample workspace.
+- `test-filter-bar.ts`: filter chips, sorts, autosave (also across a view switch while a
+  save is in flight) and Undo on the sample workspace.
 - `test-auto-sync.ts`: background push/pull, offline pending, sync leader, sidebar toggle.
 - `test-notes-views.ts`: preferred and related-record views, flag quick filter, status search.
 - `test-workspace-regressions.ts`: write locks, SQL defaults, dynamic options, typed
@@ -718,6 +719,8 @@ Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
 - `test-view-defaults.ts`: preferred view, explicit view links, deleted-preference notice.
 - `test-view-options.ts`: Today boundary/timezone, group rule types, row actions guard.
 - `test-view-presentations.ts`: Calendar, Gallery and Board layouts with synced moves.
+- `test-workflow-views.ts`: any-of groups, Today across midnight, row actions through
+  sync, Save as new view preserving actions, groups and timezone.
 
 `project.yml` is authoritative; generated Xcode projects and Info.plists are
 ignored. Child justfiles expose platform run/test/check/build. Caches and derived

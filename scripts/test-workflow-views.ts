@@ -31,7 +31,8 @@ try{
  await page.getByRole('navigation',{name:'Tables'}).getByRole('button',{name:'widgets',exact:true}).click();
  const views=page.getByRole('combobox',{name:'View',exact:true});await views.selectOption('workflow');await expect(views).toHaveValue('workflow');
  await expect(page.locator('.record-link')).toHaveText(['Fixture record']);
- await expect(page.getByRole('columnheader')).toHaveText(['Title',...actions.map(a=>a.label),'Status','Due']);
+ // The first header is the row-selection checkbox.
+ await expect(page.getByRole('columnheader')).toHaveText(['','Title',...actions.map(a=>a.label),'Status','Due']);
  if(process.env.LIFE_UI_TEST_SCREENSHOT)await page.screenshot({path:process.env.LIFE_UI_TEST_SCREENSHOT,fullPage:true});
  await page.clock.runFor(11000);
  await expect(page.locator('.record-link')).toHaveText(['Second record','Fixture record']);
@@ -43,20 +44,33 @@ try{
  console.log('PASS: foreground refresh re-resolves the current local calendar day');
  await page.getByRole('button',{name:'Mark reviewed',exact:true}).click();
  await expect(page.locator('.record-link')).toHaveCount(0);
- await views.selectOption('');await expect(page.locator('.record-link')).toHaveCount(3);
+ // The table's default view has no filters: every record, including the reviewed one.
+ const plain=(await views.locator('option').evaluateAll(o=>o.map(x=>(x as HTMLOptionElement).value))).find(v=>v&&v!=='workflow')!;
+ await views.selectOption(plain);await expect(page.locator('.record-link')).toHaveCount(3);
  await page.getByRole('button',{name:'Fixture record',exact:true}).click();
  await expect(page.getByLabel('Status',{exact:true})).toHaveValue('Reviewed');
  await page.getByRole('button',{name:'Close record',exact:true}).click();
  await views.selectOption('workflow');
+ // Sync runs on its own timers, which the installed clock holds; let time flow.
+ await page.clock.resume();
  await synced(page); expect((db.db.query('SELECT status FROM widgets WHERE id=?').get('fixture-record') as any).status).toBe('Reviewed');
  console.log('PASS: action commits through ordinary sync and remains available in All records');
  // Preserve the definition across save/reopen, including action IDs, groups and option order.
- await page.getByLabel('View name',{exact:true}).fill('Queue copy');await page.getByRole('button',{name:'Save as',exact:true}).click();
+ const settings=page.getByRole('button',{name:'View settings',exact:true});
+ await settings.click();await page.getByLabel('View name',{exact:true}).fill('Queue copy');
+ await page.getByRole('button',{name:'Save as new view',exact:true}).click();
  await expect(views).not.toHaveValue('workflow');const copy=await views.inputValue();expect(copy).not.toBe('');
  await page.reload();await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
  await page.getByRole('navigation',{name:'Tables'}).getByRole('button',{name:'widgets',exact:true}).click();await views.selectOption(copy);await expect(views).toHaveValue(copy);
+ await settings.click();
  await page.getByText('Row actions (5)',{exact:true}).click();await expect(page.getByLabel('Button label')).toHaveCount(5);
- await page.getByText('Filter groups (1)',{exact:true}).click();await expect(page.getByLabel('Group 1 match')).toHaveValue('any');await expect(page.getByLabel('Today timezone')).toHaveValue('America/New_York');
+ await page.getByText('Today',{exact:true}).click();await expect(page.getByLabel('Today timezone')).toHaveValue('America/New_York');
+ await page.keyboard.press('Escape');
+ // The any-of status group shows as one Status chip with both options checked.
+ await page.getByRole('group',{name:'Sort and filters'}).getByRole('button',{name:/^Status/}).click();
+ const editor=page.getByRole('dialog',{name:'Edit filter'});
+ await expect(editor.getByRole('checkbox',{name:'Open'})).toBeChecked();await expect(editor.getByRole('checkbox',{name:'Pending'})).toBeChecked();
+ await page.keyboard.press('Escape');
  console.log('PASS: reopen preserves action identities, grouped filters and timezone');
 }finally{
  await page.clock.resume();
