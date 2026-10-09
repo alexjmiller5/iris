@@ -134,7 +134,10 @@ and are checked against the listed size and SHA-256. Restore needs the typed wor
 `replace`, no open edits and no pending local writes; core writes a recovery copy
 first and the newest three are kept as Undo. A CLI-owned shared file shows its
 path and `life export` instead. Progress folds into the sync pill.
-`scripts/test-backup.ts` drives the web flow against the real hub Worker.
+`scripts/test-backup.ts` drives the web flow against the real hub Worker; with
+`--serve` it is the synthetic hub for the iOS `BackupUITests`. The Mac `BackupUITests`
+run on the CI clean runner over `scripts/backup-fixtures.py` files (the Backup view
+sits inside the Hub connection sheet, so wait on a panel's `OKButton`, not on sheets).
 
 Web row checkboxes select exact IDs on the loaded page. Bulk property changes and
 soft-deletes use fresh full rows and revision-checked shared writes, one row at a
