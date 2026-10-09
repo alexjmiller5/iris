@@ -245,7 +245,7 @@ try {
       };
       state.holdSaves = true;
     });
-    await page.getByRole("button", { name: "Filter", exact: true }).click();
+    await page.getByRole("button", { name: /^Filter/ }).first().click();
     await page.getByLabel("Filter by property").fill("Title");
     await page.keyboard.press("Enter");
     await editor().getByLabel("Value").fill("one");

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Daily section, share sheet, Spotlight, widget gallery and Lock Screen acceptance
 # on one disposable simulator. Spotlight ingests app items asynchronously, so its
-# step retypes the query for up to a few minutes after the fixture indexes.
+# step retypes the query for up to a few minutes after the fixture indexes. Erase the
+# simulator first (`xcrun simctl erase <udid>`): Home and Lock Screen edits persist.
 # Usage: test-integrations-ios.sh <project> <derived-data> <simulator-udid> <results-dir> [time-zone]
 set -euo pipefail
 project="$1"

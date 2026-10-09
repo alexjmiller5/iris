@@ -14,10 +14,17 @@ final class BackupUITests: XCTestCase {
     app.launch()
     defer { app.terminate() }
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 15))
+    // The toolbar settles after launch; a tap during that can land on New record.
+    RunLoop.current.run(until: Date().addingTimeInterval(2))
 
     // A replica of the synthetic hub: a file-backed workspace with hub backups.
-    tap(app.buttons["workspace-menu"])
-    tap(app.buttons["Hub connection"])
+    let hubConnection = app.buttons["Hub connection"]
+    for _ in 0..<4 where !hubConnection.exists {
+      if app.navigationBars["New record"].exists { app.buttons["Cancel"].tap() }
+      tap(app.buttons["workspace-menu"])
+      _ = hubConnection.waitForExistence(timeout: 3)
+    }
+    tap(hubConnection)
     tap(app.textFields["hub-endpoint"])
     app.textFields["hub-endpoint"].typeText(endpoint)
     tap(app.buttons["Use existing token"])
