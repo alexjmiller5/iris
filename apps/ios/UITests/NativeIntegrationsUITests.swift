@@ -212,29 +212,34 @@ import XCTest
     require(slots.firstMatch, in: poster, 15)
     // PosterBoard reports its reticles as not hittable; tap the slot's own frame.
     slots.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-    // The widget picker can belong to PosterBoard or SpringBoard depending on the release.
-    let lifeUI = poster.descendants(matching: .any).matching(
-      NSPredicate(format: "label CONTAINS 'Life UI'")).firstMatch
-    let pickerInSpringboard = springboard.descendants(matching: .any).matching(
-      NSPredicate(format: "label CONTAINS 'Life UI'")).firstMatch
-    for _ in 0..<6 where !lifeUI.exists && !pickerInSpringboard.exists { poster.swipeUp() }
-    let picker = lifeUI.exists ? poster : springboard
-    keep(picker, "lock-screen-widget-picker")
-    require(lifeUI.exists ? lifeUI : pickerInSpringboard, in: picker, 10)
-    (lifeUI.exists ? lifeUI : pickerInSpringboard).tap()
-    keep(picker, "lock-screen-life-ui-widgets")
-    // Add the rectangular count tile, then configure it to the enabled notes source.
-    let tile = picker.buttons.matching(
-      NSPredicate(format: "label == 'Life UI, Record count' AND value CONTAINS 'Rectangular'")
-    ).firstMatch
-    require(tile, in: picker, 15)
-    tile.tap()
-    let close = picker.buttons["close"]
-    if close.waitForExistence(timeout: 5) { close.tap() }
-    let placed = poster.descendants(matching: .any).matching(
-      NSPredicate(format: "label CONTAINS 'Life UI' OR label CONTAINS 'Records'")).firstMatch
-    require(placed, in: poster, 15)
-    placed.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    // A slot that already holds the Life UI count opens its configuration instead.
+    let configured = poster.descendants(matching: .any).matching(
+      NSPredicate(format: "label == 'notes'")).firstMatch
+    if !configured.waitForExistence(timeout: 4) {
+      // The widget picker can belong to PosterBoard or SpringBoard depending on the release.
+      let lifeUI = poster.descendants(matching: .any).matching(
+        NSPredicate(format: "label CONTAINS 'Life UI'")).firstMatch
+      let pickerInSpringboard = springboard.descendants(matching: .any).matching(
+        NSPredicate(format: "label CONTAINS 'Life UI'")).firstMatch
+      for _ in 0..<6 where !lifeUI.exists && !pickerInSpringboard.exists { poster.swipeUp() }
+      let picker = lifeUI.exists ? poster : springboard
+      keep(picker, "lock-screen-widget-picker")
+      require(lifeUI.exists ? lifeUI : pickerInSpringboard, in: picker, 10)
+      (lifeUI.exists ? lifeUI : pickerInSpringboard).tap()
+      keep(picker, "lock-screen-life-ui-widgets")
+      // Add the rectangular count tile, then configure it to the enabled notes source.
+      let tile = picker.buttons.matching(
+        NSPredicate(format: "label == 'Life UI, Record count' AND value CONTAINS 'Rectangular'")
+      ).firstMatch
+      require(tile, in: picker, 15)
+      tile.tap()
+      let close = picker.buttons["close"]
+      if close.waitForExistence(timeout: 5) { close.tap() }
+      let placed = poster.descendants(matching: .any).matching(
+        NSPredicate(format: "label CONTAINS 'Life UI' OR label CONTAINS 'Records'")).firstMatch
+      require(placed, in: poster, 15)
+      placed.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    }
     // The configuration list opens directly on current releases, or behind a Choose row.
     let notesQuery = NSPredicate(format: "label == 'notes'")
     let notesHere = poster.descendants(matching: .any).matching(notesQuery).firstMatch
@@ -249,9 +254,25 @@ import XCTest
     keep(notesHere.exists ? poster : springboard, "lock-screen-count-source")
     notes.tap()
     sleep(2)
-    if !poster.buttons["editing-done"].exists {
-      poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+    let closeSheet = poster.buttons.matching(NSPredicate(format: "label IN {'Close', 'close'}")).firstMatch
+    if closeSheet.exists { closeSheet.tap() } else {
+      poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04)).tap()
     }
+    sleep(2)
+    let done = poster.buttons["editing-done"]
+    require(done, in: poster, 10)
+    done.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    sleep(3)
+    // Done returns to the wallpaper collection; selecting the poster shows the Lock Screen.
+    if poster.buttons["Customize"].exists {
+      poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)).tap()
+      sleep(3)
+    }
+    XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
+    sleep(2)
+    XCUIDevice.shared.press(.home)
+    sleep(3)
+    keep(springboard, "lock-screen-count-widget")
     for label in ["Quick Add fixture saved", "A place to start"] {
       for process in [poster, springboard] {
         XCTAssertFalse(
