@@ -496,8 +496,7 @@ async function dispatch(request: DatabaseRequest) {
 		case 'search':
 			return local.search(args);
 		case 'remoteRows': {
-			if (databaseName === 'iris-demo')
-				throw new Error('Sample workspaces cannot browse a hub.');
+			if (databaseName === 'iris-demo') throw new Error('Sample workspaces cannot browse a hub.');
 			const { token, ...input } = args;
 			const hub = createHttpHub(input.endpoint, token, (url, init) =>
 				fetch(url, { ...init, signal: AbortSignal.timeout(30_000) })
@@ -505,8 +504,7 @@ async function dispatch(request: DatabaseRequest) {
 			return createCoreHandlers(db, () => hub, 'iris').remoteRows(input);
 		}
 		case 'remoteRow': {
-			if (databaseName === 'iris-demo')
-				throw new Error('Sample workspaces cannot browse a hub.');
+			if (databaseName === 'iris-demo') throw new Error('Sample workspaces cannot browse a hub.');
 			const { token, ...input } = args;
 			const hub = createHttpHub(input.endpoint, token, (url, init) =>
 				fetch(url, { ...init, signal: AbortSignal.timeout(30_000) })

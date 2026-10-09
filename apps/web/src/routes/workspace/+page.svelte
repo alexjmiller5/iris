@@ -337,10 +337,7 @@
 	$effect(() => {
 		if (opened)
 			try {
-				localStorage.setItem(
-					`iris:groups:${demo ? 'demo' : 'workspace'}`,
-					JSON.stringify(groups)
-				);
+				localStorage.setItem(`iris:groups:${demo ? 'demo' : 'workspace'}`, JSON.stringify(groups));
 			} catch {
 				notice = 'Table groups could not be saved on this device.';
 			}

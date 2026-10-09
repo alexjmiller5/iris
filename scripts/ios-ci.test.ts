@@ -83,7 +83,7 @@ describe('iOS distribution workflow boundary', () => {
   test('requires the intended phone from the secret seam', () => {
     const sign = workflow().jobs.build.steps.find((s: any) => s.name === 'Sign and verify Ad Hoc IPA');
     const load = workflow().jobs.build.steps.find((s: any) => s.uses?.startsWith('1password/load-secrets-action@'));
-    expect(load.env.IOS_DEVICE_ID).toBe('op://Iris/Iris ENV/IOS_DEVICE_ID');
+    expect(load.env.IOS_DEVICE_ID).toBe('op://Life UI/Life UI ENV/IOS_DEVICE_ID');
     expect(sign.run).toContain('test -n "$IOS_DEVICE_ID"');
   });
   test('uses existing project service account and iOS distribution fields', () => {
