@@ -88,7 +88,7 @@ final class BackupUITests: XCTestCase {
     let save = app.buttons["DOCPicker.actionButton"]
     XCTAssertTrue(save.isEnabled)
     save.tap()
-    if !picker.waitForNonExistence(timeout: 3) {
+    if !picker.waitForNonExistence(timeout: 15) {
       let replace = app.buttons["Replace"]
       XCTAssertTrue(replace.waitForExistence(timeout: 3), app.debugDescription)
       replace.tap()
@@ -126,6 +126,11 @@ final class BackupUITests: XCTestCase {
   }
 
   private func capture(_ app: XCUIApplication, _ name: String) {
+    let prompt = app.sheets["Save Password?"]
+    if prompt.exists, prompt.buttons["Not Now"].isHittable {
+      prompt.buttons["Not Now"].tap()
+      _ = prompt.waitForNonExistence(timeout: 15)
+    }
     let image = XCTAttachment(screenshot: app.screenshot())
     image.name = name
     image.lifetime = .keepAlways

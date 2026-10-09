@@ -31,6 +31,8 @@ struct SortMenu: View {
         #if os(iOS)
           // Drag handles stay visible, as in Notion; row buttons remain usable.
           .environment(\.editMode, .constant(.active))
+        #else
+          .listStyle(.plain)
         #endif
         Divider()
         // Outside the List: a Menu in an edit-mode row does not open on iOS.

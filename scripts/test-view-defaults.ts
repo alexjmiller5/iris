@@ -17,6 +17,8 @@ try {
  db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('preferred-opaque','Z chosen','widgets',JSON.stringify({version:1,filters:[{column:'id',op:'eq',value:'fixture-record'}]}));
  db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('other-opaque','A all','widgets',JSON.stringify({version:1}));
  page=await sourceNavigationCDP(url);const cdp=page;
+ // Background tabs throttle rendering and the 2 s sync loop.
+ await cdp.command('Page.bringToFront');
  const button=(name:string)=>named('button',name);
  const click=(name:string)=>cdp.click(button(name));
  const select=element('select[aria-label="View"]');
@@ -61,7 +63,7 @@ try {
  await openTable('views');await openTable('widgets');await waitSelected(catalogDefault);
  expect(await cdp.evaluate(`document.body.innerText.includes(${js(notice)})`)).toBe(false);
  console.log('PASS deleted preferred view falls back to the catalog default with a notice, and Use catalog default clears it through real Worker/core.');
-} catch(error) { if(page)console.error(await page.evaluate("document.body.innerText"));throw error;
+} catch(error) { if(page){console.error(await page.evaluate("document.body.innerText"));if(process.env.DEBUG_SHOT)await Bun.write(process.env.DEBUG_SHOT,Buffer.from((await page.command('Page.captureScreenshot',{format:'png'})).data,'base64'));}throw error;
 } finally {
  if(page){await page.navigate(new URL('/',url).href).catch(()=>{});await page.command('Storage.clearDataForOrigin',{origin,storageTypes:'all'}).catch(()=>{});page.close();}
  server.stop(true);db.db.close();auth.db.close();

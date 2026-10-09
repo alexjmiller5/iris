@@ -107,16 +107,8 @@ final class ReferenceCreateUITests: XCTestCase {
   }
 
   private func expandEmptyProperties(_ app: XCUIApplication) {
-    let title = app.sheets.staticTexts.matching(
-      NSPredicate(format: "label == %@ OR value == %@", "Empty properties", "Empty properties")
-    ).firstMatch
-    XCTAssertTrue(title.waitForExistence(timeout: 10))
-    // A Form DisclosureGroup is an outline row: open it with its triangle.
-    let row = title.frame.midY
-    let triangle = app.sheets.disclosureTriangles.allElementsBoundByIndex.first {
-      abs($0.frame.midY - row) < 16
-    }
-    if let triangle { triangle.click() } else { title.click() }
+    // A Form DisclosureGroup is an outline row opened by its labelled triangle.
+    click(app.sheets.disclosureTriangles["Empty properties"])
   }
 
   private func label(_ column: String, app: XCUIApplication) -> String {

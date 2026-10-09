@@ -51,11 +51,8 @@ try{
  const headers=page.locator('[role="columnheader"]:not(.selection)');
  const menu=page.getByRole('dialog',{name:'View settings',exact:true});
  const settings=async()=>{if(!await menu.isVisible())await page.getByRole('button',{name:'View settings',exact:true}).click();await expect(menu).toBeVisible();};
- /** A view's definition as the local core stores it. */
- const local=(id:string)=>page.evaluate(async(id)=>{
-  const {WorkspaceDatabase}=await import('/src/lib/database.ts');const db=new WorkspaceDatabase();
-  try{await db.request('open',{demo:false});return (await db.request('listViews',{table:'widgets'})).views.find((v:any)=>v.id===id)?.definition??null;}finally{db.close();}
- },id);
+ /** A view's definition as the hub stores it once the automatic push lands. */
+ const hub=(id:string)=>{const row=db.db.query('SELECT definition FROM views WHERE id=?').get(id) as any;return row?JSON.parse(row.definition):null;};
  await expect(views).toContainText('Only the second record');
  await expect(views.locator('option[value="future-view"]')).toHaveJSProperty('disabled',true);
  await expect(views.locator('option[value="future-view"]')).toContainText('Unsupported');
@@ -77,7 +74,7 @@ try{
  await page.getByLabel('Width Body',{exact:true}).press('Tab');
  await page.getByText('Columns',{exact:true}).click();
  // Settings save into the applied view on their own; wait so only Save as is held below.
- await expect.poll(async()=>(await local('agent-view'))?.widths,{timeout:30000}).toEqual({body:360});
+ await expect.poll(()=>hub('agent-view')?.widths,{timeout:30000}).toEqual({body:360});
  await settings();
  await menu.getByLabel('View name',{exact:true}).fill('A saved copy');
  await page.evaluate(() => { (window as any).holdViewWrites=true; });

@@ -108,18 +108,11 @@ try {
 		await page.keyboard.press('Enter');
 		await expect(editor).toBeVisible();
 	}
-	/** The applied view's saved filters, read through the core like any client. */
+	/** The applied view's filters as the hub stores them once the automatic push lands. */
 	async function storedFilters() {
 		const id = await page.getByLabel('View', { exact: true }).inputValue();
-		return page.evaluate(async (id) => {
-			const { WorkspaceDatabase } = await import('/src/lib/database.ts');
-			const db = new WorkspaceDatabase();
-			try {
-				await db.request('open', { demo: false });
-				const { views } = await db.request('listViews', { table: 'widgets' });
-				return views.find((v: any) => v.id === id)?.definition?.filters ?? null;
-			} finally { db.close(); }
-		}, id);
+		const row = db.db.query('SELECT definition FROM views WHERE id=?').get(id) as any;
+		return row ? JSON.parse(row.definition).filters ?? [] : null;
 	}
 	await check('column settings hide, reorder and resize without dropping hidden edit values', async () => {
 		const headers = page.locator('[role="columnheader"]:not(.selection)');
@@ -174,7 +167,7 @@ try {
 		await expect(page.getByRole('button', { name: 'Second record', exact: true })).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Fixture record', exact: true })).not.toBeVisible();
 		await page.keyboard.press('Escape');
-		await expect.poll(storedFilters).toEqual([{ column: 'active', op: 'eq', value: false }]);
+		await expect.poll(storedFilters, { timeout: 20000 }).toEqual([{ column: 'active', op: 'eq', value: false }]);
 		await chips.getByRole('button', { name: 'Remove filter: Active: unchecked', exact: true }).click();
 		await expect(shown(3)).toBeVisible();
 	});
@@ -189,7 +182,7 @@ try {
 		await expect(editor).toBeHidden();
 		await expect(page.getByRole('button', { name: /^Remove filter/ })).toHaveCount(0);
 		await expect(shown(3)).toBeVisible();
-		await expect.poll(storedFilters).toEqual([]);
+		await expect.poll(storedFilters, { timeout: 20000 }).toEqual([]);
 	});
 	await check('write in flight locks editable fields', async () => {
 		await page.getByRole('button', { name: 'Fixture record', exact: true }).click();

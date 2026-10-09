@@ -276,6 +276,12 @@ struct PropertyPicker<Footer: View>: View {
               .foregroundStyle(.primary)
           }
           .tint(.primary)
+          #if os(macOS)
+            // Plain full-width rows; the default Mac list button is a small bezel.
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+          #endif
           .accessibilityIdentifier("filter-property-\(field.id)")
         }
         if matches.isEmpty { Text("No matching properties").foregroundStyle(.secondary) }

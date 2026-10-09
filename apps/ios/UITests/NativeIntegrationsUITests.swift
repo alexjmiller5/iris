@@ -87,7 +87,14 @@ import XCTest
     let header = spotlight.otherElements.matching(
       NSPredicate(format: "identifier BEGINSWITH 'Identifier:SectionHeader' AND identifier ENDSWITH ',Title:Life UI'")
     ).firstMatch
-    require(header, in: spotlight, 20)
+    // Spotlight ingests app items asynchronously; retype until the app's section appears.
+    for _ in 0..<6 where !header.waitForExistence(timeout: 20) {
+      search.tap()
+      let clear = spotlight.buttons["Clear text"]
+      if clear.exists { clear.tap() }
+      search.typeText(title + "\n")
+    }
+    require(header, in: spotlight, 5)
     let section = header.identifier.components(separatedBy: ",").first { $0.hasPrefix("Section:") } ?? ""
     let result = spotlight.cells.matching(
       NSPredicate(format: "identifier CONTAINS %@ AND label CONTAINS[c] %@", "ResultCell,\(section),", title)
@@ -111,8 +118,9 @@ import XCTest
     keep(app, "spotlight-row-opened")
   }
 
-  /// Gallery discovery, Home Screen placement and a widget tap into the app.
-  func testGalleryAddsATodayWidgetThatOpensTheApp() throws {
+  /// Gallery discovery of every widget kind, Home Screen placement with a configured
+  /// source, rendered titles and a row tap that opens the app on that record's link.
+  func testGalleryAddsATitlesWidgetThatOpensItsRecord() throws {
     let app = try application()
     XCUIDevice.shared.press(.home)
     springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)).press(forDuration: 2)
@@ -131,20 +139,99 @@ import XCTest
     require(entry, in: springboard, 15)
     keep(springboard, "widget-gallery-search")
     entry.tap()
-    let addWidget = springboard.buttons.matching(NSPredicate(format: "label == 'Add Widget'")).firstMatch
-    require(addWidget, in: springboard, 15)
+    let page = springboard.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Life UI, '"))
+    require(page.firstMatch, in: springboard, 15)
+    // Walk every gallery page once; each kind and size has its own page.
+    var seen: [String] = []
+    for _ in 0..<12 {
+      let current = page.allElementsBoundByIndex.filter(\.isHittable)
+        .map { "\($0.label) \(($0.value as? String) ?? "")" }
+      guard let label = current.first, !seen.contains(label) else { break }
+      seen.append(label)
+      springboard.swipeLeft()
+    }
+    let kinds = Set(seen.compactMap { $0.split(separator: ",").dropFirst().first?.trimmingCharacters(in: .whitespaces) })
+    for kind in ["Table titles", "Today", "Record count", "Quick Add"] {
+      XCTAssertTrue(kinds.contains { $0.hasPrefix(kind) }, "Gallery pages: \(seen)")
+    }
+    for _ in seen { springboard.swipeRight() }
+    springboard.swipeLeft()  // Table titles, Medium
+    let current = page.allElementsBoundByIndex.first(where: \.isHittable)
+    XCTAssertEqual(current?.label, "Life UI, Table titles")
+    XCTAssertTrue((current?.value as? String)?.contains("Medium") == true)
     keep(springboard, "widget-gallery-life-ui")
+    let addWidget = springboard.buttons.matching(NSPredicate(format: "label ENDSWITH 'Add Widget'"))
+      .firstMatch
+    require(addWidget, in: springboard, 10)
     addWidget.tap()
     let done = springboard.buttons["Done"]
     if done.waitForExistence(timeout: 10) { done.tap() }
-    keep(springboard, "home-screen-widget")
-    let widget = springboard.descendants(matching: .any).matching(
-      NSPredicate(format: "identifier CONTAINS[c] 'LifeUI' OR label CONTAINS 'Records' OR label CONTAINS 'Synthetic'")
-    ).firstMatch
+    // Configure the placed widget to the enabled notes source.
+    let widget = springboard.icons.matching(NSPredicate(format: "label CONTAINS 'Table titles' OR identifier CONTAINS 'Life UI'")).firstMatch
     require(widget, in: springboard, 15)
-    widget.tap()
+    widget.press(forDuration: 1.5)
+    let editWidget = springboard.buttons.matching(NSPredicate(format: "label CONTAINS 'Edit Widget'")).firstMatch
+    require(editWidget, in: springboard, 10)
+    editWidget.tap()
+    let choose = springboard.buttons.matching(NSPredicate(format: "label CONTAINS 'Table or saved view' OR label == 'Choose'")).firstMatch
+    require(choose, in: springboard, 15)
+    choose.tap()
+    let notes = springboard.descendants(matching: .any).matching(NSPredicate(format: "label == 'notes'")).firstMatch
+    require(notes, in: springboard, 15)
+    notes.tap()
+    springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06)).tap()
+    let title = springboard.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS 'Quick Add fixture saved'")
+    ).firstMatch
+    require(title, in: springboard, 30)
+    keep(springboard, "home-screen-titles-widget")
+    title.tap()
     XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
-    keep(app, "widget-opened-app")
+    if app.buttons["open-local"].waitForExistence(timeout: 5) { app.buttons["open-local"].tap() }
+    XCTAssertTrue(app.buttons["open-pending-link"].waitForExistence(timeout: 15))
+    keep(app, "widget-row-link-banner")
+  }
+
+  /// Lock Screen accessories expose a count and generic text, never record titles.
+  func testLockScreenCountShowsNoRecordTitles() throws {
+    _ = try application()
+    let poster = XCUIApplication(bundleIdentifier: "com.apple.PosterBoard")
+    XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
+    sleep(2)
+    XCUIDevice.shared.press(.home)
+    sleep(1)
+    springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)).press(forDuration: 2.5)
+    let customize = poster.buttons["Customize"]
+    require(customize, in: poster, 15)
+    customize.tap()
+    let lockScreen = poster.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS 'Lock Screen'")).firstMatch
+    require(lockScreen, in: poster, 10)
+    lockScreen.tap()
+    let slots = poster.buttons.matching(identifier: "grouped-widgets-reticle-view")
+    require(slots.firstMatch, in: poster, 15)
+    let slot = try XCTUnwrap(slots.allElementsBoundByIndex.first(where: \.isHittable))
+    slot.tap()
+    // The widget picker can belong to PosterBoard or SpringBoard depending on the release.
+    let lifeUI = poster.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS 'Life UI'")).firstMatch
+    let pickerInSpringboard = springboard.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS 'Life UI'")).firstMatch
+    for _ in 0..<6 where !lifeUI.exists && !pickerInSpringboard.exists { poster.swipeUp() }
+    let picker = lifeUI.exists ? poster : springboard
+    keep(picker, "lock-screen-widget-picker")
+    require(lifeUI.exists ? lifeUI : pickerInSpringboard, in: picker, 10)
+    (lifeUI.exists ? lifeUI : pickerInSpringboard).tap()
+    let count = picker.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS 'records' OR label CONTAINS 'Record count'")).firstMatch
+    require(count, in: picker, 15)
+    count.tap()
+    keep(poster, "lock-screen-count-editing")
+    for label in ["Quick Add fixture saved", "A place to start"] {
+      XCTAssertFalse(
+        poster.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", label))
+          .firstMatch.exists, "Lock Screen exposed a record title")
+    }
   }
 
   func testShareSheetPreparesADraftThatOpensUnsaved() throws {
