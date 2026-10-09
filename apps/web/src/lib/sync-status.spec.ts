@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { SyncScheduler, leadership, syncPill } from './sync-status';
+import { SyncScheduler, leadership, syncPill, syncProgressLabel } from './sync-status';
 
 let ready = true;
 let runs = 0;
@@ -225,4 +225,33 @@ test('shows a long backup action in place of sync state', () => {
 		label: 'Exporting'
 	});
 	expect(syncPill({ ...base, activity: '' })).toMatchObject({ label: 'Synced' });
+});
+
+test('a long sync names the tables left and, once the size is known, the time left', () => {
+	const cold = {
+		tablesDone: 37,
+		tablesTotal: 113,
+		rowsReceived: 21_638,
+		rowsExpected: 150_714,
+		table: 'people'
+	};
+	expect(syncProgressLabel(cold, 60_000)).toBe('76 tables left · about 6 min');
+	expect(syncProgressLabel({ ...cold, rowsReceived: 140_000 }, 60_000)).toBe(
+		'76 tables left · under a minute'
+	);
+	// Too early to tell, a changes-only round, or nothing to measure against.
+	expect(syncProgressLabel({ ...cold, rowsReceived: 1_000 }, 60_000)).toBe('76 tables left');
+	expect(syncProgressLabel(cold, 2_000)).toBe('76 tables left');
+	expect(syncProgressLabel({ ...cold, rowsExpected: null }, 60_000)).toBe('76 tables left');
+	expect(syncProgressLabel({ ...cold, rowsExpected: 0 }, 60_000)).toBe('76 tables left');
+	expect(syncProgressLabel({ ...cold, tablesDone: 112 }, 60_000)).toBe(
+		'1 table left · about 6 min'
+	);
+	expect(syncProgressLabel({ ...cold, tablesDone: 113 }, 60_000)).toBe('');
+	expect(
+		syncPill({ ...base, syncing: true, syncDetail: '76 tables left · about 6 min' })
+	).toMatchObject({
+		label: 'Syncing · 76 tables left · about 6 min',
+		tone: 'busy'
+	});
 });

@@ -401,6 +401,13 @@ struct HubSyncTests {
     let uploads = progress.filter { $0.phase == "Uploading" && $0.table == "notes" }
     #expect(uploads.count >= 2)
     #expect((uploads.last?.processedRows ?? 0) > (uploads.first?.processedRows ?? 0))
+    // Core reports the round through the bridge: every table, every row of the full pulls.
+    let last = try #require(progress.last)
+    #expect(last.tablesTotal > 3 && last.tablesDone == last.tablesTotal)
+    #expect(last.rowsExpected != nil && last.rowsReceived == last.rowsExpected)
+    #expect(
+      progress.contains { $0.phase == "Downloading" && $0.table == "notes" && $0.processedRows > 0 }
+    )
     #expect(try await replica.status().pendingUiEdits == 0)
     #expect(try await replica.status().lastSuccessfulSync != nil)
     #expect(second.pushed > 0)
@@ -412,6 +419,25 @@ struct HubSyncTests {
     await #expect(throws: Error.self) { try await replica.sync(using: transport) }
     withExtendedLifetime(lock) {}
     try await replica.close()
+  }
+
+  @Test func syncTimeLeftExtrapolatesAKnownDownloadOnly() {
+    let start = Date(timeIntervalSince1970: 0)
+    let cold = WorkspaceSyncProgress(
+      phase: "Downloading", table: "people", page: 0, processedRows: 0, startedAt: start,
+      tablesDone: 37, tablesTotal: 113, rowsReceived: 21_638, rowsExpected: 150_714)
+    let left = try! #require(cold.remaining(at: start.addingTimeInterval(60)))
+    #expect(abs(left - 357.9) < 1)
+    #expect(cold.remaining(at: start.addingTimeInterval(2)) == nil)
+    var early = cold
+    early.rowsReceived = 1_000
+    #expect(early.remaining(at: start.addingTimeInterval(60)) == nil)
+    var changesOnly = cold
+    changesOnly.rowsExpected = nil
+    #expect(changesOnly.remaining(at: start.addingTimeInterval(60)) == nil)
+    var finished = cold
+    finished.tablesDone = 113
+    #expect(finished.remaining(at: start.addingTimeInterval(60)) == nil)
   }
 
   @Test func errorsDoNotExposeResponseBodiesOrCredentialsAndReleaseLock() async throws {
@@ -549,24 +575,45 @@ private final class FixtureState: @unchecked Sendable {
       case "/v1/stats":
         data = .object(["tables": .object(tables.mapValues { .number(Double($0.count)) })])
       case "/v1/cursor":
+        // Advertises batched pulls, as the deployed hub does.
         data = .object([
           "max_hub_at": .string(""), "tables": .object(tables.mapValues { _ in .string("") }),
+          "pull_batch": .object([
+            "items": .number(50), "rows": .number(5000), "bytes": .number(4_194_304),
+          ]),
         ])
       case "/v1/rows/pull":
-        if table == failedPullTable { return (503, Data("{}".utf8)) }
-        let limit = Int(body["limit"]?.text ?? "1000") ?? 1000
-        let requestedID: String? =
-          if case .object(let predicate) = body["where"] { predicate["id"]?.text } else { nil }
-        let rows = Array(
-          (tables[table] ?? []).filter { row in
-            (requestedID == nil || row["id"]?.text == requestedID
-              || (table == "collated" && row["id"]?.text.lowercased() == requestedID?.lowercased()))
-              && (body["after"] == nil || (row["id"]?.text ?? "") > (body["after"]?.text ?? ""))
-          }.sorted { ($0["id"]?.text ?? "") < ($1["id"]?.text ?? "") }.prefix(limit))
-        data = .object([
-          "rows": .array(rows.map(JSONValue.object)),
-          "next_cursor": rows.count == limit ? (rows.last?["id"] ?? .null) : .null,
-        ])
+        func page(_ body: WorkspaceRecord) -> JSONValue {
+          let table = body["table"]?.text ?? ""
+          let limit = Int(body["limit"]?.text ?? "1000") ?? 1000
+          let requestedID: String? =
+            if case .object(let predicate) = body["where"] { predicate["id"]?.text } else { nil }
+          let rows = Array(
+            (tables[table] ?? []).filter { row in
+              (requestedID == nil || row["id"]?.text == requestedID
+                || (table == "collated"
+                  && row["id"]?.text.lowercased() == requestedID?.lowercased()))
+                && (body["after"] == nil || (row["id"]?.text ?? "") > (body["after"]?.text ?? ""))
+            }.sorted { ($0["id"]?.text ?? "") < ($1["id"]?.text ?? "") }.prefix(limit))
+          return .object([
+            "rows": .array(rows.map(JSONValue.object)),
+            "next_cursor": rows.count == limit ? (rows.last?["id"] ?? .null) : .null,
+          ])
+        }
+        if case .array(let items) = body["batch"] {
+          var pulls = items.compactMap { item -> WorkspaceRecord? in
+            if case .object(let pull) = item { return pull } else { return nil }
+          }
+          // A failing table fails its own request; batches answer the prefix before it.
+          if let failing = pulls.firstIndex(where: { $0["table"]?.text == failedPullTable }) {
+            if failing == 0 { return (503, Data("{}".utf8)) }
+            pulls = Array(pulls.prefix(failing))
+          }
+          data = .object(["batch": .array(pulls.map(page))])
+        } else {
+          if table == failedPullTable { return (503, Data("{}".utf8)) }
+          data = page(body)
+        }
       case "/v1/rows/push":
         guard case .array(let values) = body["rows"] else { throw URLError(.badServerResponse) }
         for case .object(let row) in values {

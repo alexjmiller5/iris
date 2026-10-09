@@ -103,6 +103,8 @@ export interface PillInput {
 	now: number;
 	/** A long user-initiated action (backup, export, restore) in progress. */
 	activity?: string;
+	/** Where a long sync stands (syncProgressLabel). */
+	syncDetail?: string;
 }
 export interface Pill {
 	label: string;
@@ -142,10 +144,31 @@ export function syncPill(s: PillInput): Pill {
 	if (!s.online || /fetch|network|load failed|timed out|offline/i.test(s.error))
 		return pill(`Offline${pending}`, 'warn');
 	if (!s.connected) return pill(`Not connected${pending}`, 'idle', 'connect');
-	if (s.syncing) return pill('Syncing', 'busy');
+	if (s.syncing) return pill(s.syncDetail ? `Syncing · ${s.syncDetail}` : 'Syncing', 'busy');
 	if (s.error === 'hub HTTP 429')
 		return pill('Paused · usage cap', 'warn', null, 'Hub usage cap reached; sync retries later');
 	if (s.error) return pill('Sync error', 'error', null, s.error);
 	if (s.pending) return pill('Syncing', 'busy');
 	return pill('Synced', 'ok');
+}
+
+/** Core's sync progress (SyncProgress), as the database worker forwards it. */
+export interface SyncProgress {
+	tablesDone: number;
+	tablesTotal: number;
+	rowsReceived: number;
+	rowsExpected: number | null;
+	table: string | null;
+}
+
+/** "76 tables left · about 6 min": the time left only once a full download has
+ * a known size and enough of it is done to extrapolate. */
+export function syncProgressLabel(p: SyncProgress, elapsedMs: number) {
+	const left = p.tablesTotal - p.tablesDone;
+	if (left <= 0) return '';
+	const tables = `${left} ${left === 1 ? 'table' : 'tables'} left`;
+	const done = p.rowsExpected ? p.rowsReceived / p.rowsExpected : 0;
+	if (done < 0.02 || elapsedMs < 5_000) return tables;
+	const seconds = ((elapsedMs / 1000) * (1 - Math.min(done, 1))) / done;
+	return `${tables} · ${seconds < 60 ? 'under a minute' : `about ${Math.round(seconds / 60)} min`}`;
 }

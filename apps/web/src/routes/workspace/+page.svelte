@@ -91,7 +91,12 @@
 	import Backup from '$lib/Backup.svelte';
 	import HubEnrollment from '$lib/HubEnrollment.svelte';
 	import SyncStatus from '$lib/SyncStatus.svelte';
-	import { SyncScheduler, leadership } from '$lib/sync-status';
+	import {
+		SyncScheduler,
+		leadership,
+		syncProgressLabel,
+		type SyncProgress
+	} from '$lib/sync-status';
 	import type { HubConnection } from '$lib/device-enrollment';
 	let enrolling = $state(false);
 	import SearchDialog from '$lib/SearchDialog.svelte';
@@ -2057,6 +2062,7 @@
 			}
 			if (database === workspace) busy = false;
 			connecting = false;
+			syncDetail = '';
 		}
 		if (current() && !accepted) throw failure ?? new Error('Connection failed.');
 	}
@@ -2065,6 +2071,7 @@
 	let backupActivity = $state('');
 	let connecting = $state(false),
 		syncSlow = $state(false),
+		syncDetail = $state(''),
 		syncError = $state(''),
 		syncRevision = $state(0),
 		dataRevision = $state(0);
@@ -2080,6 +2087,19 @@
 			/* Preference storage does not affect sync. */
 		}
 	}
+	// Sync rounds report progress; a round starts at its first report.
+	$effect(() => {
+		const workspace = database;
+		if (!workspace) return;
+		let started = 0;
+		const progressed = (event: Event) => {
+			const p = (event as CustomEvent<SyncProgress>).detail;
+			if (!p.tablesDone && !p.rowsReceived) started = Date.now();
+			syncDetail = syncProgressLabel(p, Date.now() - started);
+		};
+		workspace.addEventListener('syncprogress', progressed);
+		return () => workspace.removeEventListener('syncprogress', progressed);
+	});
 	async function backgroundSync(workspace: WorkspaceDatabase, connection: HubConnection) {
 		const slow = setTimeout(() => (syncSlow = true), 600);
 		try {
@@ -2105,6 +2125,7 @@
 		} finally {
 			clearTimeout(slow);
 			syncSlow = false;
+			syncDetail = '';
 		}
 	}
 	$effect(() => {
@@ -2679,6 +2700,7 @@
 							connected={!!connectedHub}
 							{online}
 							syncing={connecting || syncSlow}
+							{syncDetail}
 							pending={pendingEdits}
 							rejected={rejectedCount}
 							{lastSync}

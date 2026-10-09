@@ -60,10 +60,31 @@ struct WorkspaceStatusSheet: View {
               if let table = progress.table {
                 LabeledContent("Table", value: table)
               }
-              if progress.page > 0 {
-                LabeledContent("Pages", value: progress.page.formatted())
+              if progress.tablesTotal > 0 {
+                LabeledContent(
+                  "Tables left",
+                  value:
+                    "\((progress.tablesTotal - progress.tablesDone).formatted()) of \(progress.tablesTotal.formatted())"
+                )
+                .accessibilityIdentifier("sync-tables-left")
               }
-              LabeledContent("Rows processed", value: progress.processedRows.formatted())
+              if let expected = progress.rowsExpected, expected > 0 {
+                LabeledContent(
+                  "Rows downloaded",
+                  value: "\(progress.rowsReceived.formatted()) of \(expected.formatted())")
+              } else {
+                LabeledContent("Rows processed", value: progress.processedRows.formatted())
+              }
+              if let remaining = progress.remaining(at: .now) {
+                LabeledContent("Time left") {
+                  Text(
+                    remaining < 60
+                      ? "Under a minute"
+                      : "About \(Duration.seconds(remaining.rounded()).formatted(.units(allowed: [.hours, .minutes], width: .wide, maximumUnitCount: 2)))"
+                  )
+                  .accessibilityIdentifier("sync-time-left")
+                }
+              }
               LabeledContent("Elapsed") {
                 Text(progress.startedAt, style: .timer)
                   .monospacedDigit().accessibilityIdentifier("sync-elapsed")

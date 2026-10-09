@@ -221,6 +221,10 @@ profile creation/renewal is an operator action using the existing signing
 certificate. Never expand cloud-signing permissions or mint replacement
 certificates to compensate for a missing profile.
 Ordinary changes never bump a version or push a release tag.
+`MARKETING_VERSION` in both `project.yml` files is the one shipped version: every
+bundle plist names `$(MARKETING_VERSION)` (XcodeGen otherwise writes a literal
+1.0), iOS Ad Hoc builds report it, and the Mac release overrides it with the tag.
+A release commit sets it to the tag's version on both platforms.
 
 iOS Ad Hoc distribution uses the manual `build-ios.yml` workflow with existing
 Apple Signing distribution material and the project CI service account. It downloads
@@ -538,7 +542,10 @@ controls; late results and old defers must not affect a newer request. It never
 cancels sync or removes a core continuation. Canceled reloads preserve displayed
 rows and errors. Admitted sync and committed mutations own their awaited model
 reconciliation, with fresh workspace/query guards, independently of scene-task
-cancellation. Sync has read-only progress, cooperative transport cancellation
+cancellation. Sync progress comes from core's `Hub.progress` (native
+`__irisSyncProgress`, web `syncprogress` worker events): tables left, rows of a
+known full download and time left extrapolated from them; the web pill and the
+native status sheet show it. Sync has read-only progress, cooperative transport cancellation
 (used by close) and a 15-minute round deadline; there is no manual sync action.
 The scene's single foreground task pulls on activation, then every 2 seconds while
 active and online. The system path monitor pauses it offline and pulls at once

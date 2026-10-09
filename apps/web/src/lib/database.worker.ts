@@ -679,8 +679,11 @@ async function dispatch(request: DatabaseRequest) {
 				}
 				for (const table of Object.keys(args.tables)) qident(table);
 			}
-			const hub = createHttpHub(args.endpoint, args.token, (url, init) =>
-				fetch(url, { ...init, signal: AbortSignal.timeout(120_000) })
+			const hub = Object.assign(
+				createHttpHub(args.endpoint, args.token, (url, init) =>
+					fetch(url, { ...init, signal: AbortSignal.timeout(120_000) })
+				),
+				{ progress: (state: unknown) => respond({ syncProgress: state }) }
 			);
 			return createCoreHandlers(db, () => hub, 'iris').sync(args);
 		}

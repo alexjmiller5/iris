@@ -33,6 +33,16 @@ export interface SqlDriver {
         tables: string[];
     } | null>;
 }
+/** Where a sync round stands: tables finished out of the round's tables, and
+ * rows received out of the rows its full pulls expect (null when the round only
+ * pulls changes, whose size is unknown). `table` is the table being pulled. */
+export type SyncProgress = {
+    tablesDone: number;
+    tablesTotal: number;
+    rowsReceived: number;
+    rowsExpected: number | null;
+    table: string | null;
+};
 export interface Hub {
     /** Canonical endpoint identity; a replica cannot switch datasets. */
     endpoint: string;
@@ -40,4 +50,6 @@ export interface Hub {
         data: unknown;
         date?: string;
     }>;
+    /** Optional: told as a sync round advances, for host status. */
+    progress?(state: SyncProgress): void;
 }

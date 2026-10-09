@@ -52,6 +52,30 @@ struct WorkspaceSyncProgress: Equatable, Sendable {
   let page: Int
   let processedRows: Int
   let startedAt: Date
+  /// Core's account of the round (SyncProgress); zero until core reports.
+  var tablesDone = 0
+  var tablesTotal = 0
+  var rowsReceived = 0
+  var rowsExpected: Int? = nil
+
+  /// Seconds left, extrapolated from the share of a full download received.
+  /// Nil for a changes-only round, or before 2% and 5 seconds of a download.
+  func remaining(at now: Date) -> TimeInterval? {
+    guard let rowsExpected, rowsExpected > 0, tablesDone < tablesTotal else { return nil }
+    let done = min(Double(rowsReceived) / Double(rowsExpected), 1)
+    let elapsed = now.timeIntervalSince(startedAt)
+    guard done >= 0.02, elapsed >= 5 else { return nil }
+    return elapsed * (1 - done) / done
+  }
+}
+
+/// Core's SyncProgress, as the bundled runtime reports it.
+private struct CoreSyncProgress: Decodable {
+  let tablesDone: Int
+  let tablesTotal: Int
+  let rowsReceived: Int
+  let rowsExpected: Int?
+  let table: String?
 }
 
 /// One request owns the database until its promise settles or awaits HTTP outside a transaction.
@@ -128,6 +152,7 @@ public final class NativeWorkspace {
     var processedRows = 0
     var table: String?
     var phase = "Connecting"
+    var core: CoreSyncProgress?
     init(timeout: Duration, onProgress: ((WorkspaceSyncProgress) -> Void)?) {
       self.timeout = timeout
       self.onProgress = onProgress
@@ -137,7 +162,9 @@ public final class NativeWorkspace {
       onProgress?(
         WorkspaceSyncProgress(
           phase: phase, table: table, page: page,
-          processedRows: processedRows, startedAt: startedAt))
+          processedRows: processedRows, startedAt: startedAt,
+          tablesDone: core?.tablesDone ?? 0, tablesTotal: core?.tablesTotal ?? 0,
+          rowsReceived: core?.rowsReceived ?? 0, rowsExpected: core?.rowsExpected))
     }
   }
   private struct Reply: Decodable {
@@ -208,7 +235,8 @@ public final class NativeWorkspace {
         do {
           let body = try JSONDecoder().decode(WorkspaceRecord.self, from: Data(json.utf8))
           if let control = owner.control {
-            let table = body["table"]?.text
+            // A batched pull names many tables; keep the one core reports.
+            let table = body["table"]?.text ?? (body["batch"] == nil ? nil : control.table)
             let phase =
               route.contains("schema")
               ? "Schema"
@@ -224,6 +252,11 @@ public final class NativeWorkspace {
           let reply = try await transport.post(route: route, body: body)
           if let control = owner.control, case .object(let data) = reply.data {
             if case .array(let rows) = data["rows"] { control.processedRows += rows.count }
+            if case .array(let pages) = data["batch"] {
+              for case .object(let page) in pages {
+                if case .array(let rows) = page["rows"] { control.processedRows += rows.count }
+              }
+            }
             if case .number(let accepted) = data["upserted"], accepted >= 0,
               accepted <= 200, accepted.rounded() == accepted
             {
@@ -243,6 +276,15 @@ public final class NativeWorkspace {
       self.networks[owner.id] = network
     }
     runtime.context.setObject(post, forKeyedSubscript: "__irisPost" as NSString)
+    let progress: @convention(block) (String) -> Void = { [weak self] json in
+      guard let control = self?.active?.control,
+        let state = try? JSONDecoder().decode(CoreSyncProgress.self, from: Data(json.utf8))
+      else { return }
+      control.core = state
+      if let table = state.table { control.table = table }
+      control.report(control.phase)
+    }
+    runtime.context.setObject(progress, forKeyedSubscript: "__irisSyncProgress" as NSString)
     let get: @convention(block) (String, JSValue) -> Void = { [weak self] route, callback in
       guard let self, let owner = self.active, let transport = owner.transport else {
         callback.call(withArguments: [#"{"error":"No hub connection."}"#])

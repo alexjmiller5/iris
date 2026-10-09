@@ -15,6 +15,8 @@ declare const IrisSql: {
 declare function __irisYield(callback: () => void): void;
 declare function __irisPost(route: string, body: string, callback: (json: string) => void): void;
 declare function __irisGet(route: string, callback: (json: string) => void): void;
+// Optional: hosts from before sync progress lack it.
+declare const __irisSyncProgress: ((json: string) => void) | undefined;
 declare function __irisFinish(id: number, json: string): void;
 // Backup files: the host opens paths it supplied, inflates gzip and decodes UTF-8.
 declare function __irisDumpOpen(file: string): number;
@@ -64,6 +66,7 @@ function hub(endpoint: unknown): ServiceHub {
     endpoint: String(endpoint),
     get: (route) => new Promise((resolve, reject) => __irisGet(route, reply(resolve, reject))),
     post: (route, body) => new Promise((resolve, reject) => __irisPost(route, JSON.stringify(body), reply(resolve, reject))),
+    progress: (state) => { if (typeof __irisSyncProgress === 'function') __irisSyncProgress(JSON.stringify(state)); },
   };
 }
 
