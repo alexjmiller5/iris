@@ -87,6 +87,17 @@ describe('iOS distribution workflow boundary', () => {
     expect(embedded).toEqual(['IrisWidgets', 'IrisShare']);
     expect(Object.keys(project.schemes.Iris.build.targets)).toEqual(expect.arrayContaining(embedded));
   });
+  test('every shipped bundle reports the one marketing version both platforms share', () => {
+    // XcodeGen writes a literal 1.0 unless the plist names the build setting.
+    const ios = Bun.YAML.parse(readFileSync('apps/ios/project.yml', 'utf8')) as any;
+    const mac = Bun.YAML.parse(readFileSync('apps/macos/project.yml', 'utf8')) as any;
+    expect(ios.settings.base.MARKETING_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(mac.settings.base.MARKETING_VERSION).toBe(ios.settings.base.MARKETING_VERSION);
+    for (const target of [ios.targets.Iris, ios.targets.IrisWidgets, ios.targets.IrisShare, mac.targets.Iris]) {
+      expect(target.info.properties.CFBundleShortVersionString).toBe('$(MARKETING_VERSION)');
+      expect(target.info.properties.CFBundleVersion).toBe('$(CURRENT_PROJECT_VERSION)');
+    }
+  });
   test('requires the intended phone from the secret seam', () => {
     const sign = workflow().jobs.build.steps.find((s: any) => s.name === 'Sign and verify Ad Hoc IPA');
     const load = workflow().jobs.build.steps.find((s: any) => s.uses?.startsWith('1password/load-secrets-action@'));
