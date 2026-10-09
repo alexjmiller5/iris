@@ -268,11 +268,6 @@ import XCTest
       poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)).tap()
       sleep(3)
     }
-    XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
-    sleep(2)
-    XCUIDevice.shared.press(.home)
-    sleep(3)
-    keep(springboard, "lock-screen-count-widget")
     for label in ["Quick Add fixture saved", "A place to start"] {
       for process in [poster, springboard] {
         XCTAssertFalse(
@@ -280,6 +275,15 @@ import XCTest
             .firstMatch.exists, "Lock Screen exposed a record title")
       }
     }
+    // The locked screen has no readable accessibility tree; keep its screenshot instead.
+    XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
+    sleep(2)
+    XCUIDevice.shared.press(.home)
+    sleep(3)
+    let locked = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    locked.name = "lock-screen-count-widget"
+    locked.lifetime = .keepAlways
+    add(locked)
   }
 
   func testShareSheetPreparesADraftThatOpensUnsaved() throws {
