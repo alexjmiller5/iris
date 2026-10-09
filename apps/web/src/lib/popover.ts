@@ -21,8 +21,7 @@ export function anchored(
 	popover: HTMLElement,
 	options: { anchor: () => Element | null | undefined; ontoggle?: (open: boolean) => void }
 ) {
-	let current = options,
-		restore = false;
+	let current = options;
 	const place = () => {
 		const anchor = current.anchor();
 		if (anchor && popover.matches(':popover-open')) placePopover(popover, anchor);
@@ -36,20 +35,19 @@ export function anchored(
 			popover.style.left = `${Math.max(8, a.left)}px`;
 			popover.style.top = `${a.bottom + 4}px`;
 			popover.style.bottom = '';
-		} else restore = popover.contains(document.activeElement);
+		} else if (
+			popover.contains(document.activeElement) &&
+			anchor instanceof HTMLElement &&
+			anchor.isConnected
+		)
+			// Synchronously, while the popover is still open: the browser then has no
+			// focus of its own to restore, and no queued handler can take focus back
+			// after the user has moved on.
+			anchor.focus();
 	};
 	const toggle = (event: Event) => {
 		const open = (event as ToggleEvent).newState === 'open';
 		if (open) place();
-		else if (restore) {
-			restore = false;
-			// `toggle` is queued: the browser may already have restored focus, and the
-			// user may have moved on. Only rescue focus left in the hidden popover.
-			const now = document.activeElement;
-			const dropped = !now || now === document.body || popover.contains(now);
-			const anchor = current.anchor();
-			if (dropped && anchor instanceof HTMLElement && anchor.isConnected) anchor.focus();
-		}
 		current.ontoggle?.(open);
 	};
 	popover.addEventListener('beforetoggle', before);

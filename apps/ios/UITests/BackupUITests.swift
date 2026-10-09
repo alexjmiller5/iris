@@ -10,33 +10,13 @@ final class BackupUITests: XCTestCase {
     }
     continueAfterFailure = false
     let app = XCUIApplication()
-    app.launchArguments = ["--demo"]
+    // A saved connection to this hub resumes from the Keychain, which avoids iOS's
+    // Save Password sheet; the first run on a fresh simulator connects by token.
+    app.launchArguments = ["--normal-startup"]
     app.launch()
     defer { app.terminate() }
-    XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 15))
-    // The toolbar settles after launch; a tap during that can land on New record.
-    RunLoop.current.run(until: Date().addingTimeInterval(2))
-
-    // A replica of the synthetic hub: a file-backed workspace with hub backups.
-    let hubConnection = app.buttons["Hub connection"]
-    for _ in 0..<4 where !hubConnection.exists {
-      if app.navigationBars["New record"].exists { app.buttons["Cancel"].tap() }
-      tap(app.buttons["workspace-menu"])
-      _ = hubConnection.waitForExistence(timeout: 3)
-    }
-    tap(hubConnection)
-    tap(app.textFields["hub-endpoint"])
-    app.textFields["hub-endpoint"].typeText(endpoint)
-    tap(app.buttons["Use existing token"])
-    tap(app.secureTextFields["hub-token"])
-    app.secureTextFields["hub-token"].typeText("fixture")
-    tap(app.buttons["Connect"])
-    XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 30), app.debugDescription)
-    // iOS offers to save the token as a password a moment after Connect.
-    let prompt = app.sheets["Save Password?"]
-    if prompt.waitForExistence(timeout: 10) {
-      prompt.buttons["Not Now"].tap()
-      XCTAssertTrue(prompt.waitForNonExistence(timeout: 15), app.debugDescription)
+    if !app.navigationBars["widgets"].waitForExistence(timeout: 20) {
+      connect(app, endpoint: endpoint)
     }
     openBackup(app)
     let seeded = app.buttons["Restore daily/life-2026-10-01T09-10-00.sql.gz"]
@@ -58,10 +38,11 @@ final class BackupUITests: XCTestCase {
     tap(seeded)
     let widgets = app.descendants(matching: .any)["restore-row-widgets"]
     XCTAssertTrue(widgets.waitForExistence(timeout: 30), app.debugDescription)
-    XCTAssertTrue(app.buttons["restore-apply"].exists && !app.buttons["restore-apply"].isEnabled)
     capture(app, "ios-restore-preview")
     tap(app.textFields["restore-confirm"])
+    XCTAssertFalse(app.buttons["restore-apply"].isEnabled, "Restore needs the typed word")
     app.textFields["restore-confirm"].typeText("replace")
+    capture(app, "ios-restore-confirmed")
     tap(app.buttons["restore-apply"])
     expectMessage(app, "Restored")
     capture(app, "ios-restored")
@@ -70,7 +51,6 @@ final class BackupUITests: XCTestCase {
     let recovery = app.buttons.matching(
       NSPredicate(format: "label BEGINSWITH 'Restore recovery copy from'")
     ).firstMatch
-    XCTAssertTrue(recovery.waitForExistence(timeout: 10), app.debugDescription)
     tap(recovery)
     XCTAssertTrue(widgets.waitForExistence(timeout: 30))
     tap(app.textFields["restore-confirm"])
@@ -78,6 +58,33 @@ final class BackupUITests: XCTestCase {
     tap(app.buttons["restore-apply"])
     expectMessage(app, "Restored")
     capture(app, "ios-restore-undone")
+  }
+
+  private func connect(_ app: XCUIApplication, endpoint: String) {
+    // The toolbar settles after launch; a tap during that can land on New record.
+    RunLoop.current.run(until: Date().addingTimeInterval(2))
+    let hubConnection = app.buttons["Hub connection"]
+    for _ in 0..<4 where !hubConnection.exists {
+      if app.navigationBars["New record"].exists { app.buttons["Cancel"].tap() }
+      tap(app.buttons["workspace-menu"])
+      _ = hubConnection.waitForExistence(timeout: 3)
+    }
+    tap(hubConnection)
+    tap(app.textFields["hub-endpoint"])
+    app.textFields["hub-endpoint"].typeText(endpoint)
+    tap(app.buttons["Use existing token"])
+    tap(app.secureTextFields["hub-token"])
+    app.secureTextFields["hub-token"].typeText("fixture")
+    tap(app.buttons["Connect"])
+    XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 30), app.debugDescription)
+    // iOS offers to save the token as a password a moment after Connect.
+    let prompt = app.sheets["Save Password?"]
+    if prompt.waitForExistence(timeout: 10) {
+      for _ in 0..<5 where prompt.exists {
+        prompt.buttons["Not Now"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        _ = prompt.waitForNonExistence(timeout: 5)
+      }
+    }
   }
 
   /// The menu can swallow a tap while it animates or a system prompt passes; retry.
@@ -93,11 +100,17 @@ final class BackupUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["Backup"].waitForExistence(timeout: 10))
   }
 
+  /// The result line sits at the top of the form; scroll back to it while waiting.
   private func expectMessage(_ app: XCUIApplication, _ text: String) {
     let message = app.staticTexts.matching(
       NSPredicate(format: "identifier == 'backup-message' AND label CONTAINS %@", text)
     ).firstMatch
-    XCTAssertTrue(message.waitForExistence(timeout: 120), app.debugDescription)
+    let deadline = Date().addingTimeInterval(120)
+    while !message.waitForExistence(timeout: 3), Date() < deadline {
+      if app.staticTexts["backup-failure"].exists { break }
+      app.swipeDown()
+    }
+    XCTAssertTrue(message.exists, app.debugDescription)
     XCTAssertFalse(app.staticTexts["backup-failure"].exists)
   }
 
@@ -138,7 +151,8 @@ final class BackupUITests: XCTestCase {
         element.tap()
         return
       }
-      if element.exists { app.swipeUp() }
+      // Form rows below the fold are not in the hierarchy until scrolled to.
+      if element.exists || Date() > deadline.addingTimeInterval(-15) { app.swipeUp() }
       RunLoop.current.run(until: Date().addingTimeInterval(0.3))
     }
     XCTFail("Not tappable: \(element)\n\(app.debugDescription)")

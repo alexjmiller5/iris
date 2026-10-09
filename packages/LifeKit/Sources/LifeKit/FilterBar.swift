@@ -208,28 +208,35 @@ private struct Chip: View {
 /// Filter button contents: a searchable property list. Choosing a property adds
 /// its chip and opens the value editor in place.
 private struct AddFilterPopover: View {
+  private enum Step: Hashable {
+    case groupProperty
+    case edit(FilterBarTarget)
+  }
   let model: WorkspaceModel
-  @State private var path: [FilterBarTarget] = []
+  @State private var path: [Step] = []
 
   var body: some View {
     NavigationStack(path: $path) {
       PropertyPicker(fields: model.viewFields, title: "Filter by") { field in
-        path.append(.filter(model.addFilter(column: field.id)))
+        path.append(.edit(.filter(model.addFilter(column: field.id))))
       } footer: {
-        NavigationLink {
-          PropertyPicker(fields: model.viewFields, title: "First rule") { field in
-            path.append(.group(model.addFilterGroup(column: field.id)))
-          } footer: {
-            EmptyView()
-          }
+        // A Button, not a NavigationLink: the Mac list exposes a link row without a role.
+        Button {
+          path.append(.groupProperty)
         } label: {
           Label("Add filter group", systemImage: "rectangle.stack.badge.plus")
         }
         .accessibilityIdentifier("add-filter-group")
       }
-      .navigationDestination(for: FilterBarTarget.self) { target in
-        switch target {
-        case .filter(let id):
+      .navigationDestination(for: Step.self) { step in
+        switch step {
+        case .groupProperty:
+          PropertyPicker(fields: model.viewFields, title: "First rule") { field in
+            path.append(.edit(.group(model.addFilterGroup(column: field.id))))
+          } footer: {
+            EmptyView()
+          }
+        case .edit(.filter(let id)):
           FilterEditor(
             model: model,
             filter: model.filters.contains { $0.id == id }
@@ -241,7 +248,7 @@ private struct AddFilterPopover: View {
                   }
                 }) : nil,
             fields: model.viewFields)
-        case .group(let id):
+        case .edit(.group(let id)):
           FilterGroupEditor(model: model, id: id, fields: model.viewFields)
         }
       }
@@ -267,6 +274,7 @@ struct PropertyPicker<Footer: View>: View {
       Section {
         // Wraps instead of clipping at large text sizes.
         TextField("Search properties", text: $query, axis: .vertical)
+          .accessibilityLabel("Search properties")
           .accessibilityIdentifier("filter-property-search")
           #if os(iOS)
             .textInputAutocapitalization(.never)
@@ -293,6 +301,7 @@ struct PropertyPicker<Footer: View>: View {
       }
       Section { footer() }
     }
+    .accessibilityLabel("Properties")
     .navigationTitle(title)
     #if os(iOS)
       .navigationBarTitleDisplayMode(.inline)
@@ -349,7 +358,7 @@ private struct FilterRuleForm: View {
           Toggle("Today", isOn: $filter.today).accessibilityIdentifier("filter-today")
         }
       }
-      if needsValue && !filter.today { Section("Value") { value } }
+      if needsValue && !filter.today { Section { value } }
       Section {
         Button("Remove filter", role: .destructive, action: remove)
           .accessibilityIdentifier("remove-filter")

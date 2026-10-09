@@ -28,6 +28,7 @@ struct SortMenu: View {
             if sorts.count > 1 { Text("Drag rules to change their priority.") }
           }
         }
+        .accessibilityLabel("Sort rules")
         #if os(iOS)
           // Drag handles stay visible, as in Notion; row buttons remain usable.
           .environment(\.editMode, .constant(.active))
