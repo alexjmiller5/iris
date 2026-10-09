@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, test, vi } from 'vitest';
 import { createMarkdownEditor, type MarkdownController } from './markdown-editor';
+import { irisHref } from 'iris-core/client';
 
 const editors: MarkdownController[] = [];
 test('a late image response is disposed after its source node leaves the document', async () => {
@@ -269,3 +270,96 @@ test.each([
 		expect(editor.getMarkdown()).toBe(source);
 	}
 );
+
+const mentionHref = irisHref('row', 'people', 'p(1)');
+const viewHref = irisHref('view', 'items', 'v1');
+function linkHost(label: string | null = 'Ada Lovelace', trashed = false) {
+	return {
+		label: vi.fn(async (table: string, id: string) => ({ table, id, label, trashed })),
+		embed: vi.fn(async () => ({
+			name: 'Open items',
+			more: true,
+			columns: [
+				{ column: 'name', label: 'Name', type: 'text' },
+				{ column: 'done', label: 'Done', type: 'bool' }
+			],
+			rows: [{ record: { id: 'a', name: 'Alpha', done: 1 }, label: 'Alpha' }]
+		}))
+	};
+}
+async function openLinked(value: string, links = linkHost(), onopenrecord = vi.fn()) {
+	const element = document.createElement('div');
+	document.body.appendChild(element);
+	const onchange = vi.fn();
+	const editor = await createMarkdownEditor(element, {
+		value,
+		label: 'Body',
+		id: 'links',
+		onchange,
+		links,
+		onopenrecord
+	});
+	editors.push(editor);
+	return { editor, element, onchange, onopenrecord, links };
+}
+
+test('mentions show the live display label and open the record without rewriting Markdown', async () => {
+	const source = `Met [Ada](${mentionHref}) today.\n`;
+	const { editor, element, onchange, onopenrecord, links } = await openLinked(source);
+	const mention = await vi.waitFor(() => {
+		const button = element.querySelector<HTMLButtonElement>('button.iris-mention')!;
+		expect(button.textContent).toBe('Ada Lovelace');
+		return button;
+	});
+	expect(links.label).toHaveBeenCalledWith('people', 'p(1)');
+	expect(mention.dataset.state).toBe('live');
+	mention.click();
+	expect(onopenrecord).toHaveBeenCalledWith(mentionHref, mention);
+	expect(onchange).not.toHaveBeenCalled();
+	expect(editor.getMarkdown()).toBe(source);
+});
+
+test('missing or trashed mention targets keep the stored text and say why', async () => {
+	const { element } = await openLinked(`[Ada](${mentionHref})`, linkHost(null));
+	await vi.waitFor(() =>
+		expect(element.querySelector('.iris-mention')!.getAttribute('data-state')).toBe('unavailable')
+	);
+	expect(element.querySelector('.iris-mention')!.textContent).toBe('Ada (unavailable)');
+	const trashed = await openLinked(`[Ada](${mentionHref})`, linkHost('Ada Lovelace', true));
+	await vi.waitFor(() =>
+		expect(trashed.element.querySelectorAll('.iris-mention')[0].textContent).toBe('Ada Lovelace (in trash)')
+	);
+});
+
+test('view links embed a read-only preview of the saved view with an open action', async () => {
+	const source = `Intro\n\n[Items](${viewHref})\n`;
+	const { editor, element, onopenrecord, onchange } = await openLinked(source);
+	const embed = await vi.waitFor(() => {
+		const node = element.querySelector<HTMLElement>('.iris-embed')!;
+		expect(node.querySelector('table')).not.toBeNull();
+		return node;
+	});
+	expect(embed.querySelector('.iris-embed-title')!.textContent).toBe('Open items');
+	expect([...embed.querySelectorAll('th')].map((th) => th.textContent)).toEqual(['Name', 'Done']);
+	expect([...embed.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['Alpha', 'Yes']);
+	expect(embed.textContent).toContain('More rows in the view');
+	embed.querySelector<HTMLButtonElement>('button')!.click();
+	expect(onopenrecord).toHaveBeenCalledWith(viewHref, expect.any(HTMLButtonElement));
+	expect(onchange).not.toHaveBeenCalled();
+	expect(editor.getMarkdown()).toBe(source);
+});
+
+test('inserted mentions and view embeds are stored as plain Markdown links', async () => {
+	const { editor } = await openLinked('');
+	expect(editor.insertLink(mentionHref, 'Ada Lovelace')).toBe(true);
+	expect(editor.getMarkdown()).toBe(`[Ada Lovelace](${mentionHref})\n`);
+	editor.replaceMarkdown('');
+	expect(editor.insertLink(viewHref, 'Open items')).toBe(true);
+	expect(editor.getMarkdown()).toBe(`[Open items](${viewHref})\n`);
+});
+
+test('mentions survive edits elsewhere in the document', async () => {
+	const { editor } = await openLinked(`Met [Ada](${mentionHref}) today.`);
+	editor.command('heading1');
+	expect(editor.getMarkdown()).toBe(`# Met [Ada](${mentionHref}) today.\n`);
+});

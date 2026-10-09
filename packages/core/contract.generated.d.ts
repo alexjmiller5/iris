@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "7cab1276d74ca2405e2f33255e530c98e1e6d0ec0f41dd318f21926e6dc8ba09";
+export declare const CORE_CONTRACT_HASH = "2c2c9fa6e77b79f9a360a8ddcbc43a610b384fee7f98130d6a51c9ca92d49d98";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -228,7 +228,7 @@ export type SavedViewList = {
     unavailable: string | null;
 };
 export type ListViewsArgs = {
-    table: string;
+    table?: string;
     trash?: boolean;
 };
 export type SaveViewArgs = {
@@ -442,6 +442,7 @@ export type SourceRecordDestination = {
 };
 export type SourceLinkResult = {
     destination?: SourceRecordDestination;
+    view?: SourceViewDestination;
 };
 export type Target = {
     table: string;
@@ -1110,6 +1111,62 @@ export type HubBackup = {
 export type HubBackupList = {
     backups: HubBackup[];
 };
+export type SourceViewDestination = {
+    table: string;
+    view: string;
+};
+export type RecordTarget = {
+    table: string;
+    id: string;
+};
+export type MentionLabelsArgs = {
+    targets: RecordTarget[];
+};
+export type MentionLabel = {
+    table: string;
+    id: string;
+    label: string | null;
+    trashed: boolean;
+};
+export type MentionedByArgs = {
+    table: string;
+    rowId: string;
+    limit?: Count;
+    offset?: Count;
+};
+export type MentionedByRow = {
+    table: string;
+    id: string;
+    label: string;
+};
+export type MentionedByPage = {
+    rows: MentionedByRow[];
+    nextOffset: Count | null;
+    incomplete: boolean;
+};
+export type ViewEmbedArgs = {
+    table: string;
+    viewId: string;
+    limit?: Count;
+    calendar?: CalendarContext;
+};
+export type ViewEmbedColumn = {
+    column: string;
+    label: string;
+    type: string;
+};
+export type CalendarPolicy = {
+    timeZone: string;
+    dayStartMinutes: number;
+};
+export type ViewEmbed = {
+    name: string | null;
+    columns: ViewEmbedColumn[];
+    rows: WorkspaceRow[];
+    more: boolean;
+    calendar?: CalendarPolicy;
+    unavailable?: string;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
@@ -1346,6 +1403,18 @@ export interface CoreOperations {
     createHubBackup: {
         args: EndpointArgs;
         result: HubBackup;
+    };
+    mentionLabels: {
+        args: MentionLabelsArgs;
+        result: MentionLabel[];
+    };
+    mentionedBy: {
+        args: MentionedByArgs;
+        result: MentionedByPage;
+    };
+    viewEmbed: {
+        args: ViewEmbedArgs;
+        result: ViewEmbed;
     };
 }
 export type CoreMethod = keyof CoreOperations;

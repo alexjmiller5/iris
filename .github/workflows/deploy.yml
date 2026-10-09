@@ -31,8 +31,8 @@ jobs:
         with:
           export-env: true
         env:
-          CLOUDFLARE_API_TOKEN: op://Life UI/Life UI CI Cloudflare Token/api-token
-          CLOUDFLARE_ACCOUNT_ID: op://Life UI/Life UI CI Cloudflare Token/account-id
+          CLOUDFLARE_API_TOKEN: op://Iris/Iris CI Cloudflare Token/api-token
+          CLOUDFLARE_ACCOUNT_ID: op://Iris/Iris CI Cloudflare Token/account-id
       - if: env.OP_SERVICE_ACCOUNT_TOKEN != ''
         run: bun install --frozen-lockfile
       - if: env.OP_SERVICE_ACCOUNT_TOKEN != ''

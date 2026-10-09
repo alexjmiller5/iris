@@ -57,7 +57,7 @@ jobs:
           ASC_KEY_P8_BASE64: op://Apple Signing/App Store Connect API Key/p8_base64
           ASC_KEY_ID: op://Apple Signing/App Store Connect API Key/key_id
           ASC_ISSUER_ID: op://Apple Signing/App Store Connect API Key/issuer_id
-          IOS_DEVICE_ID: op://Life UI/Life UI ENV/IOS_DEVICE_ID
+          IOS_DEVICE_ID: op://Iris/Iris ENV/IOS_DEVICE_ID
       - name: Download app and extension Ad Hoc profiles
         env:
           # The app profile first; each embedded extension has its own explicit profile.
