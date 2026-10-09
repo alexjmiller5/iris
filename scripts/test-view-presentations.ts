@@ -77,7 +77,15 @@ try {
     storageTypes: "all",
   });
   await cdp.navigate(url);
-  await click("Open my workspace");
+  // A click before hydration does nothing; retry until the workspace shell is up.
+  await expect
+    .poll(
+      async () =>
+        (await cdp.evaluate(`!!document.querySelector('#hub-connect')`)) ||
+        (await click("Open my workspace").then(() => false, () => false)),
+      { timeout: 60000 },
+    )
+    .toBe(true);
   for (const label of ["Connect to a hub", "Use a device token"]) {
     const control = named("button,summary", label);
     await cdp.until(`!!(${control})`);
@@ -243,6 +251,7 @@ try {
   throw failure;
 } finally {
   if (page) {
+    await page.command("Emulation.clearDeviceMetricsOverride").catch(() => {});
     await page.navigate(new URL("/", url).href).catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
