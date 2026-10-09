@@ -454,6 +454,19 @@ public final class NativeWorkspace {
     return try await decode(CoreRequests.ReferencedBy(request))
   }
 
+  public func mentionedBy(_ args: CoreMentionedByArgs) async throws -> CoreMentionedByPage {
+    try await decode(CoreRequests.MentionedBy(args))
+  }
+  /// The Markdown island's only data reads: labels, embeds and its pickers.
+  static let editorReadOperations: Set<String> = [
+    "catalog", "search", "listViews", "mentionLabels", "viewEmbed",
+  ]
+  func editorRead(_ method: String, arguments: String) async throws -> JSONValue {
+    guard Self.editorReadOperations.contains(method) else {
+      throw WorkspaceError(message: "The editor cannot request this operation.", violations: [])
+    }
+    return try await call(method, arguments: arguments, cancellableRead: true)
+  }
   public func resolveSourceLink(_ url: String) async throws -> CoreSourceLinkResult {
     try await decode(CoreRequests.ResolveSourceLink(CoreSourceLinkArgs(url: url)))
   }

@@ -106,7 +106,7 @@ import WebKit
         session.markReady()
         lastSent = nil
         render()
-      } else if ["file", "openFile", "openLink"].contains(body["type"] as? String ?? "") {
+      } else if ["file", "openFile", "openLink", "core"].contains(body["type"] as? String ?? "") {
         receiveFileRequest(body)
       } else if session.receive(body) {
         // Do not echo a keystroke back through setDocument and reset the selection.
@@ -141,6 +141,18 @@ import WebKit
                 message: "Connect to your hub to open this file.", violations: [])
             }
             try await open(value)
+          } else if type == "core" {
+            guard let request = session.coreRequest,
+              let call = try JSONSerialization.jsonObject(with: Data(value.utf8)) as? [String: Any],
+              let method = call["op"] as? String
+            else {
+              throw WorkspaceError(message: "Links are unavailable in this editor.", violations: [])
+            }
+            let arguments = try JSONSerialization.data(
+              withJSONObject: call["args"] ?? [String: Any](), options: .fragmentsAllowed)
+            let result = try await request(method, String(decoding: arguments, as: UTF8.self))
+            reply["result"] = try JSONSerialization.jsonObject(
+              with: JSONEncoder().encode(result), options: .fragmentsAllowed)
           } else {
             reply["opened"] = try await session.openLink?(value) ?? false
           }

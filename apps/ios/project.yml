@@ -146,6 +146,9 @@ schemes:
     build:
       targets:
         Iris: all
+        # Listed so -showBuildSettings exposes them to scripts/sign-ios.py.
+        IrisWidgets: all
+        IrisShare: all
         IrisTests: [test]
         IrisUITests: [test]
     test:

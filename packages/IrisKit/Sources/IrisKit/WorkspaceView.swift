@@ -34,6 +34,8 @@ public struct WorkspaceView: View {
     (target: EditorTarget, generation: Int, destination: NativeDestination)?
   @State private var pendingReferenceEditor:
     (destination: ReferenceDestination, source: WorkspaceEditingContext, generation: Int)?
+  /// A Markdown view embed's Open view: the editor closes, then the view opens.
+  @State private var pendingViewDestination: (destination: NativeDestination, generation: Int)?
   @State private var pendingLink = PendingNativeLink()
   @State private var pendingQuickAdd: WidgetQuickAdd?
   @State private var quickAddError: String?
@@ -359,6 +361,7 @@ public struct WorkspaceView: View {
       quickFind = nil
       pendingSearchEditor = nil
       pendingReferenceEditor = nil
+      pendingViewDestination = nil
       pendingDuplicateEditor = nil
       rejectionInbox?.dispose()
       rejectionInbox = nil
@@ -396,6 +399,11 @@ public struct WorkspaceView: View {
           EditorTarget(row: nil, context: source, preparedEditor: copy),
           model.workspaceGeneration
         )
+        closeEditor(target)
+      },
+      onView: { destination in
+        guard editor?.id == target.id, target.context?.workspace === model.client else { return }
+        pendingViewDestination = (destination, model.workspaceGeneration)
         closeEditor(target)
       }, onSaved: { closeEditor(target) })
   }
@@ -785,6 +793,12 @@ public struct WorkspaceView: View {
         pending.target.context?.table == model.table
       else { return }
       editor = pending.target
+      return
+    }
+    if let pending = pendingViewDestination {
+      pendingViewDestination = nil
+      guard editor == nil, pending.generation == model.workspaceGeneration else { return }
+      openDestination(pending.destination)
       return
     }
     guard let pending = pendingReferenceEditor else { return }
@@ -1490,6 +1504,7 @@ private struct RecordEditor: View {
   let recordFields: [CatalogField]
   let linkWaiting: Bool
   let onDuplicate: (RecordEditorModel) -> Void
+  let onView: (NativeDestination) -> Void
   let isCurrent: @MainActor () -> Bool
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.openURL) private var openURL
@@ -1522,8 +1537,10 @@ private struct RecordEditor: View {
     linkWaiting: Bool = false, isCurrent: @escaping @MainActor () -> Bool,
     onReference: @escaping (ReferenceDestination) -> Void,
     onDuplicate: @escaping (RecordEditorModel) -> Void = { _ in },
+    onView: @escaping (NativeDestination) -> Void = { _ in },
     onSaved: @escaping () -> Void
   ) {
+    self.onView = onView
     self.inlineField = inlineField
     self.onExpand = onExpand
     self.model = model
@@ -1792,6 +1809,13 @@ private struct RecordEditor: View {
                 makeModel: {
                   model.makeIncomingReferences(
                     context: context, row: original, isCurrent: editorIsCurrent)
+                },
+                canOpen: !editor.saving, onOpenRecord: openReference
+              )
+              .id(identity)
+              LinkedFromView(
+                makeModel: {
+                  model.makeLinkedFrom(context: context, row: original, isCurrent: editorIsCurrent)
                 },
                 canOpen: !editor.saving, onOpenRecord: openReference
               )
@@ -2255,6 +2279,11 @@ private struct RecordEditor: View {
       guard current() else { return }
       openURL(url)
     }
+    holder.session.coreRequest = { method, arguments in
+      guard let context, current() else { throw CancellationError() }
+      return try await context.workspace.editorRead(method, arguments: arguments)
+    }
+    let onView = onView
     holder.session.openLink = { [weak source, weak navigation] href in
       guard let source, let context, current(), !busy.wrappedValue, !source.saving else {
         return false
@@ -2263,9 +2292,12 @@ private struct RecordEditor: View {
       defer { busy.wrappedValue = false }
       return try await source.openMarkdownLink(href, isCurrent: current) { url in
         let result = try await context.workspace.resolveSourceLink(url)
-        guard current(), !Task.isCancelled, let destination = result.destination else {
-          return false
+        guard current(), !Task.isCancelled else { return false }
+        if let view = result.view {
+          onView(NativeDestination(table: view.table, viewID: view.view))
+          return true
         }
+        guard let destination = result.destination else { return false }
         let opened = await navigation?.open(table: destination.table, id: destination.row)
         if let error = navigation?.error {
           navigation?.cancel()

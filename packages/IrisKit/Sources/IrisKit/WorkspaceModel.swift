@@ -1462,6 +1462,23 @@ final class WorkspaceModel {
       })
   }
 
+  func makeLinkedFrom(
+    context: WorkspaceEditingContext?, row: WorkspaceRecord?,
+    isCurrent: @escaping () -> Bool = { true }
+  ) -> LinkedFromModel? {
+    guard let context, let identity = incomingReferencesIdentity(context: context, row: row) else {
+      return nil
+    }
+    let selection = viewGeneration
+    return LinkedFromModel(
+      table: identity.table, rowID: identity.rowID,
+      readPage: { try await context.workspace.mentionedBy($0) },
+      isCurrent: { [weak self] in
+        self?.viewGeneration == selection
+          && self?.incomingReferencesIdentity(context: context, row: row) == identity && isCurrent()
+      })
+  }
+
   func makeReferenceNavigation(
     editor: RecordEditorModel, context: WorkspaceEditingContext,
     isCurrent: @escaping () -> Bool = { true },

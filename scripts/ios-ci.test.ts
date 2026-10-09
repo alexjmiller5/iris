@@ -80,6 +80,13 @@ describe('iOS distribution workflow boundary', () => {
     expect(cleanup.if).toBe('always()');
     expect(cleanup.run).toContain('ios-output');
   });
+  test('the signed scheme builds every embedded extension so each profile finds its target', () => {
+    const project = Bun.YAML.parse(readFileSync('apps/ios/project.yml', 'utf8')) as any;
+    const embedded = project.targets.Iris.dependencies
+      .filter((d: any) => d.target && d.embed).map((d: any) => d.target);
+    expect(embedded).toEqual(['IrisWidgets', 'IrisShare']);
+    expect(Object.keys(project.schemes.Iris.build.targets)).toEqual(expect.arrayContaining(embedded));
+  });
   test('requires the intended phone from the secret seam', () => {
     const sign = workflow().jobs.build.steps.find((s: any) => s.name === 'Sign and verify Ad Hoc IPA');
     const load = workflow().jobs.build.steps.find((s: any) => s.uses?.startsWith('1password/load-secrets-action@'));

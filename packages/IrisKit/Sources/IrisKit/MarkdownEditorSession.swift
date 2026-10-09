@@ -22,6 +22,8 @@ final class MarkdownEditorSession {
   var resolveFile: ((String) async throws -> RetainedFile)?
   var openFile: ((String) async throws -> Void)?
   var openLink: ((String) async throws -> Bool)?
+  /// Read-only core operation and its JSON arguments, for mentions and embeds.
+  var coreRequest: ((String, String) async throws -> JSONValue)?
   var openExternal: ((URL) -> Void)?
 
   init(value: String, label: String, readOnly: Bool = false) {
@@ -98,6 +100,7 @@ final class MarkdownEditorSession {
     resolveFile = nil
     openFile = nil
     openLink = nil
+    coreRequest = nil
     openExternal = nil
   }
 }
