@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Daily section, share sheet and Spotlight acceptance on one disposable simulator.
+# Daily section, share sheet, Spotlight, widget gallery and Lock Screen acceptance
+# on one disposable simulator. Spotlight ingests app items asynchronously, so its
+# step retypes the query for up to a few minutes after the fixture indexes.
 # Usage: test-integrations-ios.sh <project> <derived-data> <simulator-udid> <results-dir> [time-zone]
 set -euo pipefail
 project="$1"
@@ -13,7 +15,9 @@ for selected in \
   'LifeUIUITests/NativeIntegrationsUITests/testDailySectionSitsAboveTablesAndOpensItsRow' \
   'LifeUIUITests/NativeIntegrationsUITests/testShareSheetPreparesADraftThatOpensUnsaved' \
   'LifeUITests/WidgetRolloverUIFixtureTests/spotlightIndexHoldsEnabledTitles()' \
-  'LifeUIUITests/NativeIntegrationsUITests/testSpotlightTitleOpensItsRowThroughTheLinkBanner'; do
+  'LifeUIUITests/NativeIntegrationsUITests/testSpotlightTitleOpensItsRowThroughTheLinkBanner' \
+  'LifeUIUITests/NativeIntegrationsUITests/testGalleryAddsATitlesWidgetThatOpensItsRecord' \
+  'LifeUIUITests/NativeIntegrationsUITests/testLockScreenCountShowsNoRecordTitles'; do
   name="$(basename "$selected" | tr -cd '[:alnum:]')"
   result="$results/integrations-$name.xcresult"
   xcodebuild -project "$project" -scheme LifeUI -derivedDataPath "$derived" \

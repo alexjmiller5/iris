@@ -25,6 +25,12 @@ final class BackupUITests: XCTestCase {
     app.secureTextFields["hub-token"].typeText("fixture")
     tap(app.buttons["Connect"])
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 30), app.debugDescription)
+    // iOS offers to save the token as a password a moment after Connect.
+    let prompt = app.sheets["Save Password?"]
+    if prompt.waitForExistence(timeout: 10) {
+      prompt.buttons["Not Now"].tap()
+      XCTAssertTrue(prompt.waitForNonExistence(timeout: 15), app.debugDescription)
+    }
     openBackup(app)
     let seeded = app.buttons["Restore daily/life-2026-10-01T09-10-00.sql.gz"]
     XCTAssertTrue(seeded.waitForExistence(timeout: 15), app.debugDescription)
@@ -70,7 +76,7 @@ final class BackupUITests: XCTestCase {
   /// The menu can swallow a tap while it animates or a system prompt passes; retry.
   private func openBackup(_ app: XCUIApplication) {
     let link = app.buttons["backup-settings"]
-    for _ in 0..<3 where !link.exists {
+    for _ in 0..<5 where !link.exists {
       tap(app.buttons["workspace-menu"])
       let item = app.buttons["Hub connection"]
       if item.waitForExistence(timeout: 5) { item.tap() }

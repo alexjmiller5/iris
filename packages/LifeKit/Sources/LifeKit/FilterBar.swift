@@ -37,7 +37,7 @@ struct FilterBar: View {
         .accessibilityIdentifier("filter-bar-filter")
         .accessibilityHint("Adds a filter to this view")
         .popover(isPresented: $adding, arrowEdge: .top) {
-          AddFilterPopover(model: model).compactPopover()
+          AddFilterPopover(model: model).compactPopover("Filter")
         }
         Button {
           sorting = true
@@ -48,7 +48,7 @@ struct FilterBar: View {
         .accessibilityValue(
           model.sortRules.isEmpty ? "None" : "\(model.sortRules.count) sorts")
         .popover(isPresented: $sorting, arrowEdge: .top) {
-          SortMenu(model: model).compactPopover()
+          SortMenu(model: model).compactPopover("Sort")
         }
       }
       .buttonStyle(.bordered)
@@ -135,7 +135,7 @@ struct FilterBar: View {
       NavigationStack {
         FilterEditor(model: model, filter: filterBinding(filter.id), fields: fields)
       }
-      .compactPopover()
+      .compactPopover("Edit filter")
     }
   }
 
@@ -156,7 +156,7 @@ struct FilterBar: View {
       NavigationStack {
         FilterGroupEditor(model: model, id: group.id, fields: fields)
       }
-      .compactPopover()
+      .compactPopover("Edit filter group")
     }
   }
 
@@ -565,13 +565,16 @@ extension CatalogField {
 }
 
 extension View {
-  /// Popovers stay popovers on iPhone and get a sensible size on the Mac.
-  func compactPopover() -> some View {
+  /// Popovers stay popovers on iPhone and get a sensible size on the Mac. The
+  /// label names the popover's container for VoiceOver and accessibility audits.
+  func compactPopover(_ label: String) -> some View {
     #if os(iOS)
       self.frame(minWidth: 320, idealWidth: 360, minHeight: 360, idealHeight: 480)
+        .accessibilityElement(children: .contain).accessibilityLabel(label)
         .presentationCompactAdaptation(.popover)
     #else
       self.frame(width: 340, height: 420)
+        .accessibilityElement(children: .contain).accessibilityLabel(label)
     #endif
   }
 }

@@ -757,6 +757,13 @@ checks menu/status/graph navigation and accessibility text sizing with screensho
 `HeaderUITests` checks their geometry and retains screenshots. Its empty-workspace
 case uses `HeaderUIFixtureTests` with `TEST_RUNNER_LIFE_UI_TEST_HEADER_SIMULATOR`
 set to the exact disposable simulator UDID; run the fixture before the UI tests.
+`scripts/test-integrations-ios.sh` drives the system entry points on one disposable
+simulator (`TEST_RUNNER_LIFE_UI_TEST_WIDGET_SIMULATOR`): a fixture enables synthetic
+widget, Spotlight, lookup and daily sources, then UI tests cover the daily section,
+the Safari share sheet, Spotlight (its UI runs in `com.apple.Spotlight` and ingests
+items minutes after indexing), the Home Screen widget gallery and the Lock Screen
+editor (`com.apple.PosterBoard`). `TEST_RUNNER_LIFE_UI_TEST_DAILY_AFTER_BOUNDARY`
+checks the daily section after the fixture view's 03:00 boundary passed.
 `TableNavigationUIFixtureTests` seeds 50,000 synthetic provenance rows on the
 explicit `TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_SIMULATOR` only. Its local mode tests
 repeated table navigation; the optional loopback `navigation-hub.py` mode holds

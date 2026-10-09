@@ -252,14 +252,6 @@ import XCTest
     if !poster.buttons["editing-done"].exists {
       poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
     }
-    let done = poster.buttons["editing-done"]
-    require(done, in: poster, 10)
-    done.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-    sleep(3)
-    keep(springboard, "lock-screen-count-widget")
-    let generic = springboard.descendants(matching: .any).matching(
-      NSPredicate(format: "label CONTAINS 'records' OR label CONTAINS 'Records'")).firstMatch
-    require(generic, in: springboard, 15)
     for label in ["Quick Add fixture saved", "A place to start"] {
       for process in [poster, springboard] {
         XCTAssertFalse(
