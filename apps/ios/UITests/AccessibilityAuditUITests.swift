@@ -147,6 +147,11 @@ final class AccessibilityAuditUITests: XCTestCase {
     if keyboard.exists, keyboard.frame.insetBy(dx: 0, dy: -50).intersects(frame) {
       return "covered by the system keyboard or its suggestions"
     }
+    if #unavailable(iOS 27), issue.auditType == .contrast {
+      // Before iOS 27 the audit samples Liquid Glass translucency inconsistently: the
+      // same build passed and failed on different elements. iOS 27 enforces contrast.
+      return "contrast sampled through Liquid Glass before iOS 27"
+    }
     if #unavailable(iOS 27), issue.auditType == .hitRegion,
       element.label == "Group tables" || element.label.hasPrefix("Relationship details")
     {

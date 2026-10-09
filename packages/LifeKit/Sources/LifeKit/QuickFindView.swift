@@ -170,7 +170,8 @@ private struct QuickFindResults: View {
 private struct QuickFindEntryRow: View {
   let entry: QuickFindCoordinator.Entry
   let opening: Bool
-  /// Secondary text loses contrast on the tinted selection, so it turns primary there.
+  /// Secondary text loses contrast on the tinted selection and at accessibility sizes,
+  /// so it turns primary there.
   let selected: Bool
   @Environment(\.dynamicTypeSize) private var textSize
 
@@ -201,10 +202,13 @@ private struct QuickFindEntryRow: View {
               .accessibilityHint(status.help ?? "")
               .accessibilityIdentifier("quick-find-status")
           }
-        }.font(.caption).foregroundStyle(selected ? .primary : .secondary)
+        }.font(.caption).foregroundStyle(
+          selected || textSize.isAccessibilitySize ? .primary : .secondary)
         if !entry.excerpt.isEmpty {
-          Text(entry.excerpt).font(.callout).foregroundStyle(selected ? .primary : .secondary)
-            .lineLimit(3)
+          Text(entry.excerpt).font(.callout).foregroundStyle(
+            selected || textSize.isAccessibilitySize ? .primary : .secondary
+          )
+          .lineLimit(3)
         }
         if let reason = entry.unavailable {
           Text(reason).font(.callout).foregroundStyle(.secondary)
