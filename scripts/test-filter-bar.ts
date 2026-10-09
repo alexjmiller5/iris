@@ -259,8 +259,8 @@ try {
       .toContain("one");
     await page.evaluate(() => ((window as unknown as { holdSaves: boolean }).holdSaves = false));
     // The next edit builds on the saved filter instead of silently dropping it.
-    await page.getByRole("button", { name: "Sort", exact: true }).click();
-    await page.getByRole("dialog", { name: "Sort" }).getByLabel("Add sort").selectOption("title");
+    await page.getByRole("button", { name: /^Sort/ }).first().click();
+    await page.getByRole("dialog", { name: "Sort" }).getByLabel("Add sort").selectOption("status");
     await page.keyboard.press("Escape");
     await expect
       .poll(async () => (await saved(view))?.filters?.map((f: { value: unknown }) => f.value))

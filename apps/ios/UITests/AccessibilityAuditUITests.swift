@@ -153,11 +153,12 @@ final class AccessibilityAuditUITests: XCTestCase {
   }
 
   /// Flagged as possibly clipped, checked in the AX5 screenshots: wrapped SwiftUI
-  /// labels whose every line shows, and the single-line Quick Find field, which
+  /// labels and the record menu's label, which show in full, and the single-line
+  /// Quick Find field, which
   /// scrolls long queries horizontally like any UIKit text field.
   private static let verifiedUnclipped: Set<String> = [
     "saved-views/Row actions and Today", "workspace-status/Copy diagnostics",
-    "quick-find/quick-find-query",
+    "record/Actions", "record-markdown/Actions", "quick-find/quick-find-query",
   ]
 
   /// Lazy record forms create rows below the fold only when scrolled to.

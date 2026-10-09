@@ -76,11 +76,9 @@
 	class:active={sorts.length > 0}
 	popovertarget={id}
 	{disabled}
-	aria-label={sorts.length ? `Sort, ${sorts.length} active` : 'Sort'}
 	onclick={() => (anchor = button)}
-	><IconArrowsSort size={16} aria-hidden="true" />Sort{#if sorts.length}<span class="count"
-			>{sorts.length}</span
-		>{/if}</button
+	><IconArrowsSort size={16} aria-hidden="true" />Sort{#if sorts.length}
+		<span class="count">{sorts.length}</span><span class="sr-only"> active</span>{/if}</button
 >
 
 <div

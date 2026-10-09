@@ -1580,9 +1580,15 @@
 		// replace this device's configuration or defeat optimistic conflict checks.
 	}
 	async function chooseView(id: string | null): Promise<boolean> {
-		const view = id === null ? null : savedViews.find((view) => view.id === id);
-		if (id !== null && (!view?.definition || !view.view || view.unavailable)) return false;
+		const usable = (view: SavedViewRecord | undefined) =>
+			id === null || (!!view?.definition && !!view.view && !view.unavailable);
+		if (!usable(savedViews.find((view) => view.id === id))) return false;
 		if (!discard()) return false;
+		// Let the outgoing view's save land first: switching back must show what it
+		// saved, not the list entry from before that save.
+		await viewAutosave.flush();
+		const view = id === null ? null : savedViews.find((view) => view.id === id);
+		if (!usable(view ?? undefined)) return false;
 		locationRequest++;
 		navigationLoading = false;
 		applyView(view ?? null);

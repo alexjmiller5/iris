@@ -171,7 +171,7 @@ async function sampleWalk(page: Page, scheme: string) {
   await page.waitForURL(/[?&]view=/);
 
   // Filter: property search, chip editor, Escape back to the chip.
-  const filter = role("button", "Filter");
+  const filter = role("button", /^Filter/);
   await page.locator("body").focus();
   await tabTo(filter);
   await page.keyboard.press("Enter");
@@ -182,19 +182,28 @@ async function sampleWalk(page: Page, scheme: string) {
   const editor = page.getByRole("dialog", { name: "Edit filter" });
   await editor.waitFor();
   await audit("filter-editor");
+  // Space checks the sample's own status, so the chip stays and keeps its row.
+  await tabTo(editor.getByRole("checkbox", { name: "Draft" }));
+  await page.keyboard.press("Space");
   await page.keyboard.press("Escape");
   await editor.waitFor({ state: "hidden" });
-  // A chip without a value is dropped, so focus lands on Filter instead of the chip.
-  await expectFocus([page.getByRole("group", { name: "Sort and filters" }), filter], "the filter chip");
+  const chips = page.getByRole("group", { name: "Sort and filters" });
+  await expectFocus([chips], "the filter chip");
 
   // Sort popover.
-  const sort = role("button", "Sort");
+  const sort = role("button", /^Sort/);
   await tabTo(sort);
   await page.keyboard.press("Enter");
-  await page.getByRole("dialog", { name: "Sort" }).waitFor();
+  const sortMenu = page.getByRole("dialog", { name: "Sort" });
+  await sortMenu.waitFor();
   await audit("sort");
+  const addSort = sortMenu.getByLabel("Add sort");
+  await tabTo(addSort);
+  await addSort.selectOption("title");
+  await audit("sort-rule");
   await page.keyboard.press("Escape");
   await expectFocus([sort], "Sort");
+  await audit("filter-and-sort-chips");
 
   // View switcher menu.
   const settings = role("button", "View settings");

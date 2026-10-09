@@ -166,10 +166,9 @@
 	class:active={count > 0}
 	popovertarget={`${id}-add`}
 	{disabled}
-	aria-label={count ? `Filter, ${count} active` : 'Filter'}
 	onclick={() => (addAnchor = addButton)}
-	><IconFilter size={16} aria-hidden="true" />Filter{#if count}<span class="count">{count}</span
-		>{/if}</button
+	><IconFilter size={16} aria-hidden="true" />Filter{#if count}
+		<span class="count">{count}</span><span class="sr-only"> active</span>{/if}</button
 >
 
 {#if count || leading || rule || group}
