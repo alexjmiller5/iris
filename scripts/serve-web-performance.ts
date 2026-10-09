@@ -11,7 +11,7 @@ const { set_assets } = await load("internal.js");
 set_assets("");
 const app = new Server(manifest);
 await app.init({ env: {} });
-const origin = "http://life-ui-performance.localhost:5246";
+const origin = "http://iris-performance.localhost:5246";
 
 // Fixture-only transport: production SSR sees HTTPS, as it would at the edge.
 // Browser localhost is a secure context for OPFS. Never expose this server.
@@ -43,7 +43,7 @@ Bun.serve({
     // Applies to document, scripts, Worker imports and WASM, without touching
     // another origin's cache or the shared browser's global network settings.
     response.headers.set("Cache-Control", "no-store");
-    response.headers.set("X-Life-Performance", "production-fixture");
+    response.headers.set("X-Iris-Performance", "production-fixture");
     return response;
   },
 });

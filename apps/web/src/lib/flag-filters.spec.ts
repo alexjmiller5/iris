@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Filter, Property } from 'life-ui-core/client';
+import type { Filter, Property } from 'iris-core/client';
 import { flagFilters, flagOn, toggleFlag } from './flag-filters';
 
 const flag: Property = {

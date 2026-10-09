@@ -166,7 +166,7 @@ test.each([false, true])(
 test.each(['', '   ', { nested: 'value' }, null])(
 	'recent labels use the shared record display policy: %s',
 	async (title) => {
-		const { displayName } = await import('life-ui-core/client');
+		const { displayName } = await import('iris-core/client');
 		const record = { id: row.row, heading: title };
 		const resolved = {
 			table: 'things',

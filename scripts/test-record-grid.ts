@@ -3,12 +3,12 @@ import { mkdir } from "node:fs/promises";
 import { disposableOrigin, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-grid.localhost:5228/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-grid.localhost:5228/workspace?review";
 const origin = disposableOrigin(url);
 const source = process.argv[2];
 if (!source)
-  throw Error("Usage: bun scripts/test-record-grid.ts <life-data-checkout>");
+  throw Error("Usage: bun scripts/test-record-grid.ts <soma-checkout>");
 const { server, db } = await regressionHub(source, origin);
 for (const [col, type, sql, value] of [
   ["amount", "number", "REAL", 1.5],
@@ -47,7 +47,7 @@ for (const [col, type, sql, value] of [
     .run(value);
 }
 const browser = await chromium.connectOverCDP(
-  process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
 );
 let page: Page | undefined;
 let accept = true;
@@ -197,8 +197,8 @@ try {
   }
   async function check(name: string, body: () => Promise<void>) {
     if (
-      process.env.LIFE_UI_GRID_CASE &&
-      !name.includes(process.env.LIFE_UI_GRID_CASE)
+      process.env.IRIS_GRID_CASE &&
+      !name.includes(process.env.IRIS_GRID_CASE)
     )
       return;
     await body();
@@ -410,14 +410,14 @@ try {
     await expect(immutable).toBeDisabled();
     await expect(immutable.locator("..").getByRole("link")).toHaveAttribute(
       "href", "https://example.test/read-only");
-    if (process.env.LIFE_UI_SCREENSHOTS) {
-      await mkdir(process.env.LIFE_UI_SCREENSHOTS, { recursive: true });
+    if (process.env.IRIS_SCREENSHOTS) {
+      await mkdir(process.env.IRIS_SCREENSHOTS, { recursive: true });
       await immutable.scrollIntoViewIfNeeded();
-      await owned.screenshot({ path: process.env.LIFE_UI_SCREENSHOTS + "/field-links-1440.png" });
+      await owned.screenshot({ path: process.env.IRIS_SCREENSHOTS + "/field-links-1440.png" });
       await owned.setViewportSize({ width: 390, height: 844 });
       await owned.emulateMedia({ colorScheme: "dark" });
       await immutable.scrollIntoViewIfNeeded();
-      await owned.screenshot({ path: process.env.LIFE_UI_SCREENSHOTS + "/field-links-390.png" });
+      await owned.screenshot({ path: process.env.IRIS_SCREENSHOTS + "/field-links-390.png" });
       expect(await owned.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await owned.setViewportSize({ width: 1440, height: 1000 });
       await owned.emulateMedia({ colorScheme: "light" });
@@ -757,20 +757,20 @@ try {
       expect((await record()).quantity).toBe(77);
     },
   );
-  if (process.env.LIFE_UI_SCREENSHOTS) {
-    await mkdir(process.env.LIFE_UI_SCREENSHOTS, { recursive: true });
+  if (process.env.IRIS_SCREENSHOTS) {
+    await mkdir(process.env.IRIS_SCREENSHOTS, { recursive: true });
     await page.locator(".grid-scroll").evaluate((el) => {
       el.scrollLeft = 0;
       el.scrollTop = 0;
     });
     await page.screenshot({
-      path: process.env.LIFE_UI_SCREENSHOTS + "/grid-1440.png",
+      path: process.env.IRIS_SCREENSHOTS + "/grid-1440.png",
       fullPage: true,
     });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.emulateMedia({ colorScheme: "dark" });
     await page.screenshot({
-      path: process.env.LIFE_UI_SCREENSHOTS + "/grid-390.png",
+      path: process.env.IRIS_SCREENSHOTS + "/grid-390.png",
       fullPage: true,
     });
     expect(

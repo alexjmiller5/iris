@@ -1,7 +1,7 @@
 import { workspacePage } from './test-origin';
 import {chromium,expect} from '@playwright/test';
 import {disposableOrigin} from './test-origin';
-const url=process.env.LIFE_UI_TEST_URL??'http://life-ui-markdown.localhost:5198/workspace?review',origin=disposableOrigin(url);
+const url=process.env.IRIS_TEST_URL??'http://iris-markdown.localhost:5198/workspace?review',origin=disposableOrigin(url);
 const browser=await chromium.connectOverCDP('http://127.0.0.1:9222');
 try{
  const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);

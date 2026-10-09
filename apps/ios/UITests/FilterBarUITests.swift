@@ -9,9 +9,9 @@ final class FilterBarUITests: XCTestCase {
   func testChipsApplyAtOnceSaveOnDismissUndoAndSurviveRelaunch() throws {
     let environment = ProcessInfo.processInfo.environment
     try XCTSkipIf(
-      environment["LIFE_UI_TEST_FILTER_BAR_SIMULATOR"] == nil,
+      environment["IRIS_TEST_FILTER_BAR_SIMULATOR"] == nil,
       "Writes the local workspace; run on an explicitly selected private simulator")
-    XCTAssertEqual(environment["LIFE_UI_TEST_FILTER_BAR_SIMULATOR"], environment["SIMULATOR_UDID"])
+    XCTAssertEqual(environment["IRIS_TEST_FILTER_BAR_SIMULATOR"], environment["SIMULATOR_UDID"])
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launch()

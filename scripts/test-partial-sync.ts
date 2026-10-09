@@ -3,8 +3,8 @@ import { regressionHub } from './workspace-regression-hub';
 import { disposableOrigin, workspacePage } from './test-origin';
 
 const source=process.argv[2];
-if(!source)throw Error('Provide the life-data checkout');
-const url=process.env.LIFE_UI_TEST_URL??'http://life-ui-markdown.localhost:5198/workspace?review';
+if(!source)throw Error('Provide the soma checkout');
+const url=process.env.IRIS_TEST_URL??'http://iris-markdown.localhost:5198/workspace?review';
 const origin=disposableOrigin(url);
 const observerUrl=url+'&observer=1';
 let failHistory=false;
@@ -15,7 +15,7 @@ const {server,db}=await regressionHub(source,origin,0,{wrap:worker=>({async fetc
 }})});
 db.db.query('INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)')
  .run('positive','widgets','invariant',1,'SELECT id FROM changed WHERE quantity<0','Quantity cannot be negative.');
-const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
+const browser=await chromium.connectOverCDP(process.env.IRIS_TEST_CDP??'http://127.0.0.1:9222');
 let ownedObserver: import('@playwright/test').Page | undefined;
 try{
  const pages=browser.contexts().flatMap(c=>c.pages());

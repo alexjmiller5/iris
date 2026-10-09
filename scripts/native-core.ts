@@ -4,7 +4,7 @@ import type { BackupFiles, CoreArgs, CoreMethod, CoreResult, Row, SqlDriver, Val
 import { createSample } from './native-sample';
 import { prepareLocalViews, prepareLocalPins } from './local-views';
 
-declare const LifeSql: {
+declare const IrisSql: {
   all(sql: string, params: Value[]): Row[];
   run(sql: string, params: Value[]): number;
   begin(): void;
@@ -12,41 +12,41 @@ declare const LifeSql: {
   rollback(): void;
   readDependencies?(statements: readonly SqlReadStatement[], context: SqlReadContext): { tables: string[] } | null;
 };
-declare function __lifeYield(callback: () => void): void;
-declare function __lifePost(route: string, body: string, callback: (json: string) => void): void;
-declare function __lifeGet(route: string, callback: (json: string) => void): void;
-declare function __lifeFinish(id: number, json: string): void;
+declare function __irisYield(callback: () => void): void;
+declare function __irisPost(route: string, body: string, callback: (json: string) => void): void;
+declare function __irisGet(route: string, callback: (json: string) => void): void;
+declare function __irisFinish(id: number, json: string): void;
 // Backup files: the host opens paths it supplied, inflates gzip and decodes UTF-8.
-declare function __lifeDumpOpen(file: string): number;
-declare function __lifeDumpRead(id: number): string | null;
-declare function __lifeDumpCreate(file: string): number;
-declare function __lifeDumpWrite(id: number, text: string): void;
-declare function __lifeDumpClose(id: number): void;
+declare function __irisDumpOpen(file: string): number;
+declare function __irisDumpRead(id: number): string | null;
+declare function __irisDumpCreate(file: string): number;
+declare function __irisDumpWrite(id: number, text: string): void;
+declare function __irisDumpClose(id: number): void;
 
 // The Swift facade owns whole database operations. HTTP awaits yield ownership
 // only outside transactions; their callbacks resume after foreground work.
 // JSC has no browser event loop: the host schedules a real main-actor turn.
-const turn = () => new Promise<void>((resolve) => __lifeYield(resolve));
+const turn = () => new Promise<void>((resolve) => __irisYield(resolve));
 const db: SqlDriver = {
   // The Swift bridge is installed after this bundle evaluates. Discover the
   // optional capability at use time; older hosts retain core's global fallback.
   get readDependencies() {
-    if (typeof LifeSql === 'undefined' || typeof LifeSql.readDependencies !== 'function') return undefined;
+    if (typeof IrisSql === 'undefined' || typeof IrisSql.readDependencies !== 'function') return undefined;
     return async (statements: readonly SqlReadStatement[], context: SqlReadContext) => {
       await turn();
-      return LifeSql.readDependencies!(statements, context);
+      return IrisSql.readDependencies!(statements, context);
     };
   },
-  async all(sql, params = []) { await turn(); return LifeSql.all(sql, params); },
-  async run(sql, params = []) { await turn(); return LifeSql.run(sql, params); },
+  async all(sql, params = []) { await turn(); return IrisSql.all(sql, params); },
+  async run(sql, params = []) { await turn(); return IrisSql.run(sql, params); },
   async transaction(body) {
-    LifeSql.begin();
+    IrisSql.begin();
     try {
       const result = await body();
-      LifeSql.commit();
+      IrisSql.commit();
       return result;
     } catch (error) {
-      LifeSql.rollback();
+      IrisSql.rollback();
       throw error;
     }
   },
@@ -62,8 +62,8 @@ function hub(endpoint: unknown): ServiceHub {
   };
   return {
     endpoint: String(endpoint),
-    get: (route) => new Promise((resolve, reject) => __lifeGet(route, reply(resolve, reject))),
-    post: (route, body) => new Promise((resolve, reject) => __lifePost(route, JSON.stringify(body), reply(resolve, reject))),
+    get: (route) => new Promise((resolve, reject) => __irisGet(route, reply(resolve, reject))),
+    post: (route, body) => new Promise((resolve, reject) => __irisPost(route, JSON.stringify(body), reply(resolve, reject))),
   };
 }
 
@@ -73,8 +73,8 @@ const files: BackupFiles = {
     return {
       async read() {
         await turn();
-        id ??= __lifeDumpOpen(file);
-        return __lifeDumpRead(id);
+        id ??= __irisDumpOpen(file);
+        return __irisDumpRead(id);
       },
     };
   },
@@ -83,18 +83,18 @@ const files: BackupFiles = {
     return {
       async write(text) {
         await turn();
-        id ??= __lifeDumpCreate(file);
-        __lifeDumpWrite(id, text);
+        id ??= __irisDumpCreate(file);
+        __irisDumpWrite(id, text);
       },
       async close() {
-        id ??= __lifeDumpCreate(file);
-        __lifeDumpClose(id);
+        id ??= __irisDumpCreate(file);
+        __irisDumpClose(id);
       },
     };
   },
 };
 
-const handlers = createCoreHandlers(db, hub, 'life-ui', null, files);
+const handlers = createCoreHandlers(db, hub, 'iris', null, files);
 
 function invoke<M extends CoreMethod>(method: M, args: CoreArgs<M>): CoreResult<M> | Promise<CoreResult<M>> {
   return handlers[method](args);
@@ -112,13 +112,13 @@ async function dispatch(method: string, args: unknown) {
 }
 
 Object.assign(globalThis, {
-  LifeCore: { validateRow },
-  LifeNative: {
+  IrisCore: { validateRow },
+  IrisNative: {
     contractHash: CORE_CONTRACT_HASH,
     async request(id: number, method: string, json: string) {
-      try { __lifeFinish(id, JSON.stringify({ value: await dispatch(method, JSON.parse(json)) })); }
+      try { __irisFinish(id, JSON.stringify({ value: await dispatch(method, JSON.parse(json)) })); }
       catch (error) {
-        __lifeFinish(id, JSON.stringify({
+        __irisFinish(id, JSON.stringify({
           error: error instanceof Error ? error.message : 'Workspace operation failed.',
           violations: error && typeof error === 'object' && 'violations' in error ? error.violations : [],
         }));

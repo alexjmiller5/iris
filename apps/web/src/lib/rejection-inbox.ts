@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { RejectedEdit, RejectionsPage } from 'life-ui-core/client';
+import type { RejectedEdit, RejectionsPage } from 'iris-core/client';
 
 export interface RejectionSnapshot {
 	page: RejectionsPage | null;

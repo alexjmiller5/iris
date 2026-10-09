@@ -1,13 +1,13 @@
 // Notion-style filters and sorts on the sample workspace, in a real browser.
 // Usage: `bun run dev -- --port 5261`, then a disposable Chrome with a fresh
 // --user-data-dir and --remote-debugging-port=9333, then
-//   LIFE_UI_TEST_CDP=http://127.0.0.1:9333 LIFE_UI_TEST_URL=http://127.0.0.1:5261/workspace \
-//   LIFE_UI_TEST_SHOTS=<dir> bun scripts/test-filter-bar.ts
+//   IRIS_TEST_CDP=http://127.0.0.1:9333 IRIS_TEST_URL=http://127.0.0.1:5261/workspace \
+//   IRIS_TEST_SHOTS=<dir> bun scripts/test-filter-bar.ts
 import { chromium, expect as base, type Page } from "@playwright/test";
 
-const cdp = process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9333";
-const url = process.env.LIFE_UI_TEST_URL ?? "http://127.0.0.1:5261/workspace";
-const shots = process.env.LIFE_UI_TEST_SHOTS;
+const cdp = process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9333";
+const url = process.env.IRIS_TEST_URL ?? "http://127.0.0.1:5261/workspace";
+const shots = process.env.IRIS_TEST_SHOTS;
 const browser = await chromium.connectOverCDP(cdp);
 const context = browser.contexts()[0] ?? (await browser.newContext());
 const page = await context.newPage();

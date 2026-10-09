@@ -56,13 +56,13 @@ beforeAll(async () => {
 
 function bridge() {
   const context: {
-    LifeRecordExport?: {
+    IrisRecordExport?: {
       serialize: (snapshot: string, options: string) => string;
     };
   } = {};
   runInNewContext(script, context);
-  expect(typeof context.LifeRecordExport?.serialize).toBe("function");
-  return context.LifeRecordExport!.serialize;
+  expect(typeof context.IrisRecordExport?.serialize).toBe("function");
+  return context.IrisRecordExport!.serialize;
 }
 function exported(
   input = snapshot,

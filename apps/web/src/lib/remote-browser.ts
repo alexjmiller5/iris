@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { RemoteRecord, RemoteRowsPage, RemoteRowResult } from 'life-ui-core/client';
+import type { RemoteRecord, RemoteRowsPage, RemoteRowResult } from 'iris-core/client';
 
 export interface OnlineState {
 	rows: RemoteRecord[];

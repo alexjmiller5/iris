@@ -13,13 +13,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const app = 'com.alexmiller.life-ui';
+const app = 'com.alexmiller.iris';
 const group = 'group.' + app;
 const targets = [
-  { variable: 'IOS_PROVISIONING_PROFILE_ID', bundle: app, name: 'Life UI Ad Hoc', type: 'IOS_APP_ADHOC', cert: 'DISTRIBUTION' },
-  { variable: 'IOS_WIDGETS_PROVISIONING_PROFILE_ID', bundle: app + '.widgets', name: 'Life UI Widgets Ad Hoc', type: 'IOS_APP_ADHOC', cert: 'DISTRIBUTION' },
-  { variable: 'IOS_SHARE_PROVISIONING_PROFILE_ID', bundle: app + '.share', name: 'Life UI Share Ad Hoc', type: 'IOS_APP_ADHOC', cert: 'DISTRIBUTION' },
-  { variable: 'MACOS_PROVISIONING_PROFILE_ID', bundle: app, name: 'Life UI Developer ID', type: 'MAC_APP_DIRECT', cert: 'DEVELOPER_ID_APPLICATION' },
+  { variable: 'IOS_PROVISIONING_PROFILE_ID', bundle: app, name: 'Iris Ad Hoc', type: 'IOS_APP_ADHOC', cert: 'DISTRIBUTION' },
+  { variable: 'IOS_WIDGETS_PROVISIONING_PROFILE_ID', bundle: app + '.widgets', name: 'Iris Widgets Ad Hoc', type: 'IOS_APP_ADHOC', cert: 'DISTRIBUTION' },
+  { variable: 'IOS_SHARE_PROVISIONING_PROFILE_ID', bundle: app + '.share', name: 'Iris Share Ad Hoc', type: 'IOS_APP_ADHOC', cert: 'DISTRIBUTION' },
+  { variable: 'MACOS_PROVISIONING_PROFILE_ID', bundle: app, name: 'Iris Developer ID', type: 'MAC_APP_DIRECT', cert: 'DEVELOPER_ID_APPLICATION' },
 ];
 
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -44,7 +44,7 @@ const one = (rows: any[], what: string) => {
 const udid = process.env.IOS_DEVICE_ID ?? '';
 if (!/^[A-Za-z0-9-]+$/.test(udid)) throw new Error('IOS_DEVICE_ID is required');
 const device = one((await api('GET', `/devices?filter[udid]=${encodeURIComponent(udid)}&filter[status]=ENABLED`)).data, 'enabled device');
-const directory = mkdtempSync(join(tmpdir(), 'life-ui-profiles-'));
+const directory = mkdtempSync(join(tmpdir(), 'iris-profiles-'));
 try {
   for (const target of targets) {
     const bundle = one((await api('GET', `/bundleIds?filter[identifier]=${target.bundle}&limit=200`)).data

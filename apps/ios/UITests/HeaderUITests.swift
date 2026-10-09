@@ -5,8 +5,8 @@ final class HeaderUITests: XCTestCase {
   func testEmptyWorkspaceHeaderKeepsTitleVisibleAndControlsCompact() throws {
     let environment = ProcessInfo.processInfo.environment
     try XCTSkipUnless(
-      environment["LIFE_UI_TEST_HEADER_SIMULATOR"] == environment["SIMULATOR_UDID"]
-        && environment["LIFE_UI_TEST_HEADER_SIMULATOR"] != nil,
+      environment["IRIS_TEST_HEADER_SIMULATOR"] == environment["SIMULATOR_UDID"]
+        && environment["IRIS_TEST_HEADER_SIMULATOR"] != nil,
       "Seed the header fixture on an explicitly selected disposable simulator first.")
     let app = XCUIApplication()
     app.launchArguments = ["--normal-startup"]

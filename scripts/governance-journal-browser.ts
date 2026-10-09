@@ -10,7 +10,7 @@ const entry: PendingApproval = {
   selectedEventIds: ['event-1'], request: { proposalId: 'proposal-1', expectedVersion: 'v1', previewToken: 'synthetic-preview', idempotencyKey: 'key-1' },
 };
 const databaseName = new URL(location.href).searchParams.get('database');
-if (!databaseName?.startsWith('life-ui-governance-test-')) throw new Error('Synthetic database required');
+if (!databaseName?.startsWith('iris-governance-test-')) throw new Error('Synthetic database required');
 const connections = new Map<string, Awaited<ReturnType<typeof openApprovalJournal>>>();
 const harness = {
   entry,

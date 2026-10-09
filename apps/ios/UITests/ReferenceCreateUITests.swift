@@ -7,10 +7,10 @@ final class ReferenceCreateUITests: XCTestCase {
   func testPickersCreateRecordsInPlaceAndHandRequiredFieldsToTheEditor() throws {
     let environment = ProcessInfo.processInfo.environment
     try XCTSkipIf(
-      environment["LIFE_UI_TEST_REFERENCE_CREATE_SIMULATOR"] == nil,
+      environment["IRIS_TEST_REFERENCE_CREATE_SIMULATOR"] == nil,
       "Requires the reference-create fixture on an explicitly selected private simulator")
     XCTAssertEqual(
-      environment["LIFE_UI_TEST_REFERENCE_CREATE_SIMULATOR"], environment["SIMULATOR_UDID"])
+      environment["IRIS_TEST_REFERENCE_CREATE_SIMULATOR"], environment["SIMULATOR_UDID"])
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launch()

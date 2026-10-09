@@ -2,13 +2,13 @@ import { chromium, expect } from "@playwright/test";
 import { regressionHub } from "./workspace-regression-hub";
 import { disposableOrigin, workspacePage } from "./test-origin";
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-incoming.localhost:5232/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-incoming.localhost:5232/workspace?review";
 const origin = disposableOrigin(url);
 const source = process.argv[2];
 if (!source)
   throw Error(
-    "Usage: bun scripts/test-incoming-references.ts <life-data-checkout>",
+    "Usage: bun scripts/test-incoming-references.ts <soma-checkout>",
   );
 const { server, db } = await regressionHub(source, origin);
 const ddl =
@@ -38,7 +38,7 @@ for (let i = 0; i < 25; i++)
       "2026-01-01T00:00:00.000Z",
     );
 const browser = await chromium.connectOverCDP(
-  process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
 );
 const page = workspacePage(
   browser.contexts().flatMap((c) => c.pages()),
@@ -153,8 +153,8 @@ try {
   }
   async function check(name: string, run: () => Promise<void>) {
     if (
-      process.env.LIFE_UI_INCOMING_CASE &&
-      !name.includes(process.env.LIFE_UI_INCOMING_CASE)
+      process.env.IRIS_INCOMING_CASE &&
+      !name.includes(process.env.IRIS_INCOMING_CASE)
     )
       return;
     try {
@@ -294,9 +294,9 @@ try {
       await group("Owner").locator("summary").click();
       await page.setViewportSize({ width: 390, height: 900 });
       await panel.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: "/tmp/life-ui-incoming-390.png" });
+      await page.screenshot({ path: "/tmp/iris-incoming-390.png" });
       await page.emulateMedia({ colorScheme: "dark" });
-      await page.screenshot({ path: "/tmp/life-ui-incoming-390-dark.png" });
+      await page.screenshot({ path: "/tmp/iris-incoming-390-dark.png" });
       await page.emulateMedia({ colorScheme: "light" });
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),

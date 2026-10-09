@@ -7,19 +7,19 @@ import { chromium, type Browser, type Page } from "@playwright/test";
 // Dropping FTS5 from the shipped WASM must fail at CREATE VIRTUAL TABLE.
 const root = resolve(import.meta.dir, "..");
 const url = new URL(
-  process.env.LIFE_UI_TEST_URL ??
-    "http://life-ui-fts.localhost:5209/fts-fixture",
+  process.env.IRIS_TEST_URL ??
+    "http://iris-fts.localhost:5209/fts-fixture",
 );
 if (
   url.protocol !== "http:" ||
-  url.hostname !== "life-ui-fts.localhost" ||
+  url.hostname !== "iris-fts.localhost" ||
   url.pathname !== "/fts-fixture" ||
   url.username ||
   url.password
 )
-  throw new Error("Use the dedicated life-ui-fts.localhost fixture origin.");
+  throw new Error("Use the dedicated iris-fts.localhost fixture origin.");
 const { CORE_CONTRACT_HASH } = await import(`${root}/packages/core/client.js`);
-const replacement = process.env.LIFE_UI_TEST_WASM_DIR;
+const replacement = process.env.IRIS_TEST_WASM_DIR;
 const bundle = await Bun.build({
   entrypoints: [resolve(root, "apps/web/src/lib/database.worker.ts")],
   target: "browser",
@@ -106,26 +106,26 @@ let browser: Browser | undefined;
 let page: Page | undefined;
 try {
   browser = await chromium.connectOverCDP(
-    process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+    process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
   );
   page = browser
     .contexts()
     .flatMap((context) => context.pages())
     .find((page) => page.url() === url.href);
-  if (!page && process.env.LIFE_UI_TEST_TARGET) {
+  if (!page && process.env.IRIS_TEST_TARGET) {
     for (const candidate of browser
       .contexts()
       .flatMap((context) => context.pages())) {
       const target = await candidate.context().newCDPSession(candidate);
       const { targetInfo } = await target.send("Target.getTargetInfo");
       await target.detach();
-      if (targetInfo.targetId === process.env.LIFE_UI_TEST_TARGET)
+      if (targetInfo.targetId === process.env.IRIS_TEST_TARGET)
         page = candidate;
     }
   }
   if (!page)
     throw new Error(
-      `Open this dedicated test page: ${url}, or pass LIFE_UI_TEST_TARGET for its CDP target.`,
+      `Open this dedicated test page: ${url}, or pass IRIS_TEST_TARGET for its CDP target.`,
     );
   await page.goto(url.href);
   const cdp = await page.context().newCDPSession(page);

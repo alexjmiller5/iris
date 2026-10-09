@@ -67,7 +67,7 @@ export async function installCoreSchemas(db: any, source: string, names: string[
 }
 
 if (import.meta.main) {
-	if (!process.argv[2]) throw new Error('Usage: bun scripts/workspace-regression-hub.ts <life-data-checkout>');
-	const { server } = await regressionHub(process.argv[2], process.env.LIFE_UI_TEST_ORIGIN ?? 'http://life-ui-write-fixes.localhost:5196', Number(process.env.LIFE_UI_TEST_HUB_PORT ?? 5203));
+	if (!process.argv[2]) throw new Error('Usage: bun scripts/workspace-regression-hub.ts <soma-checkout>');
+	const { server } = await regressionHub(process.argv[2], process.env.IRIS_TEST_ORIGIN ?? 'http://iris-write-fixes.localhost:5196', Number(process.env.IRIS_TEST_HUB_PORT ?? 5203));
 	console.log(`Synthetic regression hub: ${server.url}`);
 }

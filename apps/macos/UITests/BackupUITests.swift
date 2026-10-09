@@ -2,17 +2,17 @@ import XCTest
 
 /// Settings > Backup on the Mac with synthetic files only. The sample workspace (in
 /// memory) restores a synthetic dump and undoes it; an explicitly opened CLI file shows
-/// its path and `life export`. Set TEST_RUNNER_LIFE_UI_TEST_BACKUP_DUMP (a .sql.gz),
-/// TEST_RUNNER_LIFE_UI_TEST_BACKUP_CLI_DB (a CLI life.db) and
-/// TEST_RUNNER_LIFE_UI_TEST_BACKUP_SAVE_DIR (an empty folder for the saved export).
+/// its path and `soma export`. Set TEST_RUNNER_IRIS_TEST_BACKUP_DUMP (a .sql.gz),
+/// TEST_RUNNER_IRIS_TEST_BACKUP_CLI_DB (a CLI soma.db) and
+/// TEST_RUNNER_IRIS_TEST_BACKUP_SAVE_DIR (an empty folder for the saved export).
 @MainActor
 final class BackupUITests: XCTestCase {
   private var environment: [String: String] { ProcessInfo.processInfo.environment }
 
   func testSampleRestoresADumpAndUndoes() throws {
-    guard let dump = environment["LIFE_UI_TEST_BACKUP_DUMP"],
-      let saveDir = environment["LIFE_UI_TEST_BACKUP_SAVE_DIR"]
-    else { throw XCTSkip("Set LIFE_UI_TEST_BACKUP_DUMP and LIFE_UI_TEST_BACKUP_SAVE_DIR") }
+    guard let dump = environment["IRIS_TEST_BACKUP_DUMP"],
+      let saveDir = environment["IRIS_TEST_BACKUP_SAVE_DIR"]
+    else { throw XCTSkip("Set IRIS_TEST_BACKUP_DUMP and IRIS_TEST_BACKUP_SAVE_DIR") }
     continueAfterFailure = false
     let app = launch(["--demo"])
     defer { app.terminate() }
@@ -53,9 +53,9 @@ final class BackupUITests: XCTestCase {
     capture(app, "mac-restore-undone")
   }
 
-  func testSharedCLIFilePointsAtItsPathAndLifeExport() throws {
-    guard let database = environment["LIFE_UI_TEST_BACKUP_CLI_DB"] else {
-      throw XCTSkip("Set LIFE_UI_TEST_BACKUP_CLI_DB")
+  func testSharedCLIFilePointsAtItsPathAndSomaExport() throws {
+    guard let database = environment["IRIS_TEST_BACKUP_CLI_DB"] else {
+      throw XCTSkip("Set IRIS_TEST_BACKUP_CLI_DB")
     }
     continueAfterFailure = false
     let app = launch(["--demo"])

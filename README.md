@@ -1,7 +1,7 @@
-# Life UI
+# Iris
 
 A local-first Svelte web client and native SwiftUI apps for catalogued
-life-data databases. The three clients consume the same TypeScript validation,
+soma databases. The three clients consume the same TypeScript validation,
 query, write and sync implementation. No PWA or analytics.
 
 Markdown documents display retained PNG, JPEG, GIF, WebP, AVIF and BMP images
@@ -22,7 +22,7 @@ table's access policy or dismisses an unsaved record.
 Pins are ordinary synced workspace rows, not device preferences. After a
 successful sync, a fresh replica recovers them. Unsynced changes still depend on
 that device's database. The workspace owner can enable storage with
-`life table provision sidebar-pins` followed by `life sync`; app-owned samples
+`soma table provision sidebar-pins` followed by `soma sync`; app-owned samples
 prepare it automatically. A same-name unrelated table is left untouched.
 
 ## Using the web workspace
@@ -31,7 +31,7 @@ Open the app, then choose **Open my workspace** or **Try sample workspace**.
 The sample has its own persistent database and cannot sync to an account.
 In **Connect to a hub**, enter its address and choose **Approve this browser**.
 Open the approval page, compare the displayed code, and approve through the hub's
-owner sign-in. Return to Life UI while it waits for approval. The browser creates
+owner sign-in. Return to Iris while it waits for approval. The browser creates
 its own device token; only its SHA-256 fingerprint appears in the approval link.
 The token stays in memory for that browser session. The hub must allow this web
 app's origin through CORS, including its existing session endpoint.
@@ -172,7 +172,7 @@ results when tables are excluded from sync.
 
 ## Native apps
 
-The macOS and iOS apps share `packages/LifeKit`: a SwiftUI catalog workspace
+The macOS and iOS apps share `packages/IrisKit`: a SwiftUI catalog workspace
 using the same TypeScript core through JavaScriptCore and GRDB. Browse/search
 records, sort by a catalog field, combine filters, create/edit fields, edit
 Markdown, and trash/restore rows. Sort and filter controls reset when
@@ -204,7 +204,7 @@ discard.
 The sidebar lists device-local recent destinations and a collapsible System
 tables section ([native recents](docs/native-recents.md)). **Find** (Cmd+K on the
 Mac) searches tables, saved views and records; each choice is re-read before it
-opens. **Copy link** in the records header copies a `life://` link to the table
+opens. **Copy link** in the records header copies a `iris://` link to the table
 and applied saved view; the record editor copies a link to the saved record.
 Received links wait in a banner until **Open link** is chosen in the matching
 workspace, and never open a workspace, switch connections or replace an open
@@ -420,10 +420,10 @@ Actual OS banner delivery still requires an installed app, owner permission and
 verification on an unlocked device; automated tests use an injected presenter
 and never request notification authorization.
 
-Application Support contains `life-ui/local.sqlite`, per-endpoint databases
-under `life-ui/replicas/`, per-hub download preferences under
-`life-ui/replicas/downloads/`, per-workspace graph groups, and alert preferences,
-baselines and delivered event IDs under `life-ui/alerts/`. Credentials never
+Application Support contains `iris/local.sqlite`, per-endpoint databases
+under `iris/replicas/`, per-hub download preferences under
+`iris/replicas/downloads/`, per-workspace graph groups, and alert preferences,
+baselines and delivered event IDs under `iris/alerts/`. Credentials never
 appear in these files. The facade serializes whole asynchronous core requests;
 sync holds the Python-compatible `<database>.sync.lock`. URLSession rejects
 redirects and omits cookies and cached credentials. macOS embeds the same
@@ -434,54 +434,54 @@ Native tests use synthetic temporary databases and a synthetic URLSession hub.
 For the real Worker fixture described below, run:
 
 ```sh
-LIFE_UI_TEST_HUB=http://127.0.0.1:5200 swift test \
-  --package-path packages/LifeKit --scratch-path "$HOME/Library/Developer/life-ui-swift"
+IRIS_TEST_HUB=http://127.0.0.1:5200 swift test \
+  --package-path packages/IrisKit --scratch-path "$HOME/Library/Developer/iris-swift"
 ```
 
 This opt-in test pulls schema/catalog over HTTP, writes offline, reopens the
 database, and verifies accepted edits at the hub. Set
-`LIFE_UI_TEST_SERVICES_HUB` to the `scripts/services-hub.ts` fixture URL for
+`IRIS_TEST_SERVICES_HUB` to the `scripts/services-hub.ts` fixture URL for
 real HTTP Usage and complete-feed tests. Xcode tests accept these variables
 with the `TEST_RUNNER_` prefix; the services UI test requires a fresh fixture
 with its 205 unread synthetic events and verifies individual and shared
 mark-all-read actions. To include interrupted-save UI recovery, set
-`TEST_RUNNER_LIFE_UI_TEST_RECOVERY_SIMULATOR` to the selected disposable simulator's
+`TEST_RUNNER_IRIS_TEST_RECOVERY_SIMULATOR` to the selected disposable simulator's
 UDID. The app-host test seeds only that simulator's local workspace before the
 UI test copies recovered text, exits, opens the saved row and relaunches.
 
 Native create-in-place (`ReferenceCreateUITests`) uses a synthetic
 people/companies/meetings workspace from `bun scripts/reference-create-fixture.ts
 <out.sqlite>`. On iOS, install the app on a disposable simulator, copy the file to
-its data container's `Library/Application Support/life-ui/local.sqlite` and run
-`-only-testing:LifeUIUITests/ReferenceCreateUITests` with
-`TEST_RUNNER_LIFE_UI_TEST_REFERENCE_CREATE_SIMULATOR` set to that UDID. On macOS,
-set `TEST_RUNNER_LIFE_UI_TEST_REFERENCE_CREATE_DATABASE` to the generated file and
-`TEST_RUNNER_LIFE_UI_TEST_CATALOG_CLEAN_HOST=1` on a disposable host; the test opens
+its data container's `Library/Application Support/iris/local.sqlite` and run
+`-only-testing:IrisUITests/ReferenceCreateUITests` with
+`TEST_RUNNER_IRIS_TEST_REFERENCE_CREATE_SIMULATOR` set to that UDID. On macOS,
+set `TEST_RUNNER_IRIS_TEST_REFERENCE_CREATE_DATABASE` to the generated file and
+`TEST_RUNNER_IRIS_TEST_CATALOG_CLEAN_HOST=1` on a disposable host; the test opens
 the file through the picker, needs an unlocked console and runs in CI's clean-runner
 XCUI step.
-The browser version is `bun scripts/test-reference-create.ts /path/to/life-data`
-on `http://life-ui-reference-create.localhost:5244/workspace?review`.
+The browser version is `bun scripts/test-reference-create.ts /path/to/soma`
+on `http://iris-reference-create.localhost:5244/workspace?review`.
 
 For the native navigation regression, use a disposable simulator: the fixture
 replaces its saved connection and seeds 50,000 synthetic provenance rows. Start
 `uv run scripts/navigation-hub.py --port 0` and use its printed loopback URL:
 
 ```bash
-TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_SIMULATOR="$SIMULATOR_UDID" \
-TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_HUB="$FIXTURE_URL" \
-xcodebuild -project apps/ios/LifeUI.xcodeproj -scheme LifeUI \
+TEST_RUNNER_IRIS_TEST_TABLE_NAV_SIMULATOR="$SIMULATOR_UDID" \
+TEST_RUNNER_IRIS_TEST_TABLE_NAV_HUB="$FIXTURE_URL" \
+xcodebuild -project apps/ios/Iris.xcodeproj -scheme Iris \
   -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
   -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- test \
-  -only-testing:LifeUITests/TableNavigationUIFixtureTests \
-  -only-testing:LifeUIUITests/TableNavigationUITests
+  -only-testing:IrisTests/TableNavigationUIFixtureTests \
+  -only-testing:IrisUITests/TableNavigationUITests
 ```
 
 This holds a real sync response while opening a large cached table, returning to
 notes, saving an edit and reopening the stored record. Add
-`-only-testing:LifeUIUITests/SyncStatusUITests` to drive the sync pill through
+`-only-testing:IrisUITests/SyncStatusUITests` to drive the sync pill through
 Syncing, Synced, Offline, Offline · 1 pending and 1 rejected with the fixture's
 `/fixture/mode/<accept|reject|offline>` switch; the seed replaces the replica each run. Run again without
-`TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_HUB` for repeated
+`TEST_RUNNER_IRIS_TEST_TABLE_NAV_HUB` for repeated
 local large-table navigation. Each mode skips the other mode's tests. Retained
 XCTest screenshots show the saved record while sync remains held. Stop the fixture server
 when finished. Local navigation and inline saves run while sync awaits HTTP;
@@ -489,10 +489,10 @@ database transactions still retain complete ownership until they finish.
 
 `LargeMarkdownNavigationUIFixtureTests` and `LargeMarkdownNavigationUITests`
 exercise a 454-record synthetic Markdown table, scrolling and table changes.
-Use `TEST_RUNNER_LIFE_UI_TEST_MARKDOWN_NAV_SIMULATOR` for its exact disposable
-simulator, and set `TEST_RUNNER_LIFE_UI_TEST_MARKDOWN_NAV_CATALOG=1` for the
+Use `TEST_RUNNER_IRIS_TEST_MARKDOWN_NAV_SIMULATOR` for its exact disposable
+simulator, and set `TEST_RUNNER_IRIS_TEST_MARKDOWN_NAV_CATALOG=1` for the
 85-table catalog with populated relation and JSON properties. The optional
-`TEST_RUNNER_LIFE_UI_TEST_MARKDOWN_NAV_HUB` uses the same loopback fixture to
+`TEST_RUNNER_IRIS_TEST_MARKDOWN_NAV_HUB` uses the same loopback fixture to
 hold sync HTTP. Seed the app-host fixture before running the UI test. Measurements
 include XCTest polling and interaction overhead, and do not replace phone acceptance.
 
@@ -503,15 +503,15 @@ interrupting an active database operation or crossing transport/close barriers.
 Only one passive label read per workspace enters the database queue at a time;
 the remaining callers wait outside it and can cancel before admission. This keeps
 a queued service request from trapping navigation behind the entire label backlog.
-`LIFE_UI_REFERENCE_BARRIER=1` enables the real-core synthetic catalog measurement
+`IRIS_REFERENCE_BARRIER=1` enables the real-core synthetic catalog measurement
 with 300 labels followed by a service request and table navigation in
 `ReferenceAdmissionPerformanceTests.measureNavigationWithQueuedServiceBarrier`.
 For an opt-in synthetic measurement with a large catalog and 70, 100 or 300
 pending reference labels, run in an otherwise idle build window:
 
 ```sh
-LIFE_UI_REFERENCE_ADMISSION=1 swift test --package-path packages/LifeKit \
-  --scratch-path "$HOME/Library/Developer/life-ui-swift" \
+IRIS_REFERENCE_ADMISSION=1 swift test --package-path packages/IrisKit \
+  --scratch-path "$HOME/Library/Developer/iris-swift" \
   --filter ReferenceAdmissionPerformanceTests
 ```
 
@@ -529,7 +529,7 @@ Unsigned builds are development artifacts, not signed releases or phone installs
 appear in widgets (Table titles, Today, Record count, Quick Add), which tables offer
 record titles to Spotlight, the Shortcuts lookup table (default none) and the daily
 view shown at the top of the sidebar. Lock Screen widgets show counts and generic
-labels only. Quick Add, the share sheet ("Life UI" with a link or text) and the
+labels only. Quick Add, the share sheet ("Iris" with a link or text) and the
 Quick Add, Open Today and Look Up shortcuts open the app with a pending draft or
 link; nothing is saved until you choose Save. Spotlight results open through the
 same link banner. Turning a table off removes its titles from Spotlight.
@@ -560,16 +560,16 @@ app. CI verifies sources without deploying. Child `project.yml` files are
 canonical; `just gen` regenerates the ignored Xcode projects.
 
 `IOS_TEST_DESTINATION` selects another installed simulator.
-`IOS_DERIVED_DATA`, `MACOS_DERIVED_DATA` and `LIFE_UI_SWIFT_CACHE` override
+`IOS_DERIVED_DATA`, `MACOS_DERIVED_DATA` and `IRIS_SWIFT_CACHE` override
 cache paths, which default under `~/Library/Developer`.
 
 Browser smoke tests attach to a dedicated, already-open Chrome CDP page:
-The enrollment runner uses only `http://life-ui-enrollment.localhost:5230/workspace?review`
+The enrollment runner uses only `http://iris-enrollment.localhost:5230/workspace?review`
 and disposable actual Worker auth state:
 
 ```sh
-bun scripts/test-enrollment-host.ts /path/to/life-data
-bun scripts/test-enrollment.ts /path/to/life-data
+bun scripts/test-enrollment-host.ts /path/to/soma
+bun scripts/test-enrollment.ts /path/to/soma
 ```
 
 Run them sequentially: concurrent Playwright connections to one browser can
@@ -583,64 +583,64 @@ disconnecting; product links intentionally discard `review` and `observer` flags
 ```sh
 # Keyboard-only accessibility walk with axe-core, light and dark (also in
 # `just check` and CI). Starts its own dev server and headless Chrome; a
-# life-data checkout adds the hub-connected views.
-bun scripts/check-a11y.ts [/path/to/life-data]
+# soma checkout adds the hub-connected views.
+bun scripts/check-a11y.ts [/path/to/soma]
 # Run a dev server untouched by other edits in a shared checkout:
-LIFE_UI_DEV_NO_HMR=1 bun run dev -- --port 5261
+IRIS_DEV_NO_HMR=1 bun run dev -- --port 5261
 
 # Filter and sort toolbar on the sample workspace; needs a disposable Chrome
 # (--remote-debugging-port=9333, fresh --user-data-dir, --disable-extensions)
 # and a dev server that no other edits reload.
-LIFE_UI_TEST_CDP=http://127.0.0.1:9333 LIFE_UI_TEST_URL=http://127.0.0.1:5261/workspace \
-  LIFE_UI_TEST_SHOTS=/tmp/shots bun scripts/test-filter-bar.ts
+IRIS_TEST_CDP=http://127.0.0.1:9333 IRIS_TEST_URL=http://127.0.0.1:5261/workspace \
+  IRIS_TEST_SHOTS=/tmp/shots bun scripts/test-filter-bar.ts
 
 # Separate test origin keeps integration fixtures out of another workspace.
-bun scripts/test-hub.ts /path/to/life-data
+bun scripts/test-hub.ts /path/to/soma
 bun run dev -- --port 5197
 # Open http://127.0.0.1:5197/workspace in the dedicated test browser page.
 bun scripts/test-sync.ts
 
 # Use dedicated disposable origins for rejection and concurrency checks.
-LIFE_UI_TEST_HUB_PORT=5201 LIFE_UI_TEST_ORIGIN=http://localhost:5196 \
-  bun scripts/test-hub.ts /path/to/life-data
+IRIS_TEST_HUB_PORT=5201 IRIS_TEST_ORIGIN=http://localhost:5196 \
+  bun scripts/test-hub.ts /path/to/soma
 # Open http://localhost:5196/workspace in another dedicated test page.
 bun scripts/test-rejections.ts
 # Durable inbox: 205 real hub rejections, bounded paging, corrupt-page retries,
 # paused repair/Restore, accepted receipts, offline reopen and stale replies.
-# Reserve http://life-ui-rejections.localhost:5238/workspace?review first.
-bun scripts/test-rejection-inbox.ts <life-data-checkout>
-# Open http://life-ui-write-fixes.localhost:5196/workspace?review in its own page.
-bun scripts/test-workspace-regressions.ts /path/to/life-data
-# Open http://life-ui-sql-integrity.localhost:5198/workspace?review in its own page.
-bun scripts/test-sql-integrity.ts /path/to/life-data
-# Open http://life-ui-markdown.localhost:5198/workspace?review in its own page.
+# Reserve http://iris-rejections.localhost:5238/workspace?review first.
+bun scripts/test-rejection-inbox.ts <soma-checkout>
+# Open http://iris-write-fixes.localhost:5196/workspace?review in its own page.
+bun scripts/test-workspace-regressions.ts /path/to/soma
+# Open http://iris-sql-integrity.localhost:5198/workspace?review in its own page.
+bun scripts/test-sql-integrity.ts /path/to/soma
+# Open http://iris-markdown.localhost:5198/workspace?review in its own page.
 bun scripts/test-search.ts
-bun scripts/test-search-sync.ts /path/to/life-data
-bun scripts/test-saved-views.ts /path/to/life-data
-bun scripts/test-view-options.ts /path/to/life-data   # optional: rollover|options|actions
-bun scripts/test-table-invariants.ts /path/to/life-data
-bun scripts/test-read-dependencies.ts /path/to/life-data
-bun scripts/test-remote-browse.ts /path/to/life-data
+bun scripts/test-search-sync.ts /path/to/soma
+bun scripts/test-saved-views.ts /path/to/soma
+bun scripts/test-view-options.ts /path/to/soma   # optional: rollover|options|actions
+bun scripts/test-table-invariants.ts /path/to/soma
+bun scripts/test-read-dependencies.ts /path/to/soma
+bun scripts/test-remote-browse.ts /path/to/soma
 # Also open /workspace?review&observer=1 on the same reserved origin for this test.
-bun scripts/test-partial-sync.ts /path/to/life-data
-# Open http://life-ui-relations.localhost:5223/workspace?review in its own page.
-bun scripts/test-reference-navigation.ts /path/to/life-data
+bun scripts/test-partial-sync.ts /path/to/soma
+# Open http://iris-relations.localhost:5223/workspace?review in its own page.
+bun scripts/test-reference-navigation.ts /path/to/soma
 # Only while owning that checkout and its dev server: temporarily mutate the route.
-bun scripts/test-reference-mutations.ts /path/to/life-data
+bun scripts/test-reference-mutations.ts /path/to/soma
 # Backup dialog: replica download, SQL export, hub backups, restore and undo. It
 # serves the real hub Worker itself and launches its own headless Chrome.
-LIFE_UI_TEST_URL=http://127.0.0.1:5291/workspace bun scripts/test-backup.ts /path/to/life-data
-# Open http://life-ui-navigation.localhost:5224/workspace?review in its own page.
-bun scripts/test-workspace-navigation.ts /path/to/life-data
-bun scripts/test-navigation-mutations.ts /path/to/life-data
+IRIS_TEST_URL=http://127.0.0.1:5291/workspace bun scripts/test-backup.ts /path/to/soma
+# Open http://iris-navigation.localhost:5224/workspace?review in its own page.
+bun scripts/test-workspace-navigation.ts /path/to/soma
+bun scripts/test-navigation-mutations.ts /path/to/soma
 # These two attach to one owned page by its CDP target ID (from /json/list):
-# http://life-ui-navigation.localhost:5274/workspace?review, then
-# http://life-ui-presentations.localhost:5252/workspace?review.
-LIFE_UI_TEST_TARGET=<owned-CDP-page-id> bun scripts/test-view-defaults.ts /path/to/life-data
-LIFE_UI_TEST_TARGET=<owned-CDP-page-id> bun scripts/test-view-presentations.ts /path/to/life-data
+# http://iris-navigation.localhost:5274/workspace?review, then
+# http://iris-presentations.localhost:5252/workspace?review.
+IRIS_TEST_TARGET=<owned-CDP-page-id> bun scripts/test-view-defaults.ts /path/to/soma
+IRIS_TEST_TARGET=<owned-CDP-page-id> bun scripts/test-view-presentations.ts /path/to/soma
 # Run the dev server on 5237 and open an owned page at
-# http://life-ui-navigation.localhost:5237/workspace?review&proposal=synthetic-review
-LIFE_UI_TEST_TARGET=<owned-CDP-page-id> bun scripts/test-review-navigation.ts
+# http://iris-navigation.localhost:5237/workspace?review&proposal=synthetic-review
+IRIS_TEST_TARGET=<owned-CDP-page-id> bun scripts/test-review-navigation.ts
 ```
 
 The filter bar check covers property search, chip editing, sorts, saving and
@@ -651,24 +651,24 @@ dynamic options, typed filter chips, column settings, workspace switching and
 durable pending counts (`test-workspace-mutations.ts` proves each case can fail).
 Saved-view checks cover projection, Save as new view, Rename conflicts and Delete;
 view-default checks cover the preferred view, explicit view links and a deleted
-preferred view. Run the dev server with `LIFE_UI_DEV_NO_HMR=1` so edits in a shared
+preferred view. Run the dev server with `IRIS_DEV_NO_HMR=1` so edits in a shared
 checkout never reload the page under test. The regression runner
-clears data only on a reserved `life-ui-*.localhost` test hostname from
+clears data only on a reserved `iris-*.localhost` test hostname from
 `scripts/test-origin.ts`, with `/workspace?review`. Ordinary localhost and
 remote origins are rejected before connecting to Chrome. SQL integrity checks reject
 read-side writes before execution, preserve rows/history after invalid defaults,
 and verify ordinary schema replay and sync. Environment overrides:
-`LIFE_UI_TEST_CDP`, `LIFE_UI_TEST_URL`, `LIFE_UI_TEST_HUB`,
-`LIFE_UI_TEST_HUB_PORT`, `LIFE_UI_TEST_ORIGIN`. Test hubs listen on loopback.
+`IRIS_TEST_CDP`, `IRIS_TEST_URL`, `IRIS_TEST_HUB`,
+`IRIS_TEST_HUB_PORT`, `IRIS_TEST_ORIGIN`. Test hubs listen on loopback.
 
 Reference navigation checks use real Worker/OPFS reads and a synthetic hub. They
 cover fresh full-row lookup, cross-table IDs, draft cancellation, stale replies,
 read-only references, missing/trashed targets, skipped tables, pending writes,
-destination saved views and narrow layouts. `LIFE_UI_REFERENCE_CASE` selects a
-case by name; `LIFE_UI_TEST_SCREENSHOTS` optionally names an output directory.
+destination saved views and narrow layouts. `IRIS_REFERENCE_CASE` selects a
+case by name; `IRIS_TEST_SCREENSHOTS` optionally names an output directory.
 
 Dependency checks exercise the actual browser SQLite adapter against the shared
-life-data fixture, including expanded views, engine contexts, unsupported
+soma fixture, including expanded views, engine contexts, unsupported
 namespaces and preparation without executing validation queries. The invariant
 flow also changes a rule's dependencies during sync and verifies that only its
 required tables need complete replication.
@@ -679,17 +679,17 @@ retention, usage caps, first-sync failure visibility and narrow layouts.
 
 URL navigation checks cover table/view/row restoration, fresh full rows, encoded
 identifiers, browser Back/Forward, draft cancellation, pending receipts, delayed
-replies, missing destinations and clipboard contents. `LIFE_UI_NAVIGATION_CASE`
+replies, missing destinations and clipboard contents. `IRIS_NAVIGATION_CASE`
 selects a case by name. Its held replies delay only delivery from the real
 Worker; SQLite, OPFS and the synthetic hub remain active.
 
 ## Core and build ownership
 
-life-data owns the source. Regenerate the committed browser and native
+soma owns the source. Regenerate the committed browser and native
 artifacts from one source checkout:
 
 ```sh
-bun run bundle:core /path/to/life-core/src/validate.ts
+bun run bundle:core /path/to/soma-core/src/validate.ts
 
 # Rebuild the native adapter and web islands from this checkout alone.
 bun run bundle:native
@@ -699,13 +699,13 @@ bun run bundle:editor
 
 The full core bundles carry the same source SHA-256; validator-only artifacts
 carry the validator's SHA-256. Generated bundles contain no developer paths.
-A clean Life UI checkout builds without a sibling life-data checkout.
+A clean Iris checkout builds without a sibling soma checkout.
 CI regenerates the native resources and rejects a stale committed artifact.
 Never patch generated files by hand. `scripts/native-core.ts` is the native
 adapter, not a second validator. No native SQL callbacks are exposed to web
 content.
 
-`apps/web`, `apps/macos`, `apps/ios`, `packages/LifeKit`, `packages/core` and
+`apps/web`, `apps/macos`, `apps/ios`, `packages/IrisKit`, `packages/core` and
 `scripts` follow the repository's platform boundaries.
 
 ## Markdown editing
@@ -728,7 +728,7 @@ also require their first explicit save. Conflicts retain the draft. Native edito
 also autosave existing Markdown bodies and collect them before Save; property edits and new
 records require Save. Every save uses the shared validated write path.
 
-Browser checks for the editor use a dedicated `life-ui-markdown.localhost`
+Browser checks for the editor use a dedicated `iris-markdown.localhost`
 review tab:
 
 ```sh
@@ -815,13 +815,13 @@ app-profile configuration remain service-side. A signed app must carry the
 production APNs entitlement authorized by its app-specific distribution profile.
 Synthetic contract tests do not establish physical closed-app delivery.
 
-The shared service contract lives in life-core. To test against synthetic state
+The shared service contract lives in soma-core. To test against synthetic state
 using the hub implementations (the same checkout can supply both after merge):
 
 ```sh
-bun scripts/services-hub.ts /path/to/life-data /path/to/usage-hub
-# Open http://life-ui-services.localhost:5198/workspace?review in a dedicated page.
-bun scripts/test-services.ts /path/to/life-data /path/to/usage-hub
+bun scripts/services-hub.ts /path/to/soma /path/to/usage-hub
+# Open http://iris-services.localhost:5198/workspace?review in a dedicated page.
+bun scripts/test-services.ts /path/to/soma /path/to/usage-hub
 ```
 
 The browser test starts its own hub with more than one page of notifications.
@@ -831,13 +831,13 @@ native testing. Both use synthetic records and loopback interfaces only.
 
 ## Owner setup
 
-- `.env.tpl` is the Life UI CI bootstrap manifest. Run
-  `op-project-bootstrap /path/to/life-ui/.env.tpl --repo <owner>/life-ui`
-  for the deployment repository. Credentials must be minted for Life UI. Cloudflare
+- `.env.tpl` is the Iris CI bootstrap manifest. Run
+  `op-project-bootstrap /path/to/iris/.env.tpl --repo <owner>/iris`
+  for the deployment repository. Credentials must be minted for Iris. Cloudflare
   Workers Scripts Write is account-scoped, so that broader deployment scope
   needs an explicit decision before provisioning the CI token.
-- Provision Life UI's own Worker and Access application, then enable deployment.
-  The supported data dependency is the life-data hub API with independent
+- Provision Iris's own Worker and Access application, then enable deployment.
+  The supported data dependency is the soma hub API with independent
   device credentials, never its backing database or infrastructure token.
 - For iPhone development installation, enroll the device/team through Xcode,
   set `IOS_DEVELOPMENT_TEAM` and `IOS_DEVICE_ID`, then run the iOS `build`
@@ -845,8 +845,8 @@ native testing. Both use synthetic records and loopback interfaces only.
 - Ad Hoc distribution uses the manual **Build iOS Ad Hoc** GitHub workflow.
   The existing project CI service account reads the Apple Distribution P12,
   password and App Store Connect API key from the documented Apple Signing vault
-  exception. The app (`com.alexmiller.life-ui`), widget (`.widgets`) and share
-  (`.share`) App IDs each carry the App Group `group.com.alexmiller.life-ui`;
+  exception. The app (`com.alexmiller.iris`), widget (`.widgets`) and share
+  (`.share`) App IDs each carry the App Group `group.com.alexmiller.iris`;
   assigning a group to an App ID is a developer-portal step. Mint one explicit
   `IOS_APP_ADHOC` profile per App ID with the existing distribution certificate and
   set repository variables `IOS_PROVISIONING_PROFILE_ID`,
@@ -872,9 +872,9 @@ age-keygen -o "$signing_dir/identity.txt"
 age-keygen -y "$signing_dir/identity.txt"
 gh workflow run build-ios.yml --ref main -f artifact_recipient='<public-age-recipient>'
 gh run watch <run-id> --exit-status
-gh run download <run-id> -n LifeUI-iOS-<source-sha> -D '<private-output-directory>'
+gh run download <run-id> -n Iris-iOS-<source-sha> -D '<private-output-directory>'
 age --decrypt -i "$signing_dir/identity.txt" \
-  -o '<private-output-directory>/LifeUI.ipa' '<private-output-directory>/LifeUI.ipa.age'
+  -o '<private-output-directory>/Iris.ipa' '<private-output-directory>/Iris.ipa.age'
 ```
 
 Keep the `signing_dir` location until the artifact is decrypted. On Nix hosts,
@@ -896,7 +896,7 @@ proof of phone installation.
 
 The tag-only `Release macOS` workflow builds a universal Apple Silicon/Intel
 application, signs it with Developer ID, notarizes and staples it, then publishes
-`LifeUI-vX.Y.Z.zip` and `SHA256SUMS` in GitHub Releases. The version stamped into
+`Iris-vX.Y.Z.zip` and `SHA256SUMS` in GitHub Releases. The version stamped into
 the app comes from the stable `vX.Y.Z` tag. Branch pushes do not publish releases.
 
 Before the first release, bootstrap the project CI account with the `.env.tpl`
@@ -925,7 +925,7 @@ must succeed before the cask is updated. If only the cask job fails, rerun that 
 published tag or replace its archive. Older retries and identical version/hash
 pairs leave the tap unchanged. A different hash for the same version or unsupported
 version/checksum format fails closed. Install through the configured, fully
-qualified tap token, such as `owner/tap/life-ui`. In nix-darwin that token belongs
+qualified tap token, such as `owner/tap/iris`. In nix-darwin that token belongs
 in `homebrew.casks`; rebuild the machine configuration. The installed app keeps
 its workspace in Application Support and its device credential in Keychain.
 
@@ -949,7 +949,7 @@ The Markdown editor's text Undo is separate.
 Run the real OPFS Undo checks against a reserved fixture origin:
 
 ```sh
-LIFE_UI_TEST_URL=http://life-ui-markdown.localhost:5198/workspace?review bun scripts/test-session-undo.ts /path/to/life-data
+IRIS_TEST_URL=http://iris-markdown.localhost:5198/workspace?review bun scripts/test-session-undo.ts /path/to/soma
 ```
 
 Saved views can combine individual filters with all/any rule groups, compare date
@@ -962,30 +962,30 @@ literal property values and their position among visible columns. Save the view
 before using its actions; local edits retain the normal undo and sync behavior.
 
 The workflow browser regression uses a reserved disposable origin and synthetic
-hub state: `LIFE_UI_TEST_URL=<reserved-url> bun scripts/test-workflow-views.ts <life-data-checkout>`.
+hub state: `IRIS_TEST_URL=<reserved-url> bun scripts/test-workflow-views.ts <soma-checkout>`.
 It checks grouped conditions, configured day-boundary/foreground refresh, actions
-and reopen. `scripts/test-view-options.ts <life-data-checkout> [all|rollover|options|actions]`
-(same `LIFE_UI_TEST_URL`) covers the day boundary with the app's own rollover timer,
+and reopen. `scripts/test-view-options.ts <soma-checkout> [all|rollover|options|actions]`
+(same `IRIS_TEST_URL`) covers the day boundary with the app's own rollover timer,
 timezone and foreground refresh, group rules switching between numeric and Boolean
 properties, live action choices and stale displayed-view rejection.
-`scripts/test-notes-views.ts <life-data-checkout>` (same `LIFE_UI_TEST_URL`/`_TARGET`
-variables; optional `LIFE_UI_TEST_SHOTS=<dir>`) seeds a synthetic lifecycle table and
+`scripts/test-notes-views.ts <soma-checkout>` (same `IRIS_TEST_URL`/`_TARGET`
+variables; optional `IRIS_TEST_SHOTS=<dir>`) seeds a synthetic lifecycle table and
 checks the preferred default view, a separate related-record view, a flag quick
 filter with its inline reason and status-labeled search.
 The native `WorkflowViewsUITests` uses `SavedViewsTests.prepareSavedViewsUIFixture`
-on the exact disposable simulator selected by `LIFE_UI_TEST_SAVED_VIEWS_SIMULATOR`.
+on the exact disposable simulator selected by `IRIS_TEST_SAVED_VIEWS_SIMULATOR`.
 
-### Share a Mac database with the Life CLI
+### Share a Mac database with the Soma CLI
 
 On the Mac, close the current workspace, choose **Open a local database…**, and
-select the file printed by `life path`. Life UI remembers that file for the next
+select the file printed by `soma path`. Iris remembers that file for the next
 launch. Both clients now read and write the same SQLite database, including while
 offline. Foreground windows observe committed changes every 250 ms; commits refresh
 catalog and grid data without replacing unsaved editor drafts. A conflicting save
 keeps the draft for review instead of silently overwriting the other writer.
 
 The CLI's configured background sync owns hub synchronization for this shared
-workspace. Life UI does not borrow its credential or run a second replica sync
+workspace. Iris does not borrow its credential or run a second replica sync
 against the file. Keep the CLI background service enabled for cross-device sync;
 local UI/CLI visibility works without it or a network connection. The existing
 hub connection mode remains an independent app replica for devices without a

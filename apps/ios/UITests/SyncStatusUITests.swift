@@ -7,10 +7,10 @@ final class SyncStatusUITests: XCTestCase {
     continueAfterFailure = false
     let env = ProcessInfo.processInfo.environment
     try XCTSkipUnless(
-      env["LIFE_UI_TEST_TABLE_NAV_SIMULATOR"] == env["SIMULATOR_UDID"]
-        && env["LIFE_UI_TEST_TABLE_NAV_SIMULATOR"] != nil,
+      env["IRIS_TEST_TABLE_NAV_SIMULATOR"] == env["SIMULATOR_UDID"]
+        && env["IRIS_TEST_TABLE_NAV_SIMULATOR"] != nil,
       "Use the explicitly selected disposable simulator and synthetic replica.")
-    let endpoint = try XCTUnwrap(env["LIFE_UI_TEST_TABLE_NAV_HUB"])
+    let endpoint = try XCTUnwrap(env["IRIS_TEST_TABLE_NAV_HUB"])
     let url = try XCTUnwrap(URL(string: endpoint))
     XCTAssertEqual(url.host, "127.0.0.1")
     @Sendable func gate(_ action: String) async throws -> Bool {

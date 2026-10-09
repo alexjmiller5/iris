@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drive only the synthetic application-hosted archive gesture fixture.
 
-Pass the PID printed by the opt-in LifeUITests run. No installed app is launched,
+Pass the PID printed by the opt-in IrisTests run. No installed app is launched,
 no external menu item is selected, and Quartz events are sent only after verifying that exact process is frontmost.
 """
 import argparse

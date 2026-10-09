@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
   <key>com.apple.security.application-groups</key>
-  <array><string>$(LIFE_WIDGET_APP_GROUP)</string></array>
+  <array><string>$(IRIS_WIDGET_APP_GROUP)</string></array>
 </dict>
 </plist>

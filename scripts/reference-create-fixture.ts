@@ -11,22 +11,22 @@ await rm(out, { force: true });
 const db = new Database(out);
 let finish: (reply: { value?: unknown; error?: string }) => void = () => {};
 const context = {
-	LifeSql: {
+	IrisSql: {
 		all: (sql: string, params: (string | number | null)[]) => db.query(sql).all(...params),
 		run: (sql: string, params: (string | number | null)[]) => db.query(sql).run(...params).changes,
 		begin: () => db.exec('BEGIN IMMEDIATE'),
 		commit: () => db.exec('COMMIT'),
 		rollback: () => db.exec('ROLLBACK')
 	},
-	__lifeYield: (callback: () => void) => queueMicrotask(callback),
-	__lifeFinish: (_id: number, json: string) => finish(JSON.parse(json))
+	__irisYield: (callback: () => void) => queueMicrotask(callback),
+	__irisFinish: (_id: number, json: string) => finish(JSON.parse(json))
 };
 const core = await readFile(
-	resolve(import.meta.dir, '../packages/LifeKit/Sources/LifeKit/Resources/life-core.js'),
+	resolve(import.meta.dir, '../packages/IrisKit/Sources/IrisKit/Resources/soma-core.js'),
 	'utf8'
 );
 runInNewContext(core, context);
-const native = (context as any).LifeNative;
+const native = (context as any).IrisNative;
 const request = (method: string, args: object = {}) =>
 	new Promise<any>((resolve, reject) => {
 		finish = (reply) => (reply.error ? reject(new Error(reply.error)) : resolve(reply.value));

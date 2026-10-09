@@ -32,14 +32,14 @@ for OPFS. Every response, including Worker dependencies, is uncompressed and
 origin's cache. It does not test the deployed edge, TLS or compression behavior.
 
 In a separately managed Chrome with CDP enabled, create your own window/tab
-at `http://life-ui-performance.localhost:5246/workspace?review`. Coordinate use
+at `http://iris-performance.localhost:5246/workspace?review`. Coordinate use
 of a shared browser before starting. The runner requires exactly one matching
 tab and never creates or closes another session's tabs.
 
 From the repository root:
 
 ```sh
-bun scripts/measure-web-performance.ts --out /tmp/life-ui-performance.json
+bun scripts/measure-web-performance.ts --out /tmp/iris-performance.json
 ```
 
 `--cdp` selects the existing Chrome endpoint (default `http://127.0.0.1:9222`).

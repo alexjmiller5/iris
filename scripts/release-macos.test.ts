@@ -23,7 +23,7 @@ const stepScript = (job: string, name: string) => {
 };
 
 async function recoveryFixture() {
-  const root = await mkdtemp(join(tmpdir(), "life-ui-recovery-test-"));
+  const root = await mkdtemp(join(tmpdir(), "iris-recovery-test-"));
   await mkdir(join(root, "saved"));
   await mkdir(join(root, "build/Fixture.app/Contents"), { recursive: true });
   await mkdir(join(root, "runner"));
@@ -209,7 +209,7 @@ test("release recovery keeps successful submission artifact across a release-onl
     ).if,
   ).toBe("always()");
   expect(upload.with.path.trim().split("\n")).toEqual([
-    "build/LifeUI-notarize.zip",
+    "build/Iris-notarize.zip",
     "build/notarization-receipt.json",
   ]);
   const f = await recoveryFixture();
@@ -221,7 +221,7 @@ test("release recovery keeps successful submission artifact across a release-onl
     );
     expect(written).toEqual(f.receipt);
     expect(
-      await Bun.file(join(f.root, "runner/life-ui-notary.p8")).exists(),
+      await Bun.file(join(f.root, "runner/iris-notary.p8")).exists(),
     ).toBe(false);
     await f.save(written);
     r = await f.run(stepScript("release", "Validate saved submission"));
@@ -231,7 +231,7 @@ test("release recovery keeps successful submission artifact across a release-onl
     r = await f.run(stepScript("release", "Wait for existing notarization"));
     expect(r.code).toBe(124);
     expect(
-      await Bun.file(join(f.root, "runner/life-ui-notary.p8")).exists(),
+      await Bun.file(join(f.root, "runner/iris-notary.p8")).exists(),
     ).toBe(false);
     f.env.GITHUB_RUN_ATTEMPT = "2";
     f.env.WAIT_STATUS = "Accepted";
@@ -341,7 +341,7 @@ for (const failure of [
       expect(r.code, r.diagnostic).not.toBe(0);
       expect(await f.calls()).not.toMatch(/stapler|gh release/);
       expect(
-        await Bun.file(join(f.root, "runner/life-ui-notary.p8")).exists(),
+        await Bun.file(join(f.root, "runner/iris-notary.p8")).exists(),
       ).toBe(false);
     } finally {
       await f.close();
@@ -569,7 +569,7 @@ test("release recovery rejects an invalid new submission ID and cleans its key",
       await Bun.file(join(f.root, "build/notarization-receipt.json")).exists(),
     ).toBe(false);
     expect(
-      await Bun.file(join(f.root, "runner/life-ui-notary.p8")).exists(),
+      await Bun.file(join(f.root, "runner/iris-notary.p8")).exists(),
     ).toBe(false);
   } finally {
     await f.close();
@@ -730,7 +730,7 @@ const cases = [
 
 for (const fixture of cases)
   test(fixture.name, async () => {
-    const root = await mkdtemp(join(tmpdir(), "life-ui-cask-test-"));
+    const root = await mkdtemp(join(tmpdir(), "iris-cask-test-"));
     const file = join(root, "tap/Casks/example-app.rb");
     try {
       await mkdir(join(root, "tap/Casks"), { recursive: true });
@@ -788,7 +788,7 @@ for (const fixture of cases)
 test.skipIf(process.platform !== "darwin")(
   "universal verification accepts both architectures and rejects a thin app",
   async () => {
-    const root = await mkdtemp(join(tmpdir(), "life-ui-universal-test-"));
+    const root = await mkdtemp(join(tmpdir(), "iris-universal-test-"));
     try {
       const executable = join(root, "build/Fixture.app/Contents/MacOS/Fixture");
       await mkdir(join(root, "build/Fixture.app/Contents/MacOS"), {
@@ -846,7 +846,7 @@ test.skipIf(process.platform !== "darwin")(
 test.skipIf(process.platform !== "darwin")(
   "private identity and production push are required in each signed architecture",
   async () => {
-    const root = await mkdtemp(join(tmpdir(), "life-ui-signing-test-"));
+    const root = await mkdtemp(join(tmpdir(), "iris-signing-test-"));
     try {
       const app = join(root, "Fixture.app");
       await mkdir(join(app, "Contents/MacOS"), { recursive: true });

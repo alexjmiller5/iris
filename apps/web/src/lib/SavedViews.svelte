@@ -7,7 +7,7 @@
 		IconLayoutList,
 		IconTrash
 	} from '@tabler/icons-svelte';
-	import type { SavedViewRecord } from 'life-ui-core/client';
+	import type { SavedViewRecord } from 'iris-core/client';
 	import { createSavedViewsModel } from './saved-views';
 	import { anchored } from './popover';
 

@@ -2,23 +2,23 @@
 
 Status: contract examples for owner review. No historical Undo, proposal store,
 approval endpoint, dry-run endpoint or MCP server is implemented by this change.
-Life Data owns validation, authoritative revisions, authentication and writes.
-Life UI will consume its supported contract. Workflow schema belongs to its
+Soma owns validation, authoritative revisions, authentication and writes.
+Iris will consume its supported contract. Workflow schema belongs to its
 workflow owner. Existing volatile session Undo remains a separate operation.
 
 ## Executable boundary
 
-The smallest conditional HTTP patch prerequisite is Life Data main
+The smallest conditional HTTP patch prerequisite is Soma main
 `5e785bcf96d9ecfc37d00bb33515969f6bd876cc` plus its direct child
 `9121ef66df4dcc3a72c63f87d400a8e9555c17f9`. At proposal review, that child is
 unmerged and deployment is unverified. The local-change sync fix `298e8da`
 and the rest of the workflow branch are not prerequisites.
 
-Run from the Life UI checkout with an existing Life Data Git checkout containing
+Run from the Iris checkout with an existing Soma Git checkout containing
 that commit (no checkout changes, dependency install or network needed):
 
 ```sh
-LIFE_DATA_CONTRACT_ROOT='<life-data-checkout>' bun scripts/check-governance-contract.ts --mutations
+SOMA_CONTRACT_ROOT='<soma-checkout>' bun scripts/check-governance-contract.ts --mutations
 ```
 
 The runner exports the pinned Worker and core into a temporary directory, calls
@@ -29,10 +29,10 @@ leak a row value in the receipt, or erase retained history. Each must fail an as
 must pass again. To check a newer *working tree* explicitly:
 
 ```sh
-LIFE_DATA_CONTRACT_ROOT='<life-data-checkout>' bun test scripts/governance-contract.test.ts
+SOMA_CONTRACT_ROOT='<soma-checkout>' bun test scripts/governance-contract.test.ts
 ```
 
-These focused checks are separate from the existing Life UI test command until
+These focused checks are separate from the existing Iris test command until
 the integration owner assigns an upstream checkout to CI. Passing them proves
 the pending patch boundary, not availability in the bundled UI core or live hub.
 
@@ -123,7 +123,7 @@ These are acceptance requirements, not new routes or schema definitions.
   identity and return the stored committed receipt BEFORE revalidating target
   revision or catalog. A later edit cannot turn a committed retry into conflict.
   Storage representation, retention and error DTOs remain for
-  Life Data to define; current conditional patch alone does not meet this rule.
+  Soma to define; current conditional patch alone does not meet this rule.
 - History and activity shall distinguish server-authenticated proposer,
   approver and committer from caller-claimed origin/tool labels. An offline
   origin does not become an authenticated actor when synced. Existing unknown
@@ -161,10 +161,10 @@ intent and do not reserve endpoint names. `r0` and `r1` mean distinct exact
 
 ## Integration gate
 
-Life Data reviews the shared semantics and defines authoritative DTOs, capabilities
+Soma reviews the shared semantics and defines authoritative DTOs, capabilities
 and tests before client implementation. Workflow owns any conditional-patch
 integration and Tasks/Notes schema changes. Product selections are recorded above. Implement
-typed history/preview/proposal/receipt work in Life Data, then generate client
+typed history/preview/proposal/receipt work in Soma, then generate client
 bindings and assign UI/MCP integration files. No competing revisions table,
 client-side validator, approval boolean on a syncable row, or timestamp-inferred
 transaction is authorized by this proposal.

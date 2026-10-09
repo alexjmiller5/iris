@@ -5,12 +5,12 @@ import { disposableOrigin, synced, workspacePage } from './test-origin';
 // Write locks, SQL defaults, dynamic options, typed filter chips, column settings,
 // workspace switching and durable pending counts on a synthetic hub workspace.
 // Open the reserved review page in a disposable Chrome first; this runner clears
-// only that origin's storage. LIFE_UI_TEST_CASE runs the cases whose name contains it.
+// only that origin's storage. IRIS_TEST_CASE runs the cases whose name contains it.
 // Shared build hosts can be slow; waits are generous, never fixed sleeps.
 const expect = base.configure({ timeout: 15000 });
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-write-fixes.localhost:5196/workspace?review';
+const url = process.env.IRIS_TEST_URL ?? 'http://iris-write-fixes.localhost:5196/workspace?review';
 const source = process.argv[2];
-if (!source) throw new Error('Usage: bun scripts/test-workspace-regressions.ts <life-data-checkout>');
+if (!source) throw new Error('Usage: bun scripts/test-workspace-regressions.ts <soma-checkout>');
 const origin = disposableOrigin(url);
 const { server, db, auth } = await regressionHub(source, origin);
 // Saved views give the table a default view, which the filter bar edits.
@@ -19,7 +19,7 @@ logDDL(db, 'ALTER TABLE widgets ADD COLUMN active INTEGER');
 db.db.exec(`INSERT INTO catalog_properties(id,tbl,col,label,sort,type) VALUES ('widgets.active','widgets','active','Active',5,'bool');
 	UPDATE widgets SET active=1 WHERE id='fixture-record';
 	UPDATE widgets SET active=0 WHERE id='second-record';`);
-const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
+const browser = await chromium.connectOverCDP(process.env.IRIS_TEST_CDP ?? 'http://127.0.0.1:9222');
 const failures: string[] = [];
 try {
 	const page = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
@@ -85,7 +85,7 @@ try {
 		if (await close.count()) await close.click();
 	}
 	async function check(name: string, body: () => Promise<void>) {
-		if (process.env.LIFE_UI_TEST_CASE && !name.includes(process.env.LIFE_UI_TEST_CASE)) return;
+		if (process.env.IRIS_TEST_CASE && !name.includes(process.env.IRIS_TEST_CASE)) return;
 		await reopen();
 		// Filter edits save into the view; a failed case must not filter the next one.
 		const leftover = chips.getByRole('button', { name: /^Remove filter: / });

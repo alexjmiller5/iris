@@ -52,12 +52,12 @@ Run `bun run test`, `bun run check`, `bun run --cwd apps/web lint`, and
 with one owned workspace page on the reserved grid origin and a Vite server:
 
 ```sh
-LIFE_UI_TEST_URL=http://life-ui-grid.localhost:5228/workspace?review \
-  bun scripts/test-record-grid.ts /path/to/life-data
-LIFE_UI_TEST_URL=http://life-ui-grid.localhost:5228/workspace?review \
+IRIS_TEST_URL=http://iris-grid.localhost:5228/workspace?review \
+  bun scripts/test-record-grid.ts /path/to/soma
+IRIS_TEST_URL=http://iris-grid.localhost:5228/workspace?review \
   bun scripts/test-grid-components.ts
-bun scripts/test-grid-mutations.ts /path/to/life-data --unit
-bun scripts/test-grid-mutations.ts /path/to/life-data --browser
+bun scripts/test-grid-mutations.ts /path/to/soma --unit
+bun scripts/test-grid-mutations.ts /path/to/soma --browser
 ```
 
 The OPFS runner uses a disposable real hub and actual Worker/SQLite operations.
@@ -77,10 +77,10 @@ cell. Failed Undo preserves the cell and its original revision.
 The combined enrollment/grid regression uses the separately reserved origin:
 
 ```sh
-LIFE_UI_TEST_URL=http://life-ui-grid-enrollment.localhost:5234/workspace?review \
-  bun scripts/test-grid-undo.ts /path/to/life-data
-LIFE_UI_TEST_URL=http://life-ui-grid-enrollment.localhost:5234/workspace?review \
-  bun scripts/test-grid-undo-mutations.ts /path/to/life-data
+IRIS_TEST_URL=http://iris-grid-enrollment.localhost:5234/workspace?review \
+  bun scripts/test-grid-undo.ts /path/to/soma
+IRIS_TEST_URL=http://iris-grid-enrollment.localhost:5234/workspace?review \
+  bun scripts/test-grid-undo-mutations.ts /path/to/soma
 ```
 
 The record panel offers the same Duplicate action as the grid. Preparation reads
@@ -94,8 +94,8 @@ including Clear on an already empty field, overrides defaults and participates i
 discard protection. Untouched copied values retain their original scalars, including
 empty strings versus NULL. Clear on a copied field deliberately requests NULL.
 
-`bun scripts/test-creation-intent.ts <life-data-checkout>` exercises these paths on
-`http://life-ui-creation.localhost:5242/workspace?review` with disposable OPFS and
+`bun scripts/test-creation-intent.ts <soma-checkout>` exercises these paths on
+`http://iris-creation.localhost:5242/workspace?review` with disposable OPFS and
 hub state. `scripts/test-creation-mutations.ts` supports unit mutations by default
 and browser mutations with `--browser`; browser runs require the exclusive CDP
 lease and the same owned fixture page.

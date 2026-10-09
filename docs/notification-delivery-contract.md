@@ -1,6 +1,6 @@
 # Notification delivery contract
 
-The inbox feed and shared read acknowledgements belong to Life Data. Life UI
+The inbox feed and shared read acknowledgements belong to Soma. Iris
 owns permission handling and presentation. This document specifies the compact
 transport identity and the integration requirements for Apple push delivery.
 Native apps register through the canonical service capability and platform token

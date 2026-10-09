@@ -3,8 +3,8 @@ import { mkdir, unlink, rmdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { disposableOrigin, workspacePage } from "./test-origin";
 const address =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-grid.localhost:5228/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-grid.localhost:5228/workspace?review";
 const origin = disposableOrigin(address);
 const routeName = `grid-test-fixture-${process.pid}`;
 const route = resolve(import.meta.dir, "../apps/web/src/routes", routeName);
@@ -38,7 +38,7 @@ let page: Page | undefined;
 try {
   await Bun.write(resolve(route, "+page.svelte"), source);
   browser = await chromium.connectOverCDP(
-    process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+    process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
   );
   page = workspacePage(
     browser.contexts().flatMap((c) => c.pages()),

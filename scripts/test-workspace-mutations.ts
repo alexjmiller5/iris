@@ -1,7 +1,7 @@
 // Run only while owning the route/worker and a dedicated disposable review page.
 // Each real browser regression must detect the named behavioral mutation.
 const source = process.argv[2];
-if (!source) throw new Error('Usage: bun scripts/test-workspace-mutations.ts <life-data-checkout> [--check]');
+if (!source) throw new Error('Usage: bun scripts/test-workspace-mutations.ts <soma-checkout> [--check]');
 const checkOnly = process.argv.includes('--check');
 const route = 'apps/web/src/routes/workspace/+page.svelte';
 const worker = 'apps/web/src/lib/database.worker.ts';
@@ -53,7 +53,7 @@ for (const mutation of mutations) {
 	try {
 		await Bun.write(mutation.file, changed);
 		const run = Bun.spawn(['bun', 'scripts/test-workspace-regressions.ts', source], {
-			env: { ...process.env, LIFE_UI_TEST_CASE: mutation.test }, stdout: 'pipe', stderr: 'pipe'
+			env: { ...process.env, IRIS_TEST_CASE: mutation.test }, stdout: 'pipe', stderr: 'pipe'
 		});
 		const [code, out, err] = await Promise.all([run.exited, new Response(run.stdout).text(), new Response(run.stderr).text()]);
 		if (code === 0 || !err.includes('FAIL: ') || !err.includes('expect('))

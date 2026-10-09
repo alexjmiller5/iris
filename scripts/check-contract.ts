@@ -8,7 +8,7 @@ const schema = JSON.parse(await readFile(resolve(root, 'packages/core/contract/c
 const generated = generateContract(schema);
 for (const [file, content] of [
   ['packages/core/contract.generated.ts', generated.typescript],
-  ['packages/LifeKit/Sources/LifeExtensionSupport/Generated/CoreContract.generated.swift', generated.swift],
+  ['packages/IrisKit/Sources/IrisExtensionSupport/Generated/CoreContract.generated.swift', generated.swift],
 ]) {
   if (await readFile(resolve(root, file), 'utf8') !== content) throw new Error(`Stale generated contract: ${file}`);
 }

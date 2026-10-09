@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import type { Property, Row } from 'life-ui-core/client';
+	import type { Property, Row } from 'iris-core/client';
 	import type { BulkRecordResult } from './bulk-records';
 	import FieldEditor from './FieldEditor.svelte';
 	import { cellPatch } from './record-grid';

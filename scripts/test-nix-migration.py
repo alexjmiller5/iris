@@ -1,7 +1,7 @@
 """Execute the app's migration against isolated receipts and fake OS commands."""
 import json, os, pathlib, subprocess, tempfile, unittest
-APP = "LifeUI"
-SLUG = "life-ui"
+APP = "Iris"
+SLUG = "iris"
 SCRIPT = pathlib.Path(__file__).with_name("migrate-homebrew.sh")
 
 class MigrationTests(unittest.TestCase):

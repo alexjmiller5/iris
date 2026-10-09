@@ -11,10 +11,10 @@ import {
 import { regressionHub } from "./workspace-regression-hub";
 import { disposableOrigin } from "./test-origin";
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-attachments.localhost:5276/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-attachments.localhost:5276/workspace?review";
 const source = process.argv[2];
-if (!source) throw Error("Provide the life-data checkout");
+if (!source) throw Error("Provide the soma checkout");
 const origin = disposableOrigin(url),
   objects = new Map<string, { data: Buffer; mime: string; hash: Buffer }>();
 let offline = true;
@@ -110,7 +110,7 @@ async function sourceText() {
     `${`(${editor}).querySelector('textarea[aria-label="Body"]')`}.value`,
   );
 }
-const downloads = await mkdtemp(join(tmpdir(), "life-ui-attachment-download-"));
+const downloads = await mkdtemp(join(tmpdir(), "iris-attachment-download-"));
 try {
   await command("Page.setDownloadBehavior", {
     behavior: "allow",
@@ -193,7 +193,7 @@ try {
     .toBe("property synthetic bytes");
   expect(after).toBe(before);
   const kept = await evaluate(
-    `(async()=>{const root=await(await navigator.storage.getDirectory()).getDirectoryHandle('life-ui-attachments');for await(const [,scope]of root){if(scope.kind!=='directory')continue;for await(const [name,handle]of scope){if(handle.kind!=='file'||!name.endsWith('.json'))continue;const entry=JSON.parse(await(await handle.getFile()).text());if(entry.key===${js(key)}){const directory=await scope.getDirectoryHandle(entry.id);return {entry,text:await(await(await directory.getFileHandle('bytes')).getFile()).text()};}}}})()`,
+    `(async()=>{const root=await(await navigator.storage.getDirectory()).getDirectoryHandle('iris-attachments');for await(const [,scope]of root){if(scope.kind!=='directory')continue;for await(const [name,handle]of scope){if(handle.kind!=='file'||!name.endsWith('.json'))continue;const entry=JSON.parse(await(await handle.getFile()).text());if(entry.key===${js(key)}){const directory=await scope.getDirectoryHandle(entry.id);return {entry,text:await(await(await directory.getFileHandle('bytes')).getFile()).text()};}}}})()`,
   );
   expect(kept.text).toBe("exact synthetic bytes ☃");
   expect(kept.entry.state).toBe("failed");

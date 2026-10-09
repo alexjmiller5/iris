@@ -1,4 +1,4 @@
-import type { CalendarContext } from 'life-ui-core/client';
+import type { CalendarContext } from 'iris-core/client';
 import { calendarContext } from './calendar-context';
 
 export function calendarMonth(

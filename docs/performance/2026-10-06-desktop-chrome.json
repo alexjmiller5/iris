@@ -33,97 +33,97 @@
     },
     "resources": [
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
         "transferSize": 8256,
         "encodedBodySize": 7956,
         "decodedBodySize": 7956
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
         "transferSize": 8318,
         "encodedBodySize": 8018,
         "decodedBodySize": 8018
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
         "transferSize": 31322,
         "encodedBodySize": 31022,
         "decodedBodySize": 31022
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
         "transferSize": 27181,
         "encodedBodySize": 26881,
         "decodedBodySize": 26881
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
         "transferSize": 382,
         "encodedBodySize": 82,
         "decodedBodySize": 82
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
         "transferSize": 365,
         "encodedBodySize": 65,
         "decodedBodySize": 65
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
         "transferSize": 3565,
         "encodedBodySize": 3265,
         "decodedBodySize": 3265
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
         "transferSize": 601,
         "encodedBodySize": 301,
         "decodedBodySize": 301
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
         "transferSize": 1698,
         "encodedBodySize": 1398,
         "decodedBodySize": 1398
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
         "transferSize": 365,
         "encodedBodySize": 65,
         "decodedBodySize": 65
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
         "transferSize": 59587,
         "encodedBodySize": 59287,
         "decodedBodySize": 59287
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
         "transferSize": 47215,
         "encodedBodySize": 46915,
         "decodedBodySize": 46915
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
         "transferSize": 121216,
         "encodedBodySize": 120916,
         "decodedBodySize": 120916
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
         "transferSize": 1160,
         "encodedBodySize": 860,
         "decodedBodySize": 860
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
         "transferSize": 168025,
         "encodedBodySize": 167725,
         "decodedBodySize": 167725
       },
       {
-        "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
+        "name": "http://iris-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
         "transferSize": 725383,
         "encodedBodySize": 725083,
         "decodedBodySize": 725083
@@ -143,97 +143,97 @@
         },
         "resources": [
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
             "transferSize": 8256,
             "encodedBodySize": 7956,
             "decodedBodySize": 7956
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
             "transferSize": 8318,
             "encodedBodySize": 8018,
             "decodedBodySize": 8018
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
             "transferSize": 31322,
             "encodedBodySize": 31022,
             "decodedBodySize": 31022
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
             "transferSize": 382,
             "encodedBodySize": 82,
             "decodedBodySize": 82
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
             "transferSize": 27181,
             "encodedBodySize": 26881,
             "decodedBodySize": 26881
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
             "transferSize": 1698,
             "encodedBodySize": 1398,
             "decodedBodySize": 1398
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
             "transferSize": 3565,
             "encodedBodySize": 3265,
             "decodedBodySize": 3265
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
             "transferSize": 59587,
             "encodedBodySize": 59287,
             "decodedBodySize": 59287
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
             "transferSize": 365,
             "encodedBodySize": 65,
             "decodedBodySize": 65
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
             "transferSize": 601,
             "encodedBodySize": 301,
             "decodedBodySize": 301
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
             "transferSize": 365,
             "encodedBodySize": 65,
             "decodedBodySize": 65
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
             "transferSize": 47215,
             "encodedBodySize": 46915,
             "decodedBodySize": 46915
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
             "transferSize": 121216,
             "encodedBodySize": 120916,
             "decodedBodySize": 120916
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
             "transferSize": 1160,
             "encodedBodySize": 860,
             "decodedBodySize": 860
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
             "transferSize": 168025,
             "encodedBodySize": 167725,
             "decodedBodySize": 167725
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
             "transferSize": 725383,
             "encodedBodySize": 725083,
             "decodedBodySize": 725083
@@ -251,97 +251,97 @@
         },
         "resources": [
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
             "transferSize": 8256,
             "encodedBodySize": 7956,
             "decodedBodySize": 7956
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
             "transferSize": 8318,
             "encodedBodySize": 8018,
             "decodedBodySize": 8018
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
             "transferSize": 31322,
             "encodedBodySize": 31022,
             "decodedBodySize": 31022
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
             "transferSize": 382,
             "encodedBodySize": 82,
             "decodedBodySize": 82
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
             "transferSize": 1698,
             "encodedBodySize": 1398,
             "decodedBodySize": 1398
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
             "transferSize": 3565,
             "encodedBodySize": 3265,
             "decodedBodySize": 3265
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
             "transferSize": 27181,
             "encodedBodySize": 26881,
             "decodedBodySize": 26881
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
             "transferSize": 59587,
             "encodedBodySize": 59287,
             "decodedBodySize": 59287
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
             "transferSize": 365,
             "encodedBodySize": 65,
             "decodedBodySize": 65
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
             "transferSize": 601,
             "encodedBodySize": 301,
             "decodedBodySize": 301
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
             "transferSize": 365,
             "encodedBodySize": 65,
             "decodedBodySize": 65
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
             "transferSize": 47215,
             "encodedBodySize": 46915,
             "decodedBodySize": 46915
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
             "transferSize": 121216,
             "encodedBodySize": 120916,
             "decodedBodySize": 120916
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
             "transferSize": 1160,
             "encodedBodySize": 860,
             "decodedBodySize": 860
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
             "transferSize": 168025,
             "encodedBodySize": 167725,
             "decodedBodySize": 167725
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
             "transferSize": 725383,
             "encodedBodySize": 725083,
             "decodedBodySize": 725083
@@ -359,97 +359,97 @@
         },
         "resources": [
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
             "transferSize": 8256,
             "encodedBodySize": 7956,
             "decodedBodySize": 7956
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
             "transferSize": 8318,
             "encodedBodySize": 8018,
             "decodedBodySize": 8018
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
             "transferSize": 31322,
             "encodedBodySize": 31022,
             "decodedBodySize": 31022
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
             "transferSize": 382,
             "encodedBodySize": 82,
             "decodedBodySize": 82
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
             "transferSize": 27181,
             "encodedBodySize": 26881,
             "decodedBodySize": 26881
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
             "transferSize": 3565,
             "encodedBodySize": 3265,
             "decodedBodySize": 3265
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
             "transferSize": 59587,
             "encodedBodySize": 59287,
             "decodedBodySize": 59287
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
             "transferSize": 1698,
             "encodedBodySize": 1398,
             "decodedBodySize": 1398
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
             "transferSize": 365,
             "encodedBodySize": 65,
             "decodedBodySize": 65
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
             "transferSize": 601,
             "encodedBodySize": 301,
             "decodedBodySize": 301
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
             "transferSize": 365,
             "encodedBodySize": 65,
             "decodedBodySize": 65
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
             "transferSize": 47215,
             "encodedBodySize": 46915,
             "decodedBodySize": 46915
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
             "transferSize": 121216,
             "encodedBodySize": 120916,
             "decodedBodySize": 120916
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
             "transferSize": 1160,
             "encodedBodySize": 860,
             "decodedBodySize": 860
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
             "transferSize": 168025,
             "encodedBodySize": 167725,
             "decodedBodySize": 167725
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
             "transferSize": 725383,
             "encodedBodySize": 725083,
             "decodedBodySize": 725083
@@ -467,97 +467,97 @@
         },
         "resources": [
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
             "transferSize": 8256,
             "encodedBodySize": 7956,
             "decodedBodySize": 7956
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
             "transferSize": 8318,
             "encodedBodySize": 8018,
             "decodedBodySize": 8018
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
             "transferSize": 31322,
             "encodedBodySize": 31022,
             "decodedBodySize": 31022
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
             "transferSize": 382,
             "encodedBodySize": 82,
             "decodedBodySize": 82
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
             "transferSize": 27181,
             "encodedBodySize": 26881,
             "decodedBodySize": 26881
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
             "transferSize": 3565,
             "encodedBodySize": 3265,
             "decodedBodySize": 3265
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
             "transferSize": 59587,
             "encodedBodySize": 59287,
             "decodedBodySize": 59287
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
             "transferSize": 1698,
             "encodedBodySize": 1398,
             "decodedBodySize": 1398
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
             "transferSize": 365,
             "encodedBodySize": 65,
             "decodedBodySize": 65
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
             "transferSize": 601,
             "encodedBodySize": 301,
             "decodedBodySize": 301
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
             "transferSize": 365,
             "encodedBodySize": 65,
             "decodedBodySize": 65
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
             "transferSize": 121216,
             "encodedBodySize": 120916,
             "decodedBodySize": 120916
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
             "transferSize": 47215,
             "encodedBodySize": 46915,
             "decodedBodySize": 46915
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
             "transferSize": 1160,
             "encodedBodySize": 860,
             "decodedBodySize": 860
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
             "transferSize": 168025,
             "encodedBodySize": 167725,
             "decodedBodySize": 167725
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
             "transferSize": 725383,
             "encodedBodySize": 725083,
             "decodedBodySize": 725083
@@ -575,97 +575,97 @@
         },
         "resources": [
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/0.CRZ3_hcq.css",
             "transferSize": 8256,
             "encodedBodySize": 7956,
             "decodedBodySize": 7956
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/RecordGrid.CCCwN-xw.css",
             "transferSize": 8318,
             "encodedBodySize": 8018,
             "decodedBodySize": 8018
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/assets/_page.BH2MeEGP.css",
             "transferSize": 31322,
             "encodedBodySize": 31022,
             "decodedBodySize": 31022
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/entry/start.DJgfGuKL.js",
             "transferSize": 382,
             "encodedBodySize": 82,
             "decodedBodySize": 82
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BuW5BNlU.js",
             "transferSize": 27181,
             "encodedBodySize": 26881,
             "decodedBodySize": 26881
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/xihTtKlq.js",
             "transferSize": 365,
             "encodedBodySize": 65,
             "decodedBodySize": 65
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/entry/app.DhrX1xhB.js",
             "transferSize": 3565,
             "encodedBodySize": 3265,
             "decodedBodySize": 3265
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/BaNbYf_w.js",
             "transferSize": 1698,
             "encodedBodySize": 1398,
             "decodedBodySize": 1398
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/0.DSywp3Sk.js",
             "transferSize": 601,
             "encodedBodySize": 301,
             "decodedBodySize": 301
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/4.D2AFbJyq.js",
             "transferSize": 365,
             "encodedBodySize": 65,
             "decodedBodySize": 65
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/Agndihnw.js",
             "transferSize": 59587,
             "encodedBodySize": 59287,
             "decodedBodySize": 59287
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DILS7-lW.js",
             "transferSize": 47215,
             "encodedBodySize": 46915,
             "decodedBodySize": 46915
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/chunks/DDXSrR7h.js",
             "transferSize": 121216,
             "encodedBodySize": 120916,
             "decodedBodySize": 120916
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/nodes/1.YyEieSYH.js",
             "transferSize": 1160,
             "encodedBodySize": 860,
             "decodedBodySize": 860
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/workers/database.worker-CcXn3pSr.js",
             "transferSize": 168025,
             "encodedBodySize": 167725,
             "decodedBodySize": 167725
           },
           {
-            "name": "http://life-ui-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
+            "name": "http://iris-performance.localhost:5246/_app/immutable/workers/assets/wa-sqlite-ChCeaMNT.wasm",
             "transferSize": 725383,
             "encodedBodySize": 725083,
             "decodedBodySize": 725083

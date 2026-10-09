@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { get } from 'svelte/store';
 import { createRemoteBrowser } from './remote-browser';
-import type { RemoteRecord, RemoteRowsPage } from 'life-ui-core/client';
+import type { RemoteRecord, RemoteRowsPage } from 'iris-core/client';
 
 const row = (id: string, label = id): RemoteRecord => ({
 	record: { id, title: label },

@@ -6,7 +6,7 @@
 		IconChevronDown,
 		IconColumns
 	} from '@tabler/icons-svelte';
-	import type { Property } from 'life-ui-core/client';
+	import type { Property } from 'iris-core/client';
 	import { visibleColumns, toggleColumn, moveColumn, changeWidth } from './column-settings';
 
 	let {

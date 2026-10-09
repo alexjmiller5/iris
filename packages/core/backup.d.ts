@@ -2,10 +2,10 @@ import type { SqlDriver } from './driver.ts';
 import type { ServiceHub } from './services.ts';
 import type { BackupSummary, HubBackup, HubBackupList, RestorePreview, RestoreResult, RestoreArgs } from './contract.generated.ts';
 export type { BackupSummary, BackupTableSummary, HubBackup, HubBackupList, RestorePreview, RestoreResult } from './contract.generated.ts';
-/** Version of the SQL dump shape: `life export`, hub backups and exportReplica.
+/** Version of the SQL dump shape: `soma export`, hub backups and exportReplica.
  * A dump without the header line is the same version-1 shape. */
 export declare const DUMP_VERSION = 1;
-export declare const DUMP_HEADER = "-- life-data-dump: 1";
+export declare const DUMP_HEADER = "-- soma-dump: 1";
 /** Successive text chunks of one dump, gzip already removed and checked by the host. */
 export interface DumpSource {
     read(): Promise<string | null>;
@@ -27,7 +27,7 @@ export declare function validateBackup(source: DumpSource): Promise<BackupSummar
 /** Counts of the live replica, in the same shape as a backup summary. */
 export declare function replicaSummary(db: SqlDriver): Promise<BackupSummary>;
 export declare function previewRestore(db: SqlDriver, source: DumpSource): Promise<RestorePreview>;
-/** The portable SQL dump of `life export`: the replica's schema log and every
+/** The portable SQL dump of `soma export`: the replica's schema log and every
  * ordinary table with its rows, then indexes, triggers and views. Device sync
  * state, caches and other underscore plumbing stay out. */
 export declare function exportReplica(db: SqlDriver, sink: DumpSink): Promise<BackupSummary>;

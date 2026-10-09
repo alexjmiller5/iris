@@ -1,7 +1,7 @@
-# Life UI
+# Iris
 
-Local-first web and native Apple clients for catalogued life-data databases.
-Title: Life UI; slug: life-ui; Apple product: LifeUI. No PWA or analytics.
+Local-first web and native Apple clients for catalogued Soma databases.
+Title: Iris; slug: iris; Apple product: Iris. No PWA or analytics.
 
 Preferred table views are synced IDs through canonical `getViewDefault`/`setViewDefault`.
 Plain table and record links open the table through canonical `ensureDefaultView`
@@ -25,29 +25,29 @@ schema from the operator. Ordinary table defaults are unaffected.
   SQLite runs through wa-sqlite/OPFSCoopSyncVFS in a dedicated Worker. The pinned
   FTS5-enabled JS/WASM pair is in `vendor/wa-sqlite`; regenerate through its Nix
   package and `scripts/build-wa-sqlite.ts`, preserving the matching API/VFS pin.
-- `apps/ios`, `apps/macos`: XcodeGen SwiftUI targets consuming LifeKit.
-- `packages/LifeKit/Sources/LifeExtensionSupport`: portable generated DTOs, shared
+- `apps/ios`, `apps/macos`: XcodeGen SwiftUI targets consuming IrisKit.
+- `packages/IrisKit/Sources/IrisExtensionSupport`: portable generated DTOs, shared
   calendar policy and bounded read-only SQLite extension reader. No JavaScriptCore,
-  network, credentials or database writer. LifeKit reexports the portable types;
+  network, credentials or database writer. IrisKit reexports the portable types;
   `bundle-core.ts` generates their single canonical Swift source there.
-- `packages/LifeKit/Sources/LifeWidgets`: App Intents widget configuration queries
-  over authorized publications, depending only on LifeExtensionSupport. Calendar
+- `packages/IrisKit/Sources/IrisWidgetSupport`: App Intents widget configuration queries
+  over authorized publications, depending only on IrisExtensionSupport. Calendar
   choices require tagged calendar bindings from the canonical core plan.
   The iOS WidgetKit extension embeds table-title, Today, bounded-count and Quick Add
   widgets; accessories expose only generic labels/counts. App, widget and share
-  targets use the configured `LIFE_WIDGET_APP_GROUP`; signed distribution requires
+  targets use the configured `IRIS_WIDGET_APP_GROUP`; signed distribution requires
   explicit matching profiles. App Shortcuts are declared in the iOS app target
   (a package-declared provider is not discovered).
 - Quick Add, the share extension and Shortcuts stage one protected `quick-add.json`
   handoff in the App Group; captured text never enters a URL. The host installs a
   recoverable editor journal before consuming it and records the UUID in bounded
   `quick-add-receipts.json`, so retried or late deliveries never open a second draft.
-  The share extension (LifeExtensionSupport only) puts one URL or text into a
+  The share extension (IrisExtensionSupport only) puts one URL or text into a
   Quick Add source's display column; only explicit Save creates a row.
 - NativeIntegrationSettings holds per-workspace identities only: Spotlight tables,
   the Shortcuts lookup table (default none) and the daily-section widget source.
   Spotlight indexes display titles of enabled tables in a protected Core Spotlight
-  index; item IDs are `life://open/v1` links handled by the pending-link banner.
+  index; item IDs are `iris://open/v1` links handled by the pending-link banner.
   Disabling a table or forgetting the connection deletes its domains. Look Up and
   Open Today run in the app through NativeIntentInbox. The iOS sidebar's daily
   section reads the Today widget's own publication through NativeWidgetSettings,
@@ -59,15 +59,15 @@ schema from the operator. Ordinary table defaults are unaffected.
   revokes the old publication; ordinary close retains its offline copy. A failed
   refresh labels previous data stale. Unreadable preferences and link identity
   files stay intact and must not block ordinary workspace use.
-- `packages/LifeKit`: serialized JavaScriptCore facade, GRDB adapter, native
+- `packages/IrisKit`: serialized JavaScriptCore facade, GRDB adapter, native
   workspace, URLSession transport, Keychain storage and bundled graph island.
 - `packages/core`: generated TypeScript declarations and JS artifacts. Core
-  implementation belongs to life-data. Regenerate with
-  `bun run bundle:core <path-to-life-core/src/validate.ts>`. Never patch generated
+  implementation belongs to soma. Regenerate with
+  `bun run bundle:core <path-to-soma-core/src/validate.ts>`. Never patch generated
   files. Native and browser full-core headers identify the same source SHA-256.
 - `packages/core/contract`: vendored canonical schema and deterministic generator
-  from life-data. `bun run check:contract` verifies TS/Swift output and the client
-  bundle hash without writes. Change the schema in life-data and regenerate the
+  from soma. `bun run check:contract` verifies TS/Swift output and the client
+  bundle hash without writes. Change the schema in soma and regenerate the
   bundle; never hand-edit DTOs. Swift `CoreRequests` and TS operation pairs share
   these shapes. Native and Worker boundaries reject a local contract hash mismatch.
 - Sidebar table pins use core's ordinary synced `sidebar_pins` rows. NativePinsModel
@@ -81,7 +81,7 @@ schema from the operator. Ordinary table defaults are unaffected.
 - `apps/web/vite.graph.config.ts`: self-contained native graph HTML built from
   the same SchemaGraph component. No external assets or network access.
 - `apps/web/vite.editor.config.ts`: self-contained Markdown editor island using
-  the same Milkdown component as the web client. `lifeEditor.setDocument` accepts
+  the same Milkdown component as the web client. `irisEditor.setDocument` accepts
   a draft ID, source, label and read-only state; `getDocument` returns the live
   snapshot. Native hosts reject stale IDs and collect all live snapshots before record actions.
   Keep Markdown as storage, preserve untouched source, and render imported HTML
@@ -123,9 +123,9 @@ no restore operation.
 
 Backup, export and restore (Settings > Backup on native, the sidebar Backup dialog on
 web) call core's `exportReplica`, `previewRestore`, `restoreReplica`, `hubBackups` and
-`createHubBackup` (life-data `docs/backups.md`). Hosts own files only: web keeps them
+`createHubBackup` (soma `docs/backups.md`). Hosts own files only: web keeps them
 in OPFS `backups/<staged|recovery|exports>/` behind the worker's `BackupFiles`
-adapter; native passes file paths to `__lifeDump*` bridge functions backed by
+adapter; native passes file paths to `__irisDump*` bridge functions backed by
 `DumpFiles.swift` (gzip inflate with CRC/length check, whole UTF-8 chunks, writes
 published on close). Download replica copies the OPFS file while the worker's
 connection is closed, or GRDB's backup of the native file; the sample is in memory
@@ -133,7 +133,7 @@ on native and has no file. Hub backups download through the enrolled transport
 and are checked against the listed size and SHA-256. Restore needs the typed word
 `replace`, no open edits and no pending local writes; core writes a recovery copy
 first and the newest three are kept as Undo. A CLI-owned shared file shows its
-path and `life export` instead. Progress folds into the sync pill.
+path and `soma export` instead. Progress folds into the sync pill.
 `scripts/test-backup.ts` drives the web flow against the real hub Worker; with
 `--serve` it is the synthetic hub for the iOS `BackupUITests`. The Mac `BackupUITests`
 run on the CI clean runner over `scripts/backup-fixtures.py` files (the Backup view
@@ -173,16 +173,16 @@ early restrictive CSP; inert template parsing removes navigation surfaces before
 mounting. Never grant same-origin/scripts, rebase links or forward credentials into
 the archive. Closing or replacing the host invalidates all outstanding work.
 
-The supported service dependency is the life-data hub API with independently
+The supported service dependency is the soma hub API with independently
 minted client credentials. Never bind its D1/R2 or borrow infrastructure tokens.
-Life UI owns its Worker, Access application, vault and deployment credentials
+Iris owns its Worker, Access application, vault and deployment credentials
 when provisioned. `.env.tpl` is the operator/CI bootstrap manifest; its values
 never enter the browser bundle. Workers Scripts Write is account-scoped in
-Cloudflare; `scripts/provision.py` mints Life UI's own token during bootstrap.
+Cloudflare; `scripts/provision.py` mints Iris's own token during bootstrap.
 Pushes to main deploy the web Worker through `.github/workflows/deploy.yml` once
 bootstrap has set `OP_SERVICE_ACCOUNT_TOKEN` (until then the job skips with a
 notice). Cloudflare Access protects the Worker's hostnames; converge it with
-`scripts/cf-access.py`. The public repository is `alexjmiller5/life-ui`.
+`scripts/cf-access.py`. The public repository is `alexjmiller5/iris`.
 
 Apple validation uses `macos-latest`; signing workflows use standard
 `macos-26-intel` hosted runners. Mac distribution
@@ -204,7 +204,7 @@ material and the tap credential to the project CI service account. This grants
 CI read access to that shared vault; it is not app runtime or consumer auth.
 `HOMEBREW_TAP_REPOSITORY` and `MACOS_PROVISIONING_PROFILE_ID` are repository
 variables, not client preferences. The latter is the stable App Store Connect
-API ID of Life UI's MAC_APP_DIRECT profile. Release CI only downloads it;
+API ID of Iris's MAC_APP_DIRECT profile. Release CI only downloads it;
 profile creation/renewal is an operator action using the existing signing
 certificate. Never expand cloud-signing permissions or mint replacement
 certificates to compensate for a missing profile.
@@ -218,7 +218,7 @@ key: repository variables `IOS_PROVISIONING_PROFILE_ID` (app),
 `scripts/sign-ios.py` maps each profile to its target by exact App ID, requires one
 team, device, shared certificate and the App Group set declared by every target's
 entitlements file, and checks that each declared entitlement (production APNs on the
-app, `LIFE_WIDGET_APP_GROUP` everywhere) is granted and survives export. project.yml
+app, `IRIS_WIDGET_APP_GROUP` everywhere) is granted and survives export. project.yml
 names the profile settings `IOS_PROFILE` and `IOS_<BUNDLE SUFFIX>_PROFILE`. It also
 checks the intended `IOS_DEVICE_ID` project ENV field, signs using a temporary runner
 keychain, verifies app and extension versions match, and uploads only age-encrypted
@@ -287,7 +287,7 @@ Back restores the URL as well as the draft. Do not use shallow history entries
 that bypass those hooks. Ignore superseded lookup replies and block writes while
 resolving a linked record. Credentials and action authority stay out of URLs.
 
-Native `life://open/v1` links follow `docs/native-deep-links.md`. Receiving a URL
+Native `iris://open/v1` links follow `docs/native-deep-links.md`. Receiving a URL
 only fills the single pending-link banner; it never opens, enrolls or switches a
 workspace. Open requires the same idle state as Find, matches the retained binding
 and reuses `openDestination`; clear the request only after the destination
@@ -338,8 +338,8 @@ view, never as an executable SVG document. Do not infer personal column names.
 Saved-view IDs also require byte-exact list and selection identity. Use the
 applied revision for deletion only when its ID bytes match the chosen view.
 
-The usage/notifications API is owned by life-data; never add competing hub
-endpoints here. life-core owns service validation, feed pagination and presentation
+The usage/notifications API is owned by soma; never add competing hub
+endpoints here. soma-core owns service validation, feed pagination and presentation
 policy. Isolate cached state by signed-in deployment, deduplicate native/feed
 alerts by event id, and never expose bearer tokens in device lists. First contact
 baselines history; delivery checkpoints advance after successful scheduling.
@@ -414,7 +414,7 @@ A Boolean property whose catalog description names exactly one sibling text colu
 is a flag with a reason (`flag-filters.ts`, `CatalogField.flagFilters`). Web and
 native bars offer it as a dashed quick-filter chip that adds the ordinary `eq true`
 rule (saved like any chip); while it is on, the reason column shows beside each
-record. Search hits from a table with a `status` select (life-data's status
+record. Search hits from a table with a `status` select (soma's status
 dictionary) show that status with its catalog option description as help
 (`search-status.ts`, `QuickFindModel.statusFields`). No lifecycle word is hardcoded.
 
@@ -457,7 +457,7 @@ using the receipt's full baseline plus only the newer raw cell value. Clear an
 unchanged affected cell; leave another row's cell draft untouched. Creation Undo
 retains the draft beside a read-only tombstone, and Restore preserves it.
 
-Governance presentation imports generated Life Data DTOs. The panel remains
+Governance presentation imports generated Soma DTOs. The panel remains
 unmounted with no API or journal injection until service operations and capability
 advertisement are verified. DTOs and the pure inverse planner do not authorize
 client previews or writes. Keep the original approval request/key after an uncertain
@@ -547,6 +547,12 @@ Native SQLite transactions retain ownership across awaited JS callbacks.
 Browser operations hold a Web Lock across tabs; native sync holds the
 Python-compatible `<database>.sync.lock`. A demo database must never sync.
 Application state lives in OPFS/Application Support, never the source checkout.
+Native state lives under Application Support `iris/` (`ApplicationSupport.root()`).
+A pre-rename install's `life-ui/` directory moves there once on first launch and
+leaves a marker; the hub connection screen then explains that the device must sign
+in again (Keychain service `iris.hub` holds no earlier credential) and clears the
+marker after the screen closes with a connection. iOS installs under the new bundle
+ID start empty. Links use `iris://open/v1`; `life://` is rejected.
 
 Core system tables and `catalog_tables.kind: system` are read-only. Hosts use
 the shared `writeability` advisory and display its reason, invalidating stale
@@ -656,7 +662,7 @@ Connected web workspaces sync by themselves through `sync-status.ts`: push 750 m
 after a committed write (worker `change` events carry the method, so other tabs'
 writes count), pull every 2 s while visible and online, wake on visibility, focus
 and online, one run at a time, backing off to 60 s on errors. One visible connected
-tab holds the `life-ui:sync-leader:<database>` Web Lock; hidden tabs release it. The
+tab holds the `iris:sync-leader:<database>` Web Lock; hidden tabs release it. The
 worker broadcasts a sync only when it pulled, pushed or rejected rows, so idle polls
 never refresh views. `SyncStatus.svelte` in the sidebar is the only sync/save status;
 add no sync or refresh buttons, progress bars or save notices. Cmd/Ctrl+\ toggles
@@ -708,7 +714,7 @@ fixtures otherwise starve each other’s admission watchdogs. Keep explicit
 concurrent tasks inside tests and their assertions unchanged.
 
 Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
-`LIFE_UI_DEV_NO_HMR=1` dev server; usage in the README):
+`IRIS_DEV_NO_HMR=1` dev server; usage in the README):
 - `check-a11y.ts`: keyboard and axe walk of every view, light and dark (`just check`).
 - `test-filter-bar.ts`: filter chips, sorts, autosave (also across a view switch while a
   save is in flight) and Undo on the sample workspace.
@@ -748,7 +754,7 @@ Sync failures reach the pill and status sheet, never `model.error`. Ordinary sav
 show no progress text. `SyncStatusUITests` drives `navigation-hub.py`'s
 accept/reject/offline modes through those states and retains screenshots.
 Cmd+\ (`WorkspaceCommands`, View > Toggle Sidebar) toggles the sidebar column,
-persisted as `lifeui.sidebarHidden`; compact iPhone switches sidebar and detail.
+persisted as `iris.sidebarHidden`; compact iPhone switches sidebar and detail.
 The Mac status item (`WorkspaceMenuBar`, opt-out in Settings) mirrors the most
 recently active window: Open, Quick Find, five recents and pinned tables by title
 only. Its commands reach that window through the guarded navigation paths.
@@ -761,18 +767,18 @@ WebKit coordinator and bundled FK/group component with macOS; dismiss first,
 then re-resolve the selected table through guarded navigation. `NativeControlsUITests`
 checks menu/status/graph navigation and accessibility text sizing with screenshots.
 `HeaderUITests` checks their geometry and retains screenshots. Its empty-workspace
-case uses `HeaderUIFixtureTests` with `TEST_RUNNER_LIFE_UI_TEST_HEADER_SIMULATOR`
+case uses `HeaderUIFixtureTests` with `TEST_RUNNER_IRIS_TEST_HEADER_SIMULATOR`
 set to the exact disposable simulator UDID; run the fixture before the UI tests.
 `scripts/test-integrations-ios.sh` drives the system entry points on one disposable
-simulator (`TEST_RUNNER_LIFE_UI_TEST_WIDGET_SIMULATOR`): a fixture enables synthetic
+simulator (`TEST_RUNNER_IRIS_TEST_WIDGET_SIMULATOR`): a fixture enables synthetic
 widget, Spotlight, lookup and daily sources, then UI tests cover the daily section,
 the Safari share sheet, Spotlight (its UI runs in `com.apple.Spotlight` and ingests
 items minutes after indexing), the Home Screen widget gallery and the Lock Screen
-editor (`com.apple.PosterBoard`). `TEST_RUNNER_LIFE_UI_TEST_DAILY_AFTER_BOUNDARY`
+editor (`com.apple.PosterBoard`). `TEST_RUNNER_IRIS_TEST_DAILY_AFTER_BOUNDARY`
 checks the daily section after the fixture view's 03:00 boundary passed. Erase the
 simulator before a run; Home and Lock Screen edits persist between runs.
 `TableNavigationUIFixtureTests` seeds 50,000 synthetic provenance rows on the
-explicit `TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_SIMULATOR` only. Its local mode tests
+explicit `TEST_RUNNER_IRIS_TEST_TABLE_NAV_SIMULATOR` only. Its local mode tests
 repeated table navigation; the optional loopback `navigation-hub.py` mode holds
 real sync HTTP while `TableNavigationUITests` verifies cached navigation and
 persisted local saves before the response is released.
@@ -805,12 +811,12 @@ and CI) starts its own dev server and headless Chrome and walks every web view
 of the sample workspace with Tab/Enter/Space/Escape in light and dark (dark with
 reduced motion): each focus stop needs a visible ring, Escape returns focus to
 the opener, and axe-core allows no serious or critical violation. Given a
-life-data checkout it also walks a hub-connected workspace (sync pill states,
+soma checkout it also walks a hub-connected workspace (sync pill states,
 notifications, usage, attachments, rejected edits). Name controls by their
 visible text (axe's label-in-name rule); give icon-only buttons an aria-label;
 listboxes hold only options. Popovers return focus through `anchored()`;
 modals the host unmounts instead of closing call `onDestroy(focusReturn())`.
-`LIFE_UI_DEV_NO_HMR=1` keeps a shared checkout's edits from reloading the page
+`IRIS_DEV_NO_HMR=1` keeps a shared checkout's edits from reloading the page
 under test. Native `AccessibilityAuditUITests` (iOS at AX5 text, and Mac with
 keyboard flows: Cmd+K, Cmd+S, Cmd+\, Escape) run Xcode's accessibility audit on
 each screen and attach its element tree; findings the app cannot act on (system
@@ -827,7 +833,7 @@ height is a `@ScaledMetric`.
 
 An explicitly opened database is remembered in a private security-scoped bookmark.
 Reopening a missing selection fails visibly rather than creating a replacement or
-falling back to a different replica. The supported Life CLI file contract shares
+falling back to a different replica. The supported Soma CLI file contract shares
 SQLite data/schema and its existing write validation; the CLI background service
 owns hub sync in this mode, with its own credential. The observer connection
 reads only `_sync_state.hub_url` to show Shared with CLI; the app never syncs it. No consumer credentials are

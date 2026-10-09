@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Property, RowAction, ViewLayoutItem } from 'life-ui-core/client';
+	import type { Property, RowAction, ViewLayoutItem } from 'iris-core/client';
 	import FieldEditor from './FieldEditor.svelte';
 	import { parseDayStart } from './view-controls';
 	import { cellPatch, rawValue } from './record-grid';

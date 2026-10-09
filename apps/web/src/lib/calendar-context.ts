@@ -1,4 +1,4 @@
-import type { CalendarContext } from 'life-ui-core/client';
+import type { CalendarContext } from 'iris-core/client';
 
 /** Calendar policy stays in the host. The shared core also runs without Intl. */
 export function calendarContext(

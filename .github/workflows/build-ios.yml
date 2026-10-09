@@ -91,7 +91,7 @@ jobs:
       - name: Sign and verify Ad Hoc IPA
         run: |
           test -n "$IOS_DEVICE_ID" || { echo 'Set IOS_DEVICE_ID in the project ENV item.' >&2; exit 1; }
-          python3 scripts/sign-ios.py --project apps/ios/LifeUI.xcodeproj --scheme LifeUI --output "$RUNNER_TEMP/ios-output"
+          python3 scripts/sign-ios.py --project apps/ios/Iris.xcodeproj --scheme Iris --output "$RUNNER_TEMP/ios-output"
       - name: Verify exported build identity
         shell: python
         run: |
@@ -112,7 +112,7 @@ jobs:
           umask 077
           mkdir -p "$RUNNER_TEMP/ios-artifact"
           age --encrypt --recipient "$ARTIFACT_RECIPIENT" \
-            --output "$RUNNER_TEMP/ios-artifact/LifeUI.ipa.age" "$RUNNER_TEMP/ios-output/App.ipa"
+            --output "$RUNNER_TEMP/ios-artifact/Iris.ipa.age" "$RUNNER_TEMP/ios-output/App.ipa"
       - name: Remove plaintext output
         if: always()
         shell: python
@@ -121,7 +121,7 @@ jobs:
           shutil.rmtree(pathlib.Path(os.environ['RUNNER_TEMP']) / 'ios-output', ignore_errors=True)
       - uses: actions/upload-artifact@v4
         with:
-          name: LifeUI-iOS-${{ github.sha }}
-          path: ${{ runner.temp }}/ios-artifact/LifeUI.ipa.age
+          name: Iris-iOS-${{ github.sha }}
+          path: ${{ runner.temp }}/ios-artifact/Iris.ipa.age
           retention-days: 1
           if-no-files-found: error

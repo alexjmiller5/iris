@@ -5,7 +5,7 @@ import XCTest
 final class IncomingReferencesUITests: XCTestCase {
   func testReadOnlyIncomingLinksShowPersistedIncompleteCoverageAfterReopen() throws {
     try XCTSkipUnless(
-      ProcessInfo.processInfo.environment["LIFE_UI_TEST_INCOMING_READ_ONLY"] == "1",
+      ProcessInfo.processInfo.environment["IRIS_TEST_INCOMING_READ_ONLY"] == "1",
       "Requires the read-only partial-coverage fixture")
     let app = try openTarget()
     defer { app.terminate() }
@@ -139,9 +139,9 @@ final class IncomingReferencesUITests: XCTestCase {
   private func openTarget() throws -> XCUIApplication {
     let environment = ProcessInfo.processInfo.environment
     try XCTSkipIf(
-      environment["LIFE_UI_TEST_INCOMING_SIMULATOR"] == nil,
+      environment["IRIS_TEST_INCOMING_SIMULATOR"] == nil,
       "Requires the incoming fixture on an explicitly selected private simulator")
-    XCTAssertEqual(environment["LIFE_UI_TEST_INCOMING_SIMULATOR"], environment["SIMULATOR_UDID"])
+    XCTAssertEqual(environment["IRIS_TEST_INCOMING_SIMULATOR"], environment["SIMULATOR_UDID"])
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launch()

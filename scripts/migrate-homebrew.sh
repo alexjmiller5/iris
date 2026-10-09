@@ -4,23 +4,23 @@ set -euo pipefail
 phase="${1:?phase}"; prefix="${2:?prefix}"; source="${3:?package bundle}"
 destination="${4:?installed bundle}"; enabled="${5:?migration flag}"
 applications="${6:-/Applications}"
-receipt="$prefix/Caskroom/life-ui/.metadata/INSTALL_RECEIPT.json"
-fail() { printf 'LifeUI migration: %s\n' "$*" >&2; exit 1; }
+receipt="$prefix/Caskroom/iris/.metadata/INSTALL_RECEIPT.json"
+fail() { printf 'Iris migration: %s\n' "$*" >&2; exit 1; }
 [[ "$phase" == preflight || "$phase" == migrate ]] || fail 'unknown phase'
 [[ "$(id -u)" != 0 ]] || fail 'must run as the Homebrew user'
 if [[ ! -e "$receipt" ]]; then
-  [[ ! -e "$prefix/Caskroom/life-ui" ]] || fail 'orphan cask metadata; review before switching'
-  [[ ! -e "$applications/LifeUI.app" ]] || fail 'unmanaged application; review before switching'
+  [[ ! -e "$prefix/Caskroom/iris" ]] || fail 'orphan cask metadata; review before switching'
+  [[ ! -e "$applications/Iris.app" ]] || fail 'unmanaged application; review before switching'
   exit 0
 fi
 [[ "$enabled" == 1 ]] || fail 'enable migrateFromHomebrew before switching this installation'
 jq -e '
   .source.tap == "alexjmiller5/tap" and
   .uninstall_flight_blocks == false and
-  .uninstall_artifacts == [{"app": ["LifeUI.app"]}]
+  .uninstall_artifacts == [{"app": ["Iris.app"]}]
 ' "$receipt" >/dev/null || fail 'receipt is not the expected app-only cask'
 status=0
-pgrep -x LifeUI >/dev/null || status=$?
+pgrep -x Iris >/dev/null || status=$?
 case "$status" in
   0) fail 'app is running; save work and quit normally before switching' ;;
   1) ;;
@@ -33,5 +33,5 @@ esac
 codesign --verify --deep --strict "$destination" || fail 'Nix application signature is invalid'
 diff -qr -x .DS_Store "$source" "$destination" || fail 'Nix application differs from package'
 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 HOMEBREW_NO_AUTOREMOVE=1 \
-  "$prefix/bin/brew" uninstall --cask alexjmiller5/tap/life-ui
+  "$prefix/bin/brew" uninstall --cask alexjmiller5/tap/iris
 [[ ! -e "$receipt" ]] || fail 'uninstall left its receipt; refusing subsequent cleanup'

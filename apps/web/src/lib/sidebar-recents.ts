@@ -1,4 +1,4 @@
-import { displayName } from 'life-ui-core/client';
+import { displayName } from 'iris-core/client';
 import type { Destination, resolveDestination } from './workspace-navigation';
 
 export type RecentEntry = {

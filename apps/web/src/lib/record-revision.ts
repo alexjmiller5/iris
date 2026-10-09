@@ -1,4 +1,4 @@
-import { validEditTimestamp, type Row } from 'life-ui-core/client';
+import { validEditTimestamp, type Row } from 'iris-core/client';
 export function editRevision(row: Row): string {
 	const revision = row.updated_at;
 	if (typeof revision !== 'string' || !validEditTimestamp(revision)) {

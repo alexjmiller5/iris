@@ -9,8 +9,8 @@ final class FilterBarUITests: XCTestCase {
   func testHeaderChipSortUndoAndRelaunch() throws {
     continueAfterFailure = false
     let environment = ProcessInfo.processInfo.environment
-    try XCTSkipUnless(environment["LIFE_UI_TEST_CATALOG_CLEAN_HOST"] == "1")
-    let path = try XCTUnwrap(environment["LIFE_UI_TEST_FILTER_BAR_DATABASE"])
+    try XCTSkipUnless(environment["IRIS_TEST_CATALOG_CLEAN_HOST"] == "1")
+    let path = try XCTUnwrap(environment["IRIS_TEST_FILTER_BAR_DATABASE"])
     let app = XCUIApplication()
     app.launchArguments = ["--normal-startup", "-ApplePersistenceIgnoreState", "YES"]
     app.launch()

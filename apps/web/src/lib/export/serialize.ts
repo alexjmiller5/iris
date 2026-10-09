@@ -1,4 +1,4 @@
-import type { Property, Row } from 'life-ui-core/client';
+import type { Property, Row } from 'iris-core/client';
 
 export interface ExportSnapshot {
 	table: string;
@@ -120,7 +120,7 @@ export function serializeExport(snapshot: ExportSnapshot, options: ExportOptions
 		rowCount: rows.length
 	};
 	const metadata = {
-		format: 'life-ui-records',
+		format: 'iris-records',
 		version: 1,
 		table,
 		properties,

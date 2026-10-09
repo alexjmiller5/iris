@@ -1,5 +1,5 @@
-"""Synthetic files for the Mac BackupUITests: a CLI-shaped life.db, its gzip SQL dump
-in the `life export` shape, and an empty folder for the saved export. No real data."""
+"""Synthetic files for the Mac BackupUITests: a CLI-shaped soma.db, its gzip SQL dump
+in the `soma export` shape, and an empty folder for the saved export. No real data."""
 
 import gzip
 import pathlib
@@ -8,7 +8,7 @@ import sys
 
 out = pathlib.Path(sys.argv[1])
 (out / "save").mkdir(parents=True, exist_ok=True)
-database = out / "life.db"
+database = out / "soma.db"
 database.unlink(missing_ok=True)
 stamp = "strftime('%Y-%m-%dT%H:%M:%fZ','now')"
 notes = (
@@ -34,6 +34,6 @@ with sqlite3.connect(database) as conn:
     conn.execute(
         "INSERT INTO notes (id, title, body) VALUES ('synthetic-1', 'Synthetic restored note', '# From a backup')"
     )
-    dump = "\n".join(["-- life-data-dump: 1", *conn.iterdump()]) + "\n"
+    dump = "\n".join(["-- soma-dump: 1", *conn.iterdump()]) + "\n"
 (out / "synthetic.sql.gz").write_bytes(gzip.compress(dump.encode()))
 print(out)

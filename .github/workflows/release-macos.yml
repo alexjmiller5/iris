@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP: LifeUI
-  CASK: life-ui
+  APP: Iris
+  CASK: iris
   TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
   PROFILE_ID: ${{ vars.MACOS_PROVISIONING_PROFILE_ID }}
 
@@ -62,8 +62,8 @@ jobs:
           bun run bundle:graph
           bun run bundle:editor
           bun run bundle:native
-          git diff --exit-code -- packages/LifeKit/Sources/LifeKit/Resources
-          swift test --no-parallel --package-path packages/LifeKit
+          git diff --exit-code -- packages/IrisKit/Sources/IrisKit/Resources
+          swift test --no-parallel --package-path packages/IrisKit
 
       - name: Generate macOS project
         run: |
@@ -89,14 +89,14 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          KEYCHAIN="$RUNNER_TEMP/life-ui-release.keychain-db"
+          KEYCHAIN="$RUNNER_TEMP/iris-release.keychain-db"
           KEYCHAIN_PASSWORD=$(uuidgen)
-          trap 'rm -f "$RUNNER_TEMP/life-ui-cert.p12" "$RUNNER_TEMP/life-ui-notary.p8"' EXIT
+          trap 'rm -f "$RUNNER_TEMP/iris-cert.p12" "$RUNNER_TEMP/iris-notary.p8"' EXIT
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          printf '%s' "$DEVELOPER_ID_P12_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-cert.p12"
-          security import "$RUNNER_TEMP/life-ui-cert.p12" -k "$KEYCHAIN" \
+          printf '%s' "$DEVELOPER_ID_P12_BASE64" | base64 -d > "$RUNNER_TEMP/iris-cert.p12"
+          security import "$RUNNER_TEMP/iris-cert.p12" -k "$KEYCHAIN" \
             -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S 'apple-tool:,apple:' -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
@@ -130,10 +130,10 @@ jobs:
           JS
           # Keep entitlement metadata in the archive; Xcode resolves the final
           # App ID prefix from the distribution profile during manual export.
-          xcodebuild -project apps/macos/LifeUI.xcodeproj -scheme LifeUI \
+          xcodebuild -project apps/macos/Iris.xcodeproj -scheme Iris \
             -configuration Release -destination 'generic/platform=macOS' \
-            -derivedDataPath "$RUNNER_TEMP/life-ui-release" \
-            -archivePath "$RUNNER_TEMP/LifeUI.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/iris-release" \
+            -archivePath "$RUNNER_TEMP/Iris.xcarchive" \
             DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- \
             ONLY_ACTIVE_ARCH=NO 'ARCHS=arm64 x86_64' \
             MARKETING_VERSION="$RELEASE_VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" archive
@@ -142,18 +142,18 @@ jobs:
           from pathlib import Path
           team,certificate,root,app=sys.argv[1:]
           root=Path(root)
-          info=plistlib.loads((root/'LifeUI.xcarchive/Products/Applications'/f'{app}.app/Contents/Info.plist').read_bytes())
+          info=plistlib.loads((root/'Iris.xcarchive/Products/Applications'/f'{app}.app/Contents/Info.plist').read_bytes())
           profile=json.loads((root/'profile-selection.json').read_text())
           (root/'export-options.plist').write_bytes(plistlib.dumps({'method':'developer-id','signingStyle':'manual','teamID':team,'signingCertificate':certificate,'provisioningProfiles':{info['CFBundleIdentifier']:profile['uuid']}}))
           PYTHON
-          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/LifeUI.xcarchive" \
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Iris.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export-options.plist"
           mkdir -p build
           ditto "$RUNNER_TEMP/export/$APP.app" "build/$APP.app"
           lipo "build/$APP.app/Contents/MacOS/$APP" -verify_arch arm64
           lipo "build/$APP.app/Contents/MacOS/$APP" -verify_arch x86_64
           python3 scripts/verify-macos-signing.py "build/$APP.app" "$TEAM_ID" "$IDENTITY_SHA"
-          ENTITLEMENTS="$RUNNER_TEMP/life-ui-entitlements.plist"
+          ENTITLEMENTS="$RUNNER_TEMP/iris-entitlements.plist"
           codesign -d --entitlements - --xml "build/$APP.app" > "$ENTITLEMENTS"
           bash scripts/test-macos-keychain.sh "build/$APP.app" "$IDENTITY_SHA" "$ENTITLEMENTS"
       - name: Submit signed archive
@@ -162,12 +162,12 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          trap 'rm -f "$RUNNER_TEMP/life-ui-notary.p8"' EXIT
+          trap 'rm -f "$RUNNER_TEMP/iris-notary.p8"' EXIT
           ditto -c -k --keepParent "build/$APP.app" "build/$APP-notarize.zip"
-          printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-notary.p8"
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/iris-notary.p8"
           # Upload once. Waiting belongs to the independently retryable release job.
           xcrun notarytool submit "build/$APP-notarize.zip" \
-            --key "$RUNNER_TEMP/life-ui-notary.p8" --key-id "$ASC_KEY_ID" \
+            --key "$RUNNER_TEMP/iris-notary.p8" --key-id "$ASC_KEY_ID" \
             --issuer "$ASC_ISSUER_ID" --no-wait --output-format json > "$RUNNER_TEMP/submission.json"
           python3 - <<'PYTHON'
           import hashlib,json,os,re
@@ -196,7 +196,7 @@ jobs:
         with:
           name: signed-submission-${{ github.run_id }}
           path: |
-            build/LifeUI-notarize.zip
+            build/Iris-notarize.zip
             build/notarization-receipt.json
           retention-days: 3
           if-no-files-found: error
@@ -205,9 +205,9 @@ jobs:
       - name: Delete temporary signing material
         if: always()
         run: |
-          rm -f "$RUNNER_TEMP/life-ui-cert.p12" "$RUNNER_TEMP/life-ui-notary.p8"
-          if [ -f "$RUNNER_TEMP/life-ui-release.keychain-db" ]; then
-            security delete-keychain "$RUNNER_TEMP/life-ui-release.keychain-db"
+          rm -f "$RUNNER_TEMP/iris-cert.p12" "$RUNNER_TEMP/iris-notary.p8"
+          if [ -f "$RUNNER_TEMP/iris-release.keychain-db" ]; then
+            security delete-keychain "$RUNNER_TEMP/iris-release.keychain-db"
           fi
 
   # Retry only this job after a notary timeout: its successful predecessor's
@@ -293,10 +293,10 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          trap 'rm -f "$RUNNER_TEMP/life-ui-notary.p8"' EXIT
-          printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/life-ui-notary.p8"
+          trap 'rm -f "$RUNNER_TEMP/iris-notary.p8"' EXIT
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/iris-notary.p8"
           xcrun notarytool wait "$SUBMISSION_ID" \
-            --key "$RUNNER_TEMP/life-ui-notary.p8" --key-id "$ASC_KEY_ID" \
+            --key "$RUNNER_TEMP/iris-notary.p8" --key-id "$ASC_KEY_ID" \
             --issuer "$ASC_ISSUER_ID" --timeout 30m --output-format json > "$RUNNER_TEMP/notary-status.json"
           python3 - <<'PYTHON'
           import json,os
@@ -306,7 +306,7 @@ jobs:
               raise ValueError('Expected Accepted status for the saved submission')
           PYTHON
           xcrun notarytool log "$SUBMISSION_ID" \
-            --key "$RUNNER_TEMP/life-ui-notary.p8" --key-id "$ASC_KEY_ID" \
+            --key "$RUNNER_TEMP/iris-notary.p8" --key-id "$ASC_KEY_ID" \
             --issuer "$ASC_ISSUER_ID" "$RUNNER_TEMP/notary-log.json"
           python3 - <<'PYTHON'
           import json,os
@@ -345,7 +345,7 @@ jobs:
 
       - name: Delete temporary notary material
         if: always()
-        run: rm -f "$RUNNER_TEMP/life-ui-notary.p8"
+        run: rm -f "$RUNNER_TEMP/iris-notary.p8"
 
       - name: Publish GitHub release
         env:
@@ -457,7 +457,7 @@ jobs:
             sha256 "$SHA256"
 
             url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/$APP-v#{version}.zip"
-            name "Life UI"
+            name "Iris"
             desc "Local-first browser for catalogued databases"
             homepage "https://github.com/$GITHUB_REPOSITORY"
 
@@ -469,5 +469,5 @@ jobs:
           git -C tap config user.name 'github-actions[bot]'
           git -C tap config user.email 'github-actions[bot]@users.noreply.github.com'
           git -C tap add "Casks/$CASK.rb"
-          git -C tap diff --cached --quiet || git -C tap commit -m "Life UI $RELEASE_VERSION"
+          git -C tap diff --cached --quiet || git -C tap commit -m "Iris $RELEASE_VERSION"
           git -C tap push

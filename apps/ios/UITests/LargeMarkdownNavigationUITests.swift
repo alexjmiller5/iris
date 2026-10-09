@@ -5,11 +5,11 @@ final class LargeMarkdownNavigationUITests: XCTestCase {
   func testLargeMarkdownNotesOpenAndReturnToSidebarPromptly() async throws {
     let env = ProcessInfo.processInfo.environment
     try XCTSkipUnless(
-      env["LIFE_UI_TEST_MARKDOWN_NAV_SIMULATOR"] == env["SIMULATOR_UDID"]
-        && env["LIFE_UI_TEST_MARKDOWN_NAV_SIMULATOR"] != nil,
+      env["IRIS_TEST_MARKDOWN_NAV_SIMULATOR"] == env["SIMULATOR_UDID"]
+        && env["IRIS_TEST_MARKDOWN_NAV_SIMULATOR"] != nil,
       "Prepare the synthetic large Markdown fixture on this exact disposable simulator.")
     continueAfterFailure = false
-    let endpoint = env["LIFE_UI_TEST_MARKDOWN_NAV_HUB"]
+    let endpoint = env["IRIS_TEST_MARKDOWN_NAV_HUB"]
     if let endpoint {
       XCTAssertEqual(URL(string: endpoint)?.host, "127.0.0.1")
       _ = try await gate(endpoint, "hold")

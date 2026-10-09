@@ -1,13 +1,13 @@
 import { workspacePage, synced } from './test-origin';
 import {chromium,expect} from '@playwright/test';
-const url=process.env.LIFE_UI_TEST_URL??'http://localhost:5196/workspace';
-const hub=process.env.LIFE_UI_TEST_HUB??'http://127.0.0.1:5201';
+const url=process.env.IRIS_TEST_URL??'http://localhost:5196/workspace';
+const hub=process.env.IRIS_TEST_HUB??'http://127.0.0.1:5201';
 async function pattern(value:string|null){
   const response=await fetch(`${hub}/v1/rows/push`,{method:'POST',headers:{Authorization:'Bearer fixture','Content-Type':'application/json'},body:JSON.stringify({table:'catalog_properties',columns:['id','pattern','updated_at'],rows:[{id:'widgets.title',pattern:value,updated_at:new Date().toISOString()}]})});
   const result=await response.json() as {upserted:number};
   expect(result.upserted).toBe(1);
 }
-const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
+const browser=await chromium.connectOverCDP(process.env.IRIS_TEST_CDP??'http://127.0.0.1:9222');
 try{
   await pattern(null);
   const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);

@@ -138,7 +138,7 @@ export async function openScopedJournal<T>(
 	const factory = Object.hasOwn(options, 'indexedDB') ? options.indexedDB : globalThis.indexedDB;
 	if (!factory) throw new Error('IndexedDB approval recovery is unavailable.');
 	const db = await new Promise<IDBDatabase>((resolve, reject) => {
-		const opening = factory.open(options.databaseName ?? 'life-ui-governance', 1);
+		const opening = factory.open(options.databaseName ?? 'iris-governance', 1);
 		let failed = false;
 		opening.onblocked = () => {
 			failed = true;

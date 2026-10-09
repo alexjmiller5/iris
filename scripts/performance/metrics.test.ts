@@ -5,15 +5,15 @@ describe("performance evidence", () => {
   test("rejects live, ambiguous, and unrelated origins before any storage reset", () => {
     expect(
       fixtureOrigin(
-        "http://life-ui-performance.localhost:5246/workspace?review",
+        "http://iris-performance.localhost:5246/workspace?review",
       ),
-    ).toBe("http://life-ui-performance.localhost:5246");
+    ).toBe("http://iris-performance.localhost:5246");
     for (const url of [
       "https://example.com/workspace?review",
       "http://localhost:5246/workspace?review",
-      "http://life-ui-performance.localhost:5173/workspace?review",
-      "http://life-ui-performance.localhost:5246/workspace",
-      "http://user@life-ui-performance.localhost:5246/workspace?review",
+      "http://iris-performance.localhost:5173/workspace?review",
+      "http://iris-performance.localhost:5246/workspace",
+      "http://user@iris-performance.localhost:5246/workspace?review",
     ]) {
       expect(() => fixtureOrigin(url)).toThrow();
     }

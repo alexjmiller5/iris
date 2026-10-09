@@ -7,8 +7,8 @@ import XCTest
 final class MacNavigationUITests: XCTestCase {
   func testCommandKReturnAndReceivedLinkStayInTheOpenWindow() throws {
     try XCTSkipIf(
-      ProcessInfo.processInfo.environment["LIFE_UI_TEST_MAC_LOCAL"] != "1",
-      "Set LIFE_UI_TEST_MAC_LOCAL=1 to use this Mac's local workspace.")
+      ProcessInfo.processInfo.environment["IRIS_TEST_MAC_LOCAL"] != "1",
+      "Set IRIS_TEST_MAC_LOCAL=1 to use this Mac's local workspace.")
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launch()
@@ -38,7 +38,7 @@ final class MacNavigationUITests: XCTestCase {
     query.click()
     app.typeKey("v", modifierFlags: .command)
     let pasted = try XCTUnwrap(query.value as? String)
-    XCTAssertTrue(pasted.hasPrefix("life://open/v1?") && pasted.contains("table=topics"), pasted)
+    XCTAssertTrue(pasted.hasPrefix("iris://open/v1?") && pasted.contains("table=topics"), pasted)
     app.typeKey(.escape, modifierFlags: [])
     XCTAssertTrue(query.waitForNonExistence(timeout: 5))
 

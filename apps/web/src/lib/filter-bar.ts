@@ -1,4 +1,4 @@
-import type { Filter, FilterGroup } from 'life-ui-core/client';
+import type { Filter, FilterGroup } from 'iris-core/client';
 
 /** One filter chip as the person edits it. Values stay raw text until they
  * parse; several values are "any of" (or "none of" for `ne`). */

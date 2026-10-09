@@ -1,6 +1,6 @@
-// Canonical wire shapes come from Life Data's generated contract. Importing
+// Canonical wire shapes come from Soma's generated contract. Importing
 // these types does not advertise operations or authorize an API adapter.
-import type { TransportError, UnavailableResult } from 'life-ui-core/contract';
+import type { TransportError, UnavailableResult } from 'iris-core/contract';
 
 export type {
 	Target,
@@ -19,7 +19,7 @@ export type {
 	MutationResolution,
 	MutationError,
 	ApprovalResult
-} from 'life-ui-core/contract';
+} from 'iris-core/contract';
 
 // Local presentation helpers also paginate derived lists. API methods use
 // their concrete generated result types rather than this generic envelope.

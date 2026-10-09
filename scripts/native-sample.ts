@@ -47,7 +47,7 @@ export async function createSample(db: SqlDriver) {
   await prepareLocalCatalog(db);
   await prepareLocalViews(db);
   await prepareLocalPins(db);
-  await writeRow(db, 'topics', { title: 'Field notes' }, {origin:'life-ui'});
-  await writeRow(db, 'topics', { title: 'Ideas' }, {origin:'life-ui'});
-  await writeRow(db, 'notes', { title: 'A place to start', body: '# A place to start\n\nBrowse, write, and keep the source yours.' }, {origin:'life-ui'});
+  await writeRow(db, 'topics', { title: 'Field notes' }, {origin:'iris'});
+  await writeRow(db, 'topics', { title: 'Ideas' }, {origin:'iris'});
+  await writeRow(db, 'notes', { title: 'A place to start', body: '# A place to start\n\nBrowse, write, and keep the source yours.' }, {origin:'iris'});
 }

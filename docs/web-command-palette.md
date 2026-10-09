@@ -29,19 +29,19 @@ table and stable view/record ID; arriving groups preserve the keyboard selection
 
 Run `bun run test`, `bun run check`, `bun run --cwd apps/web lint` and
 `bun run build`. The fixture uses synthetic data and the actual Worker/OPFS
-database with a disposable hub from a compatible life-data checkout. Open an
+database with a disposable hub from a compatible soma checkout. Open an
 owned Chrome fixture tab at the reserved origin below and serialize CDP access
 with any other browser test clients:
 
 ```sh
-LIFE_UI_TEST_URL=http://life-ui-palette.localhost:5226/workspace?review \
-  bun scripts/test-command-palette.ts /path/to/life-data
-LIFE_UI_TEST_URL=http://life-ui-palette.localhost:5226/workspace?review \
-  bun scripts/test-command-palette-mutations.ts /path/to/life-data
+IRIS_TEST_URL=http://iris-palette.localhost:5226/workspace?review \
+  bun scripts/test-command-palette.ts /path/to/soma
+IRIS_TEST_URL=http://iris-palette.localhost:5226/workspace?review \
+  bun scripts/test-command-palette-mutations.ts /path/to/soma
 ```
 
-Set `LIFE_UI_TEST_CDP` for the browser endpoint and `LIFE_UI_TEST_SCREENSHOTS`
-for desktop/narrow screenshots. `LIFE_UI_PALETTE_CASE` narrows an E2E case;
+Set `IRIS_TEST_CDP` for the browser endpoint and `IRIS_TEST_SCREENSHOTS`
+for desktop/narrow screenshots. `IRIS_PALETTE_CASE` narrows an E2E case;
 mutation `--unit` / `--browser` select a layer and `--check` verifies mutation
 targets without changing source. Do not run unit/build commands against the
 same Vite server during E2E: SvelteKit generation can reload the fixture.

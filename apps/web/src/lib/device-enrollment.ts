@@ -4,7 +4,7 @@ import {
 	type CoreArgs,
 	type CoreResult,
 	type SessionReply
-} from 'life-ui-core/client';
+} from 'iris-core/client';
 
 export interface HubConnection {
 	endpoint: string;

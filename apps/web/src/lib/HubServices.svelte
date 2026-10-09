@@ -10,7 +10,7 @@
 		type ServiceHub,
 		type UsageSummary,
 		type NotificationFeed
-	} from 'life-ui-core/client';
+	} from 'iris-core/client';
 
 	let {
 		connection,

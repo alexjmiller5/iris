@@ -1,5 +1,5 @@
 import type { WorkspaceDatabase } from './database';
-import type { Row, SyncResult } from 'life-ui-core/client';
+import type { Row, SyncResult } from 'iris-core/client';
 
 declare const database: WorkspaceDatabase;
 const rows: Promise<Row[]> = database.request('rows', { view: { table: 'items' } });
@@ -28,11 +28,11 @@ database.request('remoteRow', {
 	table: 'items'
 });
 
-const incomingSources: Promise<import('life-ui-core/client').ReferenceSource[]> = database.request(
+const incomingSources: Promise<import('iris-core/client').ReferenceSource[]> = database.request(
 	'referenceSources',
 	{ table: 'items' }
 );
-const incomingPage: Promise<import('life-ui-core/client').ReferencedByPage> = database.request(
+const incomingPage: Promise<import('iris-core/client').ReferencedByPage> = database.request(
 	'referencedBy',
 	{ table: 'items', rowId: 'one', sourceTable: 'entries', column: 'owner', limit: 20, offset: 0 }
 );

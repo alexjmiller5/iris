@@ -4,14 +4,14 @@ project="$1"
 derived="$2"
 simulator="$3"
 results="$4"
-export TEST_RUNNER_LIFE_UI_TEST_QUICK_ADD_SIMULATOR="$simulator"
+export TEST_RUNNER_IRIS_TEST_QUICK_ADD_SIMULATOR="$simulator"
 for selected in \
-  'LifeUITests/QuickAddUIFixtureTests/prepareQuickAddUIFixture()' \
-  'LifeUIUITests/QuickAddUITests/testPendingIntentSurvivesRelaunchAndSavesOnlyOnExplicitAction' \
-  'LifeUITests/QuickAddUIFixtureTests/verifyQuickAddUIReadback()'; do
+  'IrisTests/QuickAddUIFixtureTests/prepareQuickAddUIFixture()' \
+  'IrisUITests/QuickAddUITests/testPendingIntentSurvivesRelaunchAndSavesOnlyOnExplicitAction' \
+  'IrisTests/QuickAddUIFixtureTests/verifyQuickAddUIReadback()'; do
   name="$(basename "$selected" | tr -cd '[:alnum:]')"
   result="$results/quick-add-$name.xcresult"
-  xcodebuild -project "$project" -scheme LifeUI -derivedDataPath "$derived" \
+  xcodebuild -project "$project" -scheme Iris -derivedDataPath "$derived" \
     -destination "platform=iOS Simulator,id=$simulator" -parallel-testing-enabled NO \
     -resultBundlePath "$result" "-only-testing:$selected" \
     -collect-test-diagnostics never -test-timeouts-enabled YES \

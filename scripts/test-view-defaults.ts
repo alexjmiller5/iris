@@ -4,11 +4,11 @@ import { disposableOrigin } from './test-origin';
 import { sourceNavigationCDP, element, named, js } from './source-navigation-cdp';
 // Preferred table views through the View settings menu: set, sync, reopen, explicit
 // view links, a deleted preferred view's notice, and clearing it.
-// LIFE_UI_TEST_TARGET is the owned page's CDP target ID (already on the fixture origin).
-const url=process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-navigation.localhost:5274/workspace?review';
+// IRIS_TEST_TARGET is the owned page's CDP target ID (already on the fixture origin).
+const url=process.env.IRIS_TEST_URL ?? 'http://iris-navigation.localhost:5274/workspace?review';
 const origin=disposableOrigin(url);
 const source=process.argv[2];
-if(!source)throw Error('Provide matching life-data source');
+if(!source)throw Error('Provide matching soma source');
 expect(await Bun.file(`${source}/core/contract/core.json`).text()).toBe(await Bun.file(new URL('../packages/core/contract/core.json',import.meta.url)).text());
 const {server,db,auth}=await regressionHub(source,origin);
 let page:Awaited<ReturnType<typeof sourceNavigationCDP>>|undefined;

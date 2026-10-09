@@ -5,10 +5,10 @@ final class CatalogRecordUITests: XCTestCase {
   func testCatalogRuleFailureRetainsDraftAndReadOnlyMetadata() throws {
     continueAfterFailure = false
     try XCTSkipUnless(
-      ProcessInfo.processInfo.environment["LIFE_UI_TEST_CATALOG_CLEAN_HOST"] == "1",
+      ProcessInfo.processInfo.environment["IRIS_TEST_CATALOG_CLEAN_HOST"] == "1",
       "Use a disposable clean host; normal startup must never inspect an enrolled user's credentials."
     )
-    let path = ProcessInfo.processInfo.environment["LIFE_UI_TEST_CATALOG_DATABASE"]
+    let path = ProcessInfo.processInfo.environment["IRIS_TEST_CATALOG_DATABASE"]
     try XCTSkipUnless(
       path != nil, "Prepare a fresh CatalogRecordAcceptanceTests external fixture first.")
     let file = URL(fileURLWithPath: try XCTUnwrap(path))

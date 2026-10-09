@@ -7,7 +7,7 @@ import {
 	type NavigationState,
 	type PaletteDestination
 } from './command-palette';
-import type { SavedViewRecord, SavedViewList } from 'life-ui-core/client';
+import type { SavedViewRecord, SavedViewList } from 'iris-core/client';
 
 const destinations: PaletteDestination[] = [
 	{ kind: 'table', table: 'notes', label: 'notes' },

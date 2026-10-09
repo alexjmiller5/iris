@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
 	import { IconChecklist, IconX } from '@tabler/icons-svelte';
-	import { createHttpHub, createChangesetAPI, isChangesetCapability } from 'life-ui-core/client';
+	import { createHttpHub, createChangesetAPI, isChangesetCapability } from 'iris-core/client';
 	import { sessionRequest, type HubConnection } from '../device-enrollment';
 	import { openChangesetJournal } from './changeset-journal';
 	import { createChangesetReview, type ChangesetReviewState } from './changeset-review';

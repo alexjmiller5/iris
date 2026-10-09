@@ -30,10 +30,10 @@ included. URLs and recent destinations share the same table/view/row contract.
 Verification uses a disposable browser origin, real OPFS and the synthetic hub:
 
 ```sh
-LIFE_UI_TEST_URL=http://life-ui-recents.localhost:5236/workspace?review \
-  bun scripts/test-sidebar-recents.ts <life-data-checkout>
-bun scripts/test-sidebar-mutations.ts <life-data-checkout> --unit
-bun scripts/test-sidebar-mutations.ts <life-data-checkout> --browser
+IRIS_TEST_URL=http://iris-recents.localhost:5236/workspace?review \
+  bun scripts/test-sidebar-recents.ts <soma-checkout>
+bun scripts/test-sidebar-mutations.ts <soma-checkout> --unit
+bun scripts/test-sidebar-mutations.ts <soma-checkout> --browser
 ```
 
 Open the reserved fixture tab on the matching development server first. The hub

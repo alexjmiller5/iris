@@ -12,11 +12,11 @@ import {
 // a Boolean flag whose description names its reason column, and status-labeled
 // search. Nothing here is a product schema; the catalog drives every behavior.
 const source = process.argv[2];
-if (!source) throw Error("Provide matching life-data source");
+if (!source) throw Error("Provide matching soma source");
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-relations.localhost:5311/workspace?review";
-const shots = process.env.LIFE_UI_TEST_SHOTS;
+  process.env.IRIS_TEST_URL ??
+  "http://iris-relations.localhost:5311/workspace?review";
+const shots = process.env.IRIS_TEST_SHOTS;
 if (shots) mkdirSync(shots, { recursive: true });
 const origin = disposableOrigin(url);
 const { server, db, auth } = await regressionHub(source, origin);

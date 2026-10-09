@@ -21,14 +21,14 @@ claiming a save. After a committed receipt, ordinary workspace sync refreshes
 local data. Native review remains separate.
 
 The service, catalog rules, mutation validation and transport codecs belong to
-Life Data. The host supplies UI, its independently enrolled connection and durable
+Soma. The host supplies UI, its independently enrolled connection and durable
 request storage. This interface is a proposal reviewer, not a second domain editor.
 
 ## Verification
 
 - `bun test scripts/changeset-journal.test.ts scripts/changeset-review.test.ts`
 - `scripts/check-changeset-browser.ts` takes an explicitly owned CDP target,
-  installed chrome-control helper and `LIFE_DATA_CONTRACT_ROOT`. It runs the real
+  installed chrome-control helper and `SOMA_CONTRACT_ROOT`. It runs the real
   Worker against synthetic SQLite state, displays the review, commits a set,
   deliberately loses the response, reloads and verifies original-key recovery.
 - `scripts/check-governance-browser.ts` tests the shared strict journal in two

@@ -1,6 +1,6 @@
 """Loopback-only sync gate for native table-navigation and sync-status UI tests.
 
-Start with --port 0, pass the printed URL as TEST_RUNNER_LIFE_UI_TEST_TABLE_NAV_HUB.
+Start with --port 0, pass the printed URL as TEST_RUNNER_IRIS_TEST_TABLE_NAV_HUB.
 Only synthetic replicas on explicitly selected disposable simulators may use it.
 GET /fixture/mode/<offline|accept|reject> switches sync replies: offline (the
 default) answers 503, accept completes empty rounds, reject refuses notes pushes.

@@ -12,16 +12,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const source = process.argv[2];
-if (!source) throw Error("Provide the life-data checkout");
+if (!source) throw Error("Provide the soma checkout");
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-grid.localhost:5268/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-grid.localhost:5268/workspace?review";
 const origin = disposableOrigin(url);
 const { server, db, auth } = await regressionHub(source, origin);
 // This suite has one deliberate rejection, the rule below. The shared fixture's
 // legacy unavailable tag is exercised by its own editor/rejection tests.
 db.db.exec(`UPDATE widgets SET tags='["Dynamic"]' WHERE id='legacy-record'`);
-const downloads = await mkdtemp(join(tmpdir(), "life-ui-bulk-download-"));
+const downloads = await mkdtemp(join(tmpdir(), "iris-bulk-download-"));
 db.db
   .query(
     "INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
@@ -209,12 +209,12 @@ try {
         .all(),
     )
     .toEqual([{ id: "second-record" }]);
-  if (process.env.LIFE_UI_TEST_SCREENSHOT) {
+  if (process.env.IRIS_TEST_SCREENSHOT) {
     const screenshot = await cdp.command("Page.captureScreenshot", {
       format: "png",
     });
     await writeFile(
-      process.env.LIFE_UI_TEST_SCREENSHOT,
+      process.env.IRIS_TEST_SCREENSHOT,
       Buffer.from(screenshot.data, "base64"),
     );
   }

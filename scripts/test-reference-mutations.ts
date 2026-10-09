@@ -1,9 +1,9 @@
 // Run only while owning this route and a dedicated disposable browser page.
 import { disposableOrigin } from './test-origin';
 
-disposableOrigin(process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-relations.localhost:5223/workspace?review');
+disposableOrigin(process.env.IRIS_TEST_URL ?? 'http://iris-relations.localhost:5223/workspace?review');
 const source = process.argv[2];
-if (!source) throw new Error('Usage: bun scripts/test-reference-mutations.ts <life-data-checkout> [--check]');
+if (!source) throw new Error('Usage: bun scripts/test-reference-mutations.ts <soma-checkout> [--check]');
 const file = 'apps/web/src/routes/workspace/+page.svelte';
 const mutations: { name: string; test: string; edits: [string | RegExp, string][] }[] = [
 	{ name: 'source table used for the target ID', test: 'single reference', edits: [
@@ -51,7 +51,7 @@ for (const mutation of mutations) {
 	try {
 		await Bun.write(file, changed);
 		const run = Bun.spawn(['bun', 'scripts/test-reference-navigation.ts', source], {
-			env: { ...process.env, LIFE_UI_REFERENCE_CASE: mutation.test }, stdout: 'pipe', stderr: 'pipe'
+			env: { ...process.env, IRIS_REFERENCE_CASE: mutation.test }, stdout: 'pipe', stderr: 'pipe'
 		});
 		const [code, out, err] = await Promise.all([run.exited, new Response(run.stdout).text(), new Response(run.stderr).text()]);
 		if (code === 0 || !err.includes('FAIL: ') || !err.includes('expect('))

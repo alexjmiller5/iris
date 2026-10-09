@@ -5,10 +5,10 @@ final class TableNavigationUITests: XCTestCase {
   func testCachedNavigationAndSaveCompleteWhileSyncHTTPIsHeld() async throws {
     let env = ProcessInfo.processInfo.environment
     try XCTSkipUnless(
-      env["LIFE_UI_TEST_TABLE_NAV_SIMULATOR"] == env["SIMULATOR_UDID"]
-        && env["LIFE_UI_TEST_TABLE_NAV_SIMULATOR"] != nil,
+      env["IRIS_TEST_TABLE_NAV_SIMULATOR"] == env["SIMULATOR_UDID"]
+        && env["IRIS_TEST_TABLE_NAV_SIMULATOR"] != nil,
       "Use only the explicitly selected disposable simulator.")
-    let endpoint = try XCTUnwrap(env["LIFE_UI_TEST_TABLE_NAV_HUB"])
+    let endpoint = try XCTUnwrap(env["IRIS_TEST_TABLE_NAV_HUB"])
     @Sendable func gate(_ action: String) async throws -> Bool {
       let (data, _) = try await URLSession.shared.data(
         from: XCTUnwrap(URL(string: endpoint + "/fixture/" + action)))
@@ -70,10 +70,10 @@ final class TableNavigationUITests: XCTestCase {
   func testLargeSystemTableDoesNotLockTheSidebar() throws {
     let env = ProcessInfo.processInfo.environment
     try XCTSkipUnless(
-      env["LIFE_UI_TEST_TABLE_NAV_SIMULATOR"] == env["SIMULATOR_UDID"]
-        && env["LIFE_UI_TEST_TABLE_NAV_SIMULATOR"] != nil,
+      env["IRIS_TEST_TABLE_NAV_SIMULATOR"] == env["SIMULATOR_UDID"]
+        && env["IRIS_TEST_TABLE_NAV_SIMULATOR"] != nil,
       "Prepare the large-table fixture on this exact disposable simulator first.")
-    try XCTSkipIf(env["LIFE_UI_TEST_TABLE_NAV_HUB"] != nil, "Requires the local-only fixture")
+    try XCTSkipIf(env["IRIS_TEST_TABLE_NAV_HUB"] != nil, "Requires the local-only fixture")
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launchArguments = ["--normal-startup"]

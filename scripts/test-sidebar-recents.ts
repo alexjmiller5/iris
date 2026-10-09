@@ -5,13 +5,13 @@ import { disposableOrigin, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-recents.localhost:5236/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-recents.localhost:5236/workspace?review";
 const origin = disposableOrigin(url);
 const source = process.argv[2];
 if (!source)
   throw Error(
-    "Usage: bun scripts/test-sidebar-recents.ts <life-data-checkout>",
+    "Usage: bun scripts/test-sidebar-recents.ts <soma-checkout>",
   );
 const { server, db, auth } = await regressionHub(source, origin);
 const schema = await Bun.file(
@@ -77,7 +77,7 @@ db.db.exec(
 );
 console.log("CONNECT");
 const browser = await chromium.connectOverCDP(
-  process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
   { timeout: 30000 },
 );
 const page = workspacePage(
@@ -214,7 +214,7 @@ try {
     page.evaluate(
       () =>
         JSON.parse(
-          localStorage.getItem("life-ui:recents:workspace") ?? '{"entries":[]}',
+          localStorage.getItem("iris:recents:workspace") ?? '{"entries":[]}',
         ).entries,
     );
   async function settled() {
@@ -239,8 +239,8 @@ try {
   }
   async function run(name: string, action: () => Promise<void>) {
     if (
-      process.env.LIFE_UI_RECENTS_CASE &&
-      !name.includes(process.env.LIFE_UI_RECENTS_CASE)
+      process.env.IRIS_RECENTS_CASE &&
+      !name.includes(process.env.IRIS_RECENTS_CASE)
     )
       return;
     console.log("RUN:", name);
@@ -520,7 +520,7 @@ try {
         (window as any).restoreStorage = () =>
           (Storage.prototype.setItem = original);
         Storage.prototype.setItem = function (key, value) {
-          if (key.startsWith("life-ui:recents:")) throw Error("Quota exceeded");
+          if (key.startsWith("iris:recents:")) throw Error("Quota exceeded");
           return original.call(this, key, value);
         };
       });
@@ -552,7 +552,7 @@ try {
         (window as any).restoreRead = () =>
           (Storage.prototype.getItem = original);
         Storage.prototype.getItem = function (key) {
-          if (key.startsWith("life-ui:recents:")) throw Error("Storage denied");
+          if (key.startsWith("iris:recents:")) throw Error("Storage denied");
           return original.call(this, key);
         };
       });
@@ -587,7 +587,7 @@ try {
       await page.evaluate(
         (entries) =>
           localStorage.setItem(
-            "life-ui:recents:workspace",
+            "iris:recents:workspace",
             JSON.stringify({ version: 1, entries }),
           ),
         entries,
@@ -631,7 +631,7 @@ try {
       const demo = await page.evaluate(
         () =>
           JSON.parse(
-            localStorage.getItem("life-ui:recents:demo") ?? '{"entries":[]}',
+            localStorage.getItem("iris:recents:demo") ?? '{"entries":[]}',
           ).entries,
       );
       expect(demo.length).toBeGreaterThan(0);
@@ -651,7 +651,7 @@ try {
     },
   );
   await run("sidebar fits desktop and 390px light/dark layouts", async () => {
-    const screenshots = process.env.LIFE_UI_TEST_SCREENSHOTS;
+    const screenshots = process.env.IRIS_TEST_SCREENSHOTS;
     if (screenshots) await mkdir(screenshots, { recursive: true });
     for (const [width, colorScheme] of [
       [1440, "light"],

@@ -1,5 +1,5 @@
 {
-  description = "Life UI signed macOS application and web development tools";
+  description = "Iris signed macOS application and web development tools";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/2bd3427b41d10b8318383195efe502ed1baca6cd";
   # Bun matches packageManager/CI. App packaging keeps the last Intel-capable
   # stable branch; the current toolchain no longer supports Intel macOS.
@@ -15,12 +15,12 @@
       packages = forSystems darwinSystems (pkgs:
         let package = pkgs.callPackage ./nix/package.nix {}; in {
           default = package;
-          life-ui = package;
+          iris = package;
         });
       darwinModules.default = import ./nix/darwin.nix;
-      darwinModules.life-ui = import ./nix/darwin.nix;
+      darwinModules.iris = import ./nix/darwin.nix;
       homeModules.default = homeModule;
-      homeModules.life-ui = homeModule;
+      homeModules.iris = homeModule;
       devShells = nixpkgs.lib.genAttrs systems (system:
         let pkgs = tooling.legacyPackages.${system}; in {
         default = assert pkgs.bun.version == "1.4.2"; pkgs.mkShellNoCC {

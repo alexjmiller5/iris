@@ -7,7 +7,7 @@ development prerequisite; the Nix app package does not build Swift.
 
 ## Signed macOS app
 
-`nix build .#life-ui` produces `result/Applications/LifeUI.app`. The default
+`nix build .#iris` produces `result/Applications/Iris.app`. The default
 package pins the published universal **0.8.2** ZIP by SHA-256. It extracts and
 copies the bundle without fixup, stripping, patching or re-signing. The embedded
 profile, entitlements and stapled notarization ticket stay with the app.
@@ -15,14 +15,14 @@ App packages support Apple Silicon and Intel macOS. Their Nixpkgs 26.05 pin
 retains Intel support; the separately pinned development toolchain matches CI's
 Bun version and has no Intel macOS shell.
 
-The flake exports `homeModules.life-ui` (also `homeModules.default`):
+The flake exports `homeModules.iris` (also `homeModules.default`):
 
 ```nix
 {
-  inputs.life-ui.url = "github:alexjmiller5/life-ui";
+  inputs.iris.url = "github:alexjmiller5/iris";
   # In your Home Manager configuration:
-  # imports = [ inputs.life-ui.homeModules.life-ui ];
-  # programs.life-ui.enable = true;
+  # imports = [ inputs.iris.homeModules.iris ];
+  # programs.iris.enable = true;
 }
 ```
 
@@ -34,9 +34,9 @@ storage. No token or personal configuration belongs in this flake.
 To select another **published, signed** archive, override all release inputs:
 
 ```nix
-programs.life-ui = {
+programs.iris = {
   enable = true;
-  package = inputs.life-ui.packages.${pkgs.stdenv.hostPlatform.system}.life-ui.override {
+  package = inputs.iris.packages.${pkgs.stdenv.hostPlatform.system}.iris.override {
     version = "<published-version>";
     url = "https://<release-host>/<signed-release>.zip";
     hash = "sha256-<archive-hash>";
@@ -44,7 +44,7 @@ programs.life-ui = {
 };
 ```
 
-The ZIP must contain `LifeUI.app` at its root. A different hash fails closed.
+The ZIP must contain `Iris.app` at its root. A different hash fails closed.
 The default URL follows the version when only version/hash are overridden.
 Pin this flake in the consuming flake lock; it never follows the latest release
 automatically. Choose one installation owner when adopting the module. An
@@ -55,7 +55,7 @@ existing cask declaration is not changed by this repository.
 ```sh
 nix flake check --no-write-lock-file
 nix flake check --all-systems --no-build --no-write-lock-file
-nix build .#life-ui --no-link --print-out-paths
+nix build .#iris --no-link --print-out-paths
 ```
 
 The checks exercise module disabled/default/custom-package behavior, generic
@@ -66,9 +66,9 @@ and require the executable bit and symlink target to survive.
 For the real output path printed by `nix build`, run:
 
 ```sh
-codesign --verify --deep --strict '<output>/Applications/LifeUI.app'
-xcrun stapler validate '<output>/Applications/LifeUI.app'
-spctl --assess --type execute --verbose=2 '<output>/Applications/LifeUI.app'
+codesign --verify --deep --strict '<output>/Applications/Iris.app'
+xcrun stapler validate '<output>/Applications/Iris.app'
+spctl --assess --type execute --verbose=2 '<output>/Applications/Iris.app'
 ```
 
 Verification on macOS, 2026-10-09 UTC, against published 0.8.2:
@@ -81,7 +81,7 @@ Verification on macOS, 2026-10-09 UTC, against published 0.8.2:
 | arm64 and x86_64 entitlements and designated requirements | Identical |
 | Strict signature, stapled ticket, Gatekeeper | Pass; Notarized Developer ID |
 
-The [0.8.2 release CI](https://github.com/alexjmiller5/life-ui/actions/runs/37870443536)
+The [0.8.2 release CI](https://github.com/alexjmiller5/iris/actions/runs/37870443536)
 also records `Data Protection Keychain create/read/update/delete passed` from
 the separately signed production-adapter probe with a unique synthetic service.
 That is release evidence, not a fresh local Keychain probe of the Nix output.
@@ -95,12 +95,12 @@ substitute for it.
 
 The flake exports `darwinModules.default` and `homeModules.default`. Use one
 installation owner. The Darwin module publishes the signed release through
-`environment.systemPackages` into `/Applications/Nix Apps/LifeUI.app`:
+`environment.systemPackages` into `/Applications/Nix Apps/Iris.app`:
 
 ```nix
-programs.life-ui = {
+programs.iris = {
   enable = true;
-  # package = inputs.life-ui.packages.${pkgs.system}.default;
+  # package = inputs.iris.packages.${pkgs.system}.default;
   migrateFromHomebrew = true; # Only for an existing app-only cask installation.
 };
 ```

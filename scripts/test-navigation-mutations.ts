@@ -2,13 +2,13 @@
 import { disposableOrigin } from "./test-origin";
 
 disposableOrigin(
-  process.env.LIFE_UI_TEST_URL ??
-    "http://life-ui-navigation.localhost:5224/workspace?review",
+  process.env.IRIS_TEST_URL ??
+    "http://iris-navigation.localhost:5224/workspace?review",
 );
 const source = process.argv[2];
 if (!source)
   throw new Error(
-    "Usage: bun scripts/test-navigation-mutations.ts <life-data-checkout> [--check]",
+    "Usage: bun scripts/test-navigation-mutations.ts <soma-checkout> [--check]",
   );
 const page = "apps/web/src/routes/workspace/+page.svelte";
 const model = "apps/web/src/lib/workspace-navigation.ts";
@@ -123,7 +123,7 @@ for (const mutation of mutations) {
     const run = Bun.spawn(
       ["bun", "scripts/test-workspace-navigation.ts", source],
       {
-        env: { ...process.env, LIFE_UI_NAVIGATION_CASE: mutation.test },
+        env: { ...process.env, IRIS_NAVIGATION_CASE: mutation.test },
         stdout: "pipe",
         stderr: "pipe",
       },

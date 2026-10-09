@@ -1,4 +1,4 @@
-import type { Row } from 'life-ui-core/client';
+import type { Row } from 'iris-core/client';
 import type { WorkspaceDatabase } from './database';
 import { editRevision } from './record-revision';
 

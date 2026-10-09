@@ -2,20 +2,20 @@
 // rollover timer, timezone and foreground refresh; filter group rules switching
 // between numeric and boolean properties; row actions with dynamic choices and the
 // displayed-revision guard. Open the reserved review page in a disposable Chrome, then
-//   LIFE_UI_TEST_CDP=<endpoint> bun scripts/test-view-options.ts <life-data-checkout> [all|rollover|options|actions]
+//   IRIS_TEST_CDP=<endpoint> bun scripts/test-view-options.ts <soma-checkout> [all|rollover|options|actions]
 import { chromium, expect as base } from "@playwright/test";
 import { installCoreSchemas, logDDL, regressionHub } from "./workspace-regression-hub";
 import { disposableOrigin, workspacePage } from "./test-origin";
 
 const expect = base.configure({ timeout: 15000 });
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-markdown.localhost:5198/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-markdown.localhost:5198/workspace?review";
 const origin = disposableOrigin(url);
 const source = process.argv[2];
-if (!source) throw Error("Provide the Life Data source checkout");
+if (!source) throw Error("Provide the Soma source checkout");
 const mode = process.argv[3] ?? "all";
-const shots = process.env.LIFE_UI_TEST_SHOTS;
+const shots = process.env.IRIS_TEST_SHOTS;
 const { server, db, auth } = await regressionHub(source, origin);
 await installCoreSchemas(db, source, ["saved-views", "view-defaults"]);
 for (const ddl of [
@@ -43,7 +43,7 @@ db.db.query("INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)").run(
 );
 const catalogDefault = `catalog-default:v1:${Buffer.from("widgets").toString("hex")}`;
 const browser = await chromium.connectOverCDP(
-  process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
 );
 let ownedPage: import("@playwright/test").Page | undefined;
 try {

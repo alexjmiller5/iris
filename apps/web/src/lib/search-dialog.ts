@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { SearchHit } from 'life-ui-core/client';
+import type { SearchHit } from 'iris-core/client';
 
 export type Search = (text: string, offset: number) => Promise<SearchHit[]>;
 export interface SearchState {

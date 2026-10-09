@@ -2,17 +2,17 @@ import { chromium, expect } from "@playwright/test";
 import { disposableOrigin, workspacePage } from "./test-origin";
 
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-graph.localhost:5199/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-graph.localhost:5199/workspace?review";
 disposableOrigin(url);
 const html = await Bun.file(
   new URL(
-    "../packages/LifeKit/Sources/LifeKit/Resources/graph.html",
+    "../packages/IrisKit/Sources/IrisKit/Resources/graph.html",
     import.meta.url,
   ),
 ).text();
 const browser = await chromium.connectOverCDP(
-  process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
 );
 try {
   const page = workspacePage(
@@ -25,7 +25,7 @@ try {
     host.events = [];
     host.webkit = {
       messageHandlers: {
-        lifeGraph: {
+        irisGraph: {
           postMessage(message: unknown) {
             host.events.push(message);
           },
@@ -39,7 +39,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(url);
   await page.evaluate(() =>
-    (window as any).LifeGraph.render({
+    (window as any).IrisGraph.render({
       tables: ["history", "notes", "topics", "views"].map((id) => ({
         id,
         kind: "table",
@@ -103,8 +103,8 @@ try {
       }
     }),
   ).toBe(true);
-  if (process.env.LIFE_UI_GRAPH_SCREENSHOT)
-    await page.screenshot({ path: process.env.LIFE_UI_GRAPH_SCREENSHOT });
+  if (process.env.IRIS_GRAPH_SCREENSHOT)
+    await page.screenshot({ path: process.env.IRIS_GRAPH_SCREENSHOT });
   console.log(
     "PASS: phone graph overview, zoom, fit, resize, table navigation, touch targets and network isolation",
   );

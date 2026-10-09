@@ -11,7 +11,7 @@ test('vendored contract generates the exact Swift and TypeScript consumed by bot
   const output = generateContract(contract);
   expect(core.CORE_CONTRACT_HASH).toBe(output.hash);
   expect(await readFile(resolve(root, 'packages/core/contract.generated.ts'), 'utf8')).toBe(output.typescript);
-  expect(await readFile(resolve(root, 'packages/LifeKit/Sources/LifeExtensionSupport/Generated/CoreContract.generated.swift'), 'utf8')).toBe(output.swift);
+  expect(await readFile(resolve(root, 'packages/IrisKit/Sources/IrisExtensionSupport/Generated/CoreContract.generated.swift'), 'utf8')).toBe(output.swift);
 });
 
 async function withNative(body: (request: (method: string, args?: object) => Promise<unknown>, db: Database) => Promise<void>) {
@@ -21,17 +21,17 @@ async function withNative(body: (request: (method: string, args?: object) => Pro
   try {
     let finish: (reply: { value?: unknown; error?: string }) => void = () => {};
     const context = {
-      LifeSql: {
+      IrisSql: {
         all: (sql: string, params: (string | number | null)[]) => db.query(sql).all(...params),
         run: (sql: string, params: (string | number | null)[]) => db.query(sql).run(...params).changes,
         begin: () => db.exec('BEGIN IMMEDIATE'), commit: () => db.exec('COMMIT'), rollback: () => db.exec('ROLLBACK'),
       },
-      __lifeYield: (callback: () => void) => queueMicrotask(callback),
-      __lifeFinish: (_id: number, json: string) => finish(JSON.parse(json)),
+      __irisYield: (callback: () => void) => queueMicrotask(callback),
+      __irisFinish: (_id: number, json: string) => finish(JSON.parse(json)),
     };
-    const script = await readFile(process.env.LIFE_UI_TEST_CORE_PATH ?? resolve(root, 'packages/LifeKit/Sources/LifeKit/Resources/life-core.js'), 'utf8');
+    const script = await readFile(process.env.IRIS_TEST_CORE_PATH ?? resolve(root, 'packages/IrisKit/Sources/IrisKit/Resources/soma-core.js'), 'utf8');
     runInNewContext(script, context);
-    const native = (context as typeof context & { LifeNative: { contractHash: string; request(id: number, method: string, json: string): void } }).LifeNative;
+    const native = (context as typeof context & { IrisNative: { contractHash: string; request(id: number, method: string, json: string): void } }).IrisNative;
     expect(native.contractHash).toBe(core.CORE_CONTRACT_HASH);
     const request = (method: string, args: object = {}) => new Promise<unknown>((resolve, reject) => {
       finish = reply => reply.error ? reject(new Error(reply.error)) : resolve(reply.value);

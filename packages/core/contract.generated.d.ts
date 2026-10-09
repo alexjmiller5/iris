@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "05cb3db792b18072e09fbe79c1f012a6f3246b3af6356e28d505434ebd6ebb07";
+export declare const CORE_CONTRACT_HASH = "7cab1276d74ca2405e2f33255e530c98e1e6d0ec0f41dd318f21926e6dc8ba09";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;

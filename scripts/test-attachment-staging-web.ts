@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { sourceNavigationCDP, js } from "./source-navigation-cdp";
-const url = process.env.LIFE_UI_TEST_URL;
+const url = process.env.IRIS_TEST_URL;
 if (!url) throw Error("Provide an owned synthetic workspace URL");
 const cdp = await sourceNavigationCDP(url);
 const scope = "interrupted-staging-" + crypto.randomUUID();
@@ -35,7 +35,7 @@ try {
     const {AttachmentOutbox}=await import('/src/lib/attachments.ts');
     const box=await AttachmentOutbox.open(${js(scope)},()=>null);
     const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(${js(scope)}))),b=>b.toString(16).padStart(2,'0')).join('');
-    const root=await (await (await navigator.storage.getDirectory()).getDirectoryHandle('life-ui-attachments')).getDirectoryHandle(hash);
+    const root=await (await (await navigator.storage.getDirectory()).getDirectoryHandle('iris-attachments')).getDirectoryHandle(hash);
     const names=[];for await(const [name,handle] of root) if(handle.kind==='directory') names.push(name);
     box.dispose();return {count:box.entries.length,retainedDirectories:names.length};
   })()`);
@@ -53,7 +53,7 @@ try {
       const bytes=file ? Array.from(new Uint8Array(await (await fetch(file.url)).arrayBuffer())) : [];
       file?.dispose();box.dispose();
       const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(${js(scope)}))),b=>b.toString(16).padStart(2,'0')).join('');
-      const root=await (await (await navigator.storage.getDirectory()).getDirectoryHandle('life-ui-attachments')).getDirectoryHandle(hash);
+      const root=await (await (await navigator.storage.getDirectory()).getDirectoryHandle('iris-attachments')).getDirectoryHandle(hash);
       const names=[];for await(const [name,handle] of root) if(handle.kind==='directory') names.push(name);
       return {count:box.entries.length,bytes,retainedDirectories:names.length};
     } catch(error) { return {error:String(error)}; }
@@ -70,7 +70,7 @@ try {
     const box=await AttachmentOutbox.open(${js(scope)},()=>connected?{endpoint:'https://synthetic.invalid',token:'synthetic'}:null);
     const entry=box.entries[0];
     const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(${js(scope)}))),b=>b.toString(16).padStart(2,'0')).join('');
-    const root=await (await (await navigator.storage.getDirectory()).getDirectoryHandle('life-ui-attachments')).getDirectoryHandle(hash);
+    const root=await (await (await navigator.storage.getDirectory()).getDirectoryHandle('iris-attachments')).getDirectoryHandle(hash);
     const writer=await (await root.getFileHandle(entry.id+'.json')).createWritable();await writer.write('{}');await writer.close();
     let blocked=false;try {await AttachmentOutbox.open(${js(scope)},()=>null);} catch {blocked=true;}
     try {await box.stage(new File(['another retained file'],'another.bin'));} catch {}
@@ -94,7 +94,7 @@ try {
 } finally {
   await cdp.evaluate(
     `(async()=>{
-    const root=await (await navigator.storage.getDirectory()).getDirectoryHandle('life-ui-attachments');
+    const root=await (await navigator.storage.getDirectory()).getDirectoryHandle('iris-attachments');
     const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(${js(scope)}))),b=>b.toString(16).padStart(2,'0')).join('');
     await root.removeEntry(hash,{recursive:true});
   })()`,

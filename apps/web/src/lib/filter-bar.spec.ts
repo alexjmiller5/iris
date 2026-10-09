@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { FilterGroup } from 'life-ui-core/client';
+import type { FilterGroup } from 'iris-core/client';
 import {
 	chipsOf,
 	defaultRule,

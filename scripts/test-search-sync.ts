@@ -2,9 +2,9 @@ import { chromium, expect } from '@playwright/test';
 import { regressionHub } from './workspace-regression-hub';
 import { disposableOrigin, workspacePage } from './test-origin';
 
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-markdown.localhost:5198/workspace?review';
+const url = process.env.IRIS_TEST_URL ?? 'http://iris-markdown.localhost:5198/workspace?review';
 const source = process.argv[2];
-if (!source) throw new Error('Usage: bun scripts/test-search-sync.ts <life-data-checkout>');
+if (!source) throw new Error('Usage: bun scripts/test-search-sync.ts <soma-checkout>');
 const origin = disposableOrigin(url);
 const { server, db } = await regressionHub(source, origin);
 // A second catalogued table with a different display column catches navigation
@@ -18,7 +18,7 @@ db.db.exec(`INSERT INTO catalog_tables(id,kind,display,purpose) VALUES ('journal
  ('journals.body','journals','body','Body',1,'markdown');
  INSERT INTO journals(id,headline,body,updated_at,hub_at) VALUES
  ('journal-1','Field guide','# Celestial observations','2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z');`);
-const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
+const browser = await chromium.connectOverCDP(process.env.IRIS_TEST_CDP ?? 'http://127.0.0.1:9222');
 try {
  const page = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
  if (!page) throw new Error('Open the reserved search review page');

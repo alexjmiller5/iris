@@ -62,10 +62,10 @@ final class ServiceIdentityUITests: XCTestCase {
   private func fixtureEndpoint() throws -> String {
     continueAfterFailure = false
     let environment = ProcessInfo.processInfo.environment
-    guard let endpoint = environment["LIFE_UI_TEST_SERVICE_ID_HUB"],
-      environment["LIFE_UI_TEST_SERVICE_ID_SIMULATOR"] != nil
+    guard let endpoint = environment["IRIS_TEST_SERVICE_ID_HUB"],
+      environment["IRIS_TEST_SERVICE_ID_SIMULATOR"] != nil
     else { throw XCTSkip("Requires the synthetic service identity fixture and private simulator") }
-    XCTAssertEqual(environment["LIFE_UI_TEST_SERVICE_ID_SIMULATOR"], environment["SIMULATOR_UDID"])
+    XCTAssertEqual(environment["IRIS_TEST_SERVICE_ID_SIMULATOR"], environment["SIMULATOR_UDID"])
     let url = try XCTUnwrap(URL(string: endpoint))
     XCTAssertEqual(url.host, "127.0.0.1")
     XCTAssertEqual(url.scheme, "http")

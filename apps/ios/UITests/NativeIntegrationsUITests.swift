@@ -8,7 +8,7 @@ import XCTest
 
   private func application() throws -> XCUIApplication {
     let environment = ProcessInfo.processInfo.environment
-    guard let selected = environment["LIFE_UI_TEST_WIDGET_SIMULATOR"],
+    guard let selected = environment["IRIS_TEST_WIDGET_SIMULATOR"],
       selected == environment["SIMULATOR_UDID"]
     else { throw XCTSkip("Select this exact disposable SIMULATOR_UDID for integration tests.") }
     continueAfterFailure = false
@@ -48,7 +48,7 @@ import XCTest
     if back.waitForExistence(timeout: 5) { back.tap() }
     let section = app.buttons["daily-section"]
     XCTAssertTrue(section.waitForExistence(timeout: 15))
-    if ProcessInfo.processInfo.environment["LIFE_UI_TEST_DAILY_AFTER_BOUNDARY"] != nil {
+    if ProcessInfo.processInfo.environment["IRIS_TEST_DAILY_AFTER_BOUNDARY"] != nil {
       // Rows saved before the configured 03:00 boundary roll out of Today with the app closed.
       XCTAssertTrue(app.staticTexts["No matching records"].waitForExistence(timeout: 15))
       XCTAssertFalse(app.buttons["daily-row"].exists)
@@ -82,10 +82,10 @@ import XCTest
     // A unique synthetic title saved by the Quick Add acceptance run.
     let title = "Quick Add fixture saved"
     search.typeText(title + "\n")
-    // Only Life UI's own Core Spotlight item (under the app's section), never a web
+    // Only Iris's own Core Spotlight item (under the app's section), never a web
     // suggestion with the same text.
     let header = spotlight.otherElements.matching(
-      NSPredicate(format: "identifier BEGINSWITH 'Identifier:SectionHeader' AND identifier ENDSWITH ',Title:Life UI'")
+      NSPredicate(format: "identifier BEGINSWITH 'Identifier:SectionHeader' AND identifier ENDSWITH ',Title:Iris'")
     ).firstMatch
     // Spotlight ingests app items asynchronously; retype until the app's section appears.
     for _ in 0..<6 where !header.waitForExistence(timeout: 20) {
@@ -132,14 +132,14 @@ import XCTest
     let search = springboard.searchFields.firstMatch
     require(search, in: springboard, 15)
     search.tap()
-    search.typeText("Life UI")
+    search.typeText("Iris")
     let entry = springboard.descendants(matching: .any).matching(
-      NSPredicate(format: "label BEGINSWITH 'Life UI'")
+      NSPredicate(format: "label BEGINSWITH 'Iris'")
     ).element(boundBy: 1)
     require(entry, in: springboard, 15)
     keep(springboard, "widget-gallery-search")
     entry.tap()
-    let page = springboard.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Life UI, '"))
+    let page = springboard.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Iris, '"))
     require(page.firstMatch, in: springboard, 15)
     // Walk every gallery page once; each kind and size has its own page.
     var seen: [String] = []
@@ -157,9 +157,9 @@ import XCTest
     for _ in seen { springboard.swipeRight() }
     springboard.swipeLeft()  // Table titles, Medium
     let current = page.allElementsBoundByIndex.first(where: \.isHittable)
-    XCTAssertEqual(current?.label, "Life UI, Table titles")
+    XCTAssertEqual(current?.label, "Iris, Table titles")
     XCTAssertTrue((current?.value as? String)?.contains("Medium") == true)
-    keep(springboard, "widget-gallery-life-ui")
+    keep(springboard, "widget-gallery-iris")
     let addWidget = springboard.buttons.matching(NSPredicate(format: "label ENDSWITH 'Add Widget'"))
       .firstMatch
     require(addWidget, in: springboard, 10)
@@ -167,7 +167,7 @@ import XCTest
     let done = springboard.buttons["Done"]
     if done.waitForExistence(timeout: 10) { done.tap() }
     // Configure the placed widget to the enabled notes source.
-    let widget = springboard.icons.matching(NSPredicate(format: "label CONTAINS 'Table titles' OR identifier CONTAINS 'Life UI'")).firstMatch
+    let widget = springboard.icons.matching(NSPredicate(format: "label CONTAINS 'Table titles' OR identifier CONTAINS 'Iris'")).firstMatch
     require(widget, in: springboard, 15)
     widget.press(forDuration: 1.5)
     let editWidget = springboard.buttons.matching(NSPredicate(format: "label CONTAINS 'Edit Widget'")).firstMatch
@@ -212,31 +212,31 @@ import XCTest
     require(slots.firstMatch, in: poster, 15)
     // PosterBoard reports its reticles as not hittable; tap the slot's own frame.
     slots.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-    // A slot that already holds the Life UI count opens its configuration instead.
+    // A slot that already holds the Iris count opens its configuration instead.
     let configured = poster.descendants(matching: .any).matching(
       NSPredicate(format: "label == 'notes'")).firstMatch
     if !configured.waitForExistence(timeout: 4) {
       // The widget picker can belong to PosterBoard or SpringBoard depending on the release.
-      let lifeUI = poster.descendants(matching: .any).matching(
-        NSPredicate(format: "label CONTAINS 'Life UI'")).firstMatch
+      let irisUI = poster.descendants(matching: .any).matching(
+        NSPredicate(format: "label CONTAINS 'Iris'")).firstMatch
       let pickerInSpringboard = springboard.descendants(matching: .any).matching(
-        NSPredicate(format: "label CONTAINS 'Life UI'")).firstMatch
-      for _ in 0..<6 where !lifeUI.exists && !pickerInSpringboard.exists { poster.swipeUp() }
-      let picker = lifeUI.exists ? poster : springboard
+        NSPredicate(format: "label CONTAINS 'Iris'")).firstMatch
+      for _ in 0..<6 where !irisUI.exists && !pickerInSpringboard.exists { poster.swipeUp() }
+      let picker = irisUI.exists ? poster : springboard
       keep(picker, "lock-screen-widget-picker")
-      require(lifeUI.exists ? lifeUI : pickerInSpringboard, in: picker, 10)
-      (lifeUI.exists ? lifeUI : pickerInSpringboard).tap()
-      keep(picker, "lock-screen-life-ui-widgets")
+      require(irisUI.exists ? irisUI : pickerInSpringboard, in: picker, 10)
+      (irisUI.exists ? irisUI : pickerInSpringboard).tap()
+      keep(picker, "lock-screen-iris-widgets")
       // Add the rectangular count tile, then configure it to the enabled notes source.
       let tile = picker.buttons.matching(
-        NSPredicate(format: "label == 'Life UI, Record count' AND value CONTAINS 'Rectangular'")
+        NSPredicate(format: "label == 'Iris, Record count' AND value CONTAINS 'Rectangular'")
       ).firstMatch
       require(tile, in: picker, 15)
       tile.tap()
       let close = picker.buttons["close"]
       if close.waitForExistence(timeout: 5) { close.tap() }
       let placed = poster.descendants(matching: .any).matching(
-        NSPredicate(format: "label CONTAINS 'Life UI' OR label CONTAINS 'Records'")).firstMatch
+        NSPredicate(format: "label CONTAINS 'Iris' OR label CONTAINS 'Records'")).firstMatch
       require(placed, in: poster, 15)
       placed.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
@@ -289,7 +289,7 @@ import XCTest
   func testShareSheetPreparesADraftThatOpensUnsaved() throws {
     let app = try application()
     let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
-    safari.open(URL(string: "https://example.com/life-ui-share-check")!)
+    safari.open(URL(string: "https://example.com/iris-share-check")!)
     XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20))
     _ = safari.webViews.firstMatch.waitForExistence(timeout: 20)
     let share = safari.buttons.matching(
@@ -305,7 +305,7 @@ import XCTest
     }
     require(share, in: safari, 10)
     share.tap()
-    let target = safari.descendants(matching: .any)["Life UI"].firstMatch
+    let target = safari.descendants(matching: .any)["Iris"].firstMatch
     require(target, in: safari, 15)
     target.tap()
     let prepare = safari.buttons["share-prepare"]
@@ -313,7 +313,7 @@ import XCTest
     keep(safari, "share-sheet-draft-form")
     prepare.tap()
     XCTAssertTrue(
-      safari.staticTexts["Draft ready. Open Life UI to review and save it."].waitForExistence(timeout: 10))
+      safari.staticTexts["Draft ready. Open Iris to review and save it."].waitForExistence(timeout: 10))
     keep(safari, "share-sheet-draft-ready")
     safari.buttons["Done"].tap()
     app.launch()
@@ -323,7 +323,7 @@ import XCTest
     pending.tap()
     let field = app.textFields["field-title"]
     XCTAssertTrue(field.waitForExistence(timeout: 15))
-    XCTAssertEqual(field.value as? String, "https://example.com/life-ui-share-check")
+    XCTAssertEqual(field.value as? String, "https://example.com/iris-share-check")
     keep(app, "share-draft-in-app")
   }
 }

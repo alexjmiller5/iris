@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
-import { createCoreHandlers, type Property, type Row } from 'life-ui-core/client';
+import { createCoreHandlers, type Property, type Row } from 'iris-core/client';
 import { recordPatch } from './record-grid';
 import {
 	commitCreation,

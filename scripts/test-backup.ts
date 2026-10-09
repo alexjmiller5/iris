@@ -2,11 +2,11 @@
 // The hub runs in this process over synthetic SQLite with an in-memory backup
 // bucket; D1's export API is answered from that SQLite. Usage:
 //   bun run --cwd apps/web dev -- --port 5291 --strictPort
-//   LIFE_UI_TEST_URL=http://127.0.0.1:5291/workspace LIFE_UI_TEST_SHOTS=<dir> \
-//     bun scripts/test-backup.ts <life-data-checkout>
+//   IRIS_TEST_URL=http://127.0.0.1:5291/workspace IRIS_TEST_SHOTS=<dir> \
+//     bun scripts/test-backup.ts <soma-checkout>
 // It launches its own headless Chrome with a fresh profile (clean OPFS).
-// `bun scripts/test-backup.ts <life-data-checkout> --serve` runs only the hub
-// for the native BackupUITests (TEST_RUNNER_LIFE_UI_TEST_BACKUP_HUB).
+// `bun scripts/test-backup.ts <soma-checkout> --serve` runs only the hub
+// for the native BackupUITests (TEST_RUNNER_IRIS_TEST_BACKUP_HUB).
 import { chromium, expect as base, type Page } from '@playwright/test';
 import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
@@ -16,13 +16,13 @@ import { join, resolve } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 
 const source = process.argv[2];
-if (!source) throw new Error('Usage: bun scripts/test-backup.ts <life-data-checkout>');
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://127.0.0.1:5291/workspace';
-const shots = process.env.LIFE_UI_TEST_SHOTS;
-const port = Number(process.env.LIFE_UI_TEST_HUB_PORT ?? 5292);
-const cdpPort = Number(process.env.LIFE_UI_TEST_CDP_PORT ?? 9341);
+if (!source) throw new Error('Usage: bun scripts/test-backup.ts <soma-checkout>');
+const url = process.env.IRIS_TEST_URL ?? 'http://127.0.0.1:5291/workspace';
+const shots = process.env.IRIS_TEST_SHOTS;
+const port = Number(process.env.IRIS_TEST_HUB_PORT ?? 5292);
+const cdpPort = Number(process.env.IRIS_TEST_CDP_PORT ?? 9341);
 const expect = base.configure({ timeout: 30_000 });
-const scratch = mkdtempSync(join(tmpdir(), 'life-ui-backup-'));
+const scratch = mkdtempSync(join(tmpdir(), 'iris-backup-'));
 const downloads = join(scratch, 'downloads');
 mkdirSync(downloads);
 
@@ -70,7 +70,7 @@ INSERT INTO widgets(id,title,body,quantity) VALUES ('fixture-record','Fixture re
 const older = Database.deserialize(db.db.serialize());
 older.exec("INSERT INTO widgets(id,title,body,quantity) VALUES ('backup-only','Backup-only widget','Restored from a backup',9)");
 const seeded = gzipSync(await dump(older));
-const SEEDED_KEY = 'daily/life-2026-10-01T09-10-00.sql.gz';
+const SEEDED_KEY = 'daily/soma-2026-10-01T09-10-00.sql.gz';
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const objects = new Map<string, { body: Uint8Array; uploaded: Date; customMetadata: Record<string, string> }>();
 objects.set(SEEDED_KEY, { body: seeded, uploaded: new Date('2026-10-01T09:12:00.000Z'), customMetadata: {} });
@@ -98,15 +98,15 @@ const bucket = {
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 	const target = String(input instanceof Request ? input.url : input);
-	if (target === 'https://signed.test/life') return new Response(await dump(db.db));
+	if (target === 'https://signed.test/soma') return new Response(await dump(db.db));
 	if (target.startsWith('https://api.cloudflare.com/')) {
 		const body = JSON.parse(String(init?.body ?? '{}'));
-		return Response.json({ success: true, result: body.current_bookmark ? { status: 'complete', result: { signed_url: 'https://signed.test/life' } } : { status: 'active', at_bookmark: 'bm' } });
+		return Response.json({ success: true, result: body.current_bookmark ? { status: 'complete', result: { signed_url: 'https://signed.test/soma' } } : { status: 'active', at_bookmark: 'bm' } });
 	}
 	return realFetch(input, init);
 }) as typeof fetch;
 const origin = new URL(url).origin;
-const env = { DB: db, AUTH_DB: auth, HUB_TOKEN: 'operator-fixture', CORS_ORIGINS: origin, BACKUPS: bucket, ACCOUNT_ID: 'acct', BACKUP_API_TOKEN: 'fixture', BACKUP_DATABASES: { life: 'synthetic' }, BACKUP_DATA_DATABASE: 'life' };
+const env = { DB: db, AUTH_DB: auth, HUB_TOKEN: 'operator-fixture', CORS_ORIGINS: origin, BACKUPS: bucket, ACCOUNT_ID: 'acct', BACKUP_API_TOKEN: 'fixture', BACKUP_DATABASES: { soma: 'synthetic' }, BACKUP_DATA_DATABASE: 'soma' };
 const hub = Bun.serve({ hostname: '127.0.0.1', port, fetch: (request) => worker.fetch(request, env, { waitUntil(p: Promise<unknown>) { void p.catch(() => {}); } }) });
 const hubUrl = hub.url.href.replace(/\/$/, '');
 // `--serve`: only the hub, for the native BackupUITests (token "fixture").
@@ -132,7 +132,7 @@ async function check(name: string, body: () => Promise<void>) {
 		failures++;
 		console.log(`not ok - ${name}\n${error}`);
 		await shot(`failed-${name.replace(/\W+/g, '-')}`);
-		if (process.env.LIFE_UI_TEST_DEBUG) console.log(await dialog().ariaSnapshot().catch(() => ''));
+		if (process.env.IRIS_TEST_DEBUG) console.log(await dialog().ariaSnapshot().catch(() => ''));
 	}
 }
 /** Waits for exactly one new finished download and returns its path. */
@@ -176,12 +176,12 @@ try {
 
 	await check('export SQL imports into a fresh CLI data directory', async () => {
 		const file = await downloaded(() => dialog().getByRole('button', { name: 'Export SQL dump' }).click());
-		expect(readFileSync(file, 'utf8').startsWith('-- life-data-dump: 1\nBEGIN TRANSACTION;')).toBe(true);
+		expect(readFileSync(file, 'utf8').startsWith('-- soma-dump: 1\nBEGIN TRANSACTION;')).toBe(true);
 		const dir = join(scratch, 'cli');
 		mkdirSync(dir);
-		const imported = Bun.spawnSync(['sh', '-c', `sqlite3 "${dir}/life.db" < "${file}"`]);
+		const imported = Bun.spawnSync(['sh', '-c', `sqlite3 "${dir}/soma.db" < "${file}"`]);
 		expect(imported.exitCode).toBe(0);
-		const out = Bun.spawnSync(['life', 'sql', 'SELECT id, title FROM widgets ORDER BY id'], { env: { ...process.env, LIFE_DATA_DIR: dir } });
+		const out = Bun.spawnSync(['soma', 'sql', 'SELECT id, title FROM widgets ORDER BY id'], { env: { ...process.env, SOMA_DATA_DIR: dir } });
 		expect(JSON.parse(out.stdout.toString())).toEqual([{ id: 'fixture-record', title: 'Fixture record' }]);
 		await expect(dialog().getByText(/Exported 1 rows from 1 tables|Exported \d+ rows/)).toBeVisible();
 		await shot('02-exported');

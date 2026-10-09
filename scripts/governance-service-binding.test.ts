@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { createRequire } from "node:module";
-import { createGovernanceAPI, createHttpHub } from "life-ui-core/client";
-import type { GovernanceCapability } from "life-ui-core/contract";
+import { createGovernanceAPI, createHttpHub } from "iris-core/client";
+import type { GovernanceCapability } from "iris-core/contract";
 const { bindGovernanceService } = (await import(
-  process.env.LIFE_UI_TEST_SERVICE_BINDING ||
+  process.env.IRIS_TEST_SERVICE_BINDING ||
     "../apps/web/src/lib/governance/service-binding"
 )) as typeof import("../apps/web/src/lib/governance/service-binding");
 import type {
@@ -17,7 +17,7 @@ import type {
   Proposal,
 } from "../apps/web/src/lib/governance/contract";
 const { createProposalReview } = (await import(
-  process.env.LIFE_UI_TEST_SERVICE_REVIEW ||
+  process.env.IRIS_TEST_SERVICE_REVIEW ||
     "../apps/web/src/lib/governance/proposal-review"
 )) as typeof import("../apps/web/src/lib/governance/proposal-review");
 

@@ -1,4 +1,4 @@
-import type { Property, Row } from 'life-ui-core/client';
+import type { Property, Row } from 'iris-core/client';
 export type CellKey = { rowId: string; column: string };
 export type CellDraft = { cell: CellKey; baseline: Row; raw: string };
 export type CellState = {

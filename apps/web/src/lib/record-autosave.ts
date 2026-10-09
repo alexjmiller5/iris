@@ -1,4 +1,4 @@
-import type { Property, Row } from 'life-ui-core/client';
+import type { Property, Row } from 'iris-core/client';
 
 /** Existing rows can save page bodies without committing unrelated property drafts. */
 export function markdownPatch(

@@ -1,4 +1,4 @@
-import type { SqlDriver } from 'life-ui-core/client';
+import type { SqlDriver } from 'iris-core/client';
 
 /** Host preflight before showing approval or sending session credentials.
  * Sync remains authoritative and rechecks both bindings before its own HTTP.

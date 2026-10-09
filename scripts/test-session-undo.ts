@@ -2,13 +2,13 @@ import { chromium, expect } from "@playwright/test";
 import { disposableOrigin, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-markdown.localhost:5198/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-markdown.localhost:5198/workspace?review";
 const origin = disposableOrigin(url),
   source = process.argv[2];
-if (!source) throw Error("Provide the life-data checkout");
+if (!source) throw Error("Provide the soma checkout");
 const browser = await chromium.connectOverCDP(
-  process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
 );
 const page = workspacePage(
   browser.contexts().flatMap((c) => c.pages()),
@@ -100,8 +100,8 @@ async function closeFixture() {
 }
 async function check(name: string, run: () => Promise<void>) {
   if (
-    process.env.LIFE_UI_UNDO_CASE &&
-    !name.includes(process.env.LIFE_UI_UNDO_CASE)
+    process.env.IRIS_UNDO_CASE &&
+    !name.includes(process.env.IRIS_UNDO_CASE)
   )
     return;
   console.log("RUN: " + name);

@@ -1,12 +1,12 @@
 import {chromium,expect} from '@playwright/test';
 import {disposableOrigin,workspacePage} from './test-origin';
 import {enrollmentHub} from './enrollment-hub';
-const url=process.env.LIFE_UI_TEST_URL??'http://life-ui-enrollment.localhost:5230/workspace?review';
+const url=process.env.IRIS_TEST_URL??'http://iris-enrollment.localhost:5230/workspace?review';
 const origin=disposableOrigin(url);
-if(!['http://life-ui-enrollment.localhost:5230','http://life-ui-grid-enrollment.localhost:5234'].includes(origin))throw Error('Enrollment runner requires its exact reserved origin');
-const source=process.argv[2];if(!source)throw Error('Provide life-data fixture source checkout');
+if(!['http://iris-enrollment.localhost:5230','http://iris-grid-enrollment.localhost:5234'].includes(origin))throw Error('Enrollment runner requires its exact reserved origin');
+const source=process.argv[2];if(!source)throw Error('Provide soma fixture source checkout');
 const hub=await enrollmentHub(source,origin),other=await enrollmentHub(source,origin);
-const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
+const browser=await chromium.connectOverCDP(process.env.IRIS_TEST_CDP??'http://127.0.0.1:9222');
 try {
  const page=workspacePage(browser.contexts().flatMap(c=>c.pages()),url);if(!page)throw Error('Open the dedicated enrollment fixture page');
  page.setDefaultTimeout(10000);

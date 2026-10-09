@@ -1,12 +1,12 @@
 import XCTest
 
-/// Settings > Backup against `scripts/test-backup.ts <life-data> --serve` (the real hub
-/// Worker over synthetic SQLite, token "fixture"). Set TEST_RUNNER_LIFE_UI_TEST_BACKUP_HUB.
+/// Settings > Backup against `scripts/test-backup.ts <soma> --serve` (the real hub
+/// Worker over synthetic SQLite, token "fixture"). Set TEST_RUNNER_IRIS_TEST_BACKUP_HUB.
 @MainActor
 final class BackupUITests: XCTestCase {
   func testHubBackupsCopyExportRestoreAndUndo() throws {
-    guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_BACKUP_HUB"] else {
-      throw XCTSkip("Set LIFE_UI_TEST_BACKUP_HUB to the synthetic backup hub")
+    guard let endpoint = ProcessInfo.processInfo.environment["IRIS_TEST_BACKUP_HUB"] else {
+      throw XCTSkip("Set IRIS_TEST_BACKUP_HUB to the synthetic backup hub")
     }
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -19,7 +19,7 @@ final class BackupUITests: XCTestCase {
       connect(app, endpoint: endpoint)
     }
     openBackup(app)
-    let seeded = app.buttons["Restore daily/life-2026-10-01T09-10-00.sql.gz"]
+    let seeded = app.buttons["Restore daily/soma-2026-10-01T09-10-00.sql.gz"]
     XCTAssertTrue(seeded.waitForExistence(timeout: 15), app.debugDescription)
     capture(app, "ios-backup-settings")
 

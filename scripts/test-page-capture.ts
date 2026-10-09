@@ -3,7 +3,7 @@ import { writeFile, readFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 const origin =
-  process.env.CAPTURE_TEST_ORIGIN ?? "http://life-ui-capture.localhost:5267";
+  process.env.CAPTURE_TEST_ORIGIN ?? "http://iris-capture.localhost:5267";
 const targets = await (
   await fetch((process.env.CDP_URL ?? "http://127.0.0.1:9222") + "/json/list")
 ).json();
@@ -62,7 +62,7 @@ const address = sink.address();
 if (!address || typeof address === "string") throw Error("Sink unavailable");
 const sinkURL = `http://127.0.0.1:${address.port}`;
 const downloadDirectory = await mkdtemp(
-  join(tmpdir(), "life-capture-download-"),
+  join(tmpdir(), "iris-capture-download-"),
 );
 try {
   await send("Page.setDownloadBehavior", {

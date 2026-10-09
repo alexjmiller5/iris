@@ -12,13 +12,13 @@ import {
 // Mutants: generic rule text, discarded failed draft, editable derived/immutable
 // controls, missing catalog descriptions, or an accepted invariant violation.
 const source = process.argv[2];
-if (!source) throw Error("Provide the life-data checkout");
+if (!source) throw Error("Provide the soma checkout");
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-markdown.localhost:5198/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-markdown.localhost:5198/workspace?review";
 const origin = disposableOrigin(url);
-if (!process.env.LIFE_UI_TEST_TARGET)
-  throw Error("Provide the owned LIFE_UI_TEST_TARGET");
+if (!process.env.IRIS_TEST_TARGET)
+  throw Error("Provide the owned IRIS_TEST_TARGET");
 let failPull = false;
 const { server, db, auth } = await regressionHub(source, origin, 0, {
   wrap: (worker) => ({
@@ -244,7 +244,7 @@ try {
     // Preserve the existing incomplete-replica, dependency and stale advisory regressions.
     await click("Switch workspace");
     await cdp.evaluate(
-      `localStorage.setItem('life-ui:replica',JSON.stringify({maxRows:50000,tables:{history:false,provenance:false}}))`,
+      `localStorage.setItem('iris:replica',JSON.stringify({maxRows:50000,tables:{history:false,provenance:false}}))`,
     );
     await open();
     await sync();
@@ -281,7 +281,7 @@ try {
     await click("Close record");
     await click("Switch workspace");
     await cdp.evaluate(
-      `localStorage.setItem('life-ui:replica',JSON.stringify({maxRows:50000,tables:{provenance:false}}))`,
+      `localStorage.setItem('iris:replica',JSON.stringify({maxRows:50000,tables:{provenance:false}}))`,
     );
     await open();
     await sync();

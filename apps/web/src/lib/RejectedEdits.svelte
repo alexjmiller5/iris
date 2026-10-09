@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import type { RejectedEdit } from 'life-ui-core/client';
+	import type { RejectedEdit } from 'iris-core/client';
 	import type { WorkspaceDatabase } from './database';
 	import { createRejectionInbox, type RejectionSnapshot } from './rejection-inbox';
 	let {

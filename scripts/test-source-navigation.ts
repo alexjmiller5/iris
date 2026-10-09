@@ -9,13 +9,13 @@ import { regressionHub } from "./workspace-regression-hub";
 import { disposableOrigin } from "./test-origin";
 
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-navigation.localhost:5269/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-navigation.localhost:5269/workspace?review";
 const origin = disposableOrigin(url);
 const source = process.argv[2];
 if (!source)
   throw Error(
-    "Usage: bun scripts/test-source-navigation.ts <life-data-checkout>",
+    "Usage: bun scripts/test-source-navigation.ts <soma-checkout>",
   );
 const { server, db, auth } = await regressionHub(source, origin);
 const sourceID = "11111111222233334444555555555555";
@@ -203,8 +203,8 @@ try {
   }
   async function check(name: string, run: () => Promise<void>) {
     if (
-      process.env.LIFE_UI_SOURCE_CASE &&
-      !name.includes(process.env.LIFE_UI_SOURCE_CASE)
+      process.env.IRIS_SOURCE_CASE &&
+      !name.includes(process.env.IRIS_SOURCE_CASE)
     )
       return;
     try {

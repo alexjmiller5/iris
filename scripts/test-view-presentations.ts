@@ -1,7 +1,7 @@
 // Calendar, Gallery and Board layouts against the real Worker/OPFS and a synthetic
 // hub: date ranges across DST, unscheduled rows, gallery covers, a saved layout's
 // round trip, and Board moves by menu and pointer that sync through the ordinary
-// writer. LIFE_UI_TEST_TARGET is the owned page's CDP target ID on the fixture origin.
+// writer. IRIS_TEST_TARGET is the owned page's CDP target ID on the fixture origin.
 import { expect } from "@playwright/test";
 import { installCoreSchemas, logDDL, regressionHub } from "./workspace-regression-hub";
 import { disposableOrigin } from "./test-origin";
@@ -13,10 +13,10 @@ import {
 } from "./source-navigation-cdp";
 
 const source = process.argv[2];
-if (!source) throw Error("Provide the life-data checkout");
+if (!source) throw Error("Provide the soma checkout");
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-presentations.localhost:5252/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-presentations.localhost:5252/workspace?review";
 const origin = disposableOrigin(url);
 const { server, db, auth } = await regressionHub(source, origin);
 let page: Awaited<ReturnType<typeof sourceNavigationCDP>> | undefined;
@@ -247,10 +247,10 @@ try {
     endDateColumn: "ends",
   });
   expect(saved.timeZone).toBe("America/New_York");
-  if (process.env.LIFE_UI_TEST_SCREENSHOT) {
+  if (process.env.IRIS_TEST_SCREENSHOT) {
     const shot = await cdp.command("Page.captureScreenshot", { format: "png" });
     await Bun.write(
-      process.env.LIFE_UI_TEST_SCREENSHOT,
+      process.env.IRIS_TEST_SCREENSHOT,
       Buffer.from(shot.data, "base64"),
     );
   }

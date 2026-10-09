@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Property } from 'life-ui-core/client';
+	import type { Property } from 'iris-core/client';
 	import AttachmentControl from './AttachmentControl.svelte';
 	import type { AttachmentOutbox } from './attachments';
 	import MarkdownEditor from './components/MarkdownEditor.svelte';

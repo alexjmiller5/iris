@@ -6,17 +6,17 @@ export async function sourceNavigationCDP(address: string) {
   const origin = disposableOrigin(address);
   const targets = await (
     await fetch(
-      `${process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222"}/json/list`,
+      `${process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222"}/json/list`,
     )
   ).json();
   const target = targets.find(
     (entry: { id: string; type: string; url: string }) =>
-      entry.id === process.env.LIFE_UI_TEST_TARGET &&
+      entry.id === process.env.IRIS_TEST_TARGET &&
       entry.type === "page" &&
       new URL(entry.url).origin === origin,
   );
   if (!target)
-    throw Error("Set LIFE_UI_TEST_TARGET to the owned synthetic page ID");
+    throw Error("Set IRIS_TEST_TARGET to the owned synthetic page ID");
   const socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise<void>((resolve, reject) => {
     socket.onopen = () => resolve();

@@ -1,6 +1,6 @@
 # Native sidebar recents
 
-The shared LifeKit model is independent of SwiftUI navigation. The host supplies
+The shared IrisKit model is independent of SwiftUI navigation. The host supplies
 the common `NativeDestinationResolver` and a current-workspace predicate, displays
 `entries` and `storageError`, and owns all navigation and draft decisions.
 

@@ -19,7 +19,7 @@ import {
 	type SqlReadStatement,
 	type SqlReadContext,
 	type Value
-} from 'life-ui-core/client';
+} from 'iris-core/client';
 import { prepareLocalViews, prepareLocalPins } from '../../../../scripts/local-views';
 import type { DatabaseRequest, WorkspaceSnapshot } from './database-contract';
 
@@ -395,7 +395,7 @@ async function copyInto(ref: string, stream: ReadableStream<Uint8Array>) {
 	}
 }
 async function hubFor(args: { endpoint: string; token: string }, timeout: number) {
-	if (databaseName === 'life-ui-demo') throw new Error('Sample workspaces have no hub.');
+	if (databaseName === 'iris-demo') throw new Error('Sample workspaces have no hub.');
 	return createHttpHub(args.endpoint, args.token, (url, init) =>
 		fetch(url, { ...init, signal: AbortSignal.timeout(timeout) })
 	);
@@ -406,7 +406,7 @@ const local = createCoreHandlers(
 	() => {
 		throw new Error('No hub connection.');
 	},
-	'life-ui',
+	'iris',
 	null,
 	files
 );
@@ -416,7 +416,7 @@ async function dispatch(request: DatabaseRequest) {
 	if (method === 'open') {
 		if (args.demo !== undefined && typeof args.demo !== 'boolean')
 			throw new Error('demo must be a boolean.');
-		const name = args.demo ? 'life-ui-demo' : 'life-ui';
+		const name = args.demo ? 'iris-demo' : 'iris';
 		if (databaseName && name !== databaseName)
 			throw new Error('Close this database before switching workspaces.');
 		if (connection !== undefined) return snapshot();
@@ -434,7 +434,7 @@ async function dispatch(request: DatabaseRequest) {
 		// Exported by this WASM build, but not wrapped in wa-sqlite's typed API.
 		statementReadOnly = module.cwrap('sqlite3_stmt_readonly', 'number', ['number']);
 		try {
-			const vfs = await OPFSCoopSyncVFS.create('life-ui', module);
+			const vfs = await OPFSCoopSyncVFS.create('iris', module);
 			sqlite.vfs_register(vfs, true);
 			vfsName = vfs.name;
 			await connect(name);
@@ -458,7 +458,7 @@ async function dispatch(request: DatabaseRequest) {
 			);
 		}
 		databaseName = name;
-		channel = new BroadcastChannel(`life-ui:database:${name}`);
+		channel = new BroadcastChannel(`iris:database:${name}`);
 		channel.onmessage = ({ data }) => respond({ changed: data?.changed ?? true });
 		return snapshot();
 	}
@@ -496,22 +496,22 @@ async function dispatch(request: DatabaseRequest) {
 		case 'search':
 			return local.search(args);
 		case 'remoteRows': {
-			if (databaseName === 'life-ui-demo')
+			if (databaseName === 'iris-demo')
 				throw new Error('Sample workspaces cannot browse a hub.');
 			const { token, ...input } = args;
 			const hub = createHttpHub(input.endpoint, token, (url, init) =>
 				fetch(url, { ...init, signal: AbortSignal.timeout(30_000) })
 			);
-			return createCoreHandlers(db, () => hub, 'life-ui').remoteRows(input);
+			return createCoreHandlers(db, () => hub, 'iris').remoteRows(input);
 		}
 		case 'remoteRow': {
-			if (databaseName === 'life-ui-demo')
+			if (databaseName === 'iris-demo')
 				throw new Error('Sample workspaces cannot browse a hub.');
 			const { token, ...input } = args;
 			const hub = createHttpHub(input.endpoint, token, (url, init) =>
 				fetch(url, { ...init, signal: AbortSignal.timeout(30_000) })
 			);
-			return createCoreHandlers(db, () => hub, 'life-ui').remoteRow(input);
+			return createCoreHandlers(db, () => hub, 'iris').remoteRow(input);
 		}
 		case 'replicaFile': {
 			// The VFS holds the database file open; close it, copy the exact bytes
@@ -526,7 +526,7 @@ async function dispatch(request: DatabaseRequest) {
 				await copyInto(ref, source.stream());
 			} catch {
 				await abandon(ref);
-				throw new Error('Could not copy the database. Close other Life UI tabs and try again.');
+				throw new Error('Could not copy the database. Close other Iris tabs and try again.');
 			} finally {
 				await connect(name);
 			}
@@ -593,12 +593,12 @@ async function dispatch(request: DatabaseRequest) {
 			return (await backupHandle(args.file)).getFile();
 		case 'hubBackups': {
 			const hub = await hubFor(args, 30_000);
-			return createCoreHandlers(db, () => hub, 'life-ui').hubBackups({ endpoint: args.endpoint });
+			return createCoreHandlers(db, () => hub, 'iris').hubBackups({ endpoint: args.endpoint });
 		}
 		case 'createHubBackup': {
 			// The hub exports its whole database first; that takes about a minute.
 			const hub = await hubFor(args, 600_000);
-			return createCoreHandlers(db, () => hub, 'life-ui').createHubBackup({
+			return createCoreHandlers(db, () => hub, 'iris').createHubBackup({
 				endpoint: args.endpoint
 			});
 		}
@@ -611,13 +611,13 @@ async function dispatch(request: DatabaseRequest) {
 		case 'moveTablePin':
 			return local.moveTablePin(args);
 		case 'resolveDerived': {
-			if (databaseName === 'life-ui-demo')
+			if (databaseName === 'iris-demo')
 				throw new Error('Connect a workspace to resolve derived fields.');
 			const { token, ...input } = args;
 			const hub = createHttpHub(input.endpoint, token, (url, init) =>
 				fetch(url, { ...init, signal: AbortSignal.timeout(90_000) })
 			);
-			return createCoreHandlers(db, () => hub, 'life-ui').resolveDerived(input);
+			return createCoreHandlers(db, () => hub, 'iris').resolveDerived(input);
 		}
 		case 'resolveViewDefinition':
 			return local.resolveViewDefinition(args);
@@ -656,7 +656,7 @@ async function dispatch(request: DatabaseRequest) {
 		case 'writeability':
 			return local.writeability(args);
 		case 'sync': {
-			if (databaseName === 'life-ui-demo')
+			if (databaseName === 'iris-demo')
 				throw new Error('Demo workspaces cannot sync. Open your workspace first.');
 			if (
 				args.maxRows !== undefined &&
@@ -678,7 +678,7 @@ async function dispatch(request: DatabaseRequest) {
 			const hub = createHttpHub(args.endpoint, args.token, (url, init) =>
 				fetch(url, { ...init, signal: AbortSignal.timeout(120_000) })
 			);
-			return createCoreHandlers(db, () => hub, 'life-ui').sync(args);
+			return createCoreHandlers(db, () => hub, 'iris').sync(args);
 		}
 		default:
 			throw new Error('Unknown database operation.');
@@ -704,8 +704,8 @@ scope.onmessage = ({ data }) => {
 				throw new Error(
 					'Web Locks are unavailable; this browser cannot safely open persistent storage.'
 				);
-			const name = databaseName ?? (data.args.demo === true ? 'life-ui-demo' : 'life-ui');
-			const result = await navigator.locks.request(`life-ui:dispatch:${name}`, () =>
+			const name = databaseName ?? (data.args.demo === true ? 'iris-demo' : 'iris');
+			const result = await navigator.locks.request(`iris:dispatch:${name}`, () =>
 				dispatch(data as DatabaseRequest)
 			);
 			respond({ id: data.id, result });

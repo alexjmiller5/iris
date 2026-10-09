@@ -5,13 +5,13 @@ import { disposableOrigin, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-palette.localhost:5226/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-palette.localhost:5226/workspace?review";
 const origin = disposableOrigin(url);
 const source = process.argv[2];
 if (!source)
   throw Error(
-    "Usage: bun scripts/test-command-palette.ts <life-data-checkout>",
+    "Usage: bun scripts/test-command-palette.ts <soma-checkout>",
   );
 const { server, db } = await regressionHub(source, origin);
 const schema = await Bun.file(
@@ -78,7 +78,7 @@ for (let i = 0; i < 55; i++)
     .run(`page-${i}`, `Paged ${i}`, "paginationword");
 
 const browser = await chromium.connectOverCDP(
-  process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
 );
 let page: Page | undefined;
 let accept = true,
@@ -483,7 +483,7 @@ try {
       async () => {
         await open();
         await expect(viewOption("widgets")).toBeVisible();
-        const screenshots = process.env.LIFE_UI_TEST_SCREENSHOTS;
+        const screenshots = process.env.IRIS_TEST_SCREENSHOTS;
         if (screenshots) await mkdir(screenshots, { recursive: true });
         for (const [width, colorScheme] of [
           [1440, "light"],
@@ -508,8 +508,8 @@ try {
   ];
   for (const [name, run] of cases) {
     if (
-      process.env.LIFE_UI_PALETTE_CASE &&
-      !name.includes(process.env.LIFE_UI_PALETTE_CASE)
+      process.env.IRIS_PALETTE_CASE &&
+      !name.includes(process.env.IRIS_PALETTE_CASE)
     )
       continue;
     await home();

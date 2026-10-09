@@ -99,7 +99,7 @@ final class RejectionInboxUITests: XCTestCase {
 
   private func openFixture() throws -> XCUIApplication {
     let environment = ProcessInfo.processInfo.environment
-    guard let requested = environment["LIFE_UI_TEST_REJECTIONS_SIMULATOR"], !requested.isEmpty
+    guard let requested = environment["IRIS_TEST_REJECTIONS_SIMULATOR"], !requested.isEmpty
     else { throw XCTSkip("Requires the explicitly opted-in private simulator Issues fixture") }
     continueAfterFailure = false
     XCTAssertEqual(requested, environment["SIMULATOR_UDID"])

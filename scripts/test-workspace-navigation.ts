@@ -7,13 +7,13 @@ import { disposableOrigin, workspacePage } from "./test-origin";
 // Shared build hosts can be slow; waits are generous, never fixed sleeps.
 const expect = base.configure({ timeout: 15000 });
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-navigation.localhost:5224/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-navigation.localhost:5224/workspace?review";
 const origin = disposableOrigin(url);
 const source = process.argv[2];
 if (!source)
   throw new Error(
-    "Usage: bun scripts/test-workspace-navigation.ts <life-data-checkout>",
+    "Usage: bun scripts/test-workspace-navigation.ts <soma-checkout>",
   );
 const { server, db } = await regressionHub(source, origin);
 const schema = await Bun.file(
@@ -83,7 +83,7 @@ db.db
   );
 
 const browser = await chromium.connectOverCDP(
-  process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
 );
 let accept = true,
   dialogs = 0;
@@ -697,7 +697,7 @@ try {
     [
       "link controls fit desktop and narrow screens",
       async () => {
-        const screenshots = process.env.LIFE_UI_TEST_SCREENSHOTS;
+        const screenshots = process.env.IRIS_TEST_SCREENSHOTS;
         if (screenshots) await mkdir(screenshots, { recursive: true });
         for (const [width, colorScheme] of [
           [1440, "light"],
@@ -743,8 +743,8 @@ try {
   ];
   for (const [name, run] of cases) {
     if (
-      process.env.LIFE_UI_NAVIGATION_CASE &&
-      !name.includes(process.env.LIFE_UI_NAVIGATION_CASE)
+      process.env.IRIS_NAVIGATION_CASE &&
+      !name.includes(process.env.IRIS_NAVIGATION_CASE)
     )
       continue;
     await home();

@@ -39,9 +39,9 @@ final class SidebarMenuBarUITests: XCTestCase {
     let item = app.descendants(matching: .statusItem).firstMatch
     XCTAssertTrue(item.waitForExistence(timeout: 5), "The menu-bar item is shown by default")
     item.click()
-    XCTAssertTrue(app.menuItems["Open Life UI"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.menuItems["Open Iris"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.menuItems["Local only"].exists, "The menu mirrors the sync pill")
-    XCTAssertTrue(app.menuItems["Quit Life UI"].exists)
+    XCTAssertTrue(app.menuItems["Quit Iris"].exists)
     capture("mac-menu-bar-item")
     app.menuItems["Quick Find…"].click()
     XCTAssertTrue(

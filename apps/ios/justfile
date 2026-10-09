@@ -1,7 +1,7 @@
 # iOS app standard verbs (see global AGENTS.md)
 
-app := "LifeUI"
-derived_data := env_var_or_default("IOS_DERIVED_DATA", env_var("HOME") + "/Library/Developer/Xcode/DerivedData/life-ui-ios")
+app := "Iris"
+derived_data := env_var_or_default("IOS_DERIVED_DATA", env_var("HOME") + "/Library/Developer/Xcode/DerivedData/iris-ios")
 test_destination := env_var_or_default("IOS_TEST_DESTINATION", "platform=iOS Simulator,name=iPhone 17")
 # ssh host of the Mac the phone is paired to; empty = install from this Mac
 install_host := env_var_or_default("IOS_INSTALL_HOST", "")

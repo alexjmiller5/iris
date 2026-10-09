@@ -3,12 +3,12 @@ import { servicesHub } from './services-hub';
 import { disposableOrigin, workspacePage } from './test-origin';
 
 const [source, usageSource] = process.argv.slice(2);
-if (!source || !usageSource) throw new Error('Usage: bun scripts/test-services.ts <life-data-checkout> <usage-hub-checkout>');
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-services.localhost:5198/workspace?review';
+if (!source || !usageSource) throw new Error('Usage: bun scripts/test-services.ts <soma-checkout> <usage-hub-checkout>');
+const url = process.env.IRIS_TEST_URL ?? 'http://iris-services.localhost:5198/workspace?review';
 const origin = disposableOrigin(url);
 const fixture = await servicesHub(source, usageSource, origin);
 const other = await servicesHub(source, usageSource, origin);
-const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
+const browser = await chromium.connectOverCDP(process.env.IRIS_TEST_CDP ?? 'http://127.0.0.1:9222');
 try {
 	const page = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
 	if (!page) throw new Error(`Open the dedicated test page: ${url}`);
@@ -74,7 +74,7 @@ try {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.emulateMedia({ colorScheme: 'dark' });
 	expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-	await page.screenshot({ path: '/tmp/life-ui-usage-mobile.png' });
+	await page.screenshot({ path: '/tmp/iris-usage-mobile.png' });
 	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 	await page.getByRole('button', { name: 'Switch workspace', exact: true }).click();
 	await page.getByRole('button', { name: 'Try sample workspace', exact: true }).click();

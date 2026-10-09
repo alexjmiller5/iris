@@ -1,6 +1,6 @@
 set shell := ["bash", "-euc"]
-app := "LifeUI"
-derived_data := env_var_or_default("MACOS_DERIVED_DATA", env_var("HOME") + "/Library/Developer/Xcode/DerivedData/life-ui-macos")
+app := "Iris"
+derived_data := env_var_or_default("MACOS_DERIVED_DATA", env_var("HOME") + "/Library/Developer/Xcode/DerivedData/iris-macos")
 
 gen:
     "$(realpath "$(command -v xcodegen)")" generate --spec project.yml

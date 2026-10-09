@@ -11,11 +11,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-// Build artifacts only. The validator source is owned by life-data.
+// Build artifacts only. The validator source is owned by soma.
 const source = process.argv[2];
 if (!source)
   throw new Error(
-    "Usage: bun scripts/bundle-core.ts <life-core/src/validate.ts> | --native",
+    "Usage: bun scripts/bundle-core.ts <soma-core/src/validate.ts> | --native",
   );
 const root = resolve(import.meta.dir, "..");
 if (source !== "--native") {
@@ -25,7 +25,7 @@ if (source !== "--native") {
   const schemaNames = (await readdir(join(sourceRoot, 'core/schema'))).filter(name => name.endsWith('.json')).sort();
   await mkdir(join(root, 'packages/core/schema'), { recursive: true });
   for (const name of schemaNames) await copyFile(join(sourceRoot, 'core/schema', name), join(root, 'packages/core/schema', name));
-  const fixtureDir = join(root, 'packages/LifeKit/Tests/LifeKitTests/Fixtures');
+  const fixtureDir = join(root, 'packages/IrisKit/Tests/IrisKitTests/Fixtures');
   await mkdir(fixtureDir, { recursive: true });
   await copyFile(join(sourceRoot, 'tests/fixtures/read-dependencies.json'), join(fixtureDir, 'read-dependencies.json'));
   await copyFile(join(sourceRoot, 'tests/fixtures/enrollment-policy.json'), join(fixtureDir, 'enrollment-policy.json'));
@@ -34,10 +34,10 @@ if (source !== "--native") {
   const generated = generateContract(JSON.parse(await readFile(schemaPath, 'utf8')));
   if (await readFile(join(dirname(sourcePath), 'contract.generated.ts'), 'utf8') !== generated.typescript
     || await readFile(join(sourceRoot, 'core/generated/CoreContract.generated.swift'), 'utf8') !== generated.swift) {
-    throw new Error('Source core contract is stale; regenerate it in life-data first.');
+    throw new Error('Source core contract is stale; regenerate it in soma first.');
   }
   const contractDir = join(root, 'packages/core/contract');
-  const swiftDir = join(root, 'packages/LifeKit/Sources/LifeExtensionSupport/Generated');
+  const swiftDir = join(root, 'packages/IrisKit/Sources/IrisExtensionSupport/Generated');
   await mkdir(contractDir, { recursive: true });
   await mkdir(swiftDir, { recursive: true });
   await copyFile(schemaPath, join(contractDir, 'core.json'));
@@ -47,7 +47,7 @@ if (source !== "--native") {
   const sourceHash = createHash("sha256")
     .update(await readFile(sourcePath))
     .digest("hex");
-  const banner = `// Generated from life-core/src/validate.ts. SHA-256: ${sourceHash}\n`;
+  const banner = `// Generated from soma-core/src/validate.ts. SHA-256: ${sourceHash}\n`;
   const browser = await Bun.build({
     entrypoints: [sourcePath],
     root: dirname(sourcePath),
@@ -62,7 +62,7 @@ if (source !== "--native") {
     banner + (await browser.outputs[0].text()),
   );
 
-  const temp = await mkdtemp(join(tmpdir(), "life-ui-types-"));
+  const temp = await mkdtemp(join(tmpdir(), "iris-types-"));
   try {
     const declarations = Bun.spawn(
       [
@@ -105,7 +105,7 @@ if (source !== "--native") {
         .update(await readFile(join(dirname(sourcePath), name)));
     }
     for (const name of schemaNames) coreHash.update(`schema/${name}\0`).update(await readFile(join(sourceRoot, 'core/schema', name)));
-    const coreBanner = `// Generated from life-core. SHA-256: ${coreHash.digest("hex")}\n`;
+    const coreBanner = `// Generated from soma-core. SHA-256: ${coreHash.digest("hex")}\n`;
     const clientPath = join(dirname(sourcePath), "index.ts");
     const client = await Bun.build({
       entrypoints: [clientPath],
@@ -161,13 +161,13 @@ if (source !== "--native") {
   }
 }
 
-// CI rebuilds the native adapter from the checked-in client without life-data.
+// CI rebuilds the native adapter from the checked-in client without soma.
 const clientSource = await readFile(
   join(root, "packages/core/client.js"),
   "utf8",
 );
 const coreBanner = clientSource.match(
-  /^\/\/ Generated from life-core\. SHA-256: [a-f0-9]{64}\n/,
+  /^\/\/ Generated from soma-core\. SHA-256: [a-f0-9]{64}\n/,
 )?.[0];
 if (!coreBanner)
   throw new Error(
@@ -183,7 +183,7 @@ const native = await Bun.build({
 if (!native.success)
   throw new AggregateError(native.logs, "Native core build failed");
 await writeFile(
-  join(root, "packages/LifeKit/Sources/LifeKit/Resources/life-core.js"),
+  join(root, "packages/IrisKit/Sources/IrisKit/Resources/soma-core.js"),
   coreBanner + (await native.outputs[0].text()),
 );
 console.log("Bundled native core from packages/core/client.js");

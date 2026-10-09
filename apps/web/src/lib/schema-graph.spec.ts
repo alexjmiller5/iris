@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { layoutSchema } from './schema-graph';
-import type { Property, Row } from 'life-ui-core/client';
+import type { Property, Row } from 'iris-core/client';
 
 const tables: Row[] = [
 	{ id: 'notes', name: 'Wrong physical name' },

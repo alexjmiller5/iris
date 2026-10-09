@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { markdownPatch } from './record-autosave';
-import type { Property } from 'life-ui-core/client';
+import type { Property } from 'iris-core/client';
 const properties: Property[] = [
 	{ tbl: 'notes', col: 'body', type: 'markdown' },
 	{ tbl: 'notes', col: 'title', type: 'text' }

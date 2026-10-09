@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
-import type { ChangesetAPI } from 'life-ui-core/client';
-import type { ChangesetProposal, ChangesetPreview, ChangesetApproval } from 'life-ui-core/contract';
+import type { ChangesetAPI } from 'iris-core/client';
+import type { ChangesetProposal, ChangesetPreview, ChangesetApproval } from 'iris-core/contract';
 import type { ChangesetJournal, ChangesetScope, PendingChangeset } from './changeset-journal';
 import { decodeChangesetApproval } from './changeset-journal';
 export interface ChangesetReviewState {

@@ -1,6 +1,6 @@
 # Generated JavaScript may contain significant whitespace inside string literals.
-packages/LifeKit/Sources/LifeKit/Resources/graph.html linguist-generated=true -whitespace
-packages/LifeKit/Sources/LifeKit/Resources/life-core.js linguist-generated=true
+packages/IrisKit/Sources/IrisKit/Resources/graph.html linguist-generated=true -whitespace
+packages/IrisKit/Sources/IrisKit/Resources/soma-core.js linguist-generated=true
 packages/core/*.js linguist-generated=true
 packages/core/*.d.ts linguist-generated=true
-packages/LifeKit/Sources/LifeKit/Resources/editor.html -whitespace
+packages/IrisKit/Sources/IrisKit/Resources/editor.html -whitespace

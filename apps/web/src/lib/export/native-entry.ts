@@ -7,4 +7,4 @@ const bridge = {
 	}
 };
 
-(globalThis as typeof globalThis & { LifeRecordExport: typeof bridge }).LifeRecordExport = bridge;
+(globalThis as typeof globalThis & { IrisRecordExport: typeof bridge }).IrisRecordExport = bridge;

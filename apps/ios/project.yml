@@ -1,4 +1,4 @@
-name: LifeUI
+name: Iris
 options:
   deploymentTarget:
     iOS: "17.0"
@@ -7,39 +7,39 @@ settings:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: 1
-    LIFE_APP_BUNDLE_IDENTIFIER: com.alexmiller.life-ui
-    LIFE_WIDGET_APP_GROUP: group.$(LIFE_APP_BUNDLE_IDENTIFIER)
+    IRIS_APP_BUNDLE_IDENTIFIER: com.alexmiller.iris
+    IRIS_WIDGET_APP_GROUP: group.$(IRIS_APP_BUNDLE_IDENTIFIER)
   configs:
     debug:
       ONLY_ACTIVE_ARCH: YES
       ENABLE_TESTABILITY: YES
       SWIFT_OPTIMIZATION_LEVEL: "-Onone"
 packages:
-  LifeKit:
-    path: ../../packages/LifeKit
-  # Shared tests import GRDB directly; same requirement as LifeKit's manifest.
+  IrisKit:
+    path: ../../packages/IrisKit
+  # Shared tests import GRDB directly; same requirement as IrisKit's manifest.
   GRDB:
     url: https://github.com/groue/GRDB.swift.git
     from: 7.0.0
 targets:
-  LifeUI:
+  Iris:
     type: application
     platform: iOS
     sources: [App]
     dependencies:
-      - package: LifeKit
-      - package: LifeKit
-        product: LifeWidgets
-      - target: LifeUIWidgets
+      - package: IrisKit
+      - package: IrisKit
+        product: IrisWidgetSupport
+      - target: IrisWidgets
         embed: true
-      - target: LifeUIShare
+      - target: IrisShare
         embed: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: $(LIFE_APP_BUNDLE_IDENTIFIER)
-        PRODUCT_NAME: LifeUI
+        PRODUCT_BUNDLE_IDENTIFIER: $(IRIS_APP_BUNDLE_IDENTIFIER)
+        PRODUCT_NAME: Iris
         CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_ENTITLEMENTS: Signing/LifeUI.entitlements
+        CODE_SIGN_ENTITLEMENTS: Signing/Iris.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
       configs:
@@ -50,25 +50,25 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: Life UI
+        CFBundleDisplayName: Iris
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
-        LifeWidgetAppGroup: $(LIFE_WIDGET_APP_GROUP)
+        IrisWidgetAppGroup: $(IRIS_WIDGET_APP_GROUP)
         CFBundleURLTypes:
-          - CFBundleURLName: com.alexmiller.life-ui.open
+          - CFBundleURLName: com.alexmiller.iris.open
             CFBundleTypeRole: Viewer
-            CFBundleURLSchemes: [life]
-  LifeUIWidgets:
+            CFBundleURLSchemes: [iris]
+  IrisWidgets:
     type: app-extension
     platform: iOS
     sources: [Widgets]
     dependencies:
-      - package: LifeKit
-        product: LifeWidgets
+      - package: IrisKit
+        product: IrisWidgetSupport
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: $(LIFE_APP_BUNDLE_IDENTIFIER).widgets
-        PRODUCT_NAME: LifeUIWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: $(IRIS_APP_BUNDLE_IDENTIFIER).widgets
+        PRODUCT_NAME: IrisWidgets
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Signing/Extension.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
@@ -80,21 +80,21 @@ targets:
     info:
       path: Widgets/Info.plist
       properties:
-        CFBundleDisplayName: Life UI Widgets
-        LifeWidgetAppGroup: $(LIFE_WIDGET_APP_GROUP)
+        CFBundleDisplayName: Iris Widgets
+        IrisWidgetAppGroup: $(IRIS_WIDGET_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
-  LifeUIShare:
+  IrisShare:
     type: app-extension
     platform: iOS
     sources: [Share]
     dependencies:
-      - package: LifeKit
-        product: LifeExtensionSupport
+      - package: IrisKit
+        product: IrisExtensionSupport
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: $(LIFE_APP_BUNDLE_IDENTIFIER).share
-        PRODUCT_NAME: LifeUIShare
+        PRODUCT_BUNDLE_IDENTIFIER: $(IRIS_APP_BUNDLE_IDENTIFIER).share
+        PRODUCT_NAME: IrisShare
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Signing/Extension.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
@@ -106,8 +106,8 @@ targets:
     info:
       path: Share/Info.plist
       properties:
-        CFBundleDisplayName: Life UI
-        LifeWidgetAppGroup: $(LIFE_WIDGET_APP_GROUP)
+        CFBundleDisplayName: Iris
+        IrisWidgetAppGroup: $(IRIS_WIDGET_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
@@ -115,38 +115,38 @@ targets:
             NSExtensionActivationRule:
               NSExtensionActivationSupportsWebURLWithMaxCount: 1
               NSExtensionActivationSupportsText: true
-  LifeUITests:
+  IrisTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [../../packages/LifeKit/Tests/LifeKitTests]
+    sources: [../../packages/IrisKit/Tests/IrisKitTests]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.life-ui.tests
-        PRODUCT_NAME: LifeUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.iris.tests
+        PRODUCT_NAME: IrisTests
     dependencies:
-      - target: LifeUI
-      - package: LifeKit
-      - package: LifeKit
-        product: LifeWidgets
+      - target: Iris
+      - package: IrisKit
+      - package: IrisKit
+        product: IrisWidgetSupport
       - package: GRDB
-  LifeUIUITests:
+  IrisUITests:
     type: bundle.ui-testing
     platform: iOS
     sources: [UITests]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.life-ui.uitests
-        PRODUCT_NAME: LifeUIUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.iris.uitests
+        PRODUCT_NAME: IrisUITests
     dependencies:
-      - target: LifeUI
+      - target: Iris
 schemes:
-  LifeUI:
+  Iris:
     build:
       targets:
-        LifeUI: all
-        LifeUITests: [test]
-        LifeUIUITests: [test]
+        Iris: all
+        IrisTests: [test]
+        IrisUITests: [test]
     test:
-      targets: [LifeUITests, LifeUIUITests]
+      targets: [IrisTests, IrisUITests]

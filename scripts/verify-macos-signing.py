@@ -46,7 +46,7 @@ def read_claims(app):
 
 
 def extract_certificate(app, arch):
-    with tempfile.TemporaryDirectory(prefix="life-ui-certificate-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="iris-certificate-") as scratch:
         prefix = str(Path(scratch) / "certificate")
         subprocess.run(["codesign", "-d", "--arch", arch, "--extract-certificates=" + prefix, str(app)], check=True, capture_output=True)
         return Path(prefix + "0").read_bytes()

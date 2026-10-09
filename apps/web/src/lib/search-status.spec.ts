@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Property, SearchHit } from 'life-ui-core/client';
+import type { Property, SearchHit } from 'iris-core/client';
 import { labelStatus } from './search-status';
 
 const properties: Property[] = [

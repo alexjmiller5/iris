@@ -5,8 +5,8 @@ final class PresentationUITests: XCTestCase {
   func testCalendarRangesGalleryAndBoardMove() throws {
     continueAfterFailure = false
     let environment = ProcessInfo.processInfo.environment
-    try XCTSkipUnless(environment["LIFE_UI_TEST_CATALOG_CLEAN_HOST"] == "1")
-    let path = try XCTUnwrap(environment["LIFE_UI_TEST_PRESENTATION_DATABASE"])
+    try XCTSkipUnless(environment["IRIS_TEST_CATALOG_CLEAN_HOST"] == "1")
+    let path = try XCTUnwrap(environment["IRIS_TEST_PRESENTATION_DATABASE"])
     XCTAssertEqual(URL(fileURLWithPath: path).lastPathComponent, "presentation-acceptance.sqlite")
     let app = XCUIApplication()
     app.launchArguments = ["--normal-startup", "-ApplePersistenceIgnoreState", "YES"]

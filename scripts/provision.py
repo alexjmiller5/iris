@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import httpx
 
-NAME = "life-ui"
+NAME = "iris"
 OP_CF_TOKEN = "op://4eeyrkqibibn7k4j6rz2fbzvxm/mxxpo6neiz3grdyrjj7rv7nume/credential"
 FIELDS = ["api-token", "account-id"]
 

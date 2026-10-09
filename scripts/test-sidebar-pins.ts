@@ -5,10 +5,10 @@ import { sourceNavigationCDP, named, element } from './source-navigation-cdp';
 import { disposableOrigin } from './test-origin';
 import { regressionHub } from './workspace-regression-hub';
 
-const address = process.env.LIFE_UI_TEST_URL;
+const address = process.env.IRIS_TEST_URL;
 const source = process.argv[2];
-if (!address || !source || !process.env.LIFE_UI_TEST_TARGET)
-  throw Error('Set an owned LIFE_UI_TEST_URL / LIFE_UI_TEST_TARGET and pass a matching core checkout');
+if (!address || !source || !process.env.IRIS_TEST_TARGET)
+  throw Error('Set an owned IRIS_TEST_URL / IRIS_TEST_TARGET and pass a matching core checkout');
 const origin = disposableOrigin(address);
 const root = resolve(import.meta.dir, '..');
 if (!readFileSync(resolve(root, 'packages/core/contract/core.json')).equals(
@@ -112,10 +112,10 @@ try {
   await connect();
   await expect.poll(() => cdp.evaluate(pinned)).toEqual(['projects','widgets']);
   await cdp.evaluate('window.scrollTo(0,0)');
-  const artifacts=process.env.LIFE_UI_TEST_ARTIFACT_DIR;
+  const artifacts=process.env.IRIS_TEST_ARTIFACT_DIR;
   if(artifacts){mkdirSync(artifacts,{recursive:true});const shot=await cdp.command('Page.captureScreenshot',{format:'png'});await Bun.write(resolve(artifacts,'sidebar-pins-pass.png'),Buffer.from(shot.data,'base64'));}
 } catch (error) {
-  const artifacts = process.env.LIFE_UI_TEST_ARTIFACT_DIR;
+  const artifacts = process.env.IRIS_TEST_ARTIFACT_DIR;
   if (page && artifacts) {
     mkdirSync(artifacts, { recursive: true });
     await Bun.write(resolve(artifacts, 'sidebar-pins.txt'), await page.evaluate('document.body.innerText'));

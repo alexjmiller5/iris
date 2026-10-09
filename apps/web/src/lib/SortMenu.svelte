@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Property, Sort } from 'life-ui-core/client';
+	import type { Property, Sort } from 'iris-core/client';
 	import { IconArrowsSort, IconGripVertical, IconTrash, IconX } from '@tabler/icons-svelte';
 	import { anchored } from './popover';
 	import { editSort, moveItem } from './view-controls';

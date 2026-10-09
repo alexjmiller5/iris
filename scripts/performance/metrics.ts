@@ -2,7 +2,7 @@
 export function fixtureOrigin(address: string): string {
   const url = new URL(address);
   if (
-    url.origin !== "http://life-ui-performance.localhost:5246" ||
+    url.origin !== "http://iris-performance.localhost:5246" ||
     url.username ||
     url.password ||
     url.pathname !== "/workspace" ||

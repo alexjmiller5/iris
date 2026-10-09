@@ -4,12 +4,12 @@ import { chromium, expect } from '@playwright/test';
 import { disposableOrigin, workspacePage } from './test-origin';
 import { resolve } from 'node:path';
 
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-markdown.localhost:5198/workspace?review';
+const url = process.env.IRIS_TEST_URL ?? 'http://iris-markdown.localhost:5198/workspace?review';
 const origin = disposableOrigin(url);
 const source=process.argv[2];
-if(!source)throw Error('Provide the life-data checkout for the shared adapter fixture');
+if(!source)throw Error('Provide the soma checkout for the shared adapter fixture');
 const fixture=await Bun.file(resolve(source,'tests/fixtures/read-dependencies.json')).json();
-const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
+const browser = await chromium.connectOverCDP(process.env.IRIS_TEST_CDP ?? 'http://127.0.0.1:9222');
 let ownedPage: import('@playwright/test').Page | undefined;
 try {
   const page = ownedPage = workspacePage(browser.contexts().flatMap(c => c.pages()),url);

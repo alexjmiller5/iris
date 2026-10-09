@@ -12,7 +12,7 @@
 		IconSortDescending
 	} from '@tabler/icons-svelte';
 	import { anchored } from './popover';
-	import type { Property, Row, RowAction, ViewLayoutItem } from 'life-ui-core/client';
+	import type { Property, Row, RowAction, ViewLayoutItem } from 'iris-core/client';
 	import type { AttachmentOutbox } from './attachments';
 	import FieldEditor from './FieldEditor.svelte';
 	import type { RetainedFileResolver } from './retained-files';

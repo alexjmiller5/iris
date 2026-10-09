@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { ReferenceSource, ReferencedByPage, WorkspaceRow } from 'life-ui-core/client';
+import type { ReferenceSource, ReferencedByPage, WorkspaceRow } from 'iris-core/client';
 
 export interface ReferenceGroup {
 	key: string;

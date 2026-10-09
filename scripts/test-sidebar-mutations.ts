@@ -1,11 +1,11 @@
 import { resolve } from "node:path";
 import { disposableOrigin } from "./test-origin";
 disposableOrigin(
-  process.env.LIFE_UI_TEST_URL ??
-    "http://life-ui-recents.localhost:5236/workspace?review",
+  process.env.IRIS_TEST_URL ??
+    "http://iris-recents.localhost:5236/workspace?review",
 );
 const source = process.argv[2];
-if (!source) throw Error("Provide life-data checkout");
+if (!source) throw Error("Provide soma checkout");
 const model = "apps/web/src/lib/sidebar-recents.ts",
   tables = "apps/web/src/lib/SidebarTables.svelte",
   component = "apps/web/src/lib/SidebarRecents.svelte",
@@ -74,7 +74,7 @@ const mutations = [
     file: "apps/web/src/lib/database.worker.ts",
     before: "catalog: await local.catalog({}),",
     after:
-      "catalog: await (await import('life-ui-core/client')).readCatalog(db),",
+      "catalog: await (await import('iris-core/client')).readCatalog(db),",
     browser: "system catalog",
   },
   {
@@ -124,7 +124,7 @@ for (const mutation of mutations) {
         ];
     const child = Bun.spawn(command, {
       cwd: resolve(import.meta.dir, ".."),
-      env: { ...process.env, LIFE_UI_RECENTS_CASE: mutation.browser ?? "" },
+      env: { ...process.env, IRIS_RECENTS_CASE: mutation.browser ?? "" },
       stdout: "pipe",
       stderr: "pipe",
     });

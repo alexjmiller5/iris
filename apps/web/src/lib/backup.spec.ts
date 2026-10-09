@@ -39,7 +39,7 @@ describe('restore preview rows', () => {
 
 describe('hub backup download', () => {
 	const backup = {
-		key: 'daily/life-2026-10-08T09-10-00.sql.gz',
+		key: 'daily/soma-2026-10-08T09-10-00.sql.gz',
 		taken_at: '2026-10-08T09:12:00.000Z',
 		bytes: 3,
 		sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81'
@@ -54,7 +54,7 @@ describe('hub backup download', () => {
 			calls.push([url, init]);
 			return new Response(new Uint8Array([1, 2, 3]));
 		}) as typeof fetch);
-		expect(calls[0][0]).toBe('https://hub.test/v1/backups/daily/life-2026-10-08T09-10-00.sql.gz');
+		expect(calls[0][0]).toBe('https://hub.test/v1/backups/daily/soma-2026-10-08T09-10-00.sql.gz');
 		expect(calls[0][1].headers).toEqual({ Authorization: 'Bearer secret' });
 		expect(calls[0][1].redirect).toBe('error');
 		expect(new Uint8Array(await blob.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));

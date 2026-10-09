@@ -7,7 +7,7 @@ import XCTest
 final class DeepLinkUITests: XCTestCase {
   private func application() throws -> XCUIApplication {
     let environment = ProcessInfo.processInfo.environment
-    guard let selected = environment["LIFE_UI_TEST_LINK_SIMULATOR"], !selected.isEmpty,
+    guard let selected = environment["IRIS_TEST_LINK_SIMULATOR"], !selected.isEmpty,
       UUID(uuidString: selected) != nil, selected == environment["SIMULATOR_UDID"]
     else { throw XCTSkip("Select this exact disposable SIMULATOR_UDID for native link tests.") }
     continueAfterFailure = false
@@ -50,7 +50,7 @@ final class DeepLinkUITests: XCTestCase {
     query.press(forDuration: 1.2)
     tap(app.menuItems["Paste"].firstMatch)
     let pasted = try XCTUnwrap(query.value as? String)
-    XCTAssertTrue(pasted.hasPrefix("life://open/v1?"), pasted)
+    XCTAssertTrue(pasted.hasPrefix("iris://open/v1?"), pasted)
     tap(app.navigationBars["Quick Find"].buttons["Cancel"])
     XCTAssertTrue(query.waitForNonExistence(timeout: 5))
     return try XCTUnwrap(URL(string: pasted))

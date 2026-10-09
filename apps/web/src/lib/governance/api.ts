@@ -18,7 +18,7 @@ import type {
 	Change,
 	Intent,
 	Revision
-} from 'life-ui-core/contract';
+} from 'iris-core/contract';
 
 // Type-only mapping of the owner's operation table. The host supplies null
 // until core actually advertises the operations. This file has no transport.

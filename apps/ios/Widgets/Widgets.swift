@@ -1,16 +1,16 @@
-import LifeWidgets
+import IrisWidgetSupport
 import SwiftUI
 import WidgetKit
 
 @main
-struct LifeUIWidgetBundle: WidgetBundle {
+struct IrisWidgetBundle: WidgetBundle {
   var body: some Widget {
-    LifeTableWidget()
-    LifeTodayWidget()
-    LifeCountWidget()
-    LifeQuickAddWidget()
+    IrisTableWidget()
+    IrisTodayWidget()
+    IrisCountWidget()
+    IrisQuickAddWidget()
     if #available(iOS 18.0, *) {
-      LifeQuickAddControl()
+      IrisQuickAddControl()
     }
   }
 }

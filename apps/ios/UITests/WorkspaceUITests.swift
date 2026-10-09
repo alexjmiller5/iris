@@ -5,7 +5,7 @@ import XCTest
 final class WorkspaceUITests: XCTestCase {
   func testDeletingAnotherByteDistinctSavedViewKeepsTheAppliedView() throws {
     try XCTSkipIf(
-      ProcessInfo.processInfo.environment["LIFE_UI_TEST_SAVED_VIEW_ID_SIMULATOR"] == nil,
+      ProcessInfo.processInfo.environment["IRIS_TEST_SAVED_VIEW_ID_SIMULATOR"] == nil,
       "Seed the two-view fixture on an explicitly selected disposable simulator first.")
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -46,7 +46,7 @@ final class WorkspaceUITests: XCTestCase {
   }
 
   func testRecoveryAndSaveKeepByteDistinctRecordIDsSeparate() throws {
-    guard ProcessInfo.processInfo.environment["LIFE_UI_TEST_OPAQUE_ID_SIMULATOR"] != nil else {
+    guard ProcessInfo.processInfo.environment["IRIS_TEST_OPAQUE_ID_SIMULATOR"] != nil else {
       throw XCTSkip(
         "Seed the two-record fixture on an explicitly selected disposable simulator first.")
     }
@@ -96,8 +96,8 @@ final class WorkspaceUITests: XCTestCase {
   }
 
   func testDeviceApprovalConnectsThroughRealHubAndSourceFocusKeepsToolbarVisible() async throws {
-    guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
-      throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")
+    guard let endpoint = ProcessInfo.processInfo.environment["IRIS_TEST_HUB"] else {
+      throw XCTSkip("Set IRIS_TEST_HUB for the synthetic Worker test")
     }
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -251,7 +251,7 @@ final class WorkspaceUITests: XCTestCase {
   func testDuplicateCopiesTheSavedRecordAndDiscardsDirtySourceOnlyAfterConfirmation() throws {
     // Draft journals exist only in a real workspace; the temporary sample keeps none.
     let environment = ProcessInfo.processInfo.environment
-    guard let selected = environment["LIFE_UI_TEST_DUPLICATE_SIMULATOR"], !selected.isEmpty,
+    guard let selected = environment["IRIS_TEST_DUPLICATE_SIMULATOR"], !selected.isEmpty,
       selected == environment["SIMULATOR_UDID"]
     else { throw XCTSkip("Select this exact disposable SIMULATOR_UDID for the duplicate test.") }
     continueAfterFailure = false
@@ -338,8 +338,8 @@ final class WorkspaceUITests: XCTestCase {
   }
 
   func testOnlineBrowseOpensReadOnlyFreshRecordAndKeepsLocalEditorSeparate() throws {
-    guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
-      throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")
+    guard let endpoint = ProcessInfo.processInfo.environment["IRIS_TEST_HUB"] else {
+      throw XCTSkip("Set IRIS_TEST_HUB for the synthetic Worker test")
     }
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -408,8 +408,8 @@ final class WorkspaceUITests: XCTestCase {
   }
 
   func testDownloadSettingsRetainLocalRowsAndIncludeOnTheNextSync() throws {
-    guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
-      throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")
+    guard let endpoint = ProcessInfo.processInfo.environment["IRIS_TEST_HUB"] else {
+      throw XCTSkip("Set IRIS_TEST_HUB for the synthetic Worker test")
     }
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -459,7 +459,7 @@ final class WorkspaceUITests: XCTestCase {
 
   func testReadOnlyReferenceOpensWithoutSelectionOrRemovalAndMissingStaysPut() throws {
     try XCTSkipIf(
-      ProcessInfo.processInfo.environment["LIFE_UI_TEST_REFERENCE_SIMULATOR"] == nil,
+      ProcessInfo.processInfo.environment["IRIS_TEST_REFERENCE_SIMULATOR"] == nil,
       "Seed the reference fixture on a disposable simulator first.")
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -552,7 +552,7 @@ final class WorkspaceUITests: XCTestCase {
 
   func testSavedViewsApplyPersistRenameAndDeleteWithoutProjectingEditor() throws {
     try XCTSkipIf(
-      ProcessInfo.processInfo.environment["LIFE_UI_TEST_SAVED_VIEWS_SIMULATOR"] == nil,
+      ProcessInfo.processInfo.environment["IRIS_TEST_SAVED_VIEWS_SIMULATOR"] == nil,
       "Seed the saved-views fixture on a disposable simulator first.")
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -641,7 +641,7 @@ final class WorkspaceUITests: XCTestCase {
 
   func testQuickFindPagesAcrossTablesAndOpensAnEditableFreshRecord() throws {
     try XCTSkipIf(
-      ProcessInfo.processInfo.environment["LIFE_UI_TEST_QUICK_FIND_SIMULATOR"] == nil,
+      ProcessInfo.processInfo.environment["IRIS_TEST_QUICK_FIND_SIMULATOR"] == nil,
       "Run the quick-find fixture on a disposable simulator first.")
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -721,7 +721,7 @@ final class WorkspaceUITests: XCTestCase {
 
   func testPendingRecoveryCanCopyExitAndOpenLatestWhileKeepingDraft() throws {
     try XCTSkipIf(
-      ProcessInfo.processInfo.environment["LIFE_UI_TEST_RECOVERY_SIMULATOR"] == nil,
+      ProcessInfo.processInfo.environment["IRIS_TEST_RECOVERY_SIMULATOR"] == nil,
       "Run the app-host recovery fixture on an explicitly selected disposable simulator first.")
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -1076,8 +1076,8 @@ final class WorkspaceUITests: XCTestCase {
   }
 
   func testUsageAndNotificationsThroughTheNativeInterface() throws {
-    guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_SERVICES_HUB"] else {
-      throw XCTSkip("Set LIFE_UI_TEST_SERVICES_HUB for the synthetic services Worker test")
+    guard let endpoint = ProcessInfo.processInfo.environment["IRIS_TEST_SERVICES_HUB"] else {
+      throw XCTSkip("Set IRIS_TEST_SERVICES_HUB for the synthetic services Worker test")
     }
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -1151,8 +1151,8 @@ final class WorkspaceUITests: XCTestCase {
   }
 
   func testConnectAndSyncThroughTheNativeInterface() throws {
-    guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_HUB"] else {
-      throw XCTSkip("Set LIFE_UI_TEST_HUB for the synthetic Worker test")
+    guard let endpoint = ProcessInfo.processInfo.environment["IRIS_TEST_HUB"] else {
+      throw XCTSkip("Set IRIS_TEST_HUB for the synthetic Worker test")
     }
     continueAfterFailure = false
     addUIInterruptionMonitor(withDescription: "Password AutoFill") { interruption in

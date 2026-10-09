@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { IconTable, IconZoomIn, IconZoomOut, IconArrowsMaximize } from '@tabler/icons-svelte';
-	import type { Property, Row } from 'life-ui-core/client';
+	import type { Property, Row } from 'iris-core/client';
 	import { layoutSchema } from './schema-graph';
 
 	let {

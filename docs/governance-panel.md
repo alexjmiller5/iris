@@ -35,10 +35,10 @@ are displayed without interpreting markup. Unknown historical values, SQL null,
 empty text and lossless integer strings remain distinct. Purge/authority loss clears
 cached display content and invalidates late page/preview responses.
 
-`contract.ts` re-exports the canonical generated Life Data wire types; `api.ts`
+`contract.ts` re-exports the canonical generated Soma wire types; `api.ts`
 uses generated argument and result types for every method. The generic read
 envelope remains only for local presentation helpers. The bundle is generated from
-Life Data `cd9af7a9398e95844d85c7e6dc8052c9e91c49c4`, contract hash
+Soma `cd9af7a9398e95844d85c7e6dc8052c9e91c49c4`, contract hash
 `e935ee9223797c2910128fcaef91cce70acfeb0baa329dc848074f45b9bf4ff3`.
 It includes nine canonical governance operations, which remain unavailable without
 an injected service adapter. Bundling these operations does not activate the host
@@ -49,7 +49,7 @@ untrusted evidence to manufacture an authorized preview.
 ## Service integration
 
 The integration uses `createGovernanceAPI` and `createHttpHub` from
-`life-ui-core/client`. The service owns route selection, capability/authority
+`iris-core/client`. The service owns route selection, capability/authority
 validation, exact request/result shapes and HTTP response classification. Its
 `governancePost` transport preserves status, JSON data and Retry-After; ordinary
 `hub.post` is not interchangeable because it throws away the typed error response.
@@ -59,7 +59,7 @@ Before constructing a production binding, the host must obtain a validated
 capability and stable non-secret deployment/session identity for the exact active
 connection. A principal ID, token display name, full scope or replica eligibility
 alone is insufficient. Do not derive journal identity from the URL or a credential
-hash. The required canonical source for this integration is Life Data
+hash. The required canonical source for this integration is Soma
 `cd9af7a9398e95844d85c7e6dc8052c9e91c49c4`, contract hash
 `e935ee9223797c2910128fcaef91cce70acfeb0baa329dc848074f45b9bf4ff3`.
 It includes required `GovernanceCapability.deploymentId` and `sessionId` fields.
@@ -151,7 +151,7 @@ bun --conditions=browser scripts/check-governance-panel-dom.ts
 ```
 
 CI runs these presentation boundaries and the merged history-selection tests. The external
-Life Data HTTP fixture remains a separate pinned-source conformance command; it requires
+Soma HTTP fixture remains a separate pinned-source conformance command; it requires
 that owner checkout and is not silently replaced with a stub in CI. Happy DOM checks
 verify mounted disablement and cache invalidation, not real browser storage.
 
@@ -199,7 +199,7 @@ Current tests do not prove service authority, preview inertness, atomic proposal
 storage or end-to-end idempotency. Real service integration must additionally verify
 those guarantees, stale approval, actor separation, tombstones/required-field/invariant
 conflicts and purge across every retained copy. The conditional HTTP patch prerequisite
-is released through Life Data PR11 at main
+is released through Soma PR11 at main
 `12bcc915dcef7a5d0184c714cc79ddfdd5cfdf8d`. The service owner verified deploy
 `37480040525` and authenticated session advertisement of `conditional_patch: revision-v1`.
 The conformance fixture still pins the original minimal source slice, main

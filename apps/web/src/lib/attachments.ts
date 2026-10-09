@@ -1,4 +1,4 @@
-import { createHttpHub } from 'life-ui-core/client';
+import { createHttpHub } from 'iris-core/client';
 import { retainedBlob, type RetainedFileResolver } from './retained-files';
 export type Attachment = {
 	id: string;
@@ -129,7 +129,7 @@ export async function uploadAttachment(
 		throw Error('Attachment integrity mismatch.');
 }
 
-/** Outbox bytes and metadata are private OPFS files, never life-data rows. */
+/** Outbox bytes and metadata are private OPFS files, never soma rows. */
 export class AttachmentOutbox extends EventTarget {
 	entries: Attachment[] = [];
 	busy = false;
@@ -148,7 +148,7 @@ export class AttachmentOutbox extends EventTarget {
 	): Promise<AttachmentOutbox> {
 		const root = await (
 			await navigator.storage.getDirectory()
-		).getDirectoryHandle('life-ui-attachments', { create: true });
+		).getDirectoryHandle('iris-attachments', { create: true });
 		const key = await sha(new Blob([scope]));
 		const box = new AttachmentOutbox(
 			await root.getDirectoryHandle(key, { create: true }),
@@ -209,7 +209,7 @@ export class AttachmentOutbox extends EventTarget {
 			entries.push(entry);
 		}
 		await navigator.locks.request(
-			'life-ui-attachments:' + this.root.name,
+			'iris-attachments:' + this.root.name,
 			{ ifAvailable: true },
 			async (lock) => {
 				if (!lock) return;
@@ -234,7 +234,7 @@ export class AttachmentOutbox extends EventTarget {
 		}
 	}
 	async stage(file: File): Promise<Attachment> {
-		return navigator.locks.request('life-ui-attachments:' + this.root.name, () =>
+		return navigator.locks.request('iris-attachments:' + this.root.name, () =>
 			this.stageLocked(file)
 		);
 	}

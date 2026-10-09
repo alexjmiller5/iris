@@ -1,11 +1,11 @@
-import LifeExtensionSupport
+import IrisExtensionSupport
 import Observation
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
 /// Prepares one recoverable Quick Add draft from a shared URL or text. Nothing is saved
-/// here: Life UI opens the draft for an explicit Save, and the text never enters a URL.
+/// here: Iris opens the draft for an explicit Save, and the text never enters a URL.
 final class ShareViewController: UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -37,10 +37,10 @@ final class ShareViewController: UIViewController {
       sources = try WidgetLibrary.installed()?.sources().filter {
         $0.kind == .list && $0.allowsQuickAdd && $0.openURL != nil && $0.displayColumn != nil
       } ?? []
-    } catch { message = "Open Life UI to review its enabled tables." }
+    } catch { message = "Open Iris to review its enabled tables." }
     selected = sources.first?.id ?? ""
     if sources.isEmpty, message == nil {
-      message = "Enable a writable table in Life UI's Widgets and Search settings first."
+      message = "Enable a writable table in Iris's Widgets and Search settings first."
     }
     text = await sharedText()
     if text == nil { message = "Share a link or text." }
@@ -52,11 +52,11 @@ final class ShareViewController: UIViewController {
       _ = try WidgetLibrary.installed()?.store(workspaceID: source.workspaceID)
         .stageQuickAdd(id: id, sourceID: source.id, text: text, column: source.displayColumn)
       prepared = true
-      message = "Draft ready. Open Life UI to review and save it."
+      message = "Draft ready. Open Iris to review and save it."
     } catch {
       message =
         text.utf8.count > 65536
-        ? "This text is too long for a draft." : "Finish the pending Quick Add in Life UI first."
+        ? "This text is too long for a draft." : "Finish the pending Quick Add in Iris first."
     }
   }
 
@@ -92,7 +92,7 @@ struct ShareCaptureView: View {
               ForEach(model.sources) { Text($0.title).tag($0.id) }
             }
           } footer: {
-            Text("Life UI opens a draft with this text in the title field. Nothing is saved until you choose Save.")
+            Text("Iris opens a draft with this text in the title field. Nothing is saved until you choose Save.")
           }
         }
         if let message = model.message {

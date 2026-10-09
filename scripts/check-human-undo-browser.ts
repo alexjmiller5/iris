@@ -15,7 +15,7 @@ const targets = (await (
 const target = targets.find((t) => t.id === values.target);
 if (
   !target ||
-  !/^http:\/\/life-ui-human-undo\.localhost:\d+\//.test(target.url)
+  !/^http:\/\/iris-human-undo\.localhost:\d+\//.test(target.url)
 )
   throw Error("Use an owned disposable human-undo localhost origin");
 // Direct target connection avoids attaching to every other browser tab. The

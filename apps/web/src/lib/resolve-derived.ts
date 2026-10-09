@@ -1,4 +1,4 @@
-import type { CoreArgs, CoreResult, Row } from 'life-ui-core/client';
+import type { CoreArgs, CoreResult, Row } from 'iris-core/client';
 import type { WorkspaceDatabase } from './database';
 
 /** Resolve on the bound service, then obtain values through ordinary replica sync. */

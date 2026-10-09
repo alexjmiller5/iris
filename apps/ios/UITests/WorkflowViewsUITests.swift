@@ -3,7 +3,7 @@ import XCTest
 @MainActor
 final class WorkflowViewsUITests: XCTestCase {
   func testDailyQueueActionAndOptionsSurviveReopening() throws {
-    try XCTSkipIf(ProcessInfo.processInfo.environment["LIFE_UI_TEST_SAVED_VIEWS_SIMULATOR"] == nil)
+    try XCTSkipIf(ProcessInfo.processInfo.environment["IRIS_TEST_SAVED_VIEWS_SIMULATOR"] == nil)
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launch()

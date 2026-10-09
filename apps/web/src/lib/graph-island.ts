@@ -1,4 +1,4 @@
-import type { Property, Row } from 'life-ui-core/client';
+import type { Property, Row } from 'iris-core/client';
 
 export type GraphData = {
 	tables: Row[];

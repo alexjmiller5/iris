@@ -22,7 +22,7 @@
 		disabled?: boolean;
 		onconnect(connection: HubConnection, current: () => boolean): Promise<void>;
 	} = $props();
-	let name = $state('Life UI browser');
+	let name = $state('Iris browser');
 	let enrollmentState = $state<EnrollmentState>({ phase: 'idle', message: '' });
 	let model: DeviceEnrollment | undefined;
 	let disposed = false;

@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest';
 import { SidebarPins, unpinnedTables } from './sidebar-pins';
-import type { SidebarPinList } from 'life-ui-core/client';
+import type { SidebarPinList } from 'iris-core/client';
 const list = (names: string[]): SidebarPinList => ({
 	unavailable: null,
 	pins: names.map((tbl, position) => ({

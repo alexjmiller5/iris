@@ -1,4 +1,4 @@
-import type { CoreArgs, CoreResult } from 'life-ui-core/client';
+import type { CoreArgs, CoreResult } from 'iris-core/client';
 import type { RejectionSnapshot } from './rejection-inbox';
 
 // Host lifecycle and credentials are local to the browser. Shared operations

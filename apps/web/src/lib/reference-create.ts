@@ -1,4 +1,4 @@
-import { isReadOnlyTable, type Property, type Row } from 'life-ui-core/client';
+import { isReadOnlyTable, type Property, type Row } from 'iris-core/client';
 import { recordPatch } from './record-grid';
 
 export type CreationTarget = { table: string; display: string; properties: Property[] };

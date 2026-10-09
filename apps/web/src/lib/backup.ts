@@ -1,4 +1,4 @@
-import { hubBackupRoute, type BackupSummary, type HubBackup } from 'life-ui-core/client';
+import { hubBackupRoute, type BackupSummary, type HubBackup } from 'iris-core/client';
 
 export type RestoreRow = {
 	table: string;

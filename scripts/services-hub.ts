@@ -35,7 +35,7 @@ export async function servicesHub(source: string, usageSource: string, origin: s
 }
 
 if (import.meta.main) {
-	if (!process.argv[2] || !process.argv[3]) throw new Error('Usage: bun scripts/services-hub.ts <life-data-checkout> <usage-hub-checkout>');
-	const { server } = await servicesHub(process.argv[2], process.argv[3], process.env.LIFE_UI_TEST_ORIGIN ?? 'http://life-ui-services.localhost:5198', Number(process.env.LIFE_UI_TEST_HUB_PORT ?? 5204));
+	if (!process.argv[2] || !process.argv[3]) throw new Error('Usage: bun scripts/services-hub.ts <soma-checkout> <usage-hub-checkout>');
+	const { server } = await servicesHub(process.argv[2], process.argv[3], process.env.IRIS_TEST_ORIGIN ?? 'http://iris-services.localhost:5198', Number(process.env.IRIS_TEST_HUB_PORT ?? 5204));
 	console.log(`Synthetic services hub: ${server.url}`);
 }

@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { get } from 'svelte/store';
-import type { RejectedEdit, RejectionsPage } from 'life-ui-core/client';
+import type { RejectedEdit, RejectionsPage } from 'iris-core/client';
 import { createRejectionInbox, rejectionSnapshot } from './rejection-inbox';
 
 const entry = (rowID: string, table = 'items'): RejectedEdit => ({

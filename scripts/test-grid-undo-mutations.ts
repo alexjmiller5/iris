@@ -1,7 +1,7 @@
 import {resolve} from 'node:path';
 import {disposableOrigin} from './test-origin';
-disposableOrigin(process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-grid-enrollment.localhost:5234/workspace?review');
-const source=process.argv[2]; if(!source)throw Error('Provide the life-data checkout');
+disposableOrigin(process.env.IRIS_TEST_URL ?? 'http://iris-grid-enrollment.localhost:5234/workspace?review');
+const source=process.argv[2]; if(!source)throw Error('Provide the soma checkout');
 const path=resolve(import.meta.dir,'../apps/web/src/routes/workspace/+page.svelte');
 const original=await Bun.file(path).text();
 const mutations=[
@@ -21,9 +21,9 @@ for(const [name,before,after,scenario] of mutations){
  try{
   await Bun.write(path,original.replace(before,after));
   await Bun.sleep(1000);
-  const child=Bun.spawn(['bun','scripts/test-grid-undo.ts',source],{cwd:resolve(import.meta.dir,'..'),env:{...process.env,LIFE_UI_GRID_UNDO_CASE:scenario},stdout:'pipe',stderr:'pipe'});
+  const child=Bun.spawn(['bun','scripts/test-grid-undo.ts',source],{cwd:resolve(import.meta.dir,'..'),env:{...process.env,IRIS_GRID_UNDO_CASE:scenario},stdout:'pipe',stderr:'pipe'});
   const [status,out,err]=await Promise.all([child.exited,new Response(child.stdout).text(),new Response(child.stderr).text()]);
-  await Bun.write(`/tmp/life-ui-grid-undo-mutation-${name}.log`,out+err);
+  await Bun.write(`/tmp/iris-grid-undo-mutation-${name}.log`,out+err);
   if(!status)throw Error('Mutation survived: '+name);
   if(!/expect\(.*\).*failed|AssertionError|Expected: /s.test(out+err))throw Error('Mutation failed without an assertion: '+name+'\n'+out+err);
   console.log('CAUGHT: '+name);

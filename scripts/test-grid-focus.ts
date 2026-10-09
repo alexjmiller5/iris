@@ -5,8 +5,8 @@ import { disposableOrigin } from "./test-origin";
 
 // Run against an owned tab and dev server, with no database or personal data.
 const address =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-grid.localhost:5267/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-grid.localhost:5267/workspace?review";
 const origin = disposableOrigin(address);
 const routeName = `grid-focus-fixture-${process.pid}`;
 const route = resolve(import.meta.dir, "../apps/web/src/routes", routeName);
@@ -75,10 +75,10 @@ onMount(()=>{ready=true});
 
 // Connect only to the explicitly allocated page. A browser-wide Playwright
 // attachment waits on unrelated targets in the shared agent Chrome.
-const endpoint = process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222";
-const targetID = process.env.LIFE_UI_TEST_TARGET;
+const endpoint = process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222";
+const targetID = process.env.IRIS_TEST_TARGET;
 if (!targetID)
-  throw Error("Set LIFE_UI_TEST_TARGET to the owned synthetic page ID");
+  throw Error("Set IRIS_TEST_TARGET to the owned synthetic page ID");
 const targets = await (await fetch(endpoint + "/json/list")).json();
 const target = targets.find(
   (entry: { id: string; type: string; url: string }) =>
@@ -275,8 +275,8 @@ async function reset() {
 }
 async function check(name: string, body: () => Promise<void>) {
   if (
-    process.env.LIFE_UI_FOCUS_CASE &&
-    !name.includes(process.env.LIFE_UI_FOCUS_CASE)
+    process.env.IRIS_FOCUS_CASE &&
+    !name.includes(process.env.IRIS_FOCUS_CASE)
   )
     return;
   await reset();

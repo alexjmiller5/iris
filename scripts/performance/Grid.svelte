@@ -16,7 +16,7 @@
   });
 </script>
 
-<main data-life-performance="10000">
+<main data-iris-performance="10000">
   <h1>Synthetic grid render measurement</h1>
   <p>
     10,000 in-memory rows. This fixture does not measure SQLite or replica boot.

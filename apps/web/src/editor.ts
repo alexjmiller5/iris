@@ -5,7 +5,7 @@ import './islands.css';
 
 declare global {
 	interface Window {
-		lifeEditor: {
+		irisEditor: {
 			setDocument(input: unknown): void;
 			getDocument(): EditorDocument;
 			receiveFile(input: unknown): void;
@@ -22,7 +22,7 @@ const editor = mount(EditorIsland, {
 			host.webkit?.messageHandlers?.editor?.postMessage(message)
 	}
 });
-window.lifeEditor = {
+window.irisEditor = {
 	setDocument: (input) => flushSync(() => editor.setDocument(input)),
 	receiveFile: (input) => editor.receiveFile(input),
 	getDocument: () => flushSync(() => editor.getDocument())

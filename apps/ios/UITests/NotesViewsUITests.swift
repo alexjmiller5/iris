@@ -8,9 +8,9 @@ final class NotesViewsUITests: XCTestCase {
   func testLifecycleViewsFlagReasonAndStatusLabeledSearch() throws {
     let environment = ProcessInfo.processInfo.environment
     try XCTSkipIf(
-      environment["LIFE_UI_TEST_NOTES_VIEWS_SIMULATOR"] == nil,
+      environment["IRIS_TEST_NOTES_VIEWS_SIMULATOR"] == nil,
       "Requires the notes-views fixture on an explicitly selected private simulator")
-    XCTAssertEqual(environment["LIFE_UI_TEST_NOTES_VIEWS_SIMULATOR"], environment["SIMULATOR_UDID"])
+    XCTAssertEqual(environment["IRIS_TEST_NOTES_VIEWS_SIMULATOR"], environment["SIMULATOR_UDID"])
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launch()

@@ -3,8 +3,8 @@ import { pathToFileURL } from 'node:url';
 
 // Test-only transport to the owner's real Worker. No network, credentials,
 // production schema, proposal implementation or alternate writer lives here.
-const source = process.env.LIFE_DATA_CONTRACT_ROOT;
-if (!source) throw new Error('Set LIFE_DATA_CONTRACT_ROOT to a Life Data checkout containing conditional patch 9121ef6. See docs/governance-contract.md.');
+const source = process.env.SOMA_CONTRACT_ROOT;
+if (!source) throw new Error('Set SOMA_CONTRACT_ROOT to a Soma checkout containing conditional patch 9121ef6. See docs/governance-contract.md.');
 const { default: worker } = await import(pathToFileURL(resolve(source, 'worker/src/index.js')).href);
 const { D1Shim } = await import(pathToFileURL(resolve(source, 'worker/test/d1shim.js')).href);
 export const T0 = '2025-01-01T00:00:00.000Z';

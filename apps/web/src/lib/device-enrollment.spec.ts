@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { webcrypto, createHash } from 'node:crypto';
-import { createCoreHandlers } from 'life-ui-core/client';
+import { createCoreHandlers } from 'iris-core/client';
 import {
 	DeviceEnrollment,
 	createCandidate,

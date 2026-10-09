@@ -42,9 +42,9 @@ import Darwin
 def main():
     source = (
         Path(__file__).resolve().parents[1]
-        / "packages/LifeKit/Sources/LifeKit/AttachmentStore.swift"
+        / "packages/IrisKit/Sources/IrisKit/AttachmentStore.swift"
     )
-    with tempfile.TemporaryDirectory(prefix="life-ui-attachment-staging-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="iris-attachment-staging-") as temporary:
         root = Path(temporary)
         harness, binary = root / "Probe.swift", root / "probe"
         harness.write_text(HARNESS)

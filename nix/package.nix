@@ -1,10 +1,10 @@
 { lib, stdenvNoCC, fetchurl, unzip
 , version ? "0.8.2"
-, url ? "https://github.com/alexjmiller5/life-ui/releases/download/v${version}/LifeUI-v${version}.zip"
+, url ? "https://github.com/alexjmiller5/iris/releases/download/v${version}/Iris-v${version}.zip"
 , hash ? "sha256-Wsy799WCfmS391vSSCpteI0bhXb9ojHg+brgH2r7Md0="
 }:
 stdenvNoCC.mkDerivation {
-  pname = "life-ui";
+  pname = "iris";
   inherit version;
   src = fetchurl { inherit url hash; };
   nativeBuildInputs = [ unzip ];
@@ -16,11 +16,11 @@ stdenvNoCC.mkDerivation {
   dontStrip = true;
   installPhase = ''
     mkdir -p "$out/Applications"
-    cp -R LifeUI.app "$out/Applications/"
+    cp -R Iris.app "$out/Applications/"
   '';
   meta = {
-    description = "Local-first client for catalogued Life Data databases";
-    homepage = "https://github.com/alexjmiller5/life-ui";
+    description = "Local-first client for catalogued Soma databases";
+    homepage = "https://github.com/alexjmiller5/iris";
     platforms = lib.platforms.darwin;
     sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
   };

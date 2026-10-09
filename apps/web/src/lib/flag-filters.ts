@@ -1,4 +1,4 @@
-import type { Filter, Property } from 'life-ui-core/client';
+import type { Filter, Property } from 'iris-core/client';
 
 /** A Boolean property whose catalog description names exactly one sibling text
  * column is a flag with a reason: it gets a quick filter, and the reason column

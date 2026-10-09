@@ -32,7 +32,7 @@ try {
     const contents = original.replaceAll(mutant.before, mutant.after);
     const mutated = join(directory, mutant.file);
     await writeFile(mutated, contents);
-    const variable = mutant.file === 'approval-journal.ts' ? 'LIFE_UI_TEST_APPROVAL_JOURNAL' : mutant.file === 'proposal-review.ts' ? 'LIFE_UI_TEST_PROPOSAL_REVIEW' : 'LIFE_UI_TEST_REVIEW_LIST';
+    const variable = mutant.file === 'approval-journal.ts' ? 'IRIS_TEST_APPROVAL_JOURNAL' : mutant.file === 'proposal-review.ts' ? 'IRIS_TEST_PROPOSAL_REVIEW' : 'IRIS_TEST_REVIEW_LIST';
     const result = await run({ [variable]: mutated });
     if (!result.code || !result.output.includes('(fail)')) throw new Error(`Mutation survived or failed outside an assertion: ${mutant.name}\n${result.output}`);
     console.log('KILLED ' + mutant.name);

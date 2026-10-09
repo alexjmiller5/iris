@@ -45,10 +45,10 @@ export default defineConfig({
 	],
 	build: {
 		target: 'safari17',
-		outDir: path('../../packages/LifeKit/Sources/LifeKit/Resources'),
+		outDir: path('../../packages/IrisKit/Sources/IrisKit/Resources'),
 		emptyOutDir: false,
 		cssCodeSplit: false,
 		rolldownOptions: { output: { codeSplitting: false } },
-		lib: { entry: path('./src/editor.ts'), name: 'LifeEditorIsland', formats: ['iife'] }
+		lib: { entry: path('./src/editor.ts'), name: 'IrisEditorIsland', formats: ['iife'] }
 	}
 });

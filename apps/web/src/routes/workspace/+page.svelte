@@ -1,9 +1,9 @@
 <script lang="ts">
 	import CatalogEditor from '$lib/CatalogEditor.svelte';
-	import type { SaveCatalogPropertyArgs, SaveCatalogRuleArgs } from 'life-ui-core/client';
+	import type { SaveCatalogPropertyArgs, SaveCatalogRuleArgs } from 'iris-core/client';
 	import PresentationControls from '$lib/PresentationControls.svelte';
 	import RecordPresentations from '$lib/RecordPresentations.svelte';
-	import type { ViewPresentation, ViewDefault } from 'life-ui-core/client';
+	import type { ViewPresentation, ViewDefault } from 'iris-core/client';
 	let presentation = $state<ViewPresentation>({ kind: 'table' });
 	let relatedView = $state<ViewDefault | null>(null);
 	let relatedPermission = $state<Writeability | null>(null);
@@ -81,7 +81,7 @@
 		type Sort,
 		type RejectedEdit,
 		type UndoAction
-	} from 'life-ui-core/client';
+	} from 'iris-core/client';
 	import { WorkspaceDatabase } from '$lib/database';
 	import IncomingReferences from '$lib/IncomingReferences.svelte';
 	import SchemaGraph from '$lib/SchemaGraph.svelte';
@@ -109,7 +109,7 @@
 	import { queryDefinition } from '$lib/view-controls';
 	import { calendarContext } from '$lib/calendar-context';
 	import { untrack } from 'svelte';
-	import type { FilterGroup, RowAction, ViewLayoutItem } from 'life-ui-core/client';
+	import type { FilterGroup, RowAction, ViewLayoutItem } from 'iris-core/client';
 	import SidebarTables from '$lib/SidebarTables.svelte';
 	import SidebarRecents from '$lib/SidebarRecents.svelte';
 	import SidebarPinsView from '$lib/SidebarPins.svelte';
@@ -143,7 +143,7 @@
 	let recentStorageError = $state('');
 	let recentReadError = $state('');
 	let recentsRequest = 0;
-	const recentsStorageKey = () => `life-ui:recents:${demo ? 'demo' : 'workspace'}`;
+	const recentsStorageKey = () => `iris:recents:${demo ? 'demo' : 'workspace'}`;
 	function readRecents() {
 		recentsRequest++;
 		recentEntries = [];
@@ -338,7 +338,7 @@
 		if (opened)
 			try {
 				localStorage.setItem(
-					`life-ui:groups:${demo ? 'demo' : 'workspace'}`,
+					`iris:groups:${demo ? 'demo' : 'workspace'}`,
 					JSON.stringify(groups)
 				);
 			} catch {
@@ -1404,7 +1404,7 @@
 			demo = sample;
 			readRecents();
 			try {
-				const prefs = JSON.parse(localStorage.getItem('life-ui:replica') ?? '{}');
+				const prefs = JSON.parse(localStorage.getItem('iris:replica') ?? '{}');
 				maxRows = Number.isSafeInteger(prefs.maxRows) && prefs.maxRows >= 0 ? prefs.maxRows : 50000;
 				included =
 					prefs.tables && typeof prefs.tables === 'object' && !Array.isArray(prefs.tables)
@@ -1419,7 +1419,7 @@
 			graphVisible = false;
 			try {
 				const saved = JSON.parse(
-					localStorage.getItem(`life-ui:groups:${sample ? 'demo' : 'workspace'}`) ?? '{}'
+					localStorage.getItem(`iris:groups:${sample ? 'demo' : 'workspace'}`) ?? '{}'
 				);
 				groups =
 					saved && typeof saved === 'object' && !Array.isArray(saved)
@@ -2075,7 +2075,7 @@
 		const next = JSON.stringify({ maxRows, tables: included });
 		if (next === savedReplica) return;
 		try {
-			localStorage.setItem('life-ui:replica', next);
+			localStorage.setItem('iris:replica', next);
 			savedReplica = next;
 		} catch {
 			/* Preference storage does not affect sync. */
@@ -2126,7 +2126,7 @@
 			() => {}
 		);
 		// One visible tab runs the loop; the others refresh from its change broadcasts.
-		const lead = leadership(navigator.locks, 'life-ui:sync-leader:workspace', (on) => {
+		const lead = leadership(navigator.locks, 'iris:sync-leader:workspace', (on) => {
 			leader = on;
 			if (on) scheduler.wake();
 		});
@@ -2175,7 +2175,7 @@
 	onMount(() => {
 		if (!/Mac|iPhone|iPad/.test(navigator.platform)) shortcutKey = 'Ctrl+';
 		try {
-			sidebarCollapsed = localStorage.getItem('life-ui:sidebar') === 'collapsed';
+			sidebarCollapsed = localStorage.getItem('iris:sidebar') === 'collapsed';
 		} catch {
 			/* The sidebar opens by default. */
 		}
@@ -2183,7 +2183,7 @@
 	function toggleSidebar() {
 		sidebarCollapsed = !sidebarCollapsed;
 		try {
-			localStorage.setItem('life-ui:sidebar', sidebarCollapsed ? 'collapsed' : 'open');
+			localStorage.setItem('iris:sidebar', sidebarCollapsed ? 'collapsed' : 'open');
 		} catch {
 			/* The choice lasts for this page only. */
 		}
@@ -2421,7 +2421,7 @@
 	>
 {/snippet}
 
-<svelte:head><title>Workspace | Life UI</title></svelte:head>
+<svelte:head><title>Workspace | Iris</title></svelte:head>
 <svelte:document
 	onvisibilitychange={() => {
 		if (opened && document.visibilityState === 'visible') void pins.refresh();
@@ -2464,7 +2464,7 @@
 
 {#if !opened}
 	<main class="start">
-		<a class="back" href="/"><IconArrowLeft size={18} /> Life UI</a>
+		<a class="back" href="/"><IconArrowLeft size={18} /> Iris</a>
 		<h1>Your data, within reach.</h1>
 		<p>Open a workspace on this device. Your records stay available between sessions.</p>
 		<div class="start-actions">
@@ -2542,7 +2542,7 @@
 						aria-disabled={writing}
 						onclick={(event) => {
 							if (writing) event.preventDefault();
-						}}><IconDatabase size={22} /> Life UI</a
+						}}><IconDatabase size={22} /> Iris</a
 					>{@render sidebarToggle()}
 				</div>
 				<div class="workspace-label">

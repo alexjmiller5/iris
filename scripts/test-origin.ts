@@ -1,9 +1,9 @@
 /** Only these reserved loopback origins may have their browser storage reset. */
 export function disposableOrigin(address: string): string {
 	const url = new URL(address);
-	const hosts = ['life-ui-attachments.localhost', 'life-ui-incoming.localhost', 'life-ui-write-fixes.localhost', 'life-ui-parent-regressions.localhost', 'life-ui-sql-integrity.localhost', 'life-ui-services.localhost', 'life-ui-markdown.localhost', 'life-ui-relations.localhost', 'life-ui-navigation.localhost', 'life-ui-palette.localhost', 'life-ui-grid.localhost', 'life-ui-graph.localhost', 'life-ui-reference-create.localhost'];
-	if (url.protocol !== 'http:' || !(hosts.includes(url.hostname) || ['http://life-ui-catalog.localhost:5282', 'http://life-ui-presentations.localhost:5252', 'http://life-ui-resolve.localhost:5252', 'http://life-ui-creation.localhost:5242', 'http://life-ui-enrollment.localhost:5230', 'http://life-ui-grid-enrollment.localhost:5234', 'http://life-ui-recents.localhost:5236', 'http://life-ui-rejections.localhost:5238'].includes(url.origin)) || url.username || url.password || url.pathname !== '/workspace' || !url.searchParams.has('review')) {
-		throw new Error('Refusing reset outside a reserved Life UI test origin');
+	const hosts = ['iris-attachments.localhost', 'iris-incoming.localhost', 'iris-write-fixes.localhost', 'iris-parent-regressions.localhost', 'iris-sql-integrity.localhost', 'iris-services.localhost', 'iris-markdown.localhost', 'iris-relations.localhost', 'iris-navigation.localhost', 'iris-palette.localhost', 'iris-grid.localhost', 'iris-graph.localhost', 'iris-reference-create.localhost'];
+	if (url.protocol !== 'http:' || !(hosts.includes(url.hostname) || ['http://iris-catalog.localhost:5282', 'http://iris-presentations.localhost:5252', 'http://iris-resolve.localhost:5252', 'http://iris-creation.localhost:5242', 'http://iris-enrollment.localhost:5230', 'http://iris-grid-enrollment.localhost:5234', 'http://iris-recents.localhost:5236', 'http://iris-rejections.localhost:5238'].includes(url.origin)) || url.username || url.password || url.pathname !== '/workspace' || !url.searchParams.has('review')) {
+		throw new Error('Refusing reset outside a reserved Iris test origin');
 	}
 	return url.origin;
 }

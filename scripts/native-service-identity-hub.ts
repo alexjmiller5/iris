@@ -2,9 +2,9 @@ import { servicesHub } from './services-hub';
 
 // Disposable actual Worker fixture for native service-row identity regressions.
 if (!process.argv[2] || !process.argv[3]) {
-	throw new Error('Usage: bun scripts/native-service-identity-hub.ts <life-data-checkout> <usage-hub-checkout>');
+	throw new Error('Usage: bun scripts/native-service-identity-hub.ts <soma-checkout> <usage-hub-checkout>');
 }
-const fixture = await servicesHub(process.argv[2], process.argv[3], 'http://native-services.localhost', Number(process.env.LIFE_UI_TEST_HUB_PORT ?? 0));
+const fixture = await servicesHub(process.argv[2], process.argv[3], 'http://native-services.localhost', Number(process.env.IRIS_TEST_HUB_PORT ?? 0));
 await fixture.auth.prepare('DELETE FROM _notifications').run();
 await fixture.auth.prepare('DELETE FROM _usage').run();
 for (const [index, id] of ['\u00e9', 'e\u0301'].entries()) {

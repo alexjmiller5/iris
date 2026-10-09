@@ -1,5 +1,5 @@
 import type { WorkspaceDatabase } from './database';
-import type { Row, SavedViewRecord } from 'life-ui-core/client';
+import type { Row, SavedViewRecord } from 'iris-core/client';
 
 /** Links carry identities only; view settings live in the saved view. */
 export type Destination = {

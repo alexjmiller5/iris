@@ -3,8 +3,8 @@ import { regressionHub } from './workspace-regression-hub';
 import { disposableOrigin, workspacePage } from './test-origin';
 
 const source = process.argv[2];
-if (!source) throw Error('Provide the life-data checkout');
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-markdown.localhost:5198/workspace?review';
+if (!source) throw Error('Provide the soma checkout');
+const url = process.env.IRIS_TEST_URL ?? 'http://iris-markdown.localhost:5198/workspace?review';
 const origin = disposableOrigin(url);
 let capped = false, firstSchemaFailure = true;
 const pulls: Record<string, unknown>[] = [];
@@ -26,7 +26,7 @@ const stamp = new Date().toISOString();
 for (let i=0; i<205; i++) db.db.query('INSERT INTO widgets(id,title,body,status,deleted_at,updated_at) VALUES (?,?,?,?,?,?)').run(
   `remote-${String(i).padStart(3,'0')}`, `Online entry ${String(i).padStart(3,'0')}`, '# Online body\n\nA **complete** record.', 'Dynamic', i===10?stamp:null,stamp
 );
-const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
+const browser = await chromium.connectOverCDP(process.env.IRIS_TEST_CDP ?? 'http://127.0.0.1:9222');
 let ownedPage: Page | undefined;
 try {
   const page = ownedPage = workspacePage(browser.contexts().flatMap(c=>c.pages()),url);
@@ -128,7 +128,7 @@ try {
   await page.setViewportSize({width:390,height:844});
   await expect(dialog).toBeVisible();
   expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
-  const screenshot=process.env.LIFE_UI_TEST_SCREENSHOT;
+  const screenshot=process.env.IRIS_TEST_SCREENSHOT;
   if(screenshot){
     await page.screenshot({path:screenshot});
     await page.emulateMedia({colorScheme:'dark'});

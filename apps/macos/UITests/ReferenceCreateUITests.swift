@@ -7,10 +7,10 @@ final class ReferenceCreateUITests: XCTestCase {
   func testPickersCreateRecordsInPlaceAndHandRequiredFieldsToTheEditor() throws {
     continueAfterFailure = false
     try XCTSkipUnless(
-      ProcessInfo.processInfo.environment["LIFE_UI_TEST_CATALOG_CLEAN_HOST"] == "1",
+      ProcessInfo.processInfo.environment["IRIS_TEST_CATALOG_CLEAN_HOST"] == "1",
       "Use a disposable clean host; normal startup must never inspect an enrolled user's credentials."
     )
-    let path = ProcessInfo.processInfo.environment["LIFE_UI_TEST_REFERENCE_CREATE_DATABASE"]
+    let path = ProcessInfo.processInfo.environment["IRIS_TEST_REFERENCE_CREATE_DATABASE"]
     try XCTSkipUnless(path != nil, "Prepare the synthetic reference-create fixture first.")
     let file = URL(fileURLWithPath: try XCTUnwrap(path))
     XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))

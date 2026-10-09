@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { IconDatabaseExport, IconDownload, IconRestore, IconX } from '@tabler/icons-svelte';
-	import type { HubBackup, RestorePreview } from 'life-ui-core/client';
+	import type { HubBackup, RestorePreview } from 'iris-core/client';
 	import type { WorkspaceDatabase } from './database';
 	import {
 		backupMessage,
@@ -96,7 +96,7 @@
 	const downloadReplica = () =>
 		run('Copying database', async () => {
 			const file = await database.request('replicaFile');
-			saveBlob(file, demo ? 'life-ui-sample.sqlite' : 'life-ui.sqlite');
+			saveBlob(file, demo ? 'iris-sample.sqlite' : 'iris.sqlite');
 			return `Downloaded the SQLite database (${formatBytes(file.size)}).`;
 		});
 	const exportDump = () =>
@@ -258,8 +258,8 @@
 					><IconDownload size={17} /> Export SQL dump</button
 				>
 				<p class="muted">
-					Portable SQL, the same shape as <code>life export</code>. Import it with
-					<code>sqlite3 life.db &lt; dump.sql</code>.
+					Portable SQL, the same shape as <code>soma export</code>. Import it with
+					<code>sqlite3 soma.db &lt; dump.sql</code>.
 				</p>
 			</div>
 		</section>

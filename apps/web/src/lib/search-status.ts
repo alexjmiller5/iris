@@ -1,9 +1,9 @@
-import type { Property, SearchHit } from 'life-ui-core/client';
+import type { Property, SearchHit } from 'iris-core/client';
 
 export type StatusHit = SearchHit & { status?: { v: string; d?: string } };
 
 /** Labels hits with their lifecycle status: the select column named `status`, the
- * one lifecycle column of life-data's estate status dictionary. The label and its
+ * one lifecycle column of soma's estate status dictionary. The label and its
  * help come from the stored value and its catalog option description. */
 export async function labelStatus(
 	hits: SearchHit[],

@@ -43,7 +43,7 @@ test('JSON preserves exact record values and catalog properties with partial-cap
 		reasons: ['More rows are available.']
 	});
 	expect(exported.scope).toEqual({ kind: 'loaded', rowCount: 2 });
-	expect(exported.format).toBe('life-ui-records');
+	expect(exported.format).toBe('iris-records');
 	expect(exported.version).toBe(1);
 	expect(result.files[0].filename).toContain('partial');
 });

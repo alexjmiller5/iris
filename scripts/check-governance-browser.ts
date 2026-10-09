@@ -25,7 +25,7 @@ const build = await Bun.build({ entrypoints: ['scripts/governance-journal-browse
 if (!build.success) throw new Error(build.logs.join('\n'));
 const script = await build.outputs[0]!.text();
 const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) { return new URL(request.url).pathname === '/fixture.js' ? new Response(script, { headers: { 'content-type': 'text/javascript' } }) : new Response('<!doctype html><title>Governance journal boundary test</title><p>Synthetic journal tests. No service connection.</p><script type="module" src="/fixture.js"></script>', { headers: { 'content-type': 'text/html' } }); } });
-const database = 'life-ui-governance-test-' + crypto.randomUUID();
+const database = 'iris-governance-test-' + crypto.randomUUID();
 const url = `${server.url}?database=${database}`;
 const clients: Awaited<ReturnType<typeof connect>>[] = [];
 let checks = 0;

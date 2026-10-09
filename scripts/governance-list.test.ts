@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 const webDependency = createRequire(new URL('../apps/web/package.json', import.meta.url)).resolve;
 import { expect, test } from 'bun:test';
 const { get } = await import(webDependency('svelte/store')) as typeof import('svelte/store');
-const { createReviewList } = await import(process.env.LIFE_UI_TEST_REVIEW_LIST || '../apps/web/src/lib/governance/review-list') as typeof import('../apps/web/src/lib/governance/review-list');
+const { createReviewList } = await import(process.env.IRIS_TEST_REVIEW_LIST || '../apps/web/src/lib/governance/review-list') as typeof import('../apps/web/src/lib/governance/review-list');
 import type { ReadResult } from '../apps/web/src/lib/governance/contract';
 const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(yes => { resolve = yes; }); return { promise, resolve }; };
 test('content invalidation removes cached pages and rejects an in-flight page after purge', async () => {

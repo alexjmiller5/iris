@@ -1,4 +1,4 @@
-import type { Property } from 'life-ui-core/client';
+import type { Property } from 'iris-core/client';
 
 export function visibleColumns(
 	properties: readonly Property[],

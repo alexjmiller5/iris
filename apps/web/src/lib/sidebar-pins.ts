@@ -5,7 +5,7 @@ import type {
 	SidebarPin,
 	SidebarPinList,
 	UnpinTableArgs
-} from 'life-ui-core/client';
+} from 'iris-core/client';
 
 export interface PinAPI {
 	list(): Promise<SidebarPinList>;

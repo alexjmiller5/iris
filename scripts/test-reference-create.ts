@@ -4,13 +4,13 @@ import { resolve } from 'node:path';
 import { regressionHub } from './workspace-regression-hub';
 import { disposableOrigin, workspacePage } from './test-origin';
 
-// Usage: bun scripts/test-reference-create.ts <life-data-checkout>
-// Open http://life-ui-reference-create.localhost:5244/workspace?review in the dedicated test page first.
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-reference-create.localhost:5244/workspace?review';
+// Usage: bun scripts/test-reference-create.ts <soma-checkout>
+// Open http://iris-reference-create.localhost:5244/workspace?review in the dedicated test page first.
+const url = process.env.IRIS_TEST_URL ?? 'http://iris-reference-create.localhost:5244/workspace?review';
 const origin = disposableOrigin(url);
 const source = process.argv[2];
-if (!source) throw new Error('Usage: bun scripts/test-reference-create.ts <life-data-checkout>');
-const shots = process.env.LIFE_UI_TEST_SCREENSHOTS;
+if (!source) throw new Error('Usage: bun scripts/test-reference-create.ts <soma-checkout>');
+const shots = process.env.IRIS_TEST_SCREENSHOTS;
 if (shots) await mkdir(shots, { recursive: true });
 let offline = false;
 const { server, db } = await regressionHub(source, origin, 0, {
@@ -54,7 +54,7 @@ db.db.exec(`
  ('meeting-1','Planning sync','person-ada','["person-grace"]','person-ada','${stamp}','${stamp}');
 `);
 
-const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
+const browser = await chromium.connectOverCDP(process.env.IRIS_TEST_CDP ?? 'http://127.0.0.1:9222');
 const failures: string[] = [];
 try {
 	const page = workspacePage(browser.contexts().flatMap((c) => c.pages()), url);

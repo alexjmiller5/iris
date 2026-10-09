@@ -1,4 +1,4 @@
-import type { Property, Row } from 'life-ui-core/client';
+import type { Property, Row } from 'iris-core/client';
 
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 

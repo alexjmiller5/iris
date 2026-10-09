@@ -20,7 +20,7 @@ export default defineConfig({
 	optimizeDeps: { include: ['wa-sqlite', 'wa-sqlite/src/examples/OPFSCoopSyncVFS.js'] },
 	// Browser checks pin the served page: edits by other tools in a shared checkout
 	// must not reload it mid-test.
-	server: process.env.LIFE_UI_DEV_NO_HMR ? { hmr: false } : undefined,
+	server: process.env.IRIS_DEV_NO_HMR ? { hmr: false } : undefined,
 	test: {
 		expect: { requireAssertions: true },
 		projects: [

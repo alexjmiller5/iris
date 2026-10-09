@@ -9,19 +9,19 @@ project="$1"
 derived="$2"
 simulator="$3"
 results="$4"
-export TEST_RUNNER_LIFE_UI_TEST_WIDGET_SIMULATOR="$simulator"
-export TEST_RUNNER_LIFE_UI_TEST_WIDGET_TIME_ZONE="${5:-UTC}"
+export TEST_RUNNER_IRIS_TEST_WIDGET_SIMULATOR="$simulator"
+export TEST_RUNNER_IRIS_TEST_WIDGET_TIME_ZONE="${5:-UTC}"
 for selected in \
-  'LifeUITests/WidgetRolloverUIFixtureTests/prepareWidgetRolloverFixture()' \
-  'LifeUIUITests/NativeIntegrationsUITests/testDailySectionSitsAboveTablesAndOpensItsRow' \
-  'LifeUIUITests/NativeIntegrationsUITests/testShareSheetPreparesADraftThatOpensUnsaved' \
-  'LifeUITests/WidgetRolloverUIFixtureTests/spotlightIndexHoldsEnabledTitles()' \
-  'LifeUIUITests/NativeIntegrationsUITests/testSpotlightTitleOpensItsRowThroughTheLinkBanner' \
-  'LifeUIUITests/NativeIntegrationsUITests/testGalleryAddsATitlesWidgetThatOpensItsRecord' \
-  'LifeUIUITests/NativeIntegrationsUITests/testLockScreenCountShowsNoRecordTitles'; do
+  'IrisTests/WidgetRolloverUIFixtureTests/prepareWidgetRolloverFixture()' \
+  'IrisUITests/NativeIntegrationsUITests/testDailySectionSitsAboveTablesAndOpensItsRow' \
+  'IrisUITests/NativeIntegrationsUITests/testShareSheetPreparesADraftThatOpensUnsaved' \
+  'IrisTests/WidgetRolloverUIFixtureTests/spotlightIndexHoldsEnabledTitles()' \
+  'IrisUITests/NativeIntegrationsUITests/testSpotlightTitleOpensItsRowThroughTheLinkBanner' \
+  'IrisUITests/NativeIntegrationsUITests/testGalleryAddsATitlesWidgetThatOpensItsRecord' \
+  'IrisUITests/NativeIntegrationsUITests/testLockScreenCountShowsNoRecordTitles'; do
   name="$(basename "$selected" | tr -cd '[:alnum:]')"
   result="$results/integrations-$name.xcresult"
-  xcodebuild -project "$project" -scheme LifeUI -derivedDataPath "$derived" \
+  xcodebuild -project "$project" -scheme Iris -derivedDataPath "$derived" \
     -destination "platform=iOS Simulator,id=$simulator" -parallel-testing-enabled NO \
     -disableAutomaticPackageResolution -skipPackageUpdates \
     -resultBundlePath "$result" "-only-testing:$selected" \

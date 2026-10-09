@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 const webDependency = createRequire(new URL('../apps/web/package.json', import.meta.url)).resolve;
 import { expect, test } from 'bun:test';
 const { get } = await import(webDependency('svelte/store')) as typeof import('svelte/store');
-const { createProposalReview: createModel } = await import(process.env.LIFE_UI_TEST_PROPOSAL_REVIEW || '../apps/web/src/lib/governance/proposal-review') as typeof import('../apps/web/src/lib/governance/proposal-review');
+const { createProposalReview: createModel } = await import(process.env.IRIS_TEST_PROPOSAL_REVIEW || '../apps/web/src/lib/governance/proposal-review') as typeof import('../apps/web/src/lib/governance/proposal-review');
 import type { Preview, Proposal, ApprovalReceipt, ApprovalResult } from '../apps/web/src/lib/governance/contract';
 
 const scope = { deploymentId: 'deployment-1', sessionId: 'session-1', principalId: 'user-1' };

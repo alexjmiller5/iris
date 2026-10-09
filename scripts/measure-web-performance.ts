@@ -12,7 +12,7 @@ const { values } = parseArgs({
   options: {
     url: {
       type: "string",
-      default: "http://life-ui-performance.localhost:5246/workspace?review",
+      default: "http://iris-performance.localhost:5246/workspace?review",
     },
     cdp: { type: "string", default: "http://127.0.0.1:9222" },
     out: { type: "string" },
@@ -107,7 +107,7 @@ async function paintedRows(buttonExpression: string): Promise<number> {
     if (!button.contains(document.elementFromPoint(x, y))) throw Error('Fixture button is obscured');
     const selector = '[role="gridcell"][data-column="title"]';
     const before = document.querySelector(selector);
-    delete window.lifePerformancePaint;
+    delete window.irisPerformancePaint;
     button.addEventListener('click', () => {
       const start = performance.now();
       const observer = new MutationObserver(() => {
@@ -115,7 +115,7 @@ async function paintedRows(buttonExpression: string): Promise<number> {
         if (!cell || cell === before || !cell.getClientRects().length) return;
         observer.disconnect();
         requestAnimationFrame(() => requestAnimationFrame(() => {
-          window.lifePerformancePaint = performance.now() - start;
+          window.irisPerformancePaint = performance.now() - start;
         }));
       });
       observer.observe(document.body, { childList: true, subtree: true, attributes: true });
@@ -135,8 +135,8 @@ async function paintedRows(buttonExpression: string): Promise<number> {
     button: "left",
     clickCount: 1,
   });
-  await wait(`typeof window.lifePerformancePaint === 'number'`);
-  return evaluate<number>("window.lifePerformancePaint");
+  await wait(`typeof window.irisPerformancePaint === 'number'`);
+  return evaluate<number>("window.irisPerformancePaint");
 }
 const resourceExpression = `performance.getEntriesByType('resource').map(r => ({name:r.name,transferSize:r.transferSize,encodedBodySize:r.encodedBodySize,decodedBodySize:r.decodedBodySize}))`;
 try {
@@ -157,7 +157,7 @@ try {
   await cdp.call("Page.bringToFront");
   const response = await fetch(address, { signal: AbortSignal.timeout(10000) });
   if (
-    response.headers.get("x-life-performance") !== "production-fixture" ||
+    response.headers.get("x-iris-performance") !== "production-fixture" ||
     response.headers.get("cache-control") !== "no-store"
   )
     throw new Error("Use the no-store production fixture server");
@@ -220,7 +220,7 @@ try {
     );
   await navigate(origin + "/performance-grid");
   await wait(
-    `!!document.querySelector('[data-life-performance="10000"] [data-row="r0"][data-column="title"]')`,
+    `!!document.querySelector('[data-iris-performance="10000"] [data-row="r0"][data-column="title"]')`,
   );
   const scrolling = await evaluate<{
     timestamps: number[];

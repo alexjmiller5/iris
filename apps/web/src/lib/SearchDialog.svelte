@@ -2,7 +2,7 @@
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { focusReturn } from './popover';
 	import { IconAlertTriangle, IconLoader2, IconSearch, IconX } from '@tabler/icons-svelte';
-	import type { SearchHit } from 'life-ui-core/client';
+	import type { SearchHit } from 'iris-core/client';
 	import { createSearchModel, type Search } from './search-dialog';
 	import {
 		entryKey,

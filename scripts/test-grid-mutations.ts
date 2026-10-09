@@ -1,13 +1,13 @@
 import { resolve } from "node:path";
 import { disposableOrigin } from "./test-origin";
 disposableOrigin(
-  process.env.LIFE_UI_TEST_URL ??
-    "http://life-ui-grid.localhost:5228/workspace?review",
+  process.env.IRIS_TEST_URL ??
+    "http://iris-grid.localhost:5228/workspace?review",
 );
 const source = process.argv[2];
 if (!source)
   throw Error(
-    "Usage: bun scripts/test-grid-mutations.ts <life-data-checkout> [--unit|--browser|--check]",
+    "Usage: bun scripts/test-grid-mutations.ts <soma-checkout> [--unit|--browser|--check]",
   );
 const model = resolve(import.meta.dir, "../apps/web/src/lib/record-grid.ts");
 const component = resolve(
@@ -165,8 +165,8 @@ const mutations = [
 ];
 for (const mutation of mutations) {
   if (
-    process.env.LIFE_UI_GRID_MUTATION &&
-    !mutation.name.includes(process.env.LIFE_UI_GRID_MUTATION)
+    process.env.IRIS_GRID_MUTATION &&
+    !mutation.name.includes(process.env.IRIS_GRID_MUTATION)
   )
     continue;
   if (
@@ -202,7 +202,7 @@ for (const mutation of mutations) {
           ];
     const child = Bun.spawn(command, {
       cwd: resolve(import.meta.dir, ".."),
-      env: { ...process.env, LIFE_UI_GRID_CASE: mutation.browser ?? "" },
+      env: { ...process.env, IRIS_GRID_CASE: mutation.browser ?? "" },
       stdout: "pipe",
       stderr: "pipe",
     });

@@ -1,12 +1,12 @@
 import AppIntents
-import LifeKit
-import LifeWidgets
+import IrisKit
+import IrisWidgetSupport
 import SwiftUI
 
 @main
-struct LifeUIApp: App {
-  @UIApplicationDelegateAdaptor(LifePushAppDelegate.self) private var pushDelegate
-  init() { LifeUIShortcuts.updateAppShortcutParameters() }
+struct IrisApp: App {
+  @UIApplicationDelegateAdaptor(IrisPushAppDelegate.self) private var pushDelegate
+  init() { IrisShortcuts.updateAppShortcutParameters() }
   var body: some Scene {
     WindowGroup {
       WorkspaceView(
@@ -20,7 +20,7 @@ struct LifeUIApp: App {
 }
 
 /// App Shortcuts must be declared by the app bundle itself to be discovered.
-struct LifeUIShortcuts: AppShortcutsProvider {
+struct IrisShortcuts: AppShortcutsProvider {
   static var appShortcuts: [AppShortcut] {
     AppShortcut(
       intent: QuickAddIntent(), phrases: ["Quick Add in \(.applicationName)"],

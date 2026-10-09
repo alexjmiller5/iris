@@ -3,9 +3,9 @@ import { chromium, expect, type Page } from '@playwright/test';
 
 // Background sync without any sync control: pushes after a write, pulls outside
 // rows, survives offline, keeps drafts, and one tab leads. Needs scripts/test-hub.ts.
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://127.0.0.1:5197/workspace';
-const hub = process.env.LIFE_UI_TEST_HUB ?? 'http://127.0.0.1:5200';
-const shots = process.env.LIFE_UI_TEST_SHOTS;
+const url = process.env.IRIS_TEST_URL ?? 'http://127.0.0.1:5197/workspace';
+const hub = process.env.IRIS_TEST_HUB ?? 'http://127.0.0.1:5200';
+const shots = process.env.IRIS_TEST_SHOTS;
 const auth = { Authorization: 'Bearer fixture', 'Content-Type': 'application/json' };
 async function hubRow(id: string) {
 	const response = await fetch(`${hub}/v1/rows/pull`, {
@@ -37,7 +37,7 @@ async function hubInsert(id: string, title: string) {
 async function shot(page: Page, name: string) {
 	if (shots) await page.screenshot({ path: `${shots}/${name}.png` });
 }
-const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
+const browser = await chromium.connectOverCDP(process.env.IRIS_TEST_CDP ?? 'http://127.0.0.1:9222');
 let offline: (() => Promise<void>) | undefined;
 let second: Page | undefined;
 try {
@@ -45,7 +45,7 @@ try {
 	if (!page) throw new Error(`Open this dedicated test page first: ${url}`);
 	page.setDefaultTimeout(10000);
 	await page.reload();
-	await page.evaluate(() => localStorage.removeItem('life-ui:sidebar'));
+	await page.evaluate(() => localStorage.removeItem('iris:sidebar'));
 	const connect = async (target: Page) => {
 		await target.getByRole('button', { name: 'Open my workspace', exact: true }).click();
 		// A cold dev server compiles the database worker on first open.
@@ -141,7 +141,7 @@ try {
 	const leaders = async (target: Page) =>
 		target.evaluate(async () =>
 			(await navigator.locks.query()).held!.filter(
-				(lock) => lock.name === 'life-ui:sync-leader:workspace'
+				(lock) => lock.name === 'iris:sync-leader:workspace'
 			).length
 		);
 	second = await page.context().newPage();

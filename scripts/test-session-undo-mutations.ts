@@ -1,11 +1,11 @@
 import { resolve } from "node:path";
 import { disposableOrigin } from "./test-origin";
 disposableOrigin(
-  process.env.LIFE_UI_TEST_URL ??
-    "http://life-ui-markdown.localhost:5198/workspace?review",
+  process.env.IRIS_TEST_URL ??
+    "http://iris-markdown.localhost:5198/workspace?review",
 );
 const source = process.argv[2];
-if (!source) throw Error("Provide the life-data checkout");
+if (!source) throw Error("Provide the soma checkout");
 const model = resolve(import.meta.dir, "../apps/web/src/lib/record-undo.ts");
 const page = resolve(
   import.meta.dir,
@@ -102,7 +102,7 @@ for (const mutation of mutations) {
           ],
       {
         cwd: resolve(import.meta.dir, ".."),
-        env: { ...process.env, LIFE_UI_UNDO_CASE: mutation.browser ?? "" },
+        env: { ...process.env, IRIS_UNDO_CASE: mutation.browser ?? "" },
         stdout: "pipe",
         stderr: "pipe",
       },

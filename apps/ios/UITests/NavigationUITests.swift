@@ -140,9 +140,9 @@ final class NavigationUITests: XCTestCase {
   private func openLocal() throws -> XCUIApplication {
     let env = ProcessInfo.processInfo.environment
     try XCTSkipIf(
-      env["LIFE_UI_TEST_NAVIGATION_SIMULATOR"] == nil, "Requires the private navigation fixture")
+      env["IRIS_TEST_NAVIGATION_SIMULATOR"] == nil, "Requires the private navigation fixture")
     continueAfterFailure = false
-    guard env["LIFE_UI_TEST_NAVIGATION_SIMULATOR"] == env["SIMULATOR_UDID"] else {
+    guard env["IRIS_TEST_NAVIGATION_SIMULATOR"] == env["SIMULATOR_UDID"] else {
       throw NSError(
         domain: "NavigationUITests", code: 1,
         userInfo: [NSLocalizedDescriptionKey: "Private simulator mismatch"])

@@ -3,11 +3,11 @@ import { workspacePage } from "./test-origin";
 
 // Dedicated synthetic origin. Never clear storage on a configured or shared workspace.
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-export.localhost:5256/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-export.localhost:5256/workspace?review";
 const target = new URL(url);
 if (
-  target.origin !== "http://life-ui-export.localhost:5256" ||
+  target.origin !== "http://iris-export.localhost:5256" ||
   target.pathname !== "/workspace" ||
   !target.searchParams.has("review")
 )
@@ -101,9 +101,9 @@ try {
     160,
   );
   await expect(action).toBeHidden();
-  if (process.env.LIFE_UI_TEST_SCREENSHOTS) {
+  if (process.env.IRIS_TEST_SCREENSHOTS) {
     await page.screenshot({
-      path: `${process.env.LIFE_UI_TEST_SCREENSHOTS}/export-collapsed.png`,
+      path: `${process.env.IRIS_TEST_SCREENSHOTS}/export-collapsed.png`,
       fullPage: true,
     });
   }
@@ -121,9 +121,9 @@ try {
   await disclosure.focus();
   await disclosure.press("Enter");
   await expect(action).toBeVisible();
-  if (process.env.LIFE_UI_TEST_SCREENSHOTS) {
+  if (process.env.IRIS_TEST_SCREENSHOTS) {
     await page.screenshot({
-      path: `${process.env.LIFE_UI_TEST_SCREENSHOTS}/export-expanded.png`,
+      path: `${process.env.IRIS_TEST_SCREENSHOTS}/export-expanded.png`,
       fullPage: true,
     });
   }

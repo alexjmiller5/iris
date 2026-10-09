@@ -161,9 +161,9 @@ final class TypedFieldsUITests: XCTestCase {
   private func openFixture(_ record: String) throws -> XCUIApplication {
     let environment = ProcessInfo.processInfo.environment
     try XCTSkipIf(
-      environment["LIFE_UI_TEST_FIELDS_SIMULATOR"] == nil,
+      environment["IRIS_TEST_FIELDS_SIMULATOR"] == nil,
       "Requires the typed-fields fixture on an explicitly selected private simulator")
-    guard let expected = environment["LIFE_UI_TEST_FIELDS_SIMULATOR"], !expected.isEmpty,
+    guard let expected = environment["IRIS_TEST_FIELDS_SIMULATOR"], !expected.isEmpty,
       expected == environment["SIMULATOR_UDID"]
     else {
       throw NSError(

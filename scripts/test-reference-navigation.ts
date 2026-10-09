@@ -3,10 +3,10 @@ import { resolve } from 'node:path';
 import { regressionHub } from './workspace-regression-hub';
 import { disposableOrigin, workspacePage } from './test-origin';
 
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-relations.localhost:5223/workspace?review';
+const url = process.env.IRIS_TEST_URL ?? 'http://iris-relations.localhost:5223/workspace?review';
 const origin = disposableOrigin(url);
 const source = process.argv[2];
-if (!source) throw new Error('Usage: bun scripts/test-reference-navigation.ts <life-data-checkout>');
+if (!source) throw new Error('Usage: bun scripts/test-reference-navigation.ts <soma-checkout>');
 const { server, db } = await regressionHub(source, origin);
 const schema = await Bun.file(resolve(import.meta.dir, '../packages/core/schema/saved-views.json')).json();
 const system = 'id TEXT PRIMARY KEY NOT NULL,created_at TEXT,updated_at TEXT,deleted_at TEXT,hub_at TEXT';
@@ -47,7 +47,7 @@ db.db.exec(`
  UPDATE widgets SET parent='fixture-record',related='["fixture-record","target-two"]',fixed_parent='target-two',absent='missing-target' WHERE id='fixture-record';
 `);
 
-const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
+const browser = await chromium.connectOverCDP(process.env.IRIS_TEST_CDP ?? 'http://127.0.0.1:9222');
 const failures: string[] = [];
 let ownedPage: import('@playwright/test').Page | undefined;
 let acceptDiscard = true;
@@ -126,7 +126,7 @@ try {
 		await expect(editor.getByLabel('Parent', { exact: true }).locator('option[value="fixture-record"]')).toHaveText('Target project');
 	}
 	async function check(name: string, run: () => Promise<void>) {
-		if (process.env.LIFE_UI_REFERENCE_CASE && !name.includes(process.env.LIFE_UI_REFERENCE_CASE)) return;
+		if (process.env.IRIS_REFERENCE_CASE && !name.includes(process.env.IRIS_REFERENCE_CASE)) return;
 		try { await sourceRecord(); await run(); console.log(`PASS: ${name}`); }
 		catch (error) { failures.push(name); console.error(`FAIL: ${name}\n${error}`); }
 		finally { acceptDiscard = true; await page.evaluate(() => { (window as any).releaseRelations(); (window as any).releaseWrites(); }); }
@@ -298,8 +298,8 @@ try {
 			const linkBounds = await open('Related', longTitle).boundingBox();
 			const removeBounds = await remove.boundingBox();
 			expect(removeBounds!.x).toBeGreaterThanOrEqual(linkBounds!.x + linkBounds!.width);
-			if (process.env.LIFE_UI_TEST_SCREENSHOTS)
-				await page.screenshot({ path: resolve(process.env.LIFE_UI_TEST_SCREENSHOTS, `relations-${width}.png`) });
+			if (process.env.IRIS_TEST_SCREENSHOTS)
+				await page.screenshot({ path: resolve(process.env.IRIS_TEST_SCREENSHOTS, `relations-${width}.png`) });
 		}
 		await open('Related', longTitle).focus(); await page.keyboard.press('Enter');
 		await expect(editor.getByLabel('Headline', { exact: true })).toHaveValue(longTitle);

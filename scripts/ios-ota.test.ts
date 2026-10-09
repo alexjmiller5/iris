@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 test.each(['71.1', '71.2'])('OTA identifies build %s with its own install and download URLs', async (build) => {
-  const root = await mkdtemp(join(tmpdir(), 'life-ui-ota-metadata-'));
+  const root = await mkdtemp(join(tmpdir(), 'iris-ota-metadata-'));
   try {
     const ipa = join(root, 'fixture.ipa');
     const dir = join(root, 'served');

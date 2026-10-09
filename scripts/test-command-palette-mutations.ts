@@ -2,13 +2,13 @@ import { resolve } from "node:path";
 import { disposableOrigin } from "./test-origin";
 
 disposableOrigin(
-  process.env.LIFE_UI_TEST_URL ??
-    "http://life-ui-palette.localhost:5226/workspace?review",
+  process.env.IRIS_TEST_URL ??
+    "http://iris-palette.localhost:5226/workspace?review",
 );
 const source = process.argv[2];
 if (!source)
   throw Error(
-    "Usage: bun scripts/test-command-palette-mutations.ts <life-data-checkout> [--unit|--browser|--check]",
+    "Usage: bun scripts/test-command-palette-mutations.ts <soma-checkout> [--unit|--browser|--check]",
   );
 const model = resolve(
   import.meta.dir,
@@ -124,7 +124,7 @@ for (const mutation of mutations) {
         ];
     const child = Bun.spawn(command, {
       cwd: resolve(import.meta.dir, ".."),
-      env: { ...process.env, LIFE_UI_PALETTE_CASE: mutation.browser ?? "" },
+      env: { ...process.env, IRIS_PALETTE_CASE: mutation.browser ?? "" },
       stdout: "pipe",
       stderr: "pipe",
     });

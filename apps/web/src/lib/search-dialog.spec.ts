@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { get } from 'svelte/store';
-import type { SearchHit } from 'life-ui-core/client';
+import type { SearchHit } from 'iris-core/client';
 import { createSearchModel } from './search-dialog';
 
 const hit = (id: string): SearchHit => ({

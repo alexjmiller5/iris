@@ -1,16 +1,16 @@
 import { disposableOrigin } from "./test-origin";
 
 const address =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-navigation.localhost:5237/workspace?review&proposal=synthetic-review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-navigation.localhost:5237/workspace?review&proposal=synthetic-review";
 const origin = disposableOrigin(address);
 const proposal = new URL(address).searchParams.get("proposal");
-const targetId = process.env.LIFE_UI_TEST_TARGET;
+const targetId = process.env.IRIS_TEST_TARGET;
 if (!proposal || !targetId)
   throw new Error("Set an owned page target and synthetic proposal");
 const pages = await (
   await fetch(
-    `${process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222"}/json/list`,
+    `${process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222"}/json/list`,
   )
 ).json();
 const page = pages.find(

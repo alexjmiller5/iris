@@ -1,4 +1,4 @@
-import type { SearchHit, SavedViewList } from 'life-ui-core/client';
+import type { SearchHit, SavedViewList } from 'iris-core/client';
 import type { StatusHit } from './search-status';
 
 export type PaletteDestination =

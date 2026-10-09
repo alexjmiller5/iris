@@ -25,7 +25,7 @@ test("Swift tests execute a fixture matching the current production native entry
   const result = await run(
     resolve(
       import.meta.dir,
-      "../packages/LifeKit/Tests/LifeKitTests/Fixtures/record-export.js",
+      "../packages/IrisKit/Tests/IrisKitTests/Fixtures/record-export.js",
     ),
     true,
   );
@@ -33,19 +33,19 @@ test("Swift tests execute a fixture matching the current production native entry
 });
 
 test("bundle command emits a standalone deterministic native bridge and checks stale output without writing", async () => {
-  const scratch = await mkdtemp(join(tmpdir(), "life-ui-export-bundle-"));
+  const scratch = await mkdtemp(join(tmpdir(), "iris-export-bundle-"));
   const path = join(scratch, "record-export.js");
   try {
     const built = await run(path);
     expect(built.code).toBe(0);
     const first = await readFile(path, "utf8");
     const context: {
-      LifeRecordExport?: {
+      IrisRecordExport?: {
         serialize: (snapshot: string, options: string) => string;
       };
     } = {};
     runInNewContext(first, context);
-    const result = context.LifeRecordExport!.serialize(
+    const result = context.IrisRecordExport!.serialize(
       JSON.stringify({
         table: "entries",
         properties: [],

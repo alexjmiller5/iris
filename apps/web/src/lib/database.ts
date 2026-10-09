@@ -1,4 +1,4 @@
-import { CORE_CONTRACT_HASH } from 'life-ui-core/contract';
+import { CORE_CONTRACT_HASH } from 'iris-core/contract';
 import type { DatabaseArgs, DatabaseMethod, DatabaseResult } from './database-contract';
 
 /** One dedicated worker per workspace; requests and shutdown preserve FIFO order. */

@@ -3,8 +3,8 @@ import {
 	createHttpHub,
 	isGovernanceCapability,
 	type Fetcher
-} from 'life-ui-core/client';
-import type { GovernanceAuthority } from 'life-ui-core/contract';
+} from 'iris-core/client';
+import type { GovernanceAuthority } from 'iris-core/contract';
 import type { HubConnection } from '../device-enrollment';
 import type { ApprovalScope, GovernanceAPI } from './api';
 

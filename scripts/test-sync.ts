@@ -1,9 +1,9 @@
 import { workspacePage, synced } from './test-origin';
 import { chromium,expect, type CDPSession } from '@playwright/test';
 
-const url=process.env.LIFE_UI_TEST_URL??'http://127.0.0.1:5197/workspace';
-const hub=process.env.LIFE_UI_TEST_HUB??'http://127.0.0.1:5200';
-const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
+const url=process.env.IRIS_TEST_URL??'http://127.0.0.1:5197/workspace';
+const hub=process.env.IRIS_TEST_HUB??'http://127.0.0.1:5200';
+const browser=await chromium.connectOverCDP(process.env.IRIS_TEST_CDP??'http://127.0.0.1:9222');
 let network: CDPSession | undefined;
 try{
   const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);

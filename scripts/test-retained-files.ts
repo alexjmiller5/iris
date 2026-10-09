@@ -9,11 +9,11 @@ import { regressionHub } from "./workspace-regression-hub";
 import { disposableOrigin } from "./test-origin";
 
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-markdown.localhost:5252/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-markdown.localhost:5252/workspace?review";
 const origin = disposableOrigin(url),
   source = process.argv[2];
-if (!source) throw Error("Provide the life-data checkout");
+if (!source) throw Error("Provide the soma checkout");
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAUAAAAB4CAIAAAAMrLyJAAACk0lEQVR4nO3TQQ2AQBAEwZXFH8uowAA2kICMSx+VjIGapOd63iU7j3vJeHl38s7fwLy8O3kFzMsb9gqYlzfsFTAvb9grYF7esFfAvLxhr4B5ecNeAfPyhr0C5uUNewXMyxv2CpiXN+wVMC9v2CtgXt6wV8C8vGGvgHl5w14B8/KGvQLm5Q17BczLG/YKmJc37BUwL2/YK2Be3rBXwLy8Ya+AeXnDXgHz8oa9AublDXsFzMsb9gqYlzfsFTAvb9grYF7esFfAvLxhr4B5ecNeAfPyhr0C5uUNewXMyxv2CpiXN+wVMC9v2CtgXt6wV8C8vGGvgHl5w95xNC9v1ytgXt6wV8C8vGGvgHl5w14B8/KGvQLm5Q17BczLG/YKmJc37BUwL2/YK2Be3rBXwLy8Ya+AeXnDXgHz8oa9AublDXsFzMsb9gqYlzfsFTAvb9grYF7esFfAvLxhr4B5ecNeAfPyhr0C5uUNewXMyxv2CpiXN+wVMC9v2CtgXt6wV8C8vGGvgHl5w14B8/KGvQLm5Q17BczLG/YKmJc37BUwL2/YK2Be3rBXwLy8Ya+AeXnDXgHz8oa9AublDXsFzMsb9gqYlzfsHUfz8na9AublDXsFzMsb9gqYlzfsFTAvb9grYF7esFfAvLxhr4B5ecNeAfPyhr0C5uUNewXMyxv2CpiXN+wVMC9v2CtgXt6wV8C8vGGvgHl5w14B8/KGvQLm5Q17BczLG/YKmJc37BUwL2/YK2Be3rBXwLy8Ya+AeXnDXgHz8oa9AublDXsFzMsb9gqYlzfsFTAvb9grYF7esFfAvLxhr4B5ecNeAfPyhr0C5uUNewXMyxv2CpiXN+wVMC9v2CtgXt6wV8C8vGGvgHl5w94PCbtQeLqWgEIAAAAASUVORK5CYII=",
   "base64",
@@ -231,13 +231,13 @@ try {
   ).toBe(body);
   expect(requests).toContain("raw/document.txt");
   expect(externalRequests).toEqual([]);
-  if (process.env.LIFE_UI_TEST_SCREENSHOT) {
+  if (process.env.IRIS_TEST_SCREENSHOT) {
     const shot = await command("Page.captureScreenshot", {
       format: "png",
       captureBeyondViewport: true,
     });
     await Bun.write(
-      process.env.LIFE_UI_TEST_SCREENSHOT,
+      process.env.IRIS_TEST_SCREENSHOT,
       Buffer.from(shot.data, "base64"),
     );
   }

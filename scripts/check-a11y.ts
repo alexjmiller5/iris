@@ -3,12 +3,12 @@
 // Escape only; every focused control must show a focus ring, Escape must hand
 // focus back, and axe-core must report no serious or critical violation.
 //   bun scripts/check-a11y.ts            (starts its own dev server and headless Chrome)
-//   bun scripts/check-a11y.ts <life-data-checkout>
+//   bun scripts/check-a11y.ts <soma-checkout>
 //                                        also walks a workspace connected to a synthetic
 //                                        hub: sync pill states, notifications, usage,
 //                                        attachments and rejected edits
-//   LIFE_UI_TEST_SHOTS=<dir>             keeps a screenshot per step
-//   LIFE_UI_TEST_URL=<origin>/workspace  uses an already running dev server
+//   IRIS_TEST_SHOTS=<dir>             keeps a screenshot per step
+//   IRIS_TEST_URL=<origin>/workspace  uses an already running dev server
 import { chromium, type Locator, type Page } from "@playwright/test";
 import { servicesHub } from "./services-hub";
 import { mkdirSync, readFileSync } from "node:fs";
@@ -16,7 +16,7 @@ import { createServer } from "node:net";
 
 const root = new URL("..", import.meta.url).pathname;
 const axe = readFileSync(`${root}node_modules/axe-core/axe.min.js`, "utf8");
-const shots = process.env.LIFE_UI_TEST_SHOTS;
+const shots = process.env.IRIS_TEST_SHOTS;
 const source = process.argv[2];
 if (shots) mkdirSync(shots, { recursive: true });
 
@@ -29,12 +29,12 @@ async function freePort() {
 }
 
 let dev: ReturnType<typeof Bun.spawn> | undefined;
-let url = process.env.LIFE_UI_TEST_URL;
+let url = process.env.IRIS_TEST_URL;
 if (!url) {
   const port = await freePort();
   dev = Bun.spawn(["bun", "run", "--cwd", "apps/web", "dev", "--", "--port", String(port), "--strictPort"], {
     cwd: root,
-    env: { ...process.env, LIFE_UI_DEV_NO_HMR: "1" },
+    env: { ...process.env, IRIS_DEV_NO_HMR: "1" },
     stdout: "ignore",
     stderr: "ignore",
   });

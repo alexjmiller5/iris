@@ -3,12 +3,12 @@ import { regressionHub } from './workspace-regression-hub';
 import { disposableOrigin, workspacePage } from './test-origin';
 
 const source = process.argv[2];
-if (!source) throw new Error('Usage: bun scripts/test-sql-integrity.ts <life-data-checkout>');
-const url = process.env.LIFE_UI_TEST_URL ?? 'http://life-ui-sql-integrity.localhost:5198/workspace?review';
+if (!source) throw new Error('Usage: bun scripts/test-sql-integrity.ts <soma-checkout>');
+const url = process.env.IRIS_TEST_URL ?? 'http://iris-sql-integrity.localhost:5198/workspace?review';
 const origin = disposableOrigin(url);
 const { server, db: hub } = await regressionHub(source, origin);
 hub.db.query('UPDATE catalog_properties SET options_sql=? WHERE id=?').run("SELECT 'Fixed'); DELETE FROM widgets; --", 'widgets.tags');
-const browser = await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP ?? 'http://127.0.0.1:9222');
+const browser = await chromium.connectOverCDP(process.env.IRIS_TEST_CDP ?? 'http://127.0.0.1:9222');
 try {
 	const page = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
 	if (!page) throw new Error(`Open this dedicated test page: ${url}`);

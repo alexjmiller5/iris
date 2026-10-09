@@ -1,4 +1,4 @@
-import type { Filter, SavedViewDefinition, Sort, View } from 'life-ui-core/client';
+import type { Filter, SavedViewDefinition, Sort, View } from 'iris-core/client';
 import { calendarContext } from './calendar-context';
 
 export function parseDayStart(time: string): number {

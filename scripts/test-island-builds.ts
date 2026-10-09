@@ -5,7 +5,7 @@ import { strict as assert } from 'node:assert';
 
 // Changing an unrelated web component must not change the embedded native islands.
 const web = resolve(import.meta.dir, '../apps/web');
-const scratch = await mkdtemp(join(tmpdir(), 'life-ui-island-builds-'));
+const scratch = await mkdtemp(join(tmpdir(), 'iris-island-builds-'));
 const probe = join(web, 'src', `island-build-probe-${crypto.randomUUID()}.svelte`);
 async function run(args: string[]) {
  const child = Bun.spawn(['bun', 'x', '--no-install', ...args], {cwd:web,stdout:'pipe',stderr:'pipe'});

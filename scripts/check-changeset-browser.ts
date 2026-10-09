@@ -5,8 +5,8 @@ import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 const {values}=parseArgs({args:Bun.argv.slice(2),options:{target:{type:'string'},port:{type:'string',default:'9222'},helper:{type:'string'},shot:{type:'string'},mobile:{type:'boolean',default:false}}});
-if(!values.target||!values.helper||!process.env.LIFE_DATA_CONTRACT_ROOT)throw Error('Explicit owned target, helper and LIFE_DATA_CONTRACT_ROOT required');
-const root=process.env.LIFE_DATA_CONTRACT_ROOT;
+if(!values.target||!values.helper||!process.env.SOMA_CONTRACT_ROOT)throw Error('Explicit owned target, helper and SOMA_CONTRACT_ROOT required');
+const root=process.env.SOMA_CONTRACT_ROOT;
 const {default:worker}=await import(pathToFileURL(resolve(root,'worker/src/main.js')).href);
 const {default:hub}=await import(pathToFileURL(resolve(root,'worker/src/index.js')).href);
 const {D1Shim}=await import(pathToFileURL(resolve(root,'worker/test/d1shim.js')).href);
@@ -65,5 +65,5 @@ await evaluate('(setTimeout(()=>location.reload(),100),true)');await Bun.sleep(2
 assert.equal(approvals,2);assert.equal(env.DB.db.query('SELECT count(*) n FROM _governance_history').get().n,history);assert.equal(env.DB.db.query('SELECT count(*) n FROM items').get().n,2);
 console.log('PASS rendered review, inert preview, atomic save, lost response, reload, original-key retry and no duplicate history');
 }finally{
-try{await evaluate(`(async()=>{document.querySelector('dialog')?.close();await new Promise(r=>setTimeout(r,100));await new Promise((yes,no)=>{const r=indexedDB.deleteDatabase('life-ui-changesets');r.onsuccess=yes;r.onerror=no;r.onblocked=()=>no(Error('blocked'));});setTimeout(()=>location.assign('about:blank'),100);return true;})()`);}finally{viewport?.close();server.stop(true);env.DB.db.close();env.AUTH_DB.db.close();}
+try{await evaluate(`(async()=>{document.querySelector('dialog')?.close();await new Promise(r=>setTimeout(r,100));await new Promise((yes,no)=>{const r=indexedDB.deleteDatabase('iris-changesets');r.onsuccess=yes;r.onerror=no;r.onblocked=()=>no(Error('blocked'));});setTimeout(()=>location.assign('about:blank'),100);return true;})()`);}finally{viewport?.close();server.stop(true);env.DB.db.close();env.AUTH_DB.db.close();}
 }

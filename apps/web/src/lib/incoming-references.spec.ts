@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { get } from 'svelte/store';
 import * as feature from './incoming-references';
-import type { ReferenceSource, ReferencedByPage } from 'life-ui-core/client';
+import type { ReferenceSource, ReferencedByPage } from 'iris-core/client';
 
 const source: ReferenceSource = {
 	table: 'entries',

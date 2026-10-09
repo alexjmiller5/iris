@@ -5,14 +5,14 @@ import { join, resolve } from 'node:path';
 
 // Export only committed owner source into a disposable directory. Never mutate
 // another checkout, generated bundles, a real database or credentials.
-const source = process.env.LIFE_DATA_CONTRACT_ROOT;
-if (!source) throw new Error('Set LIFE_DATA_CONTRACT_ROOT to a Life Data Git checkout. See docs/governance-contract.md.');
+const source = process.env.SOMA_CONTRACT_ROOT;
+if (!source) throw new Error('Set SOMA_CONTRACT_ROOT to a Soma Git checkout. See docs/governance-contract.md.');
 const prerequisite = '9121ef66df4dcc3a72c63f87d400a8e9555c17f9';
-const scratch = mkdtempSync(join(tmpdir(), 'life-governance-'));
+const scratch = mkdtempSync(join(tmpdir(), 'iris-governance-'));
 const testFile = resolve(import.meta.dir, 'governance-contract.test.ts');
 function run(pattern?: string) {
   const result = spawnSync(process.execPath, ['test', testFile, ...(pattern ? ['--test-name-pattern', pattern] : [])], {
-    env: { ...process.env, LIFE_DATA_CONTRACT_ROOT: scratch }, encoding: 'utf8',
+    env: { ...process.env, SOMA_CONTRACT_ROOT: scratch }, encoding: 'utf8',
   });
   if (result.error || result.signal || result.status === null) throw result.error ?? new Error(`Test runner terminated: ${result.signal}`);
   return { status: result.status, output: result.stdout + result.stderr };
@@ -49,7 +49,7 @@ try {
     if (restored.status !== 0) { process.stdout.write(restored.output); throw new Error('Restored source failed conformance.'); }
     console.log('Restored pinned source passes conformance.');
   }
-  console.log(`Life Data prerequisite tested: ${prerequisite}`);
+  console.log(`Soma prerequisite tested: ${prerequisite}`);
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }

@@ -8,10 +8,10 @@ import {
   js,
 } from "./source-navigation-cdp";
 const source = process.argv[2];
-if (!source) throw Error("Provide matching life-data source");
+if (!source) throw Error("Provide matching soma source");
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-navigation.localhost:5274/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-navigation.localhost:5274/workspace?review";
 const origin = disposableOrigin(url);
 expect(await Bun.file(`${source}/core/contract/core.json`).text()).toBe(
   await Bun.file(

@@ -2,13 +2,13 @@ import { expect } from "@playwright/test";
 import { disposableOrigin } from "./test-origin";
 
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-markdown.localhost:5198/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-markdown.localhost:5198/workspace?review";
 const origin = disposableOrigin(url);
 let html = await Bun.file(
-  process.env.LIFE_UI_TEST_EDITOR_HTML ??
+  process.env.IRIS_TEST_EDITOR_HTML ??
     new URL(
-      "../packages/LifeKit/Sources/LifeKit/Resources/editor.html",
+      "../packages/IrisKit/Sources/IrisKit/Resources/editor.html",
       import.meta.url,
     ),
 ).text();
@@ -23,7 +23,7 @@ if (!resolverBuild.success) throw Error(resolverBuild.logs.join("\n"));
 const resolverModule = await resolverBuild.outputs[0].text();
 const targets = (await (
   await fetch(
-    `${process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222"}/json/list`,
+    `${process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222"}/json/list`,
   )
 ).json()) as { url: string; webSocketDebuggerUrl: string }[];
 const owned = targets.filter((target) => target.url === url);
@@ -154,7 +154,7 @@ try {
   await command("Network.enable");
   await command("Runtime.enable");
   await command("Page.addScriptToEvaluateOnNewDocument", {
-    source: `window.events=[];window.webkit={messageHandlers:{editor:{postMessage(message){window.events.push(message);if(message.type==='openFile'||message.type==='openLink')queueMicrotask(()=>window.lifeEditor.receiveFile({id:message.id,request:message.request,opened:true}));}}}};`,
+    source: `window.events=[];window.webkit={messageHandlers:{editor:{postMessage(message){window.events.push(message);if(message.type==='openFile'||message.type==='openLink')queueMicrotask(()=>window.irisEditor.receiveFile({id:message.id,request:message.request,opened:true}));}}}};`,
   });
   await command("Emulation.setDeviceMetricsOverride", {
     width: 320,
@@ -173,7 +173,7 @@ try {
     "A long paragraph retained exactly.\n\n".repeat(80);
   await evaluate(
     (value) =>
-      (window as any).lifeEditor.setDocument({
+      (window as any).irisEditor.setDocument({
         id: "links",
         value,
         label: "Body",
@@ -211,10 +211,10 @@ try {
     failures,
     "Opening the constrained popup must not cause a layout feedback loop",
   ).toEqual([]);
-  if (process.env.LIFE_UI_TEST_SCREENSHOT) {
+  if (process.env.IRIS_TEST_SCREENSHOT) {
     const shot = await command("Page.captureScreenshot", { format: "png" });
     await Bun.write(
-      process.env.LIFE_UI_TEST_SCREENSHOT,
+      process.env.IRIS_TEST_SCREENSHOT,
       Buffer.from(shot.data, "base64"),
     );
   }
@@ -263,7 +263,7 @@ try {
     "file bridge",
   );
   expect(
-    await evaluate(() => (window as any).lifeEditor.getDocument().value),
+    await evaluate(() => (window as any).irisEditor.getDocument().value),
   ).toBe(source);
   expect(
     await evaluate(() =>

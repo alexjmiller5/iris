@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Property } from 'life-ui-core/client';
+import type { Property } from 'iris-core/client';
 import { visibleColumns, toggleColumn, moveColumn, changeWidth } from './column-settings';
 
 const properties: Property[] = [

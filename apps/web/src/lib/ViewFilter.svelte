@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Property } from 'life-ui-core/client';
+	import type { Property } from 'iris-core/client';
 	import { IconX } from '@tabler/icons-svelte';
 	import { DATE_TYPES, defaultRule, operatorsFor, opLabel, type Rule } from './filter-bar';
 

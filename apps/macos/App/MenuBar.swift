@@ -1,9 +1,9 @@
-import LifeKit
+import IrisKit
 import SwiftUI
 
 /// Status item mirroring the active window's sync pill, with an opt-out in Settings.
-struct LifeMenuBar: Scene {
-  @AppStorage("lifeui.menuBarItem") private var shown = true
+struct IrisMenuBar: Scene {
+  @AppStorage("iris.menuBarItem") private var shown = true
 
   var body: some Scene {
     // SwiftUI writes isInserted back on every scene update; an unchanged write to
@@ -15,7 +15,7 @@ struct LifeMenuBar: Scene {
     }
     Settings {
       Form {
-        Toggle("Show Life UI in the menu bar", isOn: $shown)
+        Toggle("Show Iris in the menu bar", isOn: $shown)
           .accessibilityIdentifier("menu-bar-item-toggle")
       }
       .formStyle(.grouped)

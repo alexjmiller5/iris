@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick, type Snippet } from 'svelte';
-	import type { Filter, FilterGroup, Property } from 'life-ui-core/client';
+	import type { Filter, FilterGroup, Property } from 'iris-core/client';
 	import { IconFilter, IconPlus, IconStack2, IconTrash, IconX } from '@tabler/icons-svelte';
 	import ViewFilter from './ViewFilter.svelte';
 	import { anchored } from './popover';

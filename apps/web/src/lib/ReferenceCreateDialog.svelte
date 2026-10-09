@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { focusReturn } from './popover';
-	import type { Property } from 'life-ui-core/client';
+	import type { Property } from 'iris-core/client';
 	import FieldEditor from './FieldEditor.svelte';
 	import type { CreationPlan } from './reference-create';
 	let {

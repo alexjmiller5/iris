@@ -13,7 +13,7 @@
 		SaveCatalogPropertyArgs,
 		SaveCatalogRuleArgs,
 		OptionDef
-	} from 'life-ui-core/client';
+	} from 'iris-core/client';
 	let {
 		table,
 		catalog,

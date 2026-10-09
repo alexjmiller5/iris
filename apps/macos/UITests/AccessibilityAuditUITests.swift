@@ -83,7 +83,7 @@ final class AccessibilityAuditUITests: XCTestCase {
     let item = app.descendants(matching: .statusItem).firstMatch
     XCTAssertTrue(item.waitForExistence(timeout: 5))
     item.click()
-    XCTAssertTrue(app.menuItems["Open Life UI"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.menuItems["Open Iris"].waitForExistence(timeout: 5))
     let tree = XCTAttachment(string: app.menus.firstMatch.debugDescription)
     tree.name = "ax-mac-menu-bar-item.txt"
     tree.lifetime = .keepAlways

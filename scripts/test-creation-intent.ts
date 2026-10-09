@@ -3,12 +3,12 @@ import { mkdir } from "node:fs/promises";
 import { disposableOrigin, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-creation.localhost:5242/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-creation.localhost:5242/workspace?review";
 const origin = disposableOrigin(url);
 const source = process.argv[2];
 if (!source)
-  throw Error("Usage: bun scripts/test-creation-intent.ts <life-data-checkout>");
+  throw Error("Usage: bun scripts/test-creation-intent.ts <soma-checkout>");
 const { server, db } = await regressionHub(source, origin);
 // Synthetic defaults and byte-preserving copy inputs; only this disposable hub.
 for (const [col, sql, type, value] of [
@@ -22,7 +22,7 @@ for (const [col, sql, type, value] of [
 db.db.exec("UPDATE catalog_properties SET ref_table='widgets' WHERE col='links'");
 db.db.exec("UPDATE widgets SET links='[\"second-record\"]',empty='',body='',code='SET-ONCE' WHERE id='fixture-record'");
 const browser = await chromium.connectOverCDP(
-  process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
 );
 let page: Page | undefined;
 let accept = true;
@@ -147,7 +147,7 @@ try {
    return (await all()).find(r=>r.title===title);
   };
   const check=async(name:string,body:()=>Promise<void>)=>{
-   if(process.env.LIFE_UI_CREATION_CASE&&!name.includes(process.env.LIFE_UI_CREATION_CASE))return;
+   if(process.env.IRIS_CREATION_CASE&&!name.includes(process.env.IRIS_CREATION_CASE))return;
    try{await body();console.log('PASS',name);}catch(error){failures++;console.error('FAIL',name,error);}finally{await close();}
   };
   await check('same-empty clear participates in Close cancellation',async()=>{

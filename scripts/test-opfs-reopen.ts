@@ -53,11 +53,11 @@ if (process.argv[2] === "--verify-patch") {
   console.log(`Installed wa-sqlite patch verified: ${actual}`);
   process.exit(0);
 }
-const address = process.env.LIFE_UI_TEST_URL;
+const address = process.env.IRIS_TEST_URL;
 const source = process.argv[2];
-if (!address || !source || !process.env.LIFE_UI_TEST_TARGET)
+if (!address || !source || !process.env.IRIS_TEST_TARGET)
   throw Error(
-    "Set LIFE_UI_TEST_URL / LIFE_UI_TEST_TARGET and pass a life-data checkout",
+    "Set IRIS_TEST_URL / IRIS_TEST_TARGET and pass a soma checkout",
   );
 const origin = disposableOrigin(address);
 // Refuse an older service fixture before starting its hub or attaching a browser.
@@ -83,7 +83,7 @@ for (const name of readdirSync(resolve(source, "core/src"))
     .update(readFileSync(resolve(source, "core/src", name)));
 for (const name of readdirSync(resolve(source, "core/schema")).filter(name => name.endsWith(".json")).sort())
   coreHash.update(`schema/${name}\0`).update(readFileSync(resolve(source, "core/schema", name)));
-const expectedBanner = `// Generated from life-core. SHA-256: ${coreHash.digest("hex")}`;
+const expectedBanner = `// Generated from soma-core. SHA-256: ${coreHash.digest("hex")}`;
 if (
   readFileSync(resolve(root, "packages/core/client.js"), "utf8").split(
     "\n",
@@ -329,8 +329,8 @@ try {
   await cdp.command("Page.bringToFront");
   async function check(name: string, body: () => Promise<void>) {
     if (
-      process.env.LIFE_UI_OPFS_CASE &&
-      !name.includes(process.env.LIFE_UI_OPFS_CASE)
+      process.env.IRIS_OPFS_CASE &&
+      !name.includes(process.env.IRIS_OPFS_CASE)
     )
       return;
     try {
@@ -338,7 +338,7 @@ try {
       results.push({ name, ok: true });
     } catch (error) {
       results.push({ name, ok: false, detail: String(error) });
-      const artifacts = process.env.LIFE_UI_TEST_ARTIFACT_DIR;
+      const artifacts = process.env.IRIS_TEST_ARTIFACT_DIR;
       if (artifacts) {
         mkdirSync(artifacts, { recursive: true });
         const stem = name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
@@ -401,18 +401,18 @@ try {
         `!!(${named("button", "Persisted reopen marker")})`,
         "Reopen retains the local committed edit",
       );
-      const firstTarget = process.env.LIFE_UI_TEST_TARGET;
-      if (!process.env.LIFE_UI_TEST_SECOND_TARGET)
+      const firstTarget = process.env.IRIS_TEST_TARGET;
+      if (!process.env.IRIS_TEST_SECOND_TARGET)
         throw Error(
-          "Set LIFE_UI_TEST_SECOND_TARGET to a second owned same-origin tab",
+          "Set IRIS_TEST_SECOND_TARGET to a second owned same-origin tab",
         );
       let second: typeof page;
       try {
-        process.env.LIFE_UI_TEST_TARGET =
-          process.env.LIFE_UI_TEST_SECOND_TARGET;
+        process.env.IRIS_TEST_TARGET =
+          process.env.IRIS_TEST_SECOND_TARGET;
         second = await sourceNavigationCDP(address);
       } finally {
-        process.env.LIFE_UI_TEST_TARGET = firstTarget;
+        process.env.IRIS_TEST_TARGET = firstTarget;
       }
       try {
         await second.command("Page.bringToFront");

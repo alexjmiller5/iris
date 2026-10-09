@@ -105,8 +105,8 @@ final class RecordPolishUITests: XCTestCase {
     continueAfterFailure = false
     let env = ProcessInfo.processInfo.environment
     try XCTSkipUnless(
-      env["LIFE_UI_TEST_RECORD_POLISH_SIMULATOR"] != nil
-        && env["LIFE_UI_TEST_RECORD_POLISH_SIMULATOR"] == env["SIMULATOR_UDID"],
+      env["IRIS_TEST_RECORD_POLISH_SIMULATOR"] != nil
+        && env["IRIS_TEST_RECORD_POLISH_SIMULATOR"] == env["SIMULATOR_UDID"],
       "Use the explicitly selected synthetic simulator fixture.")
     let app = XCUIApplication()
     app.launchArguments = ["--normal-startup"]
@@ -137,8 +137,8 @@ final class RecordPolishUITests: XCTestCase {
     continueAfterFailure = false
     let env = ProcessInfo.processInfo.environment
     try XCTSkipUnless(
-      env["LIFE_UI_TEST_RECORD_POLISH_SIMULATOR"] != nil
-        && env["LIFE_UI_TEST_RECORD_POLISH_SIMULATOR"] == env["SIMULATOR_UDID"],
+      env["IRIS_TEST_RECORD_POLISH_SIMULATOR"] != nil
+        && env["IRIS_TEST_RECORD_POLISH_SIMULATOR"] == env["SIMULATOR_UDID"],
       "Use the explicitly selected synthetic simulator fixture.")
     let app = XCUIApplication()
     app.launchArguments = ["--normal-startup"]
@@ -179,8 +179,8 @@ final class RecordPolishUITests: XCTestCase {
     continueAfterFailure = false
     let env = ProcessInfo.processInfo.environment
     try XCTSkipUnless(
-      env["LIFE_UI_TEST_CATALOG_SIMULATOR"] != nil
-        && env["LIFE_UI_TEST_CATALOG_SIMULATOR"] == env["SIMULATOR_UDID"],
+      env["IRIS_TEST_CATALOG_SIMULATOR"] != nil
+        && env["IRIS_TEST_CATALOG_SIMULATOR"] == env["SIMULATOR_UDID"],
       "Prepare CatalogRecordAcceptanceTests on the explicitly allocated private simulator.")
     let app = XCUIApplication()
     app.launchArguments = ["--normal-startup"]

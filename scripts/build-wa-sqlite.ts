@@ -27,7 +27,7 @@ if (
   throw new Error(
     "The wa-sqlite JS API/VFS dependency must match the WASM source revision.",
   );
-const scratch = await mkdtemp(join(tmpdir(), "life-ui-wa-sqlite-"));
+const scratch = await mkdtemp(join(tmpdir(), "iris-wa-sqlite-"));
 try {
   for (const name of ["flake.nix", "flake.lock", "manifest.json"])
     await copyFile(join(vendor, name), join(scratch, name));

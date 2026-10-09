@@ -8,15 +8,15 @@ import { disposableOrigin, workspacePage, synced } from './test-origin';
 // Open the reserved review page in a disposable Chrome first.
 // Shared build hosts can be slow; waits are generous, never fixed sleeps.
 const expect=base.configure({timeout:15000});
-const url=process.env.LIFE_UI_TEST_URL??'http://life-ui-markdown.localhost:5198/workspace?review';
+const url=process.env.IRIS_TEST_URL??'http://iris-markdown.localhost:5198/workspace?review';
 const origin=disposableOrigin(url);
 const source=process.argv[2];
-if(!source)throw Error('Provide the life-data checkout');
+if(!source)throw Error('Provide the soma checkout');
 const {server,db,auth}=await regressionHub(source,origin);
 await installCoreSchemas(db,source,['saved-views','view-defaults']);
 db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('agent-view','Only the second record','widgets',JSON.stringify({version:1,columns:['title','body'],filters:[{column:'title',op:'eq',value:'Second record'}],sort:[{column:'title',direction:'desc'},{column:'quantity',direction:'asc'}],widths:{body:430}}));
 db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('future-view','A newer definition','widgets',JSON.stringify({version:99}));
-const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
+const browser=await chromium.connectOverCDP(process.env.IRIS_TEST_CDP??'http://127.0.0.1:9222');
 let ownedPage: import('@playwright/test').Page | undefined;
 try{
  const page = ownedPage = workspacePage(browser.contexts().flatMap(c => c.pages()), url);
@@ -155,8 +155,8 @@ try{
  await views.selectOption(sampleId);
  await expect(page.getByRole('button',{name:'A place to start',exact:true})).toBeVisible();
  console.log('PASS: the separate sample workspace provisions views locally and retains them across reopen');
- if(process.env.LIFE_UI_TEST_SHOTS)await page.screenshot({path:`${process.env.LIFE_UI_TEST_SHOTS}/saved-views-desktop.png`,fullPage:true});
+ if(process.env.IRIS_TEST_SHOTS)await page.screenshot({path:`${process.env.IRIS_TEST_SHOTS}/saved-views-desktop.png`,fullPage:true});
  await page.setViewportSize({width:390,height:844});await page.emulateMedia({colorScheme:'dark'});
- if(process.env.LIFE_UI_TEST_SHOTS)await page.screenshot({path:`${process.env.LIFE_UI_TEST_SHOTS}/saved-views-mobile.png`,fullPage:true});
+ if(process.env.IRIS_TEST_SHOTS)await page.screenshot({path:`${process.env.IRIS_TEST_SHOTS}/saved-views-mobile.png`,fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 }finally{const page = ownedPage;await page?.evaluate(()=>(window as any).releaseViewWrites?.()).catch(()=>{});await page?.emulateMedia({colorScheme:null}).catch(()=>{});await browser.close();server.stop(true);db.db.close();auth.db.close();}

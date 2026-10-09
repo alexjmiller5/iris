@@ -9,10 +9,10 @@ import {
 } from "./source-navigation-cdp";
 
 const source = process.argv[2];
-if (!source) throw Error("Provide the life-data checkout");
+if (!source) throw Error("Provide the soma checkout");
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-resolve.localhost:5252/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-resolve.localhost:5252/workspace?review";
 const origin = disposableOrigin(url);
 let providerCalls = 0,
   providerFails = false;
@@ -127,10 +127,10 @@ try {
   await cdp.click(resolve);
   await bodyHas("sync and reopen it before resolving");
   expect(providerCalls).toBe(2);
-  if (process.env.LIFE_UI_TEST_SCREENSHOT) {
+  if (process.env.IRIS_TEST_SCREENSHOT) {
     const shot = await cdp.command("Page.captureScreenshot", { format: "png" });
     await Bun.write(
-      process.env.LIFE_UI_TEST_SCREENSHOT,
+      process.env.IRIS_TEST_SCREENSHOT,
       Buffer.from(shot.data, "base64"),
     );
   }

@@ -1,5 +1,5 @@
-import { isChangesetProposal } from 'life-ui-core/client';
-import type { ChangesetProposal, ApproveProposalArgs } from 'life-ui-core/contract';
+import { isChangesetProposal } from 'iris-core/client';
+import type { ChangesetProposal, ApproveProposalArgs } from 'iris-core/contract';
 import { openScopedJournal, type DurableJournal } from './approval-journal';
 export interface ChangesetScope {
 	endpoint: string;
@@ -63,6 +63,6 @@ export function openChangesetJournal(
 			encode: (e) => encodeChangesetApproval(e, boundScope),
 			decode: (r) => decodeChangesetApproval(r, boundScope)
 		},
-		{ databaseName: 'life-ui-changesets', ...options }
+		{ databaseName: 'iris-changesets', ...options }
 	);
 }

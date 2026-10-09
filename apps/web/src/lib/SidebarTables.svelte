@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { IconDatabase, IconPin } from '@tabler/icons-svelte';
-	import type { Row } from 'life-ui-core/client';
+	import type { Row } from 'iris-core/client';
 	let {
 		tables,
 		current,

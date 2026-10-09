@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-// UI-owned serialization stays separate from generated Life Data core resources.
+// UI-owned serialization stays separate from generated Soma core resources.
 const { values } = parseArgs({
   args: process.argv.slice(2),
   options: {
@@ -13,7 +13,7 @@ const { values } = parseArgs({
 const root = resolve(import.meta.dir, "..");
 const output =
   values.output ??
-  resolve(root, "packages/LifeKit/Sources/LifeKit/Resources/record-export.js");
+  resolve(root, "packages/IrisKit/Sources/IrisKit/Resources/record-export.js");
 const result = await Bun.build({
   entrypoints: [resolve(root, "apps/web/src/lib/export/native-entry.ts")],
   target: "browser",

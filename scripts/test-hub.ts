@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 // Real Worker, synthetic SQLite. Explicit source path keeps this optional
 // integration harness usable without a prescribed sibling checkout layout.
 const source=process.argv[2];
-if(!source)throw new Error('Usage: bun scripts/test-hub.ts <life-data-checkout>');
+if(!source)throw new Error('Usage: bun scripts/test-hub.ts <soma-checkout>');
 const {default:worker}=await import(resolve(source,'worker/src/index.js'));
 const {D1Shim}=await import(resolve(source,'worker/test/d1shim.js'));
 const {ensureAuthReady,hashToken}=await import(resolve(source,'worker/src/auth.js'));
@@ -30,8 +30,8 @@ for(const [name,columns] of Object.entries({
 db.db.exec(`INSERT INTO catalog_tables(id,kind,display,purpose) VALUES ('widgets','table','title','Synthetic integration workspace');
 INSERT INTO catalog_properties(id,tbl,col,label,sort,type,required) VALUES ('widgets.title','widgets','title','Title',0,'text',1),('widgets.body','widgets','body','Body',1,'markdown',0),('widgets.quantity','widgets','quantity','Quantity',2,'int',0);
 INSERT INTO widgets(id,title,body,quantity) VALUES ('fixture-record','Fixture record','# From the hub',4);`);
-const port=Number(process.env.LIFE_UI_TEST_HUB_PORT??5200);
+const port=Number(process.env.IRIS_TEST_HUB_PORT??5200);
 const server=Bun.serve({hostname:'127.0.0.1',port,fetch(request){
-  return worker.fetch(request,{DB:db,AUTH_DB:auth,HUB_TOKEN:'operator-fixture',LOGIN_ACCESS_AUD:'fixture-aud',CORS_ORIGINS:process.env.LIFE_UI_TEST_ORIGIN??'http://127.0.0.1:5197'},{access:{aud:'fixture-aud',async getIdentity(){return {email:'owner@example.test'};}},waitUntil(p:Promise<unknown>){void p.catch(()=>{});}});
+  return worker.fetch(request,{DB:db,AUTH_DB:auth,HUB_TOKEN:'operator-fixture',LOGIN_ACCESS_AUD:'fixture-aud',CORS_ORIGINS:process.env.IRIS_TEST_ORIGIN??'http://127.0.0.1:5197'},{access:{aud:'fixture-aud',async getIdentity(){return {email:'owner@example.test'};}},waitUntil(p:Promise<unknown>){void p.catch(()=>{});}});
 }});
 console.log(`Synthetic hub listening at ${server.url}`);

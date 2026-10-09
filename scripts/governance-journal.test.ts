@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-const { decodePendingApproval, encodePendingApproval, openApprovalJournal } = await import(process.env.LIFE_UI_TEST_APPROVAL_JOURNAL || '../apps/web/src/lib/governance/approval-journal') as typeof import('../apps/web/src/lib/governance/approval-journal');
+const { decodePendingApproval, encodePendingApproval, openApprovalJournal } = await import(process.env.IRIS_TEST_APPROVAL_JOURNAL || '../apps/web/src/lib/governance/approval-journal') as typeof import('../apps/web/src/lib/governance/approval-journal');
 import type { PendingApproval } from '../apps/web/src/lib/governance/api';
 
 const scope = { deploymentId: 'deployment-1', sessionId: 'session-1', principalId: 'user-1' };

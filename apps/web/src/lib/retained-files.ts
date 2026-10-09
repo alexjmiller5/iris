@@ -1,4 +1,4 @@
-import { createHttpHub } from 'life-ui-core/client';
+import { createHttpHub } from 'iris-core/client';
 
 export interface RetainedFile {
 	url: string;

@@ -2,7 +2,7 @@
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { focusReturn } from './popover';
 	import { IconX, IconArrowLeft, IconArrowUpRight } from '@tabler/icons-svelte';
-	import type { Property, RemoteRowsPage, RemoteRowResult } from 'life-ui-core/client';
+	import type { Property, RemoteRowsPage, RemoteRowResult } from 'iris-core/client';
 	import MarkdownEditor from './components/MarkdownEditor.svelte';
 	import { createRemoteBrowser } from './remote-browser';
 	let {

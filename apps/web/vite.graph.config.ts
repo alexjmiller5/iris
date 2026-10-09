@@ -44,9 +44,9 @@ export default defineConfig({
 	],
 	build: {
 		target: 'safari17',
-		outDir: path('../../packages/LifeKit/Sources/LifeKit/Resources'),
+		outDir: path('../../packages/IrisKit/Sources/IrisKit/Resources'),
 		emptyOutDir: false,
 		cssCodeSplit: false,
-		lib: { entry: path('./src/graph.ts'), name: 'LifeGraphIsland', formats: ['iife'] }
+		lib: { entry: path('./src/graph.ts'), name: 'IrisGraphIsland', formats: ['iife'] }
 	}
 });

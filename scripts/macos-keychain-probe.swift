@@ -21,7 +21,7 @@ struct KeychainProbe {
   }
 
   static func run() throws {
-    let store = HubCredentialStore(service: "life-ui.release-probe.\(UUID().uuidString)")
+    let store = HubCredentialStore(service: "iris.release-probe.\(UUID().uuidString)")
     defer { try? store.remove() }
     func require(_ condition: Bool, _ stage: String) throws {
       if !condition { throw WorkspaceError(message: "Keychain probe stage: \(stage)", violations: []) }

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Property, ViewPresentation } from 'life-ui-core/client';
+	import type { Property, ViewPresentation } from 'iris-core/client';
 	import {
 		IconCalendar,
 		IconCalendarDue,

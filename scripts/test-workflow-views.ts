@@ -2,8 +2,8 @@ import {chromium,expect} from '@playwright/test';
 import {resolve} from 'node:path';
 import {regressionHub} from './workspace-regression-hub';
 import { disposableOrigin, workspacePage, synced } from './test-origin';
-const url=process.env.LIFE_UI_TEST_URL??'http://life-ui-markdown.localhost:5252/workspace?review';
-const source=process.argv[2];if(!source)throw Error('Provide the Life Data source checkout');
+const url=process.env.IRIS_TEST_URL??'http://iris-markdown.localhost:5252/workspace?review';
+const source=process.argv[2];if(!source)throw Error('Provide the Soma source checkout');
 const {server,db,auth}=await regressionHub(source,disposableOrigin(url));
 const schema=await Bun.file(resolve(source,'core/schema/saved-views.json')).json();
 for(const ddl of ['ALTER TABLE catalog_properties ADD COLUMN source TEXT','ALTER TABLE catalog_properties ADD COLUMN source_ref TEXT','ALTER TABLE widgets ADD COLUMN due TEXT',...schema.ddl]){
@@ -18,7 +18,7 @@ db.db.exec(`INSERT INTO catalog_properties(id,tbl,col,type,label) VALUES ('widge
 const actions=[{id:'review',label:'Mark reviewed',values:{status:'Reviewed'}},{id:'problem',label:'Flag problem',values:{status:'Problem'}},{id:'retry',label:'Try again',values:{status:'Pending'}},{id:'test',label:'Test capture',values:{status:'Reviewed'}},{id:'dismiss',label:'Dismiss capture',values:{status:'Reviewed'}}];
 const definition={version:2,columns:['title','status','due'],filters:[{column:'due',op:'lte',relative:'today'}],groups:[{match:'any',filters:[{column:'status',op:'eq',value:'Open'},{column:'status',op:'eq',value:'Pending'}]}],timeZone:'America/New_York',sort:[{column:'status',direction:'desc',mode:'options'},{column:'title',direction:'asc'}],actions,layout:[{kind:'column',id:'title'},...actions.map(a=>({kind:'action',id:a.id})),{kind:'column',id:'status'},{kind:'column',id:'due'}]};
 db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('workflow','Daily queue','widgets',JSON.stringify(definition));
-const browser=await chromium.connectOverCDP(process.env.LIFE_UI_TEST_CDP??'http://127.0.0.1:9222');
+const browser=await chromium.connectOverCDP(process.env.IRIS_TEST_CDP??'http://127.0.0.1:9222');
 const page=workspacePage(browser.contexts().flatMap(c=>c.pages()),url);if(!page)throw Error('Open the reserved fixture page');
 try{
  page.setDefaultTimeout(10000);await page.setViewportSize({width:1440,height:1000});
@@ -33,7 +33,7 @@ try{
  await expect(page.locator('.record-link')).toHaveText(['Fixture record']);
  // The first header is the row-selection checkbox.
  await expect(page.getByRole('columnheader')).toHaveText(['','Title',...actions.map(a=>a.label),'Status','Due']);
- if(process.env.LIFE_UI_TEST_SCREENSHOT)await page.screenshot({path:process.env.LIFE_UI_TEST_SCREENSHOT,fullPage:true});
+ if(process.env.IRIS_TEST_SCREENSHOT)await page.screenshot({path:process.env.IRIS_TEST_SCREENSHOT,fullPage:true});
  await page.clock.runFor(11000);
  await expect(page.locator('.record-link')).toHaveText(['Second record','Fixture record']);
  console.log('PASS: OR filters exclude undated rows and Today refreshes across local midnight');

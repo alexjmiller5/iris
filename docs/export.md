@@ -41,14 +41,14 @@ The snapshot supplies:
   history; an empty list and successful sync certify neither coverage nor
   freshness. The first adapter is local only.
 
-A future complete-table acquisition belongs to Life Data and must hold catalog,
+A future complete-table acquisition belongs to Soma and must hold catalog,
 rows and bounded full enumeration under one local read snapshot. Exhausting
 pagination on a changing hub cannot certify it. This module has no SQL, hub,
 restore or backup API.
 
 ## Files
 
-Version 1 JSON includes `format: 'life-ui-records'`, `version: 1`, `table`,
+Version 1 JSON includes `format: 'iris-records'`, `version: 1`, `table`,
 `properties`, `rows`, `scope: { kind, rowCount }`, `completeness`, and
 `acquisition`. Object keys are sorted; arrays retain supplied order. Filenames
 use a safe table stem, scope and completeness. Capture time comes from the
@@ -81,7 +81,7 @@ retained across navigation:
 
 ```sh
 bun run --cwd apps/web dev --port 5256 --strictPort
-# Open an owned tab at http://life-ui-export.localhost:5256/workspace?review
+# Open an owned tab at http://iris-export.localhost:5256/workspace?review
 bun scripts/test-export.ts
 ```
 

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { IconPin, IconPinnedOff, IconChevronUp, IconChevronDown } from '@tabler/icons-svelte';
-	import type { SidebarPin } from 'life-ui-core/client';
+	import type { SidebarPin } from 'iris-core/client';
 	let {
 		pins,
 		current,

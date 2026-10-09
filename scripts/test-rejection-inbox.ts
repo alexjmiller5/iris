@@ -3,14 +3,14 @@ import { disposableOrigin, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 
 const url =
-  process.env.LIFE_UI_TEST_URL ??
-  "http://life-ui-rejections.localhost:5238/workspace?review";
+  process.env.IRIS_TEST_URL ??
+  "http://iris-rejections.localhost:5238/workspace?review";
 const origin = disposableOrigin(url);
 const source = process.argv[2];
-if (!source) throw Error("Provide the life-data checkout");
+if (!source) throw Error("Provide the soma checkout");
 const fixture = await regressionHub(source, origin);
 const browser = await chromium.connectOverCDP(
-  process.env.LIFE_UI_TEST_CDP ?? "http://127.0.0.1:9222",
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
   { timeout: 30000 },
 );
 const page = workspacePage(

@@ -6,9 +6,9 @@ const scratchArgument = process.argv[2];
 if (!scratchArgument) throw Error('Provide a dedicated SwiftPM scratch/cache root.');
 const scratch = resolve(scratchArgument);
 const root = resolve(import.meta.dir, '..');
-const model = 'packages/LifeKit/Sources/LifeKit/IncomingReferencesModel.swift';
-const host = 'packages/LifeKit/Sources/LifeKit/WorkspaceModel.swift';
-const bridge = 'packages/LifeKit/Sources/LifeKit/NativeWorkspace.swift';
+const model = 'packages/IrisKit/Sources/IrisKit/IncomingReferencesModel.swift';
+const host = 'packages/IrisKit/Sources/IrisKit/WorkspaceModel.swift';
+const bridge = 'packages/IrisKit/Sources/IrisKit/NativeWorkspace.swift';
 const mutations = [
   ['wrong-target', bridge, 'CoreRequests.ReferenceSources(args)', 'CoreRequests.ReferenceSources(CoreReferenceSourcesArgs(table: "notes"))'],
   ['wrong-page-size', model, 'limit: 20, offset:', 'limit: 1, offset:'],
@@ -34,7 +34,7 @@ const originals = new Map(await Promise.all(
   [...new Set(mutations.map(([, path]) => path))].map(async path => [path, await Bun.file(resolve(root, path)).text()] as const)
 ));
 mkdirSync(resolve(scratch, 'mutations'), { recursive: true });
-const command = ['swift', 'test', '--package-path', 'packages/LifeKit',
+const command = ['swift', 'test', '--package-path', 'packages/IrisKit',
   '--scratch-path', resolve(scratch, 'build'), '--cache-path', resolve(scratch, 'cache'),
   '--config-path', resolve(scratch, 'config'), '--security-path', resolve(scratch, 'security'),
   '--manifest-cache', 'local', '--jobs', '4', '--filter', 'IncomingReferences'];

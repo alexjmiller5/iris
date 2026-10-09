@@ -1,6 +1,6 @@
 # Native link identity contract
 
-The codec carries an existing `NativeDestination` in a versioned `life://open/v1`
+The codec carries an existing `NativeDestination` in a versioned `iris://open/v1`
 URL. The query has exactly one workspace selector, `replica` or `local`, a required
 `table`, optional `view` and `row` identifiers, and optional `state` query JSON. Identifiers remain byte-exact
 UTF-8 values, including literal plus and percent characters. Unknown parameters,
@@ -68,7 +68,7 @@ the file stamp on opening. `C617.1` covers app-container files; macOS additional
 declares `3B52.1` for databases explicitly chosen in its file picker, following
 [Apple's approved reasons](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype).
 
-Both apps register the `life` URL scheme. `WorkspaceView` receives incoming URLs
+Both apps register the `soma` URL scheme. `WorkspaceView` receives incoming URLs
 with `onOpenURL` and only retains them in `PendingNativeLink`; a banner offers an
 explicit Open and Dismiss, and receipt never navigates, enrolls, opens or switches
 a workspace. Open is disabled while any editor, sheet, handoff or navigation is

@@ -5,7 +5,7 @@ final class CatalogEditorUITests: XCTestCase {
   func testCatalogEditRetainsInvalidDraftAndRefreshesRecordMetadata() throws {
     continueAfterFailure = false
     try XCTSkipUnless(
-      ProcessInfo.processInfo.environment["LIFE_UI_TEST_CATALOG_CLEAN_HOST"] == "1",
+      ProcessInfo.processInfo.environment["IRIS_TEST_CATALOG_CLEAN_HOST"] == "1",
       "Use the allocated clean CI host.")
     let app = XCUIApplication()
     // The sample is a separate memory-backed workspace and skips resumeConnection.

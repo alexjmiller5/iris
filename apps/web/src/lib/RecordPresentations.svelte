@@ -6,7 +6,7 @@
 		type Row,
 		type Property,
 		type ViewPresentation
-	} from 'life-ui-core/client';
+	} from 'iris-core/client';
 	import { calendarMonth } from './calendar-month';
 	import { calendarContext } from './calendar-context';
 	import RecordCover from './RecordCover.svelte';
