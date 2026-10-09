@@ -20,6 +20,10 @@ import WebKit
       config.websiteDataStore = .nonPersistent()
       config.userContentController.add(self, name: "editor")
       let view = WKWebView(frame: .zero, configuration: config)
+      #if os(macOS)
+        // The Mac has no Dynamic Type for this content; pinch zoom enlarges the text.
+        view.allowsMagnification = true
+      #endif
       self.view = view
       view.navigationDelegate = self
       session.snapshot = { [weak self] lock in
