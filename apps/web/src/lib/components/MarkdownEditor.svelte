@@ -102,7 +102,11 @@
 		try {
 			let results: LinkTarget[];
 			if (current.kind === 'view') {
-				pickerViews ??= (await links.views()).map(({ table, id, name }) => ({ table, id, label: name }));
+				pickerViews ??= (await links.views()).map(({ table, id, name }) => ({
+					table,
+					id,
+					label: name
+				}));
 				results = pickerViews.filter(
 					(view) => !query || `${view.label} ${words(view.table)}`.toLowerCase().includes(query)
 				);

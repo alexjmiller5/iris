@@ -3,8 +3,15 @@ import { $nodeSchema } from '@milkdown/kit/utils';
 import { parseIrisHref } from 'iris-core/client';
 import { cellText, type EditorLinks } from './editor-links';
 
-type MdastNode = { type: string; url?: string; title?: string | null; value?: string; children?: MdastNode[] };
-const plainText = (node: MdastNode): string => node.value ?? (node.children ?? []).map(plainText).join('');
+type MdastNode = {
+	type: string;
+	url?: string;
+	title?: string | null;
+	value?: string;
+	children?: MdastNode[];
+};
+const plainText = (node: MdastNode): string =>
+	node.value ?? (node.children ?? []).map(plainText).join('');
 
 /** Mentions and view embeds: an atom that is still a plain `[label](iris://...)`
  * link in Markdown. Milkdown matches nodes before marks, so only iris links leave
@@ -85,7 +92,8 @@ export function irisLinkView(
 		links?.label(link.table, link.id).then(
 			(result) => {
 				if (stopped) return;
-				mention.dataset.state = result.label === null ? 'unavailable' : result.trashed ? 'trashed' : 'live';
+				mention.dataset.state =
+					result.label === null ? 'unavailable' : result.trashed ? 'trashed' : 'live';
 				mention.textContent =
 					result.label === null
 						? `${stored} (unavailable)`
@@ -129,12 +137,15 @@ export function irisLinkView(
 						tr.appendChild(element('td', '', cellText(row.record[column.column], column.type)));
 				}
 				body.replaceChildren(
-					...(embed.rows.length ? [table] : [element('span', 'iris-embed-note', 'No rows match this view.')]),
+					...(embed.rows.length
+						? [table]
+						: [element('span', 'iris-embed-note', 'No rows match this view.')]),
 					...(embed.more ? [element('span', 'iris-embed-note', 'More rows in the view')] : [])
 				);
 			},
 			(error) => {
-				if (!stopped) body.textContent = error instanceof Error ? error.message : 'The view could not load.';
+				if (!stopped)
+					body.textContent = error instanceof Error ? error.message : 'The view could not load.';
 			}
 		);
 	}

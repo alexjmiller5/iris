@@ -2,8 +2,9 @@ import CryptoKit
 import Foundation
 import Observation
 import os
+
 #if canImport(WidgetKit)
-import WidgetKit
+  import WidgetKit
 #endif
 
 struct WorkspaceEditingContext {
@@ -71,7 +72,8 @@ final class WorkspaceModel {
     guard widgets == nil else { return }
     guard let client, let widgetLibrary, let file = widgetWorkspaceURL else {
       if createIdentity {
-        throw WorkspaceError(message: "Open a saved workspace in an app with widget support.", violations: [])
+        throw WorkspaceError(
+          message: "Open a saved workspace in an app with widget support.", violations: [])
       }
       return
     }
@@ -102,7 +104,7 @@ final class WorkspaceModel {
       replicaID: replica.uuidString.lowercased(), preferencesURL: preferences, binding: binding,
       didChange: {
         #if canImport(WidgetKit)
-        WidgetCenter.shared.reloadAllTimelines()
+          WidgetCenter.shared.reloadAllTimelines()
         #endif
       })
     #if os(iOS)
@@ -1126,7 +1128,8 @@ final class WorkspaceModel {
   @discardableResult
   func addFilter(column: String) -> UUID {
     let type = viewFields.first { $0.id == column }?.type ?? "text"
-    let filter = WorkspaceFilter(column: column, operation: WorkspaceFilter.operations(for: type)[0])
+    let filter = WorkspaceFilter(
+      column: column, operation: WorkspaceFilter.operations(for: type)[0])
     filters.append(filter)
     return filter.id
   }
@@ -1579,7 +1582,9 @@ final class WorkspaceModel {
         } catch { linkError = error.localizedDescription }
       }
       configureRecents(store: recentStore)
-      do { try configureWidgets(createIdentity: false) } catch { linkError = error.localizedDescription }
+      do { try configureWidgets(createIdentity: false) } catch {
+        linkError = error.localizedDescription
+      }
       location =
         demo
         ? "Sample workspace · temporary"
@@ -2037,7 +2042,9 @@ final class WorkspaceModel {
     linkBinding = .replica(canonicalEndpoint: hub.endpoint)
     widgetWorkspaceURL = path
     openedExternalFile = false
-    do { try configureWidgets(createIdentity: false) } catch { linkError = error.localizedDescription }
+    do { try configureWidgets(createIdentity: false) } catch {
+      linkError = error.localizedDescription
+    }
     configureRecents(store: NativeRecentsStore(root: root, workspace: path))
     catalog = nextCatalog
     groups = nextGroups

@@ -1216,7 +1216,11 @@ public struct WorkspaceView: View {
   /// The one sync status: rejected edits open the inbox, everything else the details.
   private var statusPill: some View {
     SyncStatusPill(pill: model.syncPill) {
-      if model.syncPill.kind == .rejected && canFind { showRejections() } else { showingStatus = true }
+      if model.syncPill.kind == .rejected && canFind {
+        showRejections()
+      } else {
+        showingStatus = true
+      }
     }
   }
 
@@ -1677,7 +1681,9 @@ private struct RecordEditor: View {
               .accessibilityIdentifier("open-page-capture")
             } label: {
               // A two-line menu label clips at accessibility sizes; one word fits.
-              Label(textSize.isAccessibilitySize ? "Actions" : "Record actions", systemImage: "ellipsis")
+              Label(
+                textSize.isAccessibilitySize ? "Actions" : "Record actions", systemImage: "ellipsis"
+              )
             }
             .accessibilityLabel("Record actions")
             // Sized on the menu, not its label, so large text wraps instead of clipping.

@@ -309,7 +309,8 @@ public final class NativeWorkspace {
           return NSNull()
         }
         let restoring = self.active?.method == "restoreReplica" && self.backupOpens > 1
-        self.reportBackup(restoring ? "Restoring" : "Checking backup", reader.readBytes, reader.totalBytes)
+        self.reportBackup(
+          restoring ? "Restoring" : "Checking backup", reader.readBytes, reader.totalBytes)
         return text
       } catch {
         self.dumpReaders[id] = nil
@@ -331,7 +332,9 @@ public final class NativeWorkspace {
       return -1
     }
     let write: @convention(block) (Int, String) -> Void = { [weak self] id, text in
-      guard let self, let writer = self.dumpWriters[id] else { return fail("The backup file is closed.") }
+      guard let self, let writer = self.dumpWriters[id] else {
+        return fail("The backup file is closed.")
+      }
       do {
         try writer.write(text)
         let phase = self.active?.method == "restoreReplica" ? "Saving recovery copy" : "Exporting"

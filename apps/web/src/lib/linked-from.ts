@@ -42,7 +42,10 @@ export function createLinkedFrom(readPage: (offset: number) => Promise<Mentioned
 				});
 			} catch (e) {
 				if (!disposed && version === generation)
-					update({ loading: false, error: e instanceof Error ? e.message : 'Links could not be loaded.' });
+					update({
+						loading: false,
+						error: e instanceof Error ? e.message : 'Links could not be loaded.'
+					});
 			}
 		},
 		dispose() {

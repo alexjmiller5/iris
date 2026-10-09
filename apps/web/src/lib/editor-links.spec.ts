@@ -1,5 +1,11 @@
 import { expect, test, vi } from 'vitest';
-import { cellText, createEditorLinks, singular, slashMatches, type LinkRequest } from './editor-links';
+import {
+	cellText,
+	createEditorLinks,
+	singular,
+	slashMatches,
+	type LinkRequest
+} from './editor-links';
 
 test('table commands use generic English singulars of the table ID', () => {
 	expect(
@@ -69,7 +75,9 @@ test('record search keeps only mentionable tables and never sends empty text', a
 	});
 	expect(await links.search(undefined, '  ')).toEqual([]);
 	expect(calls).toEqual([]);
-	expect(await links.search(undefined, 'ada')).toEqual([{ table: 'people', id: 'p1', label: 'Ada' }]);
+	expect(await links.search(undefined, 'ada')).toEqual([
+		{ table: 'people', id: 'p1', label: 'Ada' }
+	]);
 	await links.search('people', 'ada');
 	expect(calls.filter(([op]) => op === 'search').map(([, args]) => args)).toEqual([
 		{ text: 'ada', limit: 20 },
@@ -80,7 +88,11 @@ test('record search keeps only mentionable tables and never sends empty text', a
 test('labels requested together resolve in one core request', async () => {
 	const { links, calls } = host({
 		mentionLabels: ({ targets }: { targets: { table: string; id: string }[] }) =>
-			targets.map((t) => ({ ...t, label: t.id === 'gone' ? null : `Label ${t.id}`, trashed: false }))
+			targets.map((t) => ({
+				...t,
+				label: t.id === 'gone' ? null : `Label ${t.id}`,
+				trashed: false
+			}))
 	});
 	const [a, b] = await Promise.all([links.label('people', 'p1'), links.label('people', 'gone')]);
 	expect(a.label).toBe('Label p1');
@@ -102,7 +114,13 @@ test('relative embeds repeat the read with the host calendar for the view policy
 	const embed = vi.fn((args: any) =>
 		args.calendar
 			? { name: 'Due', columns: [], rows: [], more: false }
-			: { name: 'Due', columns: [], rows: [], more: false, calendar: { timeZone: 'UTC', dayStartMinutes: 0 } }
+			: {
+					name: 'Due',
+					columns: [],
+					rows: [],
+					more: false,
+					calendar: { timeZone: 'UTC', dayStartMinutes: 0 }
+				}
 	);
 	const { links } = host({ viewEmbed: embed });
 	expect((await links.embed('items', 'v1')).name).toBe('Due');

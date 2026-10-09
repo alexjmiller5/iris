@@ -323,8 +323,15 @@ export async function createMarkdownEditor(
 			if (readOnly || destroyed || !link) return false;
 			return editor.action((ctx) => {
 				const view = ctx.get(editorViewCtx);
-				let tr = view.state.tr.replaceSelectionWith(irisLinkSchema.type(ctx).create({ href, label }), false);
-				if (link.kind === 'view' && tr.selection.$to.depth === 1 && tr.selection.$to.after() === tr.doc.content.size) {
+				let tr = view.state.tr.replaceSelectionWith(
+					irisLinkSchema.type(ctx).create({ href, label }),
+					false
+				);
+				if (
+					link.kind === 'view' &&
+					tr.selection.$to.depth === 1 &&
+					tr.selection.$to.after() === tr.doc.content.size
+				) {
 					// An embed sits on its own line; leave somewhere to keep typing.
 					const after = tr.selection.$to.after();
 					tr = tr.insert(after, view.state.schema.nodes.paragraph.create());

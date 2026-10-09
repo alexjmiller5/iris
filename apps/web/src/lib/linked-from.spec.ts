@@ -30,7 +30,8 @@ test('backlinks page forward, deduplicate and refresh from the first page', asyn
 });
 
 test('late replies from a superseded or disposed load never replace newer state', async () => {
-	const first = deferred<any>(), second = deferred<any>();
+	const first = deferred<any>(),
+		second = deferred<any>();
 	const replies = [first.promise, second.promise];
 	const model = createLinkedFrom(() => replies.shift()!);
 	const older = model.load();

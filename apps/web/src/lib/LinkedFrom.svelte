@@ -38,8 +38,10 @@
 			Local links may be incomplete. Some tables are not fully downloaded.
 		</p>{/if}
 	{#if $model.error}<p role="alert">{$model.error}</p>
-		<button type="button" disabled={$model.loading} onclick={() => model.load($model.rows.length > 0)}
-			>Retry</button
+		<button
+			type="button"
+			disabled={$model.loading}
+			onclick={() => model.load($model.rows.length > 0)}>Retry</button
 		>{/if}
 	{#if $model.loading && !$model.rows.length}<p role="status">Loading links…</p>
 	{:else if $model.loaded && !$model.rows.length && !$model.error}<p>

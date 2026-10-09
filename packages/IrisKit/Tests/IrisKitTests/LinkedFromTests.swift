@@ -50,8 +50,10 @@ struct LinkedFromTests {
       offsets.append(args.offset ?? 0)
       #expect(args.table == "topics" && args.rowId == "t" && args.limit == 20)
       return args.offset == 20
-        ? CoreMentionedByPage(rows: [Self.row("b"), Self.row("c")], nextOffset: nil, incomplete: true)
-        : CoreMentionedByPage(rows: [Self.row("a"), Self.row("b")], nextOffset: 20, incomplete: false)
+        ? CoreMentionedByPage(
+          rows: [Self.row("b"), Self.row("c")], nextOffset: nil, incomplete: true)
+        : CoreMentionedByPage(
+          rows: [Self.row("a"), Self.row("b")], nextOffset: 20, incomplete: false)
     }
     await model.load()
     await model.load(more: true)

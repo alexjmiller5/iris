@@ -327,7 +327,9 @@ test('missing or trashed mention targets keep the stored text and say why', asyn
 	expect(element.querySelector('.iris-mention')!.textContent).toBe('Ada (unavailable)');
 	const trashed = await openLinked(`[Ada](${mentionHref})`, linkHost('Ada Lovelace', true));
 	await vi.waitFor(() =>
-		expect(trashed.element.querySelectorAll('.iris-mention')[0].textContent).toBe('Ada Lovelace (in trash)')
+		expect(trashed.element.querySelectorAll('.iris-mention')[0].textContent).toBe(
+			'Ada Lovelace (in trash)'
+		)
 	);
 });
 
