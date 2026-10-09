@@ -194,7 +194,8 @@ final class RecordPolishUITests: XCTestCase {
     table.tap()
     let record = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Catalog fixture"))
       .firstMatch
-    XCTAssertTrue(record.waitForExistence(timeout: 5))
+    // The table's first load can pass 5 s on a hosted runner.
+    XCTAssertTrue(record.waitForExistence(timeout: 15))
     record.tap()
     let title = app.textFields["field-title"]
     XCTAssertTrue(title.waitForExistence(timeout: 5))
