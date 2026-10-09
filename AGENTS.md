@@ -596,6 +596,10 @@ Incoming row deduplication and SwiftUI row identity use `byteExactID` (UTF-8
 bytes), since Swift String equality merges some distinct SQLite record IDs.
 Keep the original String ID for requests and navigation.
 Native saved-record editors mount incoming references as a separate child section.
+`LinkedFromView` (core `mentionedBy`) follows it with its own `.id`: the Mac grouped
+form reuses rows by identity, so sibling sections must never share one. The island's
+`core` messages reach only `NativeWorkspace.editorRead`'s allowlist; a view link's
+Open view closes the editor and then runs the ordinary `openDestination`.
 Disposal invalidates pending reads without changing rendered section state during
 Form layout or sheet dismissal. Reappearance replaces the disposed model, and
 expanded groups reload against that replacement. Never attach panel identity to
