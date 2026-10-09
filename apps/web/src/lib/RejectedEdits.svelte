@@ -25,8 +25,14 @@
 
 {#if $model.total || $model.error}
 	<details class="rejections" id="rejected-edits">
-		<summary>{$model.total} rejected edits need attention</summary>
-		<p role="status">Showing {$model.entries.length} of {$model.total} rejected edits</p>
+		<summary>
+			{$model.total} rejected {$model.total === 1 ? 'edit needs' : 'edits need'} attention
+		</summary>
+		<p role="status">
+			Showing {$model.entries.length} of {$model.total} rejected {$model.total === 1
+				? 'edit'
+				: 'edits'}
+		</p>
 		{#each $model.entries as entry (JSON.stringify([entry.table, entry.rowID]))}
 			<article>
 				<p>

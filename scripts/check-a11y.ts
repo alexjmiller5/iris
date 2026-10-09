@@ -429,6 +429,7 @@ async function hubWalk(page: Page, scheme: string) {
     await page.keyboard.press("Enter");
     const review = role("button", "Review rejected edit");
     await review.waitFor();
+    await page.locator("summary", { hasText: /(^|\s)1 rejected edit needs attention/ }).waitFor();
     await audit("rejected-edits");
     await tabTo(review);
     await page.keyboard.press("Enter");

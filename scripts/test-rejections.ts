@@ -26,8 +26,8 @@ try{
   await expect(page.getByRole('button',{name:'Save record',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Close record',exact:true}).click();
   await pattern('Allowed');
-  await expect(page.getByText(/rejected edits need attention/)).toBeVisible({ timeout: 15000 });
-  await page.getByText(/rejected edits need attention/).click();
+  await expect(page.getByText(/rejected edits? needs? attention/)).toBeVisible({ timeout: 15000 });
+  await page.getByText(/rejected edits? needs? attention/).click();
   await expect(page.locator('.rejections')).toContainText('not in the expected form');
   await page.getByRole('button',{name:'Review rejected edit',exact:true}).first().click();
   await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Rejected draft');

@@ -151,6 +151,11 @@ final class BackupUITests: XCTestCase {
         element.tap()
         return
       }
+      // A toolbar control can report not hittable while it is visibly enabled.
+      if element.exists, element.isEnabled, element.frame.minY < 140, Date() > deadline.addingTimeInterval(-15) {
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        return
+      }
       // Form rows below the fold are not in the hierarchy until scrolled to.
       if element.exists || Date() > deadline.addingTimeInterval(-15) { app.swipeUp() }
       RunLoop.current.run(until: Date().addingTimeInterval(0.3))

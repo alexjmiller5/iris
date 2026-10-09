@@ -492,6 +492,6 @@ struct BackupView: View {
   }
 
   private static func count(_ table: CoreBackupTableSummary?) -> String {
-    table.map { "\($0.rows) rows (\($0.liveRows) live)" } ?? "-"
+    table.map { "\($0.rows) \($0.rows == 1 ? "row" : "rows") (\($0.liveRows) live)" } ?? "-"
   }
 }

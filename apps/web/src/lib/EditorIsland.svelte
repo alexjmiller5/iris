@@ -52,22 +52,23 @@
 	:global(body:has(.native-editor)) {
 		background: var(--color-paper);
 	}
-	/* On iPhone the editor's rem sizes follow the reader's Dynamic Type body size,
-	   which WebKit tracks live; the Mac keeps the 16px base. */
+	/* On iPhone the document text follows the reader's Dynamic Type body size, which
+	   WebKit tracks live; spacing keeps its rem scale, and headings stay a step above
+	   the body so words still fit at accessibility sizes. The Mac keeps the web sizes. */
 	@media (pointer: coarse) {
-		:global(html:has(.native-editor)) {
+		.native-editor :global(div.rich-document .ProseMirror) {
 			font: -apple-system-body;
+			font-family: var(--font-sans);
+			line-height: 1.6;
 		}
-		/* Headings stay a step above the body instead of multiplying it, so words
-		   still fit a phone's width at accessibility sizes. */
 		.native-editor :global(.rich-document h1) {
-			font-size: min(1.8rem, 1rem + 12px);
+			font-size: min(1.8em, 1em + 12px);
 		}
 		.native-editor :global(.rich-document h2) {
-			font-size: min(1.4rem, 1rem + 8px);
+			font-size: min(1.4em, 1em + 8px);
 		}
 		.native-editor :global(.rich-document h3) {
-			font-size: min(1.15rem, 1rem + 4px);
+			font-size: min(1.15em, 1em + 4px);
 		}
 	}
 	.native-editor :global(.markdown-editor) {
