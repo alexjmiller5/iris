@@ -21,6 +21,10 @@ struct HubConnectionView: View {
   var body: some View {
     NavigationStack {
       Form {
+        // Connect runs the first download; show where it stands above the fold.
+        if connecting, model.syncing, let progress = model.syncProgress {
+          Section("Downloading") { SyncProgressRows(progress: progress) }
+        }
         if renamed {
           Section {
             Text(
@@ -112,9 +116,6 @@ struct HubConnectionView: View {
             )
             .font(.caption).foregroundStyle(.secondary)
           }
-        }
-        if connecting, model.syncing, let progress = model.syncProgress {
-          Section("Downloading") { SyncProgressRows(progress: progress) }
         }
         if let failure { Text(failure).foregroundStyle(.red).textSelection(.enabled) }
       }
