@@ -87,6 +87,7 @@ private struct QuickFindQuery: View {
         }
       Text("Search only records stored on this device.")
         .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       if incomplete {
         Text("Some hub tables were skipped during sync and may be incomplete here.")
           .font(.caption).foregroundStyle(.secondary)
@@ -115,7 +116,8 @@ private struct QuickFindResults: View {
           Button {
             Task { await model.activate(entry.id, commit: onOpen) }
           } label: {
-            QuickFindEntryRow(entry: entry, opening: model.opening == entry.id)
+            QuickFindEntryRow(
+              entry: entry, opening: model.opening == entry.id, selected: model.selection == entry.id)
           }
           .buttonStyle(.plain)
           .disabled(entry.unavailable != nil || model.opening != nil)
@@ -145,6 +147,8 @@ private struct QuickFindResults: View {
 private struct QuickFindEntryRow: View {
   let entry: QuickFindCoordinator.Entry
   let opening: Bool
+  /// Secondary text loses contrast on the tinted selection, so it turns primary there.
+  let selected: Bool
 
   var body: some View {
     HStack(alignment: .top) {
@@ -168,9 +172,10 @@ private struct QuickFindEntryRow: View {
               .accessibilityHint(status.help ?? "")
               .accessibilityIdentifier("quick-find-status")
           }
-        }.font(.caption).foregroundStyle(.secondary)
+        }.font(.caption).foregroundStyle(selected ? .primary : .secondary)
         if !entry.excerpt.isEmpty {
-          Text(entry.excerpt).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+          Text(entry.excerpt).font(.callout).foregroundStyle(selected ? .primary : .secondary)
+            .lineLimit(3)
         }
         if let reason = entry.unavailable {
           Text(reason).font(.callout).foregroundStyle(.secondary)

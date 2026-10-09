@@ -87,7 +87,7 @@
 				aria-labelledby={`${uid}-title`}
 			>
 				<title id={`${uid}-title`}>Catalog tables and reference relationships</title>
-				<defs
+				<defs aria-hidden="true"
 					><marker
 						id={`${uid}-arrow`}
 						viewBox="0 0 10 10"
@@ -100,6 +100,7 @@
 				>
 				{#each graph.groups as group (group.id)}
 					<rect
+						aria-hidden="true"
 						class="band"
 						x="1"
 						y={group.y + 1}
@@ -117,6 +118,7 @@
 								: ''}</title
 						>
 						<path
+							aria-hidden="true"
 							d={edge.path}
 							stroke-dasharray={edge.many ? '5 4' : undefined}
 							marker-end={`url(#${uid}-arrow)`}

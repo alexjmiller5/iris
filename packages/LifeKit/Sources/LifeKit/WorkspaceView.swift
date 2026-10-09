@@ -1657,9 +1657,11 @@ private struct RecordEditor: View {
               .accessibilityIdentifier("open-page-capture")
             } label: {
               Label("Record actions", systemImage: "ellipsis")
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }.accessibilityIdentifier("record-menu")
+            }
+            // Sized on the menu, not its label, so large text wraps instead of clipping.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .accessibilityIdentifier("record-menu")
           }
           if linkWaiting {
             Section {
@@ -1913,6 +1915,7 @@ private struct RecordEditor: View {
           if !editor.isNew {
             ToolbarItem(placement: .principal) {
               Text(recordHeading).font(.headline).lineLimit(1)
+                .accessibilityShowsLargeContentViewer()
                 .accessibilityIdentifier("record-heading")
             }
           }

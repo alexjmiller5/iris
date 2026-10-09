@@ -215,8 +215,11 @@ struct RecoveryCopy: Identifiable, Equatable {
   func previewHub(_ backup: CoreHubBackup) async {
     guard let transport = workspace.imageTransport else { return }
     _ = await run("Downloading") {
-      let download = try folder("staging").appendingPathComponent("hub-download.sql.gz")
+      // Outside staging: staging is cleared before the copy it receives.
+      let download = try folder("exports").appendingPathComponent(
+        backup.key.split(separator: "/").last.map(String.init) ?? "backup.sql.gz")
       try await transport.downloadBackup(backup, to: download)
+      defer { try? FileManager.default.removeItem(at: download) }
       try await stage("Hub backup \(Self.date(backup.takenAt))", copying: download)
     }
   }

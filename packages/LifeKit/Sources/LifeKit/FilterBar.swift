@@ -14,6 +14,7 @@ struct FilterBar: View {
   let disabled: Bool
   @State private var adding = false
   @State private var sorting = false
+  @Environment(\.dynamicTypeSize) private var textSize
 
   private var fields: [CatalogField] { model.viewFields }
   /// Flag quick filters that are off; an applied one shows as its ordinary chip.
@@ -23,7 +24,11 @@ struct FilterBar: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 6) {
+      // Accessibility text sizes stack Filter and Sort instead of breaking their words.
+      let header =
+        textSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 6))
+      header {
         Button {
           adding = true
         } label: {
@@ -45,7 +50,6 @@ struct FilterBar: View {
         .popover(isPresented: $sorting, arrowEdge: .top) {
           SortMenu(model: model).compactPopover()
         }
-        Spacer(minLength: 0)
       }
       .buttonStyle(.bordered)
       .controlSize(.small)

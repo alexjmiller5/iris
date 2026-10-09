@@ -22,7 +22,7 @@ struct SortMenu: View {
               model.setSorts(next)
             }
             if sorts.isEmpty {
-              Text("Records keep their default order.").foregroundStyle(.secondary)
+              Text("Records keep their default order.")
             }
           } footer: {
             if sorts.count > 1 { Text("Drag rules to change their priority.") }

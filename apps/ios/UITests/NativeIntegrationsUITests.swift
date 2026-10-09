@@ -235,14 +235,21 @@ import XCTest
       NSPredicate(format: "label CONTAINS 'Life UI' OR label CONTAINS 'Records'")).firstMatch
     require(placed, in: poster, 15)
     placed.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-    let source = poster.descendants(matching: .any).matching(
-      NSPredicate(format: "label CONTAINS 'Table or saved view' OR label == 'Choose'")).firstMatch
-    if source.waitForExistence(timeout: 10) {
-      source.tap()
-      let notes = poster.descendants(matching: .any).matching(NSPredicate(format: "label == 'notes'"))
-        .firstMatch
-      require(notes, in: poster, 10)
-      notes.tap()
+    // The configuration list opens directly on current releases, or behind a Choose row.
+    let notesQuery = NSPredicate(format: "label == 'notes'")
+    let notesHere = poster.descendants(matching: .any).matching(notesQuery).firstMatch
+    let notesThere = springboard.descendants(matching: .any).matching(notesQuery).firstMatch
+    if !notesHere.waitForExistence(timeout: 5) && !notesThere.exists {
+      let choose = poster.descendants(matching: .any).matching(
+        NSPredicate(format: "label CONTAINS 'Table or saved view' OR label == 'Choose'")).firstMatch
+      if choose.waitForExistence(timeout: 5) { choose.tap() }
+    }
+    let notes = notesHere.waitForExistence(timeout: 5) ? notesHere : notesThere
+    require(notes, in: notesHere.exists ? poster : springboard, 10)
+    keep(notesHere.exists ? poster : springboard, "lock-screen-count-source")
+    notes.tap()
+    sleep(2)
+    if !poster.buttons["editing-done"].exists {
       poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
     }
     let done = poster.buttons["editing-done"]

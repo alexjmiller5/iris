@@ -159,6 +159,17 @@ try {
   await cdp.until(
     `getComputedStyle(document.querySelector('.gallery-card')).backgroundColor !== 'rgba(0, 0, 0, 0)'`,
   );
+  // Let the gallery autosave reach the hub before switching away and back.
+  await expect
+    .poll(
+      () =>
+        JSON.parse(
+          (db.db.query("SELECT definition FROM views WHERE id=?").get(catalogDefault) as any)
+            ?.definition ?? "{}",
+        ).presentation?.kind,
+      { timeout: 20000 },
+    )
+    .toBe("gallery");
   await choose("View", savedID);
   await cdp.until(
     `(${select("View layout")})?.value==='calendar' && (${select("Calendar end date property")})?.value==='ends'`,
