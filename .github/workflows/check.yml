@@ -202,6 +202,35 @@ jobs:
             CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/a11y-mac.log"
           xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/a11y-mac.xcresult" \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); c=(r.get("passedTests"),r.get("failedTests"),r.get("skippedTests")); sys.exit(f"Expected one passing Mac audit: {r}") if c!=(1,0,0) else print("Mac accessibility audit passed")'
+      - name: Backup XCUI (Mac, synthetic files)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          fixtures="$RUNNER_TEMP/backup-fixtures"
+          python3 scripts/backup-fixtures.py "$fixtures"
+          (cd apps/macos && xcodegen generate --spec project.yml)
+          TEST_RUNNER_LIFE_UI_TEST_BACKUP_DUMP="$fixtures/synthetic.sql.gz" \
+          TEST_RUNNER_LIFE_UI_TEST_BACKUP_CLI_DB="$fixtures/life.db" \
+          TEST_RUNNER_LIFE_UI_TEST_BACKUP_SAVE_DIR="$fixtures/save" \
+            xcodebuild -project apps/macos/LifeUI.xcodeproj -scheme LifeUI \
+              -derivedDataPath "$RUNNER_TEMP/catalog-derived" -destination 'platform=macOS' \
+              -resultBundlePath "$RUNNER_TEMP/backup-mac.xcresult" \
+              -only-testing:LifeUIUITests/BackupUITests \
+              -test-timeouts-enabled YES -maximum-test-execution-time-allowance 300 \
+              CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/backup-mac.log"
+          xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/backup-mac.xcresult" \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); c=(r.get("passedTests"),r.get("failedTests"),r.get("skippedTests")); sys.exit(f"Expected two passing Mac backup tests: {r}") if c!=(2,0,0) else print("Mac backup tests passed")'
+      - name: Keep the Mac backup evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-mac
+          path: |
+            ${{ runner.temp }}/backup-mac.log
+            ${{ runner.temp }}/backup-mac.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Accessibility audit XCUI (iPhone, AX5 text)
         if: ${{ !cancelled() }}
         timeout-minutes: 30
