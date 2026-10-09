@@ -341,11 +341,14 @@
 		min-height: 36px;
 		font-weight: 600;
 	}
+	/* Touch targets of at least 44px. WebKit reports a summary's frame from its
+	   text line, so the line itself is 44px tall. */
 	@media (pointer: coarse) {
-		summary,
+		summary {
+			line-height: 44px;
+		}
 		.relationships button {
 			min-height: 44px;
-			padding-block: 12px;
 		}
 	}
 	.group-fields {
