@@ -1,103 +1,122 @@
 import XCTest
 
-/// Settings > Backup against `scripts/test-backup.ts <life-data> --serve` (the real hub
-/// Worker over synthetic SQLite, token "fixture"). Set TEST_RUNNER_LIFE_UI_TEST_BACKUP_HUB.
+/// Settings > Backup on the Mac with synthetic files only. The sample workspace (in
+/// memory) restores a synthetic dump and undoes it; an explicitly opened CLI file shows
+/// its path and `life export`. Set TEST_RUNNER_LIFE_UI_TEST_BACKUP_DUMP (a .sql.gz),
+/// TEST_RUNNER_LIFE_UI_TEST_BACKUP_CLI_DB (a CLI life.db) and
+/// TEST_RUNNER_LIFE_UI_TEST_BACKUP_SAVE_DIR (an empty folder for the saved export).
 @MainActor
 final class BackupUITests: XCTestCase {
-  func testHubBackupsCopyExportRestoreAndUndo() throws {
-    guard let endpoint = ProcessInfo.processInfo.environment["LIFE_UI_TEST_BACKUP_HUB"] else {
-      throw XCTSkip("Set LIFE_UI_TEST_BACKUP_HUB to the synthetic backup hub")
-    }
+  private var environment: [String: String] { ProcessInfo.processInfo.environment }
+
+  func testSampleRestoresADumpAndUndoes() throws {
+    guard let dump = environment["LIFE_UI_TEST_BACKUP_DUMP"],
+      let saveDir = environment["LIFE_UI_TEST_BACKUP_SAVE_DIR"]
+    else { throw XCTSkip("Set LIFE_UI_TEST_BACKUP_DUMP and LIFE_UI_TEST_BACKUP_SAVE_DIR") }
     continueAfterFailure = false
-    let app = XCUIApplication()
-    app.launchArguments = ["--demo", "-ApplePersistenceIgnoreState", "YES"]
-    app.launch()
-    app.activate()
+    let app = launch(["--demo"])
     defer { app.terminate() }
-    if !app.windows.firstMatch.waitForExistence(timeout: 5) {
-      app.menuBars.menuBarItems["File"].click()
-      app.menuItems["New Window"].click()
-    }
+    openBackup(app)
+    XCTAssertFalse(app.buttons["backup-copy-replica"].exists, "The sample has no file to copy")
+    capture(app, "mac-backup-sample")
 
-    openHubConnection(app)
-    click(app.textFields["hub-endpoint"])
-    app.textFields["hub-endpoint"].typeText(endpoint)
-    click(app.descendants(matching: .any)["Use existing token"].firstMatch)
-    click(app.secureTextFields["hub-token"])
-    app.secureTextFields["hub-token"].typeText("fixture")
-    click(app.buttons["Connect"])
-    XCTAssertTrue(
-      app.staticTexts["Hub workspace · local replica"].waitForExistence(timeout: 30)
-        || app.descendants(matching: .any)["record-grid"].firstMatch.waitForExistence(timeout: 30),
-      app.debugDescription)
-
-    openHubConnection(app)
-    click(app.descendants(matching: .any)["backup-settings"].firstMatch)
-    let seeded = app.buttons["Restore daily/life-2026-10-01T09-10-00.sql.gz"]
-    XCTAssertTrue(seeded.waitForExistence(timeout: 15), app.debugDescription)
-    capture(app, "mac-backup-settings")
-
-    click(app.buttons["backup-now"])
-    expectMessage(app, "The hub saved a backup")
-    click(app.buttons["backup-copy-replica"])
-    saveSystemFile(app)
-    expectMessage(app, "Copied the SQLite database")
     click(app.buttons["backup-export-sql"])
-    saveSystemFile(app)
+    let sheet = app.sheets.firstMatch
+    XCTAssertTrue(sheet.waitForExistence(timeout: 30), app.debugDescription)
+    goTo(app, saveDir)
+    sheet.buttons["Save"].firstMatch.click()
+    XCTAssertTrue(sheet.waitForNonExistence(timeout: 10), app.debugDescription)
     expectMessage(app, "Exported")
+    let saved = try FileManager.default.contentsOfDirectory(atPath: saveDir)
+    XCTAssertEqual(saved.filter { $0.hasSuffix(".sql") }.count, 1, "\(saved)")
     capture(app, "mac-backup-exported")
 
-    click(seeded)
-    let widgets = app.descendants(matching: .any)["restore-row-widgets"].firstMatch
-    XCTAssertTrue(widgets.waitForExistence(timeout: 30), app.debugDescription)
-    XCTAssertFalse(app.buttons["restore-apply"].isEnabled)
+    click(app.buttons["backup-choose-file"])
+    XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+    goTo(app, dump)
+    app.sheets.buttons["Open"].firstMatch.click()
+    let notes = app.descendants(matching: .any)["restore-row-notes"].firstMatch
+    XCTAssertTrue(notes.waitForExistence(timeout: 30), app.debugDescription)
+    XCTAssertFalse(app.buttons["restore-apply"].isEnabled, "Restore needs the typed word")
     capture(app, "mac-restore-preview")
-    click(app.textFields["restore-confirm"])
-    app.textFields["restore-confirm"].typeText("replace")
-    click(app.buttons["restore-apply"])
-    expectMessage(app, "Restored")
+    restore(app)
     capture(app, "mac-restored")
 
     let recovery = app.buttons.matching(
       NSPredicate(format: "label BEGINSWITH 'Restore recovery copy from'")
     ).firstMatch
-    XCTAssertTrue(recovery.waitForExistence(timeout: 10), app.debugDescription)
     click(recovery)
-    XCTAssertTrue(widgets.waitForExistence(timeout: 30))
-    click(app.textFields["restore-confirm"])
-    app.textFields["restore-confirm"].typeText("replace")
-    click(app.buttons["restore-apply"])
-    expectMessage(app, "Restored")
+    XCTAssertTrue(notes.waitForExistence(timeout: 30))
+    restore(app)
     capture(app, "mac-restore-undone")
   }
 
-  private func openHubConnection(_ app: XCUIApplication) {
+  func testSharedCLIFilePointsAtItsPathAndLifeExport() throws {
+    guard let database = environment["LIFE_UI_TEST_BACKUP_CLI_DB"] else {
+      throw XCTSkip("Set LIFE_UI_TEST_BACKUP_CLI_DB")
+    }
+    continueAfterFailure = false
+    let app = launch(["--demo"])
+    defer { app.terminate() }
+    // The supported external-file picker on the welcome screen; never the app's own replica.
+    click(app.descendants(matching: .any).matching(identifier: "workspace-menu").firstMatch)
+    click(app.menuItems["Close workspace"])
+    click(app.buttons["Open a local database…"])
+    XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+    goTo(app, database)
+    app.sheets.buttons["Open"].firstMatch.click()
+    openBackup(app)
+    let path = app.descendants(matching: .any)["backup-shared-path"].firstMatch
+    XCTAssertTrue(path.waitForExistence(timeout: 10), app.debugDescription)
+    XCTAssertFalse(app.buttons["backup-copy-replica"].exists)
+    XCTAssertFalse(app.buttons["backup-choose-file"].exists, "The CLI restores its own file")
+    capture(app, "mac-backup-shared-cli-file")
+  }
+
+  private func launch(_ arguments: [String]) -> XCUIApplication {
+    let app = XCUIApplication()
+    app.launchArguments = arguments + ["-ApplePersistenceIgnoreState", "YES"]
+    app.launch()
+    app.activate()
+    if !app.windows.firstMatch.waitForExistence(timeout: 5) {
+      app.menuBars.menuBarItems["File"].click()
+      app.menuItems["New Window"].click()
+    }
+    return app
+  }
+
+  private func openBackup(_ app: XCUIApplication) {
     click(app.descendants(matching: .any).matching(identifier: "workspace-menu").firstMatch)
     click(app.menuItems["Hub connection"])
+    click(app.descendants(matching: .any)["backup-settings"].firstMatch)
+    XCTAssertTrue(app.buttons["backup-export-sql"].waitForExistence(timeout: 10))
+  }
+
+  private func restore(_ app: XCUIApplication) {
+    let confirm = app.textFields["restore-confirm"]
+    click(confirm)
+    confirm.typeText("replace")
+    click(app.buttons["restore-apply"])
+    expectMessage(app, "Restored")
+  }
+
+  /// Go to a folder or file in an open or save panel.
+  private func goTo(_ app: XCUIApplication, _ path: String) {
+    app.typeKey("g", modifierFlags: [.command, .shift])
+    let location = app.sheets.textFields.firstMatch
+    XCTAssertTrue(location.waitForExistence(timeout: 5), app.debugDescription)
+    location.typeText(path)
+    location.typeKey(.return, modifierFlags: [])
   }
 
   private func expectMessage(_ app: XCUIApplication, _ text: String) {
     let message = app.staticTexts.matching(
-      NSPredicate(format: "identifier == 'backup-message' AND value CONTAINS %@", text)
+      NSPredicate(
+        format: "identifier == 'backup-message' AND (value CONTAINS %@ OR label CONTAINS %@)",
+        text, text)
     ).firstMatch
-    let label = app.staticTexts.matching(
-      NSPredicate(format: "identifier == 'backup-message' AND label CONTAINS %@", text)
-    ).firstMatch
-    let deadline = Date().addingTimeInterval(120)
-    while Date() < deadline, !message.exists, !label.exists {
-      RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-    }
-    XCTAssertTrue(message.exists || label.exists, app.debugDescription)
-  }
-
-  /// The macOS file exporter is a save sheet on the window.
-  private func saveSystemFile(_ app: XCUIApplication) {
-    let sheet = app.sheets.firstMatch
-    XCTAssertTrue(sheet.waitForExistence(timeout: 60), app.debugDescription)
-    sheet.buttons["Save"].click()
-    let replace = app.buttons["Replace"]
-    if replace.waitForExistence(timeout: 2) { replace.click() }
-    XCTAssertTrue(sheet.waitForNonExistence(timeout: 10))
+    XCTAssertTrue(message.waitForExistence(timeout: 120), app.debugDescription)
+    XCTAssertFalse(app.staticTexts["backup-failure"].exists)
   }
 
   private func click(_ element: XCUIElement) {

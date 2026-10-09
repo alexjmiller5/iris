@@ -73,10 +73,12 @@ struct RecoveryCopy: Identifiable, Equatable {
 
   private var root: URL {
     get throws {
+      // Beside the database and named after its file, so the folder survives the
+      // container path changes a reinstall or relaunch can bring.
       let base =
         workspace.databaseFile.map {
           $0.deletingLastPathComponent().appendingPathComponent(
-            "backups-" + WorkspaceModel.replicaKey(endpoint: $0.path), isDirectory: true)
+            "backups-" + $0.deletingPathExtension().lastPathComponent, isDirectory: true)
         } ?? FileManager.default.temporaryDirectory.appendingPathComponent(
           "life-ui-sample-backups", isDirectory: true)
       try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
@@ -93,8 +95,22 @@ struct RecoveryCopy: Identifiable, Equatable {
   }
 
   func load() async {
+    // Copies handed to the save sheet are temporary; drop any a closed sheet left.
+    if let exports = try? folder("exports") {
+      for file in (try? FileManager.default.contentsOfDirectory(at: exports, includingPropertiesForKeys: nil)) ?? [] {
+        try? FileManager.default.removeItem(at: file)
+      }
+    }
     loadRecovery()
     await loadHub()
+  }
+
+  /// After the save sheet closes: a temporary export is no longer needed.
+  func discardExport(_ url: URL) {
+    guard let exports = try? folder("exports"),
+      url.deletingLastPathComponent().standardizedFileURL == exports.standardizedFileURL
+    else { return }
+    try? FileManager.default.removeItem(at: url)
   }
 
   func loadRecovery() {
@@ -284,6 +300,8 @@ struct BackupFileDocument: FileDocument {
 struct BackupView: View {
   @State private var backup: BackupModel
   @State private var exporting: BackupFileDocument?
+  /// The file behind the open save sheet; temporary exports are removed afterwards.
+  @State private var presented: URL?
   @State private var importing = false
 
   init(model: WorkspaceModel) { _backup = State(initialValue: BackupModel(workspace: model)) }
@@ -330,7 +348,11 @@ struct BackupView: View {
       isPresented: Binding(get: { exporting != nil }, set: { if !$0 { exporting = nil } }),
       document: exporting, contentType: .data,
       defaultFilename: exporting?.url.lastPathComponent
-    ) { _ in exporting = nil }
+    ) { _ in
+      if let url = presented { backup.discardExport(url) }
+      exporting = nil
+    }
+    .onChange(of: exporting?.url) { _, url in if let url { presented = url } }
     .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
       if case .success(let url) = result { Task { await backup.previewFile(url) } }
     }

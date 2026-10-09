@@ -129,6 +129,7 @@ private struct QuickFindResults: View {
           .id(entry.id)
         }
       }
+      .accessibilityLabel("Results")
       .scrollDismissesKeyboard(.interactively)
       .onChange(of: model.enabledIDs, initial: true) { model.reconcileSelection() }
       .onChange(of: model.selection) {

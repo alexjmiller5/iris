@@ -68,6 +68,7 @@
         coordinator.edit(row: table.selectedRow, column: title)
       }
       table.setAccessibilityIdentifier("record-grid")
+      table.setAccessibilityLabel("Records")
       context.coordinator.table = table
       let header = RecordTableHeaderView()
       header.makeMenu = { [weak coordinator = context.coordinator] column in

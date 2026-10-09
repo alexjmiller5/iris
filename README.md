@@ -581,9 +581,16 @@ Two-tab runners retain their observer handle and restore its fixture URL before
 disconnecting; product links intentionally discard `review` and `observer` flags.
 
 ```sh
+# Keyboard-only accessibility walk with axe-core, light and dark (also in
+# `just check` and CI). Starts its own dev server and headless Chrome; a
+# life-data checkout adds the hub-connected views.
+bun scripts/check-a11y.ts [/path/to/life-data]
+# Run a dev server untouched by other edits in a shared checkout:
+LIFE_UI_DEV_NO_HMR=1 bun run dev -- --port 5261
+
 # Filter and sort toolbar on the sample workspace; needs a disposable Chrome
-# (--remote-debugging-port=9333, fresh --user-data-dir) and a dev server that
-# no other edits reload.
+# (--remote-debugging-port=9333, fresh --user-data-dir, --disable-extensions)
+# and a dev server that no other edits reload.
 LIFE_UI_TEST_CDP=http://127.0.0.1:9333 LIFE_UI_TEST_URL=http://127.0.0.1:5261/workspace \
   LIFE_UI_TEST_SHOTS=/tmp/shots bun scripts/test-filter-bar.ts
 

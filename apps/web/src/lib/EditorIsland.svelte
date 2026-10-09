@@ -58,6 +58,17 @@
 		:global(html:has(.native-editor)) {
 			font: -apple-system-body;
 		}
+		/* Headings stay a step above the body instead of multiplying it, so words
+		   still fit a phone's width at accessibility sizes. */
+		.native-editor :global(.rich-document h1) {
+			font-size: min(1.8rem, 1rem + 12px);
+		}
+		.native-editor :global(.rich-document h2) {
+			font-size: min(1.4rem, 1rem + 8px);
+		}
+		.native-editor :global(.rich-document h3) {
+			font-size: min(1.15rem, 1rem + 4px);
+		}
 	}
 	.native-editor :global(.markdown-editor) {
 		border: 0;

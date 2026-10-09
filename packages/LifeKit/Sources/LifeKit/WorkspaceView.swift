@@ -137,6 +137,8 @@ public struct WorkspaceView: View {
               error: navigationError,
               onOpen: { openDestination($0) })
           }
+          .accessibilityElement(children: .contain)
+          .accessibilityLabel("Sidebar")
           .navigationTitle("Life UI")
           .navigationSplitViewColumnWidth(min: 200, ideal: 240)
           #if os(iOS)
