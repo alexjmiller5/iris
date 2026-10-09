@@ -99,12 +99,12 @@ struct AutomaticSyncTests {
 
   @Test func periodicCatchUpBacksOffAfterCancellationAndStopsWhenClosed() async throws {
     try await withFixture { model, loops in
-      let started = AutoSyncHub.holdNextSchema()
+      let started = AutoSyncHub.holdNextRound()
       let loop = Task {
         await model.runAutomaticSync(interval: .milliseconds(30), debounce: .milliseconds(20))
       }
       loops.append(loop)
-      try #require(await started.wait(), "Sync must reach the held schema request")
+      try #require(await started.wait(), "Sync must reach the held cursor request")
       try await save(model, title: "Still local")
       model.cancelSync()
       try await waitUntil(model) { !model.syncing }
@@ -122,10 +122,10 @@ struct AutomaticSyncTests {
 
   @Test func reentryDuringAnActivePeriodicRoundKeepsTheNewForegroundLoop() async throws {
     try await withFixture { model, loops in
-      let started = AutoSyncHub.holdNextSchema()
+      let started = AutoSyncHub.holdNextRound()
       let old = Task { await model.runAutomaticSync(interval: .milliseconds(30)) }
       loops.append(old)
-      try #require(await started.wait(), "Sync must reach the held schema request")
+      try #require(await started.wait(), "Sync must reach the held cursor request")
       old.cancel()
       // Keep periodic catch-up outside the watchdog so it cannot hide a lost edit trigger.
       let current = Task {
@@ -178,7 +178,7 @@ struct AutomaticSyncTests {
     let operation = Task { @MainActor in
       try await withFixture { model, loops in
         modelAfterFailure = model
-        let started = AutoSyncHub.holdNextSchema()
+        let started = AutoSyncHub.holdNextRound()
         let loop = Task { await model.runAutomaticSync(interval: .milliseconds(20)) }
         loops.append(loop)
         loopAfterFailure = loop
@@ -447,7 +447,8 @@ private final class AutoSyncHub: URLProtocol, @unchecked Sendable {
       failStatus = nil
     }
   }
-  static func holdNextSchema() -> AutoSyncSignal { holdNext("/v1/schema/pull") }
+  /// Every round, quiet or not, opens with the cursor read.
+  static func holdNextRound() -> AutoSyncSignal { holdNext("/v1/cursor") }
   static func holdNextPush() -> AutoSyncSignal { holdNext("/v1/rows/push") }
   private static func holdNext(_ route: String) -> AutoSyncSignal {
     lock.withLock {
@@ -473,7 +474,7 @@ private final class AutoSyncHub: URLProtocol, @unchecked Sendable {
   override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
   override func stopLoading() { Self.lock.withLock { if Self.held === self { Self.held = nil } } }
   override func startLoading() {
-    if request.url?.path == "/v1/schema/pull" { Self.lock.withLock { Self.count += 1 } }
+    if request.url?.path == "/v1/cursor" { Self.lock.withLock { Self.count += 1 } }
     if let status = Self.lock.withLock({ Self.failStatus }) {
       guard status != 0 else {
         client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))

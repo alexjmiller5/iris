@@ -154,7 +154,7 @@ struct ForegroundSyncTests {
     try await waitUntil { HeldSyncTransport.isWaiting }
     #expect(model.syncing)
     #expect(model.canWrite, "Starting transport must not disable an already editable local table")
-    #expect(model.syncProgress?.phase == "Schema")
+    #expect(model.syncProgress?.phase == "Checkpoint")
     model.cancelSync()
     await sync.value
     #expect(!model.syncing && model.syncProgress == nil)
@@ -283,7 +283,7 @@ struct ForegroundSyncTests {
     let result = await sync.result
     if case .success = result { Issue.record("Cancelled sync completed successfully") }
     #expect(progress.first?.phase == "Connecting")
-    #expect(progress.last?.phase == "Schema")
+    #expect(progress.last?.phase == "Checkpoint")
     #expect(try await workspace.rows(table: "notes") == before)
     HeldSyncTransport.release()
     try await workspace.close()
