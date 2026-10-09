@@ -182,6 +182,16 @@ async function sampleWalk(page: Page, scheme: string) {
   const editor = page.getByRole("dialog", { name: "Edit filter" });
   await editor.waitFor();
   await audit("filter-editor");
+  // Escape with no value drops the unfinished chip; focus goes back to Filter.
+  await page.keyboard.press("Escape");
+  await editor.waitFor({ state: "hidden" });
+  await expectFocus([filter], "Filter after dropping an empty chip");
+  await page.keyboard.press("Enter");
+  await page.getByLabel("Filter by property").waitFor();
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Filter by property");
+  await page.keyboard.type("Stat");
+  await page.keyboard.press("Enter");
+  await editor.waitFor();
   // Space checks the sample's own status, so the chip stays and keeps its row.
   await tabTo(editor.getByRole("checkbox", { name: "Draft" }));
   await page.keyboard.press("Space");

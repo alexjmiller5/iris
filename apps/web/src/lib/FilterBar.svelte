@@ -153,9 +153,15 @@
 		if (ref) remove(ref);
 	}
 	function closed() {
-		// An unfinished chip has nothing to save; it disappears with its editor.
+		// An unfinished chip has nothing to save; it disappears with its editor,
+		// and focus it held goes back to Filter.
+		const unfinished = (rule && !rule.ref) || (group && !group.ref);
 		rule = null;
 		group = null;
+		if (unfinished)
+			void tick().then(() => {
+				if (!document.activeElement || document.activeElement === document.body) addButton?.focus();
+			});
 	}
 </script>
 
