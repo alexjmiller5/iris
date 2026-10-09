@@ -21,8 +21,9 @@ final class BackupUITests: XCTestCase {
     capture(app, "mac-backup-sample")
 
     click(app.buttons["backup-export-sql"])
-    let sheet = app.sheets.firstMatch
-    XCTAssertTrue(sheet.waitForExistence(timeout: 30), app.debugDescription)
+    XCTAssertTrue(
+      app.sheets.buttons.matching(identifier: "OKButton").firstMatch.waitForExistence(timeout: 30),
+      app.debugDescription)
     goTo(app, saveDir)
     confirmPanel(app)
     expectMessage(app, "Exported")
@@ -31,7 +32,9 @@ final class BackupUITests: XCTestCase {
     capture(app, "mac-backup-exported")
 
     click(app.buttons["backup-choose-file"])
-    XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+    XCTAssertTrue(
+      app.sheets.buttons.matching(identifier: "OKButton").firstMatch.waitForExistence(timeout: 10),
+      app.debugDescription)
     goTo(app, dump)
     confirmPanel(app)
     let notes = app.descendants(matching: .any)["restore-row-notes"].firstMatch
@@ -103,7 +106,8 @@ final class BackupUITests: XCTestCase {
   private func confirmPanel(_ app: XCUIApplication) {
     let ok = app.sheets.buttons.matching(identifier: "OKButton").firstMatch
     if ok.waitForExistence(timeout: 3), ok.isHittable, ok.isEnabled { ok.click() }
-    XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 15), app.debugDescription)
+    // Backup itself lives in the Hub connection sheet, so wait for the panel's own button.
+    XCTAssertTrue(ok.waitForNonExistence(timeout: 15), app.debugDescription)
   }
 
   /// Go to a folder or file in an open or save panel.
