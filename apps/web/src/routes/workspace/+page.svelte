@@ -1719,7 +1719,7 @@
 			const fallback = await openDefaultView(workspace, target);
 			if (workspace !== database || table !== target || version !== viewVersion) return;
 			applyView(fallback.view);
-			defaultViewNotice = null;
+			defaultViewNotice = fallback.unavailable;
 			await refresh();
 			await reflectLocation();
 			notice = 'View deleted; records kept';
