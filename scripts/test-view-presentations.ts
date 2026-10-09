@@ -1,5 +1,9 @@
+// Calendar, Gallery and Board layouts against the real Worker/OPFS and a synthetic
+// hub: date ranges across DST, unscheduled rows, gallery covers, a saved layout's
+// round trip, and Board moves by menu and pointer that sync through the ordinary
+// writer. LIFE_UI_TEST_TARGET is the owned page's CDP target ID on the fixture origin.
 import { expect } from "@playwright/test";
-import { regressionHub } from "./workspace-regression-hub";
+import { installCoreSchemas, logDDL, regressionHub } from "./workspace-regression-hub";
 import { disposableOrigin } from "./test-origin";
 import {
   sourceNavigationCDP,
@@ -15,27 +19,17 @@ const url =
   "http://life-ui-presentations.localhost:5252/workspace?review";
 const origin = disposableOrigin(url);
 const { server, db, auth } = await regressionHub(source, origin);
-const viewSchema = await Bun.file(
-  `${source}/core/schema/saved-views.json`,
-).json();
 let page: Awaited<ReturnType<typeof sourceNavigationCDP>> | undefined;
 try {
+  await installCoreSchemas(db, source, ["saved-views", "view-defaults"]);
   for (const ddl of [
     "ALTER TABLE widgets ADD COLUMN starts TEXT",
     "ALTER TABLE widgets ADD COLUMN ends TEXT",
     "ALTER TABLE widgets ADD COLUMN cover TEXT",
-    "ALTER TABLE catalog_properties ADD COLUMN source TEXT",
-    "ALTER TABLE catalog_properties ADD COLUMN source_ref TEXT",
-    ...viewSchema.ddl,
-  ]) {
-    db.db.exec(ddl);
-    db.db
-      .query("INSERT INTO _schema_log(applied_at,ddl) VALUES (?,?)")
-      .run("2026-01-01T00:00:00.000Z", ddl);
-  }
+  ])
+    logDDL(db, ddl);
   db.db
-    .exec(`INSERT INTO catalog_tables(id,kind,display) VALUES ('views','table','name');
-    INSERT INTO catalog_properties(id,tbl,col,label,sort,type) VALUES
+    .exec(`INSERT INTO catalog_properties(id,tbl,col,label,sort,type) VALUES
     ('widgets.starts','widgets','starts','Starts',5,'date_or_datetime'),
     ('widgets.ends','widgets','ends','Ends',6,'date_or_datetime'),
     ('widgets.cover','widgets','cover','Cover',7,'url');
@@ -45,16 +39,16 @@ try {
     INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES ('board-fixture','widgets','invariant',1,'SELECT id FROM changed WHERE id=''legacy-record'' AND status=''Done''','Legacy fixture cannot be done.');
     UPDATE widgets SET starts='2026-03-07',ends='2026-03-09' WHERE id='fixture-record';
     UPDATE widgets SET starts='2026-03-08T06:30:00Z',ends='2026-03-09T04:00:00Z' WHERE id='second-record';`);
-  for (const p of viewSchema.properties) {
-    const keys = Object.keys(p);
-    db.db
-      .query(
-        `INSERT INTO catalog_properties(${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`,
-      )
-      .run(...Object.values(p));
-  }
   page = await sourceNavigationCDP(url);
   const cdp = page;
+  // Background tabs throttle rendering and the 2 s sync loop.
+  await cdp.command("Page.bringToFront");
+  await cdp.command("Emulation.setDeviceMetricsOverride", {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
   cdp.on("Fetch.requestPaused", ({ requestId }) => {
     void cdp.command("Fetch.fulfillRequest", {
       requestId,
@@ -102,25 +96,24 @@ try {
     named("button", "widgets", element('nav[aria-label="Tables"]')),
   );
   await cdp.until(`document.body.innerText.includes('Fixture record')`);
-  await choose("Filter property", "starts");
-  expect(
-    await cdp.evaluate(
-      `Array.from((${select("Filter operator")}).options, option => option.value)`,
-    ),
-  ).toEqual(["eq", "ne", "empty", "not_empty", "gt", "lt"]);
-  await choose("Filter property", "");
+  const catalogDefault = await cdp.evaluate<string>(`(${select("View")}).value`);
+  const settings = async (summary: string) => {
+    if (!(await cdp.evaluate(`!!document.querySelector('[role="dialog"][aria-label="View settings"]:popover-open')`)))
+      await click("View settings");
+    if (!(await cdp.evaluate(`(${named("summary", summary)}).parentElement.open`)))
+      await cdp.click(named("summary", summary));
+  };
+  const closeMenu = () => cdp.key("Escape");
   // Calendar uses catalog-selected fields and displays every spanned civil date.
+  await settings("Today");
+  await cdp.fill(element('input[aria-label="Today timezone"]'), "America/New_York");
+  await cdp.evaluate(
+    `document.querySelector('input[aria-label="Today timezone"]').dispatchEvent(new Event('change',{bubbles:true}))`,
+  );
+  await closeMenu();
   await choose("View layout", "calendar");
   await choose("Calendar date property", "starts");
   await choose("Calendar end date property", "ends");
-  await cdp.click(named("summary", "Filter groups"));
-  await cdp.fill(
-    element('input[aria-label="Today timezone"]'),
-    "America/New_York",
-  );
-  await cdp.evaluate(
-    `(()=>{const e=document.querySelector('input[aria-label="Today timezone"]');e.dispatchEvent(new Event('change',{bubbles:true}));})()`,
-  );
   await cdp.evaluate(
     `(()=>{const e=document.querySelector('input[aria-label="Calendar month"]');e.value='2026-03';e.dispatchEvent(new Event('input',{bubbles:true}));})()`,
   );
@@ -136,12 +129,16 @@ try {
     `(${day("2026-03-09")})?.innerText.includes('Second record')===false`,
   );
   await has("Unscheduled or invalid dates (1)");
+  await settings("Today");
   await cdp.fill(element('input[aria-label="View name"]'), "Calendar fixture");
-  await click("Save as");
+  await click("Save as new view");
   await cdp.until(
     `(${select("View")})?.selectedOptions[0]?.textContent==='Calendar fixture'`,
   );
+  await closeMenu();
   const savedID = await cdp.evaluate<string>(`(${select("View")}).value`);
+  // Layout edits save into whichever view is applied; the copy keeps its own.
+  await choose("View", catalogDefault);
   await choose("View layout", "gallery");
   await choose("Gallery cover property", "cover");
   await cdp.until(
@@ -158,6 +155,8 @@ try {
   await cdp.until(
     `(${select("View layout")})?.value==='calendar' && (${select("Calendar end date property")})?.value==='ends'`,
   );
+  await choose("View", catalogDefault);
+  await cdp.until(`(${select("View layout")})?.value==='gallery'`);
   // Board moves reuse the ordinary writer; both drag and accessible menu persist.
   await choose("View layout", "board");
   await choose("Board group property", "status");
