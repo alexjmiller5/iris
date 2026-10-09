@@ -126,29 +126,38 @@ final class AccessibilityAuditUITests: XCTestCase {
       return "no element: content behind the presented popover or sheet"
     }
     let frame = element.frame
-    let bars = [app.navigationBars.firstMatch.frame, app.toolbars.firstMatch.frame]
-    if bars.contains(where: { !$0.isEmpty && $0.intersects(frame) }) || frame.maxY < 140
-      || frame.minY > app.frame.height - 100
-    {
+    let top = app.navigationBars.firstMatch.exists ? app.navigationBars.firstMatch.frame.maxY : 140
+    if frame.maxY <= top + 2 || frame.minY >= app.frame.height - 100 {
       // System bar items cap their text size and show the Large Content Viewer instead.
       return "navigation or bottom bar item"
     }
-    if app.keyboards.firstMatch.exists && app.keyboards.firstMatch.frame.insetBy(dx: 0, dy: -50)
-      .contains(CGPoint(x: frame.midX, y: frame.midY))
-    {
-      return "system keyboard"
+    if issue.auditType == .contrast, frame.minY < top + 60 {
+      // Content scrolled under the bar is faded by the system's scroll edge effect.
+      return "under the navigation bar's scroll edge effect"
     }
-    if issue.auditType == .textClipped,
-      Self.verifiedUnclipped.contains("\(screen)/\(element.label)")
+    let popover = app.popovers.firstMatch
+    if issue.auditType == .contrast, popover.exists, popover.frame.intersects(frame),
+      !popover.frame.insetBy(dx: -1, dy: -1).contains(frame)
     {
-      return "renders in full in the attached AX5 screenshot; the audit's height estimate is a few points short"
+      return "partly scrolled out of the popover"
+    }
+    let keyboard = app.keyboards.firstMatch
+    if keyboard.exists, keyboard.frame.insetBy(dx: 0, dy: -50).intersects(frame) {
+      return "covered by the system keyboard or its suggestions"
+    }
+    let name = element.label.isEmpty ? element.identifier : element.label
+    if issue.auditType == .textClipped, Self.verifiedUnclipped.contains("\(screen)/\(name)") {
+      return "renders in full in the attached AX5 screenshot"
     }
     return nil
   }
 
-  /// Wrapped SwiftUI labels the audit flags although every line shows (see ax5-<screen>).
+  /// Flagged as possibly clipped, checked in the AX5 screenshots: wrapped SwiftUI
+  /// labels whose every line shows, and the single-line Quick Find field, which
+  /// scrolls long queries horizontally like any UIKit text field.
   private static let verifiedUnclipped: Set<String> = [
     "saved-views/Row actions and Today", "workspace-status/Copy diagnostics",
+    "quick-find/quick-find-query",
   ]
 
   /// Lazy record forms create rows below the fold only when scrolled to.

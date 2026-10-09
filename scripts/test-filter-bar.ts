@@ -208,6 +208,68 @@ try {
     await chips().getByRole("button", { name: "Remove filter: All of 1 rules" }).click();
   });
 
+  await check("switching away and back before the outgoing save lands keeps the edit", async () => {
+    const target = await page.evaluate(async () => {
+      const { WorkspaceDatabase } = await import("/src/lib/database.ts");
+      const db = new WorkspaceDatabase();
+      try {
+        await db.request("open", { demo: true });
+        const views = (await db.request("listViews", { table: "notes" })).views;
+        const existing = views.find((v) => v.name === "Switch target");
+        if (existing) return existing.id;
+        const created = await db.request("saveView", {
+          table: "notes",
+          name: "Switch target",
+          definition: { version: 2 },
+        });
+        return created.id;
+      } finally {
+        db.close();
+      }
+    });
+    await page.reload();
+    await open(page);
+    const picker = page.getByLabel("View", { exact: true });
+    await picker.selectOption(view);
+    const before = await rows().count();
+    // Hold this tab's view saves for a moment, as a slow device would.
+    await page.evaluate(() => {
+      const state = window as unknown as { holdSaves: boolean };
+      const send = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function (this: Worker, message: any, ...rest: any[]) {
+        if (state.holdSaves && message?.method === "saveView") {
+          setTimeout(() => send.call(this, message, ...(rest as [])), 1500);
+          return;
+        }
+        return send.call(this, message, ...(rest as []));
+      };
+      state.holdSaves = true;
+    });
+    await page.getByRole("button", { name: "Filter", exact: true }).click();
+    await page.getByLabel("Filter by property").fill("Title");
+    await page.keyboard.press("Enter");
+    await editor().getByLabel("Value").fill("one");
+    await page.keyboard.press("Escape");
+    await expect(rows()).toHaveCount(1);
+    await picker.selectOption(target);
+    await picker.selectOption(view);
+    await expect(rows()).toHaveCount(1);
+    await expect
+      .poll(async () => (await saved(view))?.filters?.map((f: { value: unknown }) => f.value))
+      .toContain("one");
+    await page.evaluate(() => ((window as unknown as { holdSaves: boolean }).holdSaves = false));
+    // The next edit builds on the saved filter instead of silently dropping it.
+    await page.getByRole("button", { name: "Sort", exact: true }).click();
+    await page.getByRole("dialog", { name: "Sort" }).getByLabel("Add sort").selectOption("title");
+    await page.keyboard.press("Escape");
+    await expect
+      .poll(async () => (await saved(view))?.filters?.map((f: { value: unknown }) => f.value))
+      .toContain("one");
+    await expect(rows()).toHaveCount(1);
+    await chips().getByRole("button", { name: /^Remove filter: Title/ }).click();
+    await expect(rows()).toHaveCount(before);
+  });
+
   await check("at 390px the toolbar wraps and chips scroll in their own row", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     for (const text of ["e", "o", "a"]) {

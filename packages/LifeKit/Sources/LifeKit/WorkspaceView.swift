@@ -1493,6 +1493,7 @@ private struct RecordEditor: View {
   @Environment(\.openURL) private var openURL
   /// The record page's Markdown editor grows with Dynamic Type, up to a cap.
   @ScaledMetric(relativeTo: .body) private var markdownHeight: CGFloat = 320
+  @Environment(\.dynamicTypeSize) private var textSize
   @State private var editor: RecordEditorModel
   @State private var inlineMarkdown: InlineMarkdownEditor?
   @State private var referenceNavigation: ReferenceNavigationModel?
@@ -1656,8 +1657,10 @@ private struct RecordEditor: View {
               .disabled(editor.saving || editor.recovery != nil || editor.needsReview)
               .accessibilityIdentifier("open-page-capture")
             } label: {
-              Label("Record actions", systemImage: "ellipsis")
+              // A two-line menu label clips at accessibility sizes; one word fits.
+              Label(textSize.isAccessibilitySize ? "Actions" : "Record actions", systemImage: "ellipsis")
             }
+            .accessibilityLabel("Record actions")
             // Sized on the menu, not its label, so large text wraps instead of clipping.
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
