@@ -2,12 +2,17 @@
 	import MarkdownEditor from './components/MarkdownEditor.svelte';
 	import { parseEditorDocument, type EditorDocument, type EditorMessage } from './editor-island';
 	import { editorFiles } from './editor-files';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, setContext } from 'svelte';
+	import { createEditorLinks, EDITOR_LINKS, type LinkRequest } from './editor-links';
 	let { onMessage }: { onMessage(message: EditorMessage): void } = $props();
 	let current = $state<EditorDocument>({ id: 'initial', value: '', label: 'Body', readOnly: true });
 	let announced = false;
 	const files = editorFiles((message) => onMessage(message));
 	onDestroy(() => files.dispose());
+	setContext(
+		EDITOR_LINKS,
+		createEditorLinks(((op, args) => files.core(current.id, op, args)) as LinkRequest)
+	);
 	export function receiveFile(input: unknown) {
 		files.receive(input);
 	}

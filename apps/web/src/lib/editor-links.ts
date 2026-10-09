@@ -1,6 +1,9 @@
 import type { CoreHandlers, MentionLabel, ViewEmbed } from 'iris-core/client';
 import { calendarContext } from './calendar-context';
 
+/** Svelte context key: hosts provide links; the editor works without them. */
+export const EDITOR_LINKS = Symbol('editor-links');
+
 /** The read-only core operations the editor may ask its host for. */
 export type LinkOp = 'catalog' | 'search' | 'listViews' | 'mentionLabels' | 'viewEmbed';
 export type LinkRequest = <K extends LinkOp>(

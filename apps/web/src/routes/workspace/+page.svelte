@@ -41,7 +41,7 @@
 		type CellKey,
 		type CellDraft
 	} from '$lib/record-grid';
-	import { onDestroy, onMount, tick } from 'svelte';
+	import { onDestroy, onMount, setContext, tick } from 'svelte';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import {
 		destinationURL,
@@ -84,6 +84,8 @@
 	} from 'iris-core/client';
 	import { WorkspaceDatabase } from '$lib/database';
 	import IncomingReferences from '$lib/IncomingReferences.svelte';
+	import LinkedFrom from '$lib/LinkedFrom.svelte';
+	import { createEditorLinks, EDITOR_LINKS, type LinkRequest } from '$lib/editor-links';
 	import SchemaGraph from '$lib/SchemaGraph.svelte';
 	import HubServices from '$lib/HubServices.svelte';
 	import Backup from '$lib/Backup.svelte';
@@ -2331,6 +2333,17 @@
 		}
 		return true;
 	}
+	// Mentions, view embeds and their pickers read through the open workspace's core.
+	setContext(
+		EDITOR_LINKS,
+		createEditorLinks(((op, args) => {
+			const workspace = database;
+			if (!workspace) return Promise.reject(Error('Open a workspace to resolve links.'));
+			return op === 'catalog'
+				? Promise.resolve(catalog)
+				: workspace.request(op as 'search', args as never);
+		}) as LinkRequest)
+	);
 	async function openSourceLink(url: string): Promise<boolean> {
 		if (!database || busy || writing || bodySaving)
 			throw Error('Wait for the current save, then open the link again.');
@@ -2344,13 +2357,19 @@
 			(editing || !!gridDraft) &&
 			!findVisible;
 		try {
-			const { destination } = await workspace.request('resolveSourceLink', { url });
+			const { destination, view } = await workspace.request('resolveSourceLink', { url });
 			if (!current()) throw new DOMException('Navigation superseded', 'AbortError');
-			if (!destination) return false;
+			if (!destination && !view) return false;
 			// Web Markdown publishes each transaction synchronously. The shared
 			// destination guard checks that live draft immediately before discard;
 			// opening a link never commits an inline cell or replaces its source.
-			const opened = await openDestination({ ...destination, view: null }, current, request);
+			const opened = await openDestination(
+				destination
+					? { ...destination, view: null }
+					: { table: view!.table, view: view!.view, row: null },
+				current,
+				request
+			);
 			if (!opened) throw new DOMException('Navigation canceled', 'AbortError');
 			return opened;
 		} catch (reason) {
@@ -3280,6 +3299,13 @@
 						</div>
 					</form>
 					{#if selected && database}{#key `${editorVersion}:${selected.id}:${JSON.stringify([catalog, skipped])}`}<IncomingReferences
+								core={database}
+								revision={dataRevision}
+								{table}
+								rowId={String(selected.id)}
+								disabled={busy || navigationLoading || relationOpening === editorVersion}
+								onopen={openRelatedRecord}
+							/><LinkedFrom
 								core={database}
 								revision={dataRevision}
 								{table}

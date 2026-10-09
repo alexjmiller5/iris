@@ -7,7 +7,7 @@ export interface EditorDocument {
 export type EditorMessage =
 	| { type: 'ready' }
 	| { type: 'change'; id: string; value: string }
-	| { type: 'file' | 'openFile' | 'openLink'; id: string; request: string; value: string };
+	| { type: 'file' | 'openFile' | 'openLink' | 'core'; id: string; request: string; value: string };
 export function parseEditorDocument(input: unknown): EditorDocument {
 	if (!input || typeof input !== 'object' || Array.isArray(input))
 		throw Error('Invalid editor document');

@@ -495,6 +495,12 @@ async function dispatch(request: DatabaseRequest) {
 			return local.resolveSourceLink(args);
 		case 'search':
 			return local.search(args);
+		case 'mentionedBy':
+			return local.mentionedBy(args);
+		case 'mentionLabels':
+			return local.mentionLabels(args);
+		case 'viewEmbed':
+			return local.viewEmbed(args);
 		case 'remoteRows': {
 			if (databaseName === 'iris-demo') throw new Error('Sample workspaces cannot browse a hub.');
 			const { token, ...input } = args;

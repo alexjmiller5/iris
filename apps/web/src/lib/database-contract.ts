@@ -52,6 +52,9 @@ export interface DatabaseOperations {
 		result: CoreResult<'resolveSourceLink'>;
 	};
 	search: { args: CoreArgs<'search'>; result: CoreResult<'search'> };
+	mentionedBy: { args: CoreArgs<'mentionedBy'>; result: CoreResult<'mentionedBy'> };
+	mentionLabels: { args: CoreArgs<'mentionLabels'>; result: CoreResult<'mentionLabels'> };
+	viewEmbed: { args: CoreArgs<'viewEmbed'>; result: CoreResult<'viewEmbed'> };
 	remoteRows: {
 		args: CoreArgs<'remoteRows'> & { token: string };
 		result: CoreResult<'remoteRows'>;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { getContext, onMount, tick } from 'svelte';
 	import {
 		IconItalic,
 		IconLink,
@@ -18,8 +18,19 @@
 		IconQuote,
 		IconTable,
 		IconArrowBackUp,
-		IconArrowForwardUp
+		IconArrowForwardUp,
+		IconAt,
+		IconLayoutList
 	} from '@tabler/icons-svelte';
+	import { irisHref } from 'iris-core/client';
+	import {
+		EDITOR_LINKS,
+		slashMatches,
+		type EditorLinks,
+		type LinkTarget,
+		type MentionTable,
+		type SlashMatch
+	} from '../editor-links';
 	import type { MarkdownCommand, MarkdownController } from '../markdown-editor';
 	import { retainedFileKey, type RetainedFileResolver } from '../retained-files';
 	let {
@@ -48,7 +59,91 @@
 	let controller = $state<MarkdownController>();
 	let source = $state(false);
 	let error = $state('');
-	let popup = $state<'options' | 'blocks' | 'link' | 'help' | 'destination' | null>(null);
+	let popup = $state<'options' | 'blocks' | 'link' | 'help' | 'destination' | 'picker' | null>(
+		null
+	);
+	const links = getContext<EditorLinks | undefined>(EDITOR_LINKS);
+	let slashQuery = $state('');
+	let mentionTables = $state<MentionTable[]>([]);
+	let picker = $state<{ kind: 'row' | 'view'; table?: string; title: string; noun: string }>();
+	let pickerQuery = $state('');
+	let pickerResults = $state<LinkTarget[]>([]);
+	let pickerStatus = $state('');
+	let pickerViews: LinkTarget[] | undefined;
+	let pickerSearch = 0;
+	const words = (text: string) => text.replace(/_/g, ' ');
+	const capitalized = (text: string) => words(text).replace(/^./, (c) => c.toUpperCase());
+	async function choose(match: SlashMatch) {
+		picker =
+			match.kind === 'view'
+				? { kind: 'view', title: 'Embed a saved view', noun: 'views' }
+				: match.kind === 'mention'
+					? { kind: 'row', title: 'Mention a record', noun: 'records' }
+					: {
+							kind: 'row',
+							table: match.table.id,
+							title: `Mention a ${words(match.table.command)}`,
+							noun: words(match.table.id)
+						};
+		pickerQuery = '';
+		pickerResults = [];
+		pickerViews = undefined;
+		pickerStatus = picker.kind === 'view' ? 'Loading views…' : `Type to search ${picker.noun}.`;
+		popup = 'picker';
+		await tick();
+		menu?.querySelector<HTMLInputElement>('input')?.focus();
+		if (picker.kind === 'view') void searchPicker();
+	}
+	async function searchPicker() {
+		if (!links || !picker) return;
+		const request = ++pickerSearch,
+			query = pickerQuery.trim().toLowerCase(),
+			current = picker;
+		try {
+			let results: LinkTarget[];
+			if (current.kind === 'view') {
+				pickerViews ??= (await links.views()).map(({ table, id, name }) => ({ table, id, label: name }));
+				results = pickerViews.filter(
+					(view) => !query || `${view.label} ${words(view.table)}`.toLowerCase().includes(query)
+				);
+			} else results = await links.search(current.table, pickerQuery);
+			if (request !== pickerSearch || popup !== 'picker') return;
+			pickerResults = results.slice(0, 20);
+			pickerStatus = results.length
+				? ''
+				: current.kind === 'row' && !query
+					? `Type to search ${current.noun}.`
+					: `No matching ${current.noun}.`;
+		} catch (reason) {
+			if (request === pickerSearch)
+				pickerStatus = reason instanceof Error ? reason.message : 'Search failed.';
+		}
+	}
+	function insertPicked(target: LinkTarget) {
+		if (!picker) return;
+		const inserted = controller?.insertLink(
+			irisHref(picker.kind, target.table, target.id),
+			target.label
+		);
+		if (inserted) popup = null;
+	}
+	async function openIrisLink(href: string, element: HTMLElement) {
+		if (!onopenlink || openingLink) return;
+		openingLink = true;
+		openError = '';
+		try {
+			if (!(await onopenlink(href)))
+				throw Error('This record or view is not available in this workspace.');
+		} catch (reason) {
+			if (disposed || (reason instanceof Error && reason.name === 'AbortError')) return;
+			selectedLink = href;
+			linkAnchor = element;
+			popup = 'destination';
+			openError = reason instanceof Error ? reason.message : 'The link could not open.';
+		} finally {
+			openingLink = false;
+		}
+	}
 	let selected = $state(false);
 	let selectionRange: Range | undefined;
 	let optionsButton: HTMLButtonElement;
@@ -57,7 +152,7 @@
 	let selectedLink = $state(''),
 		openingLink = $state(false),
 		openError = $state('');
-	let linkAnchor: HTMLAnchorElement | undefined;
+	let linkAnchor: HTMLElement | undefined;
 	const fileKey = $derived(retainedFileKey(selectedLink));
 	const externalLink = $derived.by(() => {
 		try {
@@ -181,8 +276,14 @@
 	async function openMenu(next: 'blocks' | 'options') {
 		trackSelection();
 		popup = popup === next ? null : next;
+		slashQuery = '';
 		await tick();
-		menu?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+		menu?.querySelector<HTMLElement>('input, button:not(:disabled)')?.focus();
+		if (popup === 'blocks' && links)
+			links.tables().then(
+				(tables) => (mentionTables = tables),
+				() => (mentionTables = [])
+			);
 	}
 	function closePopup(restoreFocus = true) {
 		const previous = popup;
@@ -243,6 +344,17 @@
 		{ command: 'undo', name: 'Undo', icon: IconArrowBackUp },
 		{ command: 'redo', name: 'Redo', icon: IconArrowForwardUp }
 	];
+	const slashTools = $derived(
+		tools.filter(
+			(tool) =>
+				!['bold', 'italic', 'undo', 'redo'].includes(tool.command) &&
+				tool.name
+					.toLowerCase()
+					.split(' ')
+					.some((word) => word.startsWith(slashQuery.trim().toLowerCase()))
+		)
+	);
+	const slashLinks = $derived(links ? slashMatches(slashQuery, mentionTables) : []);
 	onMount(() => {
 		void import('../markdown-editor')
 			.then(async ({ createMarkdownEditor }) => {
@@ -252,6 +364,8 @@
 					label,
 					id: `${id}-rich`,
 					onslash: () => openMenu('blocks'),
+					links,
+					onopenrecord: (href, element) => void openIrisLink(href, element),
 					resolveFile: (key, signal, preview) => {
 						if (!resolveFile)
 							return Promise.reject(Error('Connect to your hub to view this image.'));
@@ -482,7 +596,19 @@
 			onkeydown={menuKeys}
 			use:placePopup={{ anchor: caretRect }}
 		>
-			{#each tools.filter((tool) => !['bold', 'italic', 'undo', 'redo'].includes(tool.command)) as tool}
+			<input
+				class="slash-query"
+				aria-label="Filter blocks"
+				placeholder="Filter"
+				bind:value={slashQuery}
+				onkeydown={(event) => {
+					if (event.key === 'Enter') {
+						event.preventDefault();
+						menu?.querySelector<HTMLButtonElement>('button')?.click();
+					}
+				}}
+			/>
+			{#each slashTools as tool}
 				<button
 					type="button"
 					role="menuitem"
@@ -492,6 +618,48 @@
 					}}><tool.icon size={18} />{tool.name}</button
 				>
 			{/each}
+			{#each slashLinks as match}
+				<button type="button" role="menuitem" onclick={() => choose(match)}>
+					{#if match.kind === 'view'}<IconLayoutList size={18} />Embed view
+					{:else if match.kind === 'mention'}<IconAt size={18} />Mention
+					{:else}<IconAt size={18} />{capitalized(match.table.command)}<span class="hint"
+							>{words(match.table.id)}</span
+						>{/if}
+				</button>
+			{/each}
+			{#if !slashTools.length && !slashLinks.length}<p class="empty">No matching blocks.</p>{/if}
+		</div>
+	{/if}
+	{#if popup === 'picker' && picker && !source && !disabled}
+		<div
+			class="editor-popup link-picker"
+			role="dialog"
+			aria-label={picker.title}
+			tabindex="-1"
+			bind:this={menu}
+			onkeydown={menuKeys}
+			use:placePopup={{ anchor: caretRect }}
+		>
+			<input
+				aria-label={picker.title}
+				placeholder={`Search ${picker.noun}`}
+				bind:value={pickerQuery}
+				oninput={() => void searchPicker()}
+				onkeydown={(event) => {
+					if (event.key === 'Enter') {
+						event.preventDefault();
+						if (pickerResults[0]) insertPicked(pickerResults[0]);
+					}
+				}}
+			/>
+			{#each pickerResults as target (`${target.table}/${target.id}`)}
+				<button type="button" role="menuitem" onclick={() => insertPicked(target)}
+					><span class="pick-label">{target.label}</span><span class="hint"
+						>{words(target.table)}</span
+					></button
+				>
+			{/each}
+			{#if pickerStatus}<p class="empty" role="status">{pickerStatus}</p>{/if}
 		</div>
 	{/if}
 	<div bind:this={host} class="rich-document" hidden={source}></div>
@@ -611,14 +779,128 @@
 		gap: 0.1rem;
 	}
 	.options-menu,
-	.block-menu {
+	.block-menu,
+	.link-picker {
 		display: grid;
 		width: 12rem;
 	}
+	.block-menu {
+		width: 14rem;
+	}
+	.link-picker {
+		width: 18rem;
+	}
 	.options-menu button,
-	.block-menu button {
+	.block-menu button,
+	.link-picker button {
 		width: 100%;
 		text-align: left;
+	}
+	.slash-query,
+	.link-picker input {
+		width: 100%;
+		min-width: 0;
+		margin-bottom: 0.25rem;
+		border: 1px solid var(--color-rule);
+		border-radius: 0.3rem;
+		padding: 0.35rem 0.45rem;
+		font-size: 0.85rem;
+		background: var(--color-paper);
+		color: var(--color-ink);
+	}
+	.hint {
+		margin-left: auto;
+		font-size: 0.72rem;
+		color: var(--color-muted);
+	}
+	.pick-label {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--color-ink);
+	}
+	.empty {
+		margin: 0.35rem 0.45rem;
+		font-size: 0.78rem;
+		color: var(--color-muted);
+	}
+	.rich-document :global(.iris-mention) {
+		display: inline;
+		min-height: 0;
+		padding: 0 0.3rem;
+		border-radius: 0.3rem;
+		background: var(--color-bone);
+		color: var(--color-accent);
+		font-size: inherit;
+		font-weight: 550;
+		line-height: inherit;
+		white-space: normal;
+	}
+	.rich-document :global(.iris-mention[data-state='unavailable']),
+	.rich-document :global(.iris-mention[data-state='trashed']) {
+		background: transparent;
+		color: var(--color-muted);
+		outline: 1px dashed var(--color-rule);
+		outline-offset: -1px;
+		font-weight: 400;
+	}
+	.rich-document :global(.iris-embed) {
+		display: block;
+		margin: 0.4rem 0;
+		border: 1px solid var(--color-rule);
+		border-radius: 0.5rem;
+		overflow: hidden;
+		white-space: normal;
+		line-height: 1.4;
+	}
+	.rich-document :global(.iris-embed-header) {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.35rem 0.35rem 0.35rem 0.75rem;
+		border-bottom: 1px solid var(--color-rule);
+		background: var(--color-bone);
+	}
+	.rich-document :global(.iris-embed-title) {
+		flex: 1;
+		min-width: 0;
+		font-size: 0.85rem;
+		font-weight: 650;
+		overflow-wrap: anywhere;
+	}
+	.rich-document :global(.iris-embed-open) {
+		font-size: 0.78rem;
+		color: var(--color-accent);
+	}
+	.rich-document :global(.iris-embed-body) {
+		display: block;
+		overflow-x: auto;
+		font-size: 0.8rem;
+	}
+	.rich-document :global(.iris-embed table) {
+		margin: 0;
+	}
+	.rich-document :global(.iris-embed th),
+	.rich-document :global(.iris-embed td) {
+		border: 0;
+		border-bottom: 1px solid var(--color-rule);
+		padding: 0.35rem 0.75rem;
+		text-align: left;
+		vertical-align: top;
+	}
+	.rich-document :global(.iris-embed th) {
+		font-weight: 550;
+		color: var(--color-muted);
+	}
+	.rich-document :global(.iris-embed tr:last-child td) {
+		border-bottom: 0;
+	}
+	.rich-document :global(.iris-embed-note),
+	.rich-document :global(.iris-embed-body:not(:has(*))) {
+		display: block;
+		padding: 0.45rem 0.75rem;
+		color: var(--color-muted);
 	}
 	.link-bar {
 		width: 19rem;

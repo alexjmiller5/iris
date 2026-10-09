@@ -9,7 +9,7 @@ export function editorFiles(send: (message: EditorMessage) => void) {
 		{ id: string; resolve(value: Record<string, unknown>): void; reject(error: Error): void }
 	>();
 	function request(
-		type: 'file' | 'openFile' | 'openLink',
+		type: 'file' | 'openFile' | 'openLink' | 'core',
 		id: string,
 		value: string,
 		signal?: AbortSignal
@@ -56,6 +56,10 @@ export function editorFiles(send: (message: EditorMessage) => void) {
 		},
 		async openFile(id: string, key: string) {
 			await request('openFile', id, key);
+		},
+		/** Read-only core operations for mentions and embeds; the host enforces the allowlist. */
+		async core(id: string, op: string, args: unknown) {
+			return (await request('core', id, JSON.stringify({ op, args }))).result;
 		},
 		async openLink(id: string, href: string) {
 			return (await request('openLink', id, href)).opened === true;

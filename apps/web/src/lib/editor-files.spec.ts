@@ -51,3 +51,19 @@ test.each([
 	decode.mockRestore();
 	files.dispose();
 });
+
+test('core requests carry the operation and return only the host result for this document', async () => {
+	const messages: EditorMessage[] = [];
+	const files = editorFiles((message) => messages.push(message));
+	const reply = files.core('draft', 'mentionLabels', { targets: [] });
+	const request = messages[0];
+	if (!request || !('request' in request)) throw Error('No core request');
+	expect(request.type).toBe('core');
+	expect(JSON.parse(request.value)).toEqual({ op: 'mentionLabels', args: { targets: [] } });
+	files.receive({ ...request, id: 'other', result: ['stale'] });
+	files.receive({ ...request, result: [] });
+	expect(await reply).toEqual([]);
+	const failed = files.core('draft', 'search', { text: 'x' });
+	files.receive({ ...messages[1], error: 'Not allowed in the editor.' });
+	await expect(failed).rejects.toThrow('Not allowed in the editor.');
+});

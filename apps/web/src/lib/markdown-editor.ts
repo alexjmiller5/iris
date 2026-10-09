@@ -26,7 +26,10 @@ import { Plugin, TextSelection } from '@milkdown/kit/prose/state';
 import { undoInputRule } from '@milkdown/kit/prose/inputrules';
 import { $prose, callCommand, replaceAll } from '@milkdown/kit/utils';
 import { retainedImage } from './retained-image';
+import { irisLinkSchema, irisLinkView } from './iris-link';
+import type { EditorLinks } from './editor-links';
 import type { RetainedFileResolver } from './retained-files';
+import { parseIrisHref } from 'iris-core/client';
 
 export type MarkdownCommand =
 	| 'paragraph'
@@ -50,6 +53,8 @@ export interface MarkdownController {
 	focus(): void;
 	replaceMarkdown(value: string): void;
 	command(command: MarkdownCommand, value?: string): boolean;
+	/** Insert a mention (inline) or a view embed (its own line) at the selection. */
+	insertLink(href: string, label: string): boolean;
 	setReadOnly(value: boolean): void;
 	destroy(): Promise<void>;
 }
@@ -63,6 +68,8 @@ export async function createMarkdownEditor(
 		onslash?(): void;
 		resolveFile?: RetainedFileResolver;
 		onopenlink?(href: string, anchor: HTMLAnchorElement): void;
+		links?: Pick<EditorLinks, 'label' | 'embed'>;
+		onopenrecord?(href: string, element: HTMLElement): void;
 	}
 ): Promise<MarkdownController> {
 	let source = options.value;
@@ -149,6 +156,7 @@ export async function createMarkdownEditor(
 				},
 				nodeViews: {
 					image: (node) => retainedImage(node, options.resolveFile),
+					iris_link: (node) => irisLinkView(node, options.links, options.onopenrecord),
 					list_item(node, view, getPos) {
 						const dom = document.createElement('li');
 						const contentDOM = document.createElement('div');
@@ -211,6 +219,7 @@ export async function createMarkdownEditor(
 		})
 		.use(commonmark)
 		.use(gfm)
+		.use(irisLinkSchema)
 		.use(history)
 		.use(changes)
 		.create();
@@ -308,6 +317,23 @@ export async function createMarkdownEditor(
 			}
 			editor.action((ctx) => ctx.get(editorViewCtx).focus());
 			return result;
+		},
+		insertLink(href, label) {
+			const link = parseIrisHref(href);
+			if (readOnly || destroyed || !link) return false;
+			return editor.action((ctx) => {
+				const view = ctx.get(editorViewCtx);
+				let tr = view.state.tr.replaceSelectionWith(irisLinkSchema.type(ctx).create({ href, label }), false);
+				if (link.kind === 'view' && tr.selection.$to.depth === 1 && tr.selection.$to.after() === tr.doc.content.size) {
+					// An embed sits on its own line; leave somewhere to keep typing.
+					const after = tr.selection.$to.after();
+					tr = tr.insert(after, view.state.schema.nodes.paragraph.create());
+					tr = tr.setSelection(TextSelection.create(tr.doc, after + 1));
+				}
+				view.dispatch(tr.scrollIntoView());
+				view.focus();
+				return true;
+			});
 		},
 		setReadOnly(value) {
 			readOnly = value;
