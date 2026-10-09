@@ -1825,7 +1825,8 @@ private struct RecordEditor: View {
                 },
                 canOpen: !editor.saving, onOpenRecord: openReference
               )
-              .id(identity)
+              // Distinct from the incoming section's identity: the Mac form reuses rows by ID.
+              .id([AnyHashable("linked-from"), AnyHashable(identity)])
             }
             Section {
               DisclosureGroup("Record details") {

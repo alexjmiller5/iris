@@ -365,3 +365,12 @@ test('mentions survive edits elsewhere in the document', async () => {
 	editor.command('heading1');
 	expect(editor.getMarkdown()).toBe(`# Met [Ada](${mentionHref}) today.\n`);
 });
+
+test('read-only documents and non-iris links refuse insertion without changing source', async () => {
+	const { editor, onchange } = await openLinked('Kept');
+	expect(editor.insertLink('https://example.test', 'Web')).toBe(false);
+	editor.setReadOnly(true);
+	expect(editor.insertLink(mentionHref, 'Ada')).toBe(false);
+	expect(editor.getMarkdown()).toBe('Kept');
+	expect(onchange).not.toHaveBeenCalled();
+});
