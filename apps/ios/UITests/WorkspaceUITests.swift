@@ -607,7 +607,11 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(name)
     name.typeText(" renamed")
     let renamed = try XCTUnwrap(name.value as? String)
-    tapWhenReady(app.buttons["Delete Imported order"])
+    let deleteImported = app.buttons["Delete Imported order"]
+    for _ in 0..<5 where !deleteImported.isHittable {
+      app.collectionViews["saved-views-form"].swipeDown(velocity: .slow)
+    }
+    tapWhenReady(deleteImported)
     tapWhenReady(app.buttons["Delete view"])
     XCTAssertTrue(app.buttons["Imported order"].waitForNonExistence(timeout: 5))
     XCTAssertEqual(

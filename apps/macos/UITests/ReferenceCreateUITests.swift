@@ -107,8 +107,12 @@ final class ReferenceCreateUITests: XCTestCase {
   }
 
   private func expandEmptyProperties(_ app: XCUIApplication) {
-    // A Form DisclosureGroup is an outline row opened by its labelled triangle.
-    click(app.sheets.disclosureTriangles["Empty properties"])
+    // A Form DisclosureGroup is an outline row whose element spans its label; click the arrow.
+    let triangle = app.sheets.disclosureTriangles["Empty properties"]
+    XCTAssertTrue(triangle.waitForExistence(timeout: 10))
+    triangle.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+      .withOffset(CGVector(dx: 7, dy: 0)).click()
+    XCTAssertTrue(app.buttons["field-company"].waitForExistence(timeout: 10))
   }
 
   private func label(_ column: String, app: XCUIApplication) -> String {

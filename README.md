@@ -612,7 +612,6 @@ bun scripts/test-sql-integrity.ts /path/to/life-data
 bun scripts/test-search.ts
 bun scripts/test-search-sync.ts /path/to/life-data
 bun scripts/test-saved-views.ts /path/to/life-data
-bun scripts/test-typed-filters.ts /path/to/life-data
 bun scripts/test-table-invariants.ts /path/to/life-data
 bun scripts/test-read-dependencies.ts /path/to/life-data
 bun scripts/test-remote-browse.ts /path/to/life-data

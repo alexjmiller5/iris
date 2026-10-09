@@ -19,6 +19,7 @@ try {
  page=await sourceNavigationCDP(url);const cdp=page;
  // Background tabs throttle rendering and the 2 s sync loop.
  await cdp.command('Page.bringToFront');
+ await cdp.command('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  const button=(name:string)=>named('button',name);
  const click=(name:string)=>cdp.click(button(name));
  const select=element('select[aria-label="View"]');
@@ -63,8 +64,8 @@ try {
  await openTable('views');await openTable('widgets');await waitSelected(catalogDefault);
  expect(await cdp.evaluate(`document.body.innerText.includes(${js(notice)})`)).toBe(false);
  console.log('PASS deleted preferred view falls back to the catalog default with a notice, and Use catalog default clears it through real Worker/core.');
-} catch(error) { if(page){console.error(await page.evaluate("document.body.innerText"));if(process.env.DEBUG_SHOT)await Bun.write(process.env.DEBUG_SHOT,Buffer.from((await page.command('Page.captureScreenshot',{format:'png'})).data,'base64'));}throw error;
+} catch(error) { if(page)console.error(await page.evaluate("document.body.innerText"));throw error;
 } finally {
- if(page){await page.navigate(new URL('/',url).href).catch(()=>{});await page.command('Storage.clearDataForOrigin',{origin,storageTypes:'all'}).catch(()=>{});page.close();}
+ if(page){await page.command('Emulation.clearDeviceMetricsOverride').catch(()=>{});await page.navigate(new URL('/',url).href).catch(()=>{});await page.command('Storage.clearDataForOrigin',{origin,storageTypes:'all'}).catch(()=>{});page.close();}
  server.stop(true);db.db.close();auth.db.close();
 }

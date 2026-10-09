@@ -206,8 +206,8 @@ import XCTest
     customize.tap()
     let lockScreen = poster.descendants(matching: .any).matching(
       NSPredicate(format: "label CONTAINS 'Lock Screen'")).firstMatch
-    require(lockScreen, in: poster, 10)
-    lockScreen.tap()
+    // Older releases ask which surface to customize; iOS 27 opens the Lock Screen editor.
+    if lockScreen.waitForExistence(timeout: 3) { lockScreen.tap() }
     let slots = poster.buttons.matching(identifier: "grouped-widgets-reticle-view")
     require(slots.firstMatch, in: poster, 15)
     let slot = try XCTUnwrap(slots.allElementsBoundByIndex.first(where: \.isHittable))
