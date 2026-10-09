@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import JavaScriptCore
 import Testing
 
@@ -329,6 +330,38 @@ struct HubSyncTests {
     #expect(!model.rows.isEmpty)
     await model.close()
     #expect(!model.canWrite)
+  }
+
+  @Test func interruptedRoundKeepsFinishedTablesAndTheNextRoundCompletes() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let hubPath = directory.appendingPathComponent("hub.sqlite").path
+    let seed = try NativeWorkspace(path: hubPath)
+    try await seed.createSample()
+    try await seed.close()
+    try HubFixture.state.load(path: hubPath)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [HubFixture.self]
+    let transport = try HubTransport(
+      endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
+      configuration: configuration)
+    let path = directory.appendingPathComponent("replica.sqlite").path
+    let replica = try NativeWorkspace(path: path)
+    HubFixture.state.failPull("notes")
+    await #expect(throws: Error.self) { try await replica.sync(using: transport) }
+    try await replica.close()
+    // A failed request or round deadline keeps every table finished before it.
+    let finished = try await DatabaseQueue(path: path).read {
+      try String.fetchAll($0, sql: "SELECT tbl FROM _core_sync ORDER BY tbl")
+    }
+    #expect(finished.contains("catalog_properties"))
+    #expect(!finished.contains("notes"))
+    HubFixture.state.failPull(nil)
+    let reopened = try NativeWorkspace(path: path)
+    _ = try await reopened.sync(using: transport)
+    #expect(try await reopened.status().lastSuccessfulSync != nil)
+    try await reopened.close()
   }
 
   @Test func realCorePullEditPushAndTransportFailureRecovery() async throws {
