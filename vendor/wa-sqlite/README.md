@@ -37,7 +37,7 @@ and never installs a compiler or modifies machine configuration.
 
 The disposable browser regression bundles the actual application Worker and
 adds SQL probes only to the test bundle. Open a dedicated test tab at
-`http://life-ui-fts.localhost:5209/fts-fixture`, then run:
+`http://iris-fts.localhost:5209/fts-fixture`, then run:
 
 ```sh
 LIFE_UI_TEST_CDP=http://127.0.0.1:9222 bun scripts/test-wa-sqlite.ts
