@@ -55,7 +55,9 @@ final class FilterBarUITests: XCTestCase {
     let add = app.descendants(matching: .any)["add-sort"]
     XCTAssertTrue(add.waitForExistence(timeout: 5))
     add.click()
-    app.menuItems["Title"].click()
+    let title = app.descendants(matching: .any)["sort-property-title"]
+    XCTAssertTrue(title.waitForExistence(timeout: 5))
+    title.click()
     let direction = app.buttons["sort-direction-0"]
     XCTAssertTrue(direction.waitForExistence(timeout: 5))
     direction.click()

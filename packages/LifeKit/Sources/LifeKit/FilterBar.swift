@@ -259,6 +259,7 @@ private struct AddFilterPopover: View {
 struct PropertyPicker<Footer: View>: View {
   let fields: [CatalogField]
   let title: String
+  var identifier = "filter-property"
   let choose: (CatalogField) -> Void
   @ViewBuilder let footer: () -> Footer
   @State private var query = ""
@@ -275,7 +276,7 @@ struct PropertyPicker<Footer: View>: View {
         // Wraps instead of clipping at large text sizes.
         TextField("Search properties", text: $query, axis: .vertical)
           .accessibilityLabel("Search properties")
-          .accessibilityIdentifier("filter-property-search")
+          .accessibilityIdentifier("\(identifier)-search")
           #if os(iOS)
             .textInputAutocapitalization(.never)
           #endif
@@ -295,7 +296,7 @@ struct PropertyPicker<Footer: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
           #endif
-          .accessibilityIdentifier("filter-property-\(field.id)")
+          .accessibilityIdentifier("\(identifier)-\(field.id)")
         }
         if matches.isEmpty { Text("No matching properties").foregroundStyle(.secondary) }
       }

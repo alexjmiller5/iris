@@ -4,6 +4,7 @@ import SwiftUI
 /// Every change applies immediately; the bar saves the view on dismiss.
 struct SortMenu: View {
   let model: WorkspaceModel
+  @State private var choosing = false
 
   private var fields: [CatalogField] { model.viewFields }
   private var sorts: [CoreSort] { model.sortRules }
@@ -36,18 +37,14 @@ struct SortMenu: View {
           .listStyle(.plain)
         #endif
         Divider()
-        // Outside the List: a Menu in an edit-mode row does not open on iOS.
+        // Outside the List so it stays usable beside edit-mode rows on iOS.
         HStack {
-          Menu {
-            ForEach(fields.filter { field in !sorts.contains { $0.column == field.id } }) {
-              field in
-              Button(field.label) {
-                model.setSorts(sorts + [CoreSort(column: field.id, direction: .asc)])
-              }
-            }
+          Button {
+            choosing = true
           } label: {
             Label("Add sort", systemImage: "plus")
           }
+          .buttonStyle(.borderless)
           .disabled(sorts.count >= 16)
           .accessibilityIdentifier("add-sort")
           Spacer()
@@ -63,6 +60,17 @@ struct SortMenu: View {
         .navigationBarTitleDisplayMode(.inline)
       #endif
       .navigationTitle("Sort")
+      .navigationDestination(isPresented: $choosing) {
+        PropertyPicker(
+          fields: fields.filter { field in !sorts.contains { $0.column == field.id } },
+          title: "Sort by", identifier: "sort-property"
+        ) { field in
+          model.setSorts(sorts + [CoreSort(column: field.id, direction: .asc)])
+          choosing = false
+        } footer: {
+          EmptyView()
+        }
+      }
     }
   }
 

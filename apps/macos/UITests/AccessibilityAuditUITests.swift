@@ -51,6 +51,9 @@ final class AccessibilityAuditUITests: XCTestCase {
     grid.buttons["Open A place to start"].click()
     let title = app.sheets.textFields["field-title"]
     XCTAssertTrue(title.waitForExistence(timeout: 5))
+    // Saving collects the Markdown editor's text, so wait for the editor to load.
+    XCTAssertTrue(
+      app.sheets.webViews.textViews.firstMatch.waitForExistence(timeout: 60), "Editor loads")
     try audit(app, "record")
     title.click()
     title.typeKey(.end, modifierFlags: .command)
@@ -126,8 +129,18 @@ final class AccessibilityAuditUITests: XCTestCase {
       return "system secondary label color"
     }
     guard let element = issue.element else { return "no element" }
-    if element.frame.minY < 0 || element.identifier.isEmpty && element.elementType == .popUpButton {
-      return "system menu bar extra"
+    if element.frame.maxY <= 32 {
+      return "system menu bar"
+    }
+    if issue.auditType == .parentChild, element.elementType == .group {
+      // SwiftUI builds these layout groups; the app has no handle on their parentage.
+      return "SwiftUI layout group"
+    }
+    if issue.auditType == .action,
+      [.disclosureTriangle, .popUpButton].contains(element.elementType)
+    {
+      // SwiftUI DisclosureGroup and Picker expose their expand and show-menu actions.
+      return "SwiftUI disclosure or picker"
     }
     if issue.auditType == .sufficientElementDescription,
       [.group, .scrollView, .popover, .window, .menuBar, .other, .splitGroup].contains(

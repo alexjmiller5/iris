@@ -45,7 +45,7 @@ final class FilterBarUITests: XCTestCase {
 
     tap(app.buttons["filter-bar-sort"])
     tap(app.buttons["add-sort"])
-    tap(app.buttons["Title"])
+    tap(app.buttons["sort-property-title"])
     tap(app.buttons["sort-direction-0"])
     XCTAssertEqual(app.buttons["sort-direction-0"].label, "Title, descending")
     capture(app, "ios-4-sort-popover")

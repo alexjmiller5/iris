@@ -16,16 +16,14 @@ final class AccessibilityAuditUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 20))
     try audit(app, "records")
 
-    tap(app.buttons["filter-bar-filter"])
-    XCTAssertTrue(app.textFields["filter-property-search"].waitForExistence(timeout: 5))
+    present(app, app.buttons["filter-bar-filter"], app.textFields["filter-property-search"])
     try audit(app, "filter-properties")
     tap(app.buttons["filter-property-status"])
     XCTAssertTrue(app.buttons["filter-option-Ready"].waitForExistence(timeout: 5))
     try audit(app, "filter-editor")
     tap(app.otherElements["PopoverDismissRegion"])
 
-    tap(app.buttons["filter-bar-sort"])
-    XCTAssertTrue(app.buttons["add-sort"].waitForExistence(timeout: 5))
+    present(app, app.buttons["filter-bar-sort"], app.buttons["add-sort"])
     try audit(app, "sort")
     tap(app.otherElements["PopoverDismissRegion"])
 
@@ -67,11 +65,14 @@ final class AccessibilityAuditUITests: XCTestCase {
   func testRichEditorFollowsDynamicType() throws {
     func editorHeight(_ size: String?) -> CGFloat {
       let app = XCUIApplication()
-      app.launchArguments = ["--demo"] + (size.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? [])
+      app.launchArguments =
+        ["--demo"] + (size.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? [])
       app.launch()
       defer { app.terminate() }
-      let open = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
-        .firstMatch
+      let open = app.buttons.matching(
+        NSPredicate(format: "label BEGINSWITH %@", "A place to start")
+      )
+      .firstMatch
       tap(open)
       let rich = app.webViews.textViews["Body"]
       reveal(app, rich)
@@ -160,6 +161,23 @@ final class AccessibilityAuditUITests: XCTestCase {
     "saved-views/Row actions and Today", "workspace-status/Copy diagnostics",
     "record/Actions", "record-markdown/Actions", "quick-find/quick-find-query",
   ]
+
+  /// Taps `control` until `shows` appears, at most twice; the audit just before can
+  /// leave a layout pass in flight that swallows the first tap.
+  private func present(
+    _ app: XCUIApplication, _ control: XCUIElement, _ shows: XCUIElement,
+    file: StaticString = #filePath, line: UInt = #line
+  ) {
+    for attempt in 1...2 {
+      tap(control, file: file, line: line)
+      if shows.waitForExistence(timeout: 5) { return }
+      let shot = XCTAttachment(screenshot: app.screenshot())
+      shot.name = "not-presented-\(control.identifier)-\(attempt)"
+      shot.lifetime = .keepAlways
+      add(shot)
+    }
+    XCTFail("\(control.identifier) did not present its contents", file: file, line: line)
+  }
 
   /// Lazy record forms create rows below the fold only when scrolled to.
   private func reveal(

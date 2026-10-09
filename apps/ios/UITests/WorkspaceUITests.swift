@@ -1042,7 +1042,7 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.navigationBars["New record"].buttons["save-record"])
     tapWhenReady(app.buttons["filter-bar-sort"])
     tapWhenReady(app.buttons["add-sort"])
-    tapWhenReady(app.buttons["Title"])
+    tapWhenReady(app.buttons["sort-property-title"])
     tapWhenReady(app.buttons["sort-direction-0"])
     tapWhenReady(app.otherElements["PopoverDismissRegion"])
     tapWhenReady(app.buttons["filter-bar-filter"])
