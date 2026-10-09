@@ -235,23 +235,26 @@ test('a long sync names the tables left and, once the size is known, the time le
 		rowsExpected: 150_714,
 		table: 'people'
 	};
-	expect(syncProgressLabel(cold, 60_000)).toBe('76 tables left · about 6 min');
+	expect(syncProgressLabel(cold, 60_000)).toBe('76 tables left · ~6 min');
 	expect(syncProgressLabel({ ...cold, rowsReceived: 140_000 }, 60_000)).toBe(
-		'76 tables left · under a minute'
+		'76 tables left · <1 min'
 	);
 	// Too early to tell, a changes-only round, or nothing to measure against.
 	expect(syncProgressLabel({ ...cold, rowsReceived: 1_000 }, 60_000)).toBe('76 tables left');
 	expect(syncProgressLabel(cold, 2_000)).toBe('76 tables left');
 	expect(syncProgressLabel({ ...cold, rowsExpected: null }, 60_000)).toBe('76 tables left');
 	expect(syncProgressLabel({ ...cold, rowsExpected: 0 }, 60_000)).toBe('76 tables left');
-	expect(syncProgressLabel({ ...cold, tablesDone: 112 }, 60_000)).toBe(
-		'1 table left · about 6 min'
-	);
+	expect(syncProgressLabel({ ...cold, tablesDone: 112 }, 60_000)).toBe('1 table left · ~6 min');
 	expect(syncProgressLabel({ ...cold, tablesDone: 113 }, 60_000)).toBe('');
+	// The first download runs while connecting: it is a sync, not "Not connected".
 	expect(
-		syncPill({ ...base, syncing: true, syncDetail: '76 tables left · about 6 min' })
-	).toMatchObject({
-		label: 'Syncing · 76 tables left · about 6 min',
-		tone: 'busy'
-	});
+		syncPill({ ...base, connected: false, syncing: true, syncDetail: '76 tables left' })
+	).toMatchObject({ label: '76 tables left' });
+	expect(syncPill({ ...base, syncing: true, syncDetail: '76 tables left · ~6 min' })).toMatchObject(
+		{
+			label: '76 tables left · ~6 min',
+			title: 'Syncing: 76 tables left · ~6 min',
+			tone: 'busy'
+		}
+	);
 });

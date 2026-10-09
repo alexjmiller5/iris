@@ -143,8 +143,16 @@ export function syncPill(s: PillInput): Pill {
 	if (s.rejected) return pill(`${s.rejected} rejected`, 'error', 'rejected');
 	if (!s.online || /fetch|network|load failed|timed out|offline/i.test(s.error))
 		return pill(`Offline${pending}`, 'warn');
-	if (!s.connected) return pill(`Not connected${pending}`, 'idle', 'connect');
-	if (s.syncing) return pill(s.syncDetail ? `Syncing · ${s.syncDetail}` : 'Syncing', 'busy');
+	// Connecting runs the first download: show it as the sync it is.
+	if (!s.connected && !s.syncing) return pill(`Not connected${pending}`, 'idle', 'connect');
+	// The busy dot says syncing; a long sync's label is where it stands.
+	if (s.syncing)
+		return pill(
+			s.syncDetail || 'Syncing',
+			'busy',
+			null,
+			s.syncDetail ? `Syncing: ${s.syncDetail}` : title
+		);
 	if (s.error === 'hub HTTP 429')
 		return pill('Paused · usage cap', 'warn', null, 'Hub usage cap reached; sync retries later');
 	if (s.error) return pill('Sync error', 'error', null, s.error);
@@ -161,7 +169,7 @@ export interface SyncProgress {
 	table: string | null;
 }
 
-/** "76 tables left · about 6 min": the time left only once a full download has
+/** "76 tables left · ~6 min": the time left only once a full download has
  * a known size and enough of it is done to extrapolate. */
 export function syncProgressLabel(p: SyncProgress, elapsedMs: number) {
 	const left = p.tablesTotal - p.tablesDone;
@@ -170,5 +178,5 @@ export function syncProgressLabel(p: SyncProgress, elapsedMs: number) {
 	const done = p.rowsExpected ? p.rowsReceived / p.rowsExpected : 0;
 	if (done < 0.02 || elapsedMs < 5_000) return tables;
 	const seconds = ((elapsedMs / 1000) * (1 - Math.min(done, 1))) / done;
-	return `${tables} · ${seconds < 60 ? 'under a minute' : `about ${Math.round(seconds / 60)} min`}`;
+	return `${tables} · ${seconds < 60 ? '<1 min' : `~${Math.round(seconds / 60)} min`}`;
 }
