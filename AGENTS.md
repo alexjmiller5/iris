@@ -810,7 +810,12 @@ modals the host unmounts instead of closing call `onDestroy(focusReturn())`.
 `LIFE_UI_DEV_NO_HMR=1` keeps a shared checkout's edits from reloading the page
 under test. Native `AccessibilityAuditUITests` (iOS at AX5 text, and Mac with
 keyboard flows: Cmd+K, Cmd+S, Cmd+\, Escape) run Xcode's accessibility audit on
-each screen and attach its element tree. On touch screens the Markdown island's
+each screen and attach its element tree; findings the app cannot act on (system
+bars, keyboard, SwiftUI-owned containers, text the screenshot shows in full) are
+attached as notes with their reason, never silently dropped. CI runs both in the
+apple job and uploads them as the `accessibility-audit` artifact. At accessibility
+text sizes iPhone layouts stack (filter bar, Quick Find captions) rather than
+break words. On touch screens the Markdown island's
 document text uses `-apple-system-body`, so it follows Dynamic Type, with headings
 capped a step above it and spacing on the fixed rem scale; the record page's editor
 height is a `@ScaledMetric`.
