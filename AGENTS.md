@@ -85,7 +85,19 @@ schema from the operator. Ordinary table defaults are unaffected.
   a draft ID, source, label and read-only state; `getDocument` returns the live
   snapshot. Native hosts reject stale IDs and collect all live snapshots before record actions.
   Keep Markdown as storage, preserve untouched source, and render imported HTML
-  inert. The island has no network, SQL or credential access.
+  inert. The island has no network, SQL or credential access; its only data
+  requests are `core` bridge messages for read-only `catalog`, `search`,
+  `listViews`, `mentionLabels` and `viewEmbed`, which hosts allowlist.
+- Mentions and view embeds are plain Markdown links (`iris-link.ts`, the
+  `iris_link` atom node): `[label](iris://table/<t>/row/<id>)` and
+  `[name](iris://table/<t>/view/<id>)`, built and parsed only by core
+  `irisHref`/`parseIrisHref`. The stored label is never rewritten; labels and
+  embed rows come from core at render time, and missing targets show the stored
+  text marked unavailable. The slash menu filters blocks as you type and adds
+  Mention, one `/<singular table id>` per table with a display property and
+  Embed view (`editor-links.ts`). Taps open through `resolveSourceLink`, which
+  returns `view` for embeds. Record pages show "Linked from" (core `mentionedBy`)
+  beside "Referenced by", never merged into it.
 - Retained `/v1/files/<opaque-key>` image references use the enrolled host
   transport. Web uses managed blob URLs; native passes bytes over the document
   bridge and owns temporary Quick Look files. Both refuse redirects. Image
@@ -730,6 +742,9 @@ Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
 - `test-view-presentations.ts`: Calendar, Gallery and Board layouts with synced moves.
 - `test-workflow-views.ts`: any-of groups, Today across midnight, row actions through
   sync, Save as new view preserving actions, groups and timezone.
+- `test-editor-links.ts`: /person mention and /view embed through the slash menu,
+  synced Markdown links, render-time labels, click-through, Linked from, Open view
+  and an unavailable target. Navigate in-app: a reload drops the session token.
 
 `project.yml` is authoritative; generated Xcode projects and Info.plists are
 ignored. Child justfiles expose platform run/test/check/build. Caches and derived

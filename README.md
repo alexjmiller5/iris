@@ -974,6 +974,9 @@ properties, live action choices and stale displayed-view rejection.
 variables; optional `IRIS_TEST_SHOTS=<dir>`) seeds a synthetic lifecycle table and
 checks the preferred default view, a separate related-record view, a flag quick
 filter with its inline reason and status-labeled search.
+`scripts/test-editor-links.ts <soma-checkout>` (same variables, a reserved
+`iris-markdown.localhost` origin) inserts a person mention and a saved-view embed
+through the slash menu and checks sync, live labels, Linked from and Open view.
 The native `WorkflowViewsUITests` uses `SavedViewsTests.prepareSavedViewsUIFixture`
 on the exact disposable simulator selected by `IRIS_TEST_SAVED_VIEWS_SIMULATOR`.
 
