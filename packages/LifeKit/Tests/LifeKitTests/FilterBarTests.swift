@@ -163,5 +163,17 @@ struct FilterBarTests {
     await inFlight.value
     await model.close()
   }
+
+  @Test func passiveNoticeSkipsTheTransientWriteabilityCheck() async throws {
+    let model = WorkspaceModel()
+    await model.open(demo: true)
+    model.table = "history"
+    #expect(model.editingUnavailable == "Checking editing availability…")
+    #expect(model.editingRefusal == nil)
+    await model.refreshWriteability()
+    #expect(model.editingRefusal != nil)
+    #expect(model.editingRefusal == model.editingUnavailable)
+    await model.close()
+  }
 }
 

@@ -861,7 +861,7 @@ public struct WorkspaceView: View {
       {
         PartialReplicaNotice(model: model, context: context, table: table, message: message)
       }
-      if let reason = model.editingUnavailable {
+      if let reason = model.editingRefusal {
         Text(reason).font(.caption).foregroundStyle(.secondary)
           .accessibilityIdentifier("editing-availability")
       }
@@ -1332,7 +1332,7 @@ public struct WorkspaceView: View {
                 Label("Browse online", systemImage: "cloud")
               }.disabled(!canFind).accessibilityIdentifier("browse-online")
             }
-            if let reason = model.editingUnavailable {
+            if let reason = model.editingRefusal {
               Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 .accessibilityIdentifier("editing-availability")
             }

@@ -27,7 +27,8 @@ struct FilterBar: View {
       // Accessibility text sizes stack Filter and Sort instead of breaking their words.
       let header =
         textSize.isAccessibilitySize
-        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 6))
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+        : AnyLayout(HStackLayout(spacing: 6))
       header {
         Button {
           adding = true
@@ -46,7 +47,8 @@ struct FilterBar: View {
         }
         .accessibilityIdentifier("filter-bar-sort")
         .accessibilityValue(
-          model.sortRules.isEmpty ? "None" : "\(model.sortRules.count) sorts")
+          model.sortRules.isEmpty ? "None" : "\(model.sortRules.count) sorts"
+        )
         .popover(isPresented: $sorting, arrowEdge: .top) {
           SortMenu(model: model).compactPopover("Sort")
         }
@@ -111,7 +113,8 @@ struct FilterBar: View {
     .buttonStyle(.bordered).controlSize(.small).tint(.accentColor)
     .accessibilityLabel(
       "Sorted by \(label), \(first.direction == .asc ? "ascending" : "descending")"
-        + (more.isEmpty ? "" : ", and \(model.sortRules.count - 1) more"))
+        + (more.isEmpty ? "" : ", and \(model.sortRules.count - 1) more")
+    )
     .accessibilityHint("Edits the sort order")
     .accessibilityIdentifier("sort-chip")
   }
@@ -141,7 +144,8 @@ struct FilterBar: View {
 
   private func groupChip(_ group: WorkspaceFilterGroup, index: Int) -> some View {
     let count = group.filters.count
-    let title = "\(group.match == "all" ? "All" : "Any") of \(count) \(count == 1 ? "rule" : "rules")"
+    let title =
+      "\(group.match == "all" ? "All" : "Any") of \(count) \(count == 1 ? "rule" : "rules")"
     return Chip(
       title: title, active: group.activeCore(fields: fields) != nil,
       removeLabel: "Remove filter group", identifier: "group-chip-\(index)"
@@ -399,7 +403,8 @@ private struct FilterRuleForm: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(
-          Data(filter.value.utf8) == Data(choice.utf8) ? .isSelected : [])
+          Data(filter.value.utf8) == Data(choice.utf8) ? .isSelected : []
+        )
         .accessibilityIdentifier("filter-option-\(choice)")
       }
       if choices.isEmpty { Text("No options").foregroundStyle(.secondary) }
@@ -582,6 +587,8 @@ extension View {
       self.frame(minWidth: 320, idealWidth: 360, minHeight: 360, idealHeight: 480)
         .accessibilityElement(children: .contain).accessibilityLabel(label)
         .presentationCompactAdaptation(.popover)
+        // Opaque, so records behind a glass popover never show through its text.
+        .presentationBackground(Color(uiColor: .systemBackground))
     #else
       self.frame(width: 340, height: 420)
         .accessibilityElement(children: .contain).accessibilityLabel(label)

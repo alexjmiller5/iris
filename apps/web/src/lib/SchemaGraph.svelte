@@ -341,6 +341,13 @@
 		min-height: 36px;
 		font-weight: 600;
 	}
+	@media (pointer: coarse) {
+		summary,
+		.relationships button {
+			min-height: 44px;
+			padding-block: 12px;
+		}
+	}
 	.group-fields {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));

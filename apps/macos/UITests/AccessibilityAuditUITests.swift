@@ -56,14 +56,19 @@ final class AccessibilityAuditUITests: XCTestCase {
       app.sheets.webViews.textViews.firstMatch.waitForExistence(timeout: 60), "Editor loads")
     try audit(app, "record")
     title.click()
-    title.typeKey(.end, modifierFlags: .command)
-    title.typeText(" by keyboard")
+    title.typeKey("a", modifierFlags: .command)
+    title.typeText("Typed by keyboard")
+    XCTAssertEqual(title.value as? String, "Typed by keyboard", "The title field takes typing")
     app.typeKey("s", modifierFlags: .command)
-    XCTAssertTrue(title.waitForNonExistence(timeout: 10), "Cmd+S saves and closes the record")
-    XCTAssertTrue(
-      grid.staticTexts.matching(NSPredicate(format: "value == %@", "A place to start by keyboard"))
-        .firstMatch.waitForExistence(timeout: 5))
-    grid.buttons["Open A place to start by keyboard"].click()
+    let closed = title.waitForNonExistence(timeout: 10)
+    let afterSave = XCTAttachment(screenshot: app.screenshot())
+    afterSave.name = "mac-after-cmd-s"
+    afterSave.lifetime = .keepAlways
+    add(afterSave)
+    XCTAssertTrue(closed, "Cmd+S saves and closes the record")
+    let saved = grid.buttons["Open Typed by keyboard"]
+    XCTAssertTrue(saved.waitForExistence(timeout: 5))
+    saved.click()
     XCTAssertTrue(title.waitForExistence(timeout: 5))
     app.typeKey(.escape, modifierFlags: [])
     XCTAssertTrue(title.waitForNonExistence(timeout: 5), "Escape closes an unchanged record")

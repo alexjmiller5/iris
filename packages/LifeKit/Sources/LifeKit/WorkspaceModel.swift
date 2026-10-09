@@ -776,6 +776,12 @@ final class WorkspaceModel {
       ?? (writeability == nil ? "Checking editing availability…" : nil)
   }
 
+  /// A refusal worth a passive notice: not the transient check, whose brief
+  /// appearance would shift the controls below it.
+  var editingRefusal: String? {
+    writeability == nil && writeabilityError == nil ? nil : editingUnavailable
+  }
+
   var savedViewEditingUnavailable: String? {
     writeabilityError ?? viewsWriteability?.reason?.message
       ?? (viewsWriteability == nil ? "Checking editing availability…" : nil)

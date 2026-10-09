@@ -26,7 +26,7 @@ struct QuickFindView: View {
           )
           .accessibilityIdentifier("quick-find-error")
         }
-        QuickFindResults(model: model, onOpen: onOpen)
+        QuickFindResults(model: model, incomplete: incomplete, onOpen: onOpen)
         QuickFindFooter(
           count: model.entries.count,
           searching: model.search.loading, discovering: model.metadata.loading,
@@ -34,6 +34,10 @@ struct QuickFindView: View {
           loadMore: { Task { await model.reloadSearch(more: true) } })
       }
       .navigationTitle("Quick Find")
+      #if os(iOS)
+        // A large title would leave no room for results above the keyboard.
+        .navigationBarTitleDisplayMode(.inline)
+      #endif
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("Cancel") {
@@ -66,6 +70,7 @@ private struct QuickFindQuery: View {
   let incomplete: Bool
   let onOpen: (NativeResolvedDestination) throws -> Void
   @FocusState private var focused: Bool
+  @Environment(\.dynamicTypeSize) private var textSize
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -85,22 +90,35 @@ private struct QuickFindQuery: View {
           model.moveSelection(press.key == .upArrow ? -1 : 1)
           return .handled
         }
-      Text("Search only records stored on this device.")
-        .font(.caption).foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      if incomplete {
-        Text("Some hub tables were skipped during sync and may be incomplete here.")
-          .font(.caption).foregroundStyle(.secondary)
-      }
+      // At accessibility sizes the notes follow the results (QuickFindNotes) so the
+      // results keep their room above the keyboard.
+      if !textSize.isAccessibilitySize { QuickFindNotes(incomplete: incomplete) }
     }
     .padding()
     .task { focused = true }
   }
 }
 
+private struct QuickFindNotes: View {
+  let incomplete: Bool
+
+  var body: some View {
+    Text("Search only records stored on this device.")
+      .font(.caption).foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+    if incomplete {
+      Text("Some hub tables were skipped during sync and may be incomplete here.")
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+}
+
 private struct QuickFindResults: View {
   @Bindable var model: QuickFindCoordinator
+  let incomplete: Bool
   let onOpen: (NativeResolvedDestination) throws -> Void
+  @Environment(\.dynamicTypeSize) private var textSize
 
   var body: some View {
     ScrollViewReader { scroll in
@@ -117,7 +135,8 @@ private struct QuickFindResults: View {
             Task { await model.activate(entry.id, commit: onOpen) }
           } label: {
             QuickFindEntryRow(
-              entry: entry, opening: model.opening == entry.id, selected: model.selection == entry.id)
+              entry: entry, opening: model.opening == entry.id,
+              selected: model.selection == entry.id)
           }
           .buttonStyle(.plain)
           .disabled(entry.unavailable != nil || model.opening != nil)
@@ -127,6 +146,9 @@ private struct QuickFindResults: View {
           .accessibilityAddTraits(model.selection == entry.id ? .isSelected : [])
           .accessibilityIdentifier(accessibilityID(entry.id))
           .id(entry.id)
+        }
+        if textSize.isAccessibilitySize {
+          Section { QuickFindNotes(incomplete: incomplete) }
         }
       }
       .accessibilityLabel("Results")

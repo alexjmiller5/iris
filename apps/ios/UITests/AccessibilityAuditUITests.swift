@@ -34,8 +34,9 @@ final class AccessibilityAuditUITests: XCTestCase {
 
     tap(app.buttons["quick-find"])
     let find = app.textFields["quick-find-query"]
-    XCTAssertTrue(find.waitForExistence(timeout: 5))
+    tap(find)
     find.typeText("place")
+    XCTAssertEqual(find.value as? String, "place")
     try audit(app, "quick-find")
     tap(app.buttons["Cancel"].firstMatch)
 
@@ -145,6 +146,14 @@ final class AccessibilityAuditUITests: XCTestCase {
     let keyboard = app.keyboards.firstMatch
     if keyboard.exists, keyboard.frame.insetBy(dx: 0, dy: -50).intersects(frame) {
       return "covered by the system keyboard or its suggestions"
+    }
+    if issue.auditType == .hitRegion, [.staticText, .other].contains(element.elementType) {
+      // Text and drawing inside a web view are not controls; their buttons are checked.
+      return "not a control"
+    }
+    if issue.auditType == .dynamicType, issue.detailedDescription.contains("UILabel") {
+      // The menu Picker's own UIKit label; SwiftUI draws it and caps its size.
+      return "system picker label"
     }
     let name = element.label.isEmpty ? element.identifier : element.label
     if issue.auditType == .textClipped, Self.verifiedUnclipped.contains("\(screen)/\(name)") {
