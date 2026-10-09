@@ -102,8 +102,12 @@ final class BackupUITests: XCTestCase {
   /// Go to a folder or file in an open or save panel.
   private func goTo(_ app: XCUIApplication, _ path: String) {
     app.typeKey("g", modifierFlags: [.command, .shift])
-    let location = app.sheets.textFields.firstMatch
+    // A save panel's own file-name field is also a text field in the sheet.
+    let location = app.sheets.textFields.matching(
+      NSPredicate(format: "identifier != 'saveAsNameTextField'")
+    ).firstMatch
     XCTAssertTrue(location.waitForExistence(timeout: 5), app.debugDescription)
+    location.click()
     location.typeText(path)
     location.typeKey(.return, modifierFlags: [])
   }
