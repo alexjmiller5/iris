@@ -26,7 +26,7 @@
 <section class="schema-graph" aria-label="Schema graph">
 	<header>
 		<div>
-			<h2>Table relationships</h2>
+			<h1>Table relationships</h1>
 			<p>Select a table to open its rows.</p>
 		</div>
 		<span class="count">{graph.nodes.length} tables · {graph.edges.length} relationships</span>
@@ -189,7 +189,7 @@
 		gap: 12px;
 		margin-bottom: 20px;
 	}
-	h2 {
+	h1 {
 		margin: 0 0 6px;
 		font-size: 20px;
 		font-weight: 600;

@@ -148,7 +148,7 @@
 					data-board-column={index}
 					aria-label={`Column ${column.value ?? 'No value'}`}
 				>
-					<h3>{column.value ?? 'No value'} <span>{column.rowIds.length}</span></h3>
+					<h2>{column.value ?? 'No value'} <span>{column.rowIds.length}</span></h2>
 					{#each column.rowIds as id (id)}{@const row = byID.get(id)!}
 						<div class:dragging={dragging === id} class="card board-card">
 							<div class="card-title">
@@ -262,13 +262,13 @@
 		border-radius: 8px;
 		min-height: 200px;
 	}
-	h3 {
+	h2 {
 		font-size: 0.9rem;
 		margin: 0 0 12px;
 		display: flex;
 		justify-content: space-between;
 	}
-	h3 span,
+	h2 span,
 	.coverage {
 		color: var(--color-muted);
 		font-size: 0.8rem;
