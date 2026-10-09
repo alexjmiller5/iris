@@ -222,15 +222,43 @@ import XCTest
     keep(picker, "lock-screen-widget-picker")
     require(lifeUI.exists ? lifeUI : pickerInSpringboard, in: picker, 10)
     (lifeUI.exists ? lifeUI : pickerInSpringboard).tap()
-    let count = picker.descendants(matching: .any).matching(
-      NSPredicate(format: "label CONTAINS 'records' OR label CONTAINS 'Record count'")).firstMatch
-    require(count, in: picker, 15)
-    count.tap()
-    keep(poster, "lock-screen-count-editing")
+    keep(picker, "lock-screen-life-ui-widgets")
+    // Add the rectangular count tile, then configure it to the enabled notes source.
+    let tile = picker.buttons.matching(
+      NSPredicate(format: "label == 'Life UI, Record count' AND value CONTAINS 'Rectangular'")
+    ).firstMatch
+    require(tile, in: picker, 15)
+    tile.tap()
+    let close = picker.buttons["close"]
+    if close.waitForExistence(timeout: 5) { close.tap() }
+    let placed = poster.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS 'Life UI' OR label CONTAINS 'Records'")).firstMatch
+    require(placed, in: poster, 15)
+    placed.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    let source = poster.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS 'Table or saved view' OR label == 'Choose'")).firstMatch
+    if source.waitForExistence(timeout: 10) {
+      source.tap()
+      let notes = poster.descendants(matching: .any).matching(NSPredicate(format: "label == 'notes'"))
+        .firstMatch
+      require(notes, in: poster, 10)
+      notes.tap()
+      poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+    }
+    let done = poster.buttons["editing-done"]
+    require(done, in: poster, 10)
+    done.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    sleep(3)
+    keep(springboard, "lock-screen-count-widget")
+    let generic = springboard.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS 'records' OR label CONTAINS 'Records'")).firstMatch
+    require(generic, in: springboard, 15)
     for label in ["Quick Add fixture saved", "A place to start"] {
-      XCTAssertFalse(
-        poster.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", label))
-          .firstMatch.exists, "Lock Screen exposed a record title")
+      for process in [poster, springboard] {
+        XCTAssertFalse(
+          process.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", label))
+            .firstMatch.exists, "Lock Screen exposed a record title")
+      }
     }
   }
 

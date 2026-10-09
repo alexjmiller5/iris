@@ -54,6 +54,7 @@ final class ReferenceCreateUITests: XCTestCase {
     tap(app.navigationBars.buttons["Done"])
 
     // A required field without a default opens the editor; Cancel keeps the relation.
+    XCTAssertTrue(label("company", app: app).contains("Acme"))
     pick("company", app: app)
     search("Globex", app: app)
     tap(app.buttons["create-reference-company"])

@@ -1,9 +1,11 @@
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect as base } from "@playwright/test";
 import { resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { regressionHub } from "./workspace-regression-hub";
 import { disposableOrigin, workspacePage } from "./test-origin";
 
+// Shared build hosts can be slow; waits are generous, never fixed sleeps.
+const expect = base.configure({ timeout: 15000 });
 const url =
   process.env.LIFE_UI_TEST_URL ??
   "http://life-ui-navigation.localhost:5224/workspace?review";
@@ -190,9 +192,10 @@ try {
       await expect.poll(() => page.workers().length).toBe(0);
     }
     await page.goto(address);
+    // The landing button waits for hydration and the closed worker's locks.
     await page
       .getByRole("button", { name: "Open my workspace", exact: true })
-      .click();
+      .click({ timeout: 30000 });
     await expect(page.getByRole("button", { name: /Find records/ }))
       .toBeEnabled({ timeout: 15000 })
       .catch(async (e) => {

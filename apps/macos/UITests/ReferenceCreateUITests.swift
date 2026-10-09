@@ -65,8 +65,7 @@ final class ReferenceCreateUITests: XCTestCase {
     XCTAssertTrue(label("attendees", app: app).contains("Dorothy Vaughan"))
 
     // A required field without a default opens the editor; Cancel keeps the relation.
-    // Empty optional properties start collapsed on saved records.
-    if !app.buttons["field-company"].exists { expandEmptyProperties(app) }
+    XCTAssertTrue(label("company", app: app).contains("Acme"))
     click(app.buttons["field-company"])
     search("Globex", app: app)
     click(app.buttons["create-reference-company"])
@@ -104,15 +103,6 @@ final class ReferenceCreateUITests: XCTestCase {
     click(field)
     field.typeKey("a", modifierFlags: .command)
     field.typeText(text)
-  }
-
-  private func expandEmptyProperties(_ app: XCUIApplication) {
-    // A Form DisclosureGroup is an outline row whose element spans its label; click the arrow.
-    let triangle = app.sheets.disclosureTriangles["Empty properties"]
-    XCTAssertTrue(triangle.waitForExistence(timeout: 10))
-    triangle.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
-      .withOffset(CGVector(dx: 7, dy: 0)).click()
-    XCTAssertTrue(app.buttons["field-company"].waitForExistence(timeout: 10))
   }
 
   private func label(_ column: String, app: XCUIApplication) -> String {

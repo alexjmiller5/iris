@@ -1,6 +1,6 @@
 import { chromium, expect as base } from '@playwright/test';
 import { installCoreSchemas, logDDL, regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, workspacePage } from './test-origin';
+import { disposableOrigin, synced, workspacePage } from './test-origin';
 
 // Write locks, SQL defaults, dynamic options, typed filter chips, column settings,
 // workspace switching and durable pending counts on a synthetic hub workspace.
@@ -60,11 +60,16 @@ try {
 	});
 	await page.goto(url);
 	await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
-	await page.getByText('Connect to a hub', { exact: true }).click({ timeout: 30000 });
-	await page.getByText('Use a device token', { exact: true }).click();
-	await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
-	await page.getByLabel('Device token').fill('fixture');
-	await page.getByRole('button', { name: 'Connect', exact: true }).click();
+	// Device tokens live in memory: a reopened workspace syncs again only after Connect.
+	async function connect() {
+		await page.getByText('Connect to a hub', { exact: true }).click({ timeout: 30000 });
+		await page.getByText('Use a device token', { exact: true }).click();
+		await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
+		await page.getByLabel('Device token').fill('fixture');
+		await page.getByRole('button', { name: 'Connect', exact: true }).click();
+		await expect(page.getByLabel(/^Sync status:/)).toHaveAccessibleName('Sync status: Synced', { timeout: 30000 });
+	}
+	await connect();
 	await page.getByRole('navigation', { name: 'Tables' }).getByRole('button', { name: 'widgets', exact: true }).click({ timeout: 15000 });
 	await expect(page.getByRole('button', { name: 'Fixture record', exact: true })).toBeVisible();
 	const save = page.getByRole('button', { name: 'Save record', exact: true });
@@ -103,12 +108,18 @@ try {
 	}
 	/** Filter, search the property list, Enter: the new chip's editor opens. */
 	async function addFilter(property: string) {
-		await page.getByRole('button', { name: /^Filter(, \d+ active)?$/ }).click();
-		await page.getByLabel('Filter by property').fill(property);
+		const search = page.getByLabel('Filter by property');
+		// A sync refresh can land on the opening click; open until the list shows.
+		await expect(async () => {
+			if (!(await search.isVisible())) await page.getByRole('button', { name: /^Filter(, \d+ active)?$/ }).click();
+			await expect(search).toBeVisible({ timeout: 1000 });
+		}).toPass({ timeout: 15000 });
+		await search.fill(property);
 		await page.keyboard.press('Enter');
 		await expect(editor).toBeVisible();
 	}
-	/** The applied view's filters as the hub stores them once the automatic push lands. */
+	/** The applied view's filters as the hub stores them once the automatic push lands
+	 * (the case must have connected after its reopen). */
 	async function storedFilters() {
 		const id = await page.getByLabel('View', { exact: true }).inputValue();
 		const row = db.db.query('SELECT definition FROM views WHERE id=?').get(id) as any;
@@ -154,6 +165,7 @@ try {
 		await expect(page.getByRole('button', { name: /^Remove filter/ })).toHaveCount(0);
 	});
 	await check('boolean filters match checked and unchecked records', async () => {
+		await connect();
 		await addFilter('Active');
 		await expect(editor.getByRole('radio', { name: 'Checked', exact: true })).toBeChecked();
 		await expect(chips.getByRole('button', { name: 'Active: checked', exact: true })).toBeVisible();
@@ -172,7 +184,9 @@ try {
 		await expect(shown(3)).toBeVisible();
 	});
 	await check('empty numeric input never becomes a zero filter', async () => {
+		await connect();
 		await addFilter('Quantity');
+		await expect.poll(storedFilters, { timeout: 20000 }).toEqual([]);
 		const value = editor.getByLabel('Value', { exact: true });
 		await value.fill('0');
 		await expect(shown(0)).toBeVisible();
@@ -182,7 +196,10 @@ try {
 		await expect(editor).toBeHidden();
 		await expect(page.getByRole('button', { name: /^Remove filter/ })).toHaveCount(0);
 		await expect(shown(3)).toBeVisible();
-		await expect.poll(storedFilters, { timeout: 20000 }).toEqual([]);
+		// Two later sync rounds cover the autosave delay and its push.
+		await synced(page);
+		await synced(page);
+		expect(await storedFilters()).toEqual([]);
 	});
 	await check('write in flight locks editable fields', async () => {
 		await page.getByRole('button', { name: 'Fixture record', exact: true }).click();
@@ -285,11 +302,7 @@ try {
 		await expect(page.locator(`[data-pending="${before + 1}"]`)).toBeVisible();
 		await reopen();
 		await expect(page.locator(`[data-pending="${before + 1}"]`)).toBeVisible();
-		await page.getByText('Connect to a hub', { exact: true }).click();
-		await page.getByText('Use a device token', { exact: true }).click();
-		await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
-		await page.getByLabel('Device token').fill('fixture');
-		await page.getByRole('button', { name: 'Connect', exact: true }).click();
+		await connect();
 		await expect(page.locator('[data-pending="0"]')).toBeVisible();
 	});
 	// Last: its sort and filter stay saved in the widgets view.

@@ -66,8 +66,12 @@ for (const row of [
 	property.run(`${row[0]}.${row[1]}`, ...row);
 const ada = await request('write', { table: 'people', patch: { name: 'Ada Lovelace', role: 'Colleague' } });
 const grace = await request('write', { table: 'people', patch: { name: 'Grace Hopper' } });
+const acme = await request('write', {
+	table: 'companies',
+	patch: { name: 'Acme', domain: 'acme.example' }
+});
 await request('write', {
 	table: 'meetings',
-	patch: { title: 'Planning sync', host: ada.id, attendees: [grace.id] }
+	patch: { title: 'Planning sync', host: ada.id, attendees: [grace.id], company: acme.id }
 });
 db.close();
