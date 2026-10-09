@@ -126,7 +126,7 @@ struct DumpFileTests {
     try await workspace.copyReplica(to: copy)
     try await workspace.close()
     let queue = try DatabaseQueue(path: copy.path)
-    let (pages, size, notes) = try queue.read { db in
+    let (pages, size, notes) = try await queue.read { db in
       (
         try Int.fetchOne(db, sql: "PRAGMA page_count")!, try Int.fetchOne(db, sql: "PRAGMA page_size")!,
         try Int.fetchOne(db, sql: "SELECT count(*) FROM notes")!

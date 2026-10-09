@@ -754,8 +754,9 @@ table, page, row count and start time only. Cancel unwinds transport without
 resetting checkpoints or discarding local changes. Synchronous JSC callback failures
 reject only their captured request; roll back an unfinished transaction before
 releasing file admission. The total deadline is fifteen
-minutes, with per-request transport timeouts retained. Incomplete rounds can
-repeat uncheckpointed pages on retry.
+minutes, with per-request transport timeouts retained. Core commits each finished
+table and resumes an interrupted table at its last applied page, so a round cut
+short by the deadline or one failed request continues where it stopped.
 
 Web design tokens live in `apps/web/src/theme.css`; use Tabler UI icons,
 accessible controls, keyboard focus and narrow-screen layouts. Native views use

@@ -31,6 +31,9 @@ jobs:
           bun --conditions=browser scripts/check-governance-panel-dom.ts
       - run: bun run check
       - run: bun run --cwd apps/web lint
+      - name: Keyboard and axe accessibility walk (light and dark)
+        timeout-minutes: 10
+        run: bun scripts/check-a11y.ts
       - run: bun run build
   apple:
     runs-on: macos-latest
