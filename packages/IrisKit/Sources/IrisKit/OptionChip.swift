@@ -30,23 +30,29 @@ enum OptionPalette {
 
   static func title(_ name: String) -> String { name.prefix(1).uppercased() + name.dropFirst() }
 
-  /// A colored dot that system menus keep in color (they template ordinary symbols).
+  /// A colored dot that system menus keep in color. Drawn, not an SF Symbol, so
+  /// VoiceOver reads only the option's text.
   static func dot(_ name: String?) -> Image? {
     guard let name, let tint = tints[name] else { return nil }
     // The saturated (dark appearance) tint reads on light and dark menus alike.
+    // A 10 pt dot with 4 pt of built-in trailing space: a picker's closed label
+    // otherwise sets it against the value text.
+    let side: CGFloat = 10
+    let dot = CGRect(x: 0, y: 0, width: side, height: side)
     #if canImport(UIKit)
-      let color = UIColor(hex: tint.1)
-      return UIImage(
-        systemName: "circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 9)
-      )
-      .map { Image(uiImage: $0.withTintColor(color, renderingMode: .alwaysOriginal)) }
+      let image = UIGraphicsImageRenderer(size: CGSize(width: side + 4, height: side)).image { _ in
+        UIColor(hex: tint.1).setFill()
+        UIBezierPath(ovalIn: dot).fill()
+      }
+      return Image(uiImage: image.withRenderingMode(.alwaysOriginal))
     #else
-      let image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)?
-        .withSymbolConfiguration(
-          NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
-            .applying(.init(paletteColors: [NSColor(hex: tint.1)])))
-      image?.isTemplate = false
-      return image.map(Image.init(nsImage:))
+      let image = NSImage(size: NSSize(width: side + 4, height: side), flipped: false) { _ in
+        NSColor(hex: tint.1).setFill()
+        NSBezierPath(ovalIn: dot).fill()
+        return true
+      }
+      image.isTemplate = false
+      return Image(nsImage: image)
     #endif
   }
 }
@@ -92,8 +98,7 @@ struct OptionChips: View {
         OptionChip(value: value, color: field.optionColor(value))
       }
     }
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(values.joined(separator: ", "))
+    .accessibilityRepresentation { Text(values.joined(separator: ", ")) }
   }
 }
 

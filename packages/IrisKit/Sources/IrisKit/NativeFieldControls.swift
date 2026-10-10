@@ -131,7 +131,7 @@ struct NativeChoiceField: View {
                   trailingSymbol: "xmark")
               }
               .buttonStyle(.plain)
-              .accessibilityLabel("Remove \(label(option))")
+              .accessibilityLabel("Remove \(option.value.isEmpty ? "Empty value" : option.value)")
               .accessibilityIdentifier("remove-choice-\(field.id)-\(option.value)")
               .help(option.description ?? "Remove this choice")
             }
@@ -175,11 +175,6 @@ struct NativeChoiceField: View {
     } else {
       Text(name)
     }
-  }
-
-  private func label(_ option: NativeChoiceOption) -> String {
-    let name = option.value.isEmpty ? "Empty value" : option.value
-    return option.description.map { name + " - " + $0 } ?? name
   }
 
   private func choose(_ option: String) {

@@ -159,8 +159,9 @@ struct RecordPresentationView: View {
         Text("(\(column.rowIds.count))").foregroundStyle(.secondary)
       }
       .font(.headline)
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel("\(column.value ?? "No value") (\(column.rowIds.count))")
+      .accessibilityRepresentation {
+        Text("\(column.value ?? "No value") (\(column.rowIds.count))")
+      }
       ForEach(column.rowIds.map { Data($0.utf8) }, id: \.self) { id in
         if let row = byID[id] { boardCard(row, choices: choices) }
       }
