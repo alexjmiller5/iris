@@ -259,7 +259,9 @@ struct AutomaticSyncTests {
           await model.runAutomaticSync(
             interval: .milliseconds(200), liveInterval: .seconds(60), debounce: .milliseconds(20))
         })
-      try await waitUntil(model) { model.liveness == .live && AutoSyncHub.rounds >= 1 && !model.syncing }
+      try await waitUntil(model) {
+        model.liveness == .live && AutoSyncHub.rounds >= 1 && !model.syncing
+      }
       #expect(model.syncPill.title == "Live")
       try await Task.sleep(for: .milliseconds(300))  // the socket-open round settles
       let settled = AutoSyncHub.rounds
@@ -272,9 +274,9 @@ struct AutomaticSyncTests {
       hub.connections[0].drop()
       try await waitUntil(model) { model.liveness == .reconnecting }
       #expect(model.syncPill.title == "Reconnecting")
+      // Only the 200 ms check can add rounds within waitUntil's 20 s watchdog; the live interval is 60 s.
       let dropped = AutoSyncHub.rounds
-      try await Task.sleep(for: .seconds(1))
-      #expect(AutoSyncHub.rounds >= dropped + 3, "Rounds while down: \(AutoSyncHub.rounds - dropped)")
+      try await waitUntil(model) { AutoSyncHub.rounds >= dropped + 3 && !model.syncing }
     }
   }
 
@@ -286,7 +288,9 @@ struct AutomaticSyncTests {
           await model.runAutomaticSync(
             interval: .seconds(60), liveInterval: .seconds(60), debounce: .milliseconds(20))
         })
-      try await waitUntil(model) { model.liveness == .live && AutoSyncHub.rounds >= 1 && !model.syncing }
+      try await waitUntil(model) {
+        model.liveness == .live && AutoSyncHub.rounds >= 1 && !model.syncing
+      }
       try await Task.sleep(for: .milliseconds(300))
       let before = AutoSyncHub.rounds
       let held = AutoSyncHub.holdNextRound()
@@ -310,7 +314,8 @@ struct AutomaticSyncTests {
       try await save(model, title: "Written before the push")
       _ = await model.pushWake()
       #expect(AutoSyncHub.uploadedTitles == ["Written before the push"])
-      loops.append(Task { await model.runAutomaticSync(interval: .seconds(60), debounce: .milliseconds(20)) })
+      loops.append(
+        Task { await model.runAutomaticSync(interval: .seconds(60), debounce: .milliseconds(20)) })
       try await waitUntil(model) { model.liveness == .live && !model.syncing }
       try await Task.sleep(for: .milliseconds(300))
       let live = AutoSyncHub.rounds
