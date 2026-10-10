@@ -8,6 +8,7 @@ struct WorkspaceQueryTests {
   @Test func sortAndCombinedFiltersExecuteInSQLiteAndResetForAnotherTable() async throws {
     let model = WorkspaceModel()
     await model.open(demo: true)
+    await model.searchIndexSettled()  // the index builds in the background after open
     let workspace = try #require(model.client)
     for (title, status) in [
       ("Zulu fixture", "Ready"), ("Alpha fixture", "Draft"), ("Bravo fixture", "Ready"),

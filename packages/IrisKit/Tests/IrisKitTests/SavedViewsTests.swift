@@ -187,6 +187,7 @@ struct SavedViewsTests {
   @Test func applyingImportedViewPreservesLayoutSortAndFullEditableRows() async throws {
     let model = WorkspaceModel()
     await model.open(demo: true)
+    await model.searchIndexSettled()  // the index builds in the background after open
     let context = try #require(model.editingContext)
     for (title, status) in [
       ("Zulu fixture", "Draft"), ("Alpha fixture", "Draft"), ("Bravo fixture", "Ready"),

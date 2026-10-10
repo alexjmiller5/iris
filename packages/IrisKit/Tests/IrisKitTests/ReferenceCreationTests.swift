@@ -12,6 +12,7 @@ struct ReferenceCreationTests {
   ) {
     let model = WorkspaceModel()
     await model.open(demo: true)
+    await model.searchIndexSettled()  // the index builds in the background after open
     let context = try #require(model.editingContext)
     for (column, fields) in topicProperties {
       _ = try await context.workspace.saveCatalogProperty(

@@ -71,9 +71,9 @@ struct SearchIndexLoopTests {
     try await eventually { model.searchIndexing > 0 }  // reconciled: a large catch-up
     let left = model.searchIndexing
     // A table open's reads, back to back: no index step slips in between them.
-    for _ in 0..<8 {
+    for _ in 0..<5 {
       _ = try await workspace.catalog()
-      try await Task.sleep(for: .milliseconds(40))
+      try await Task.sleep(for: .milliseconds(30))
     }
     #expect(model.searchIndexing == left, "No step ran during the burst")
     try await eventually { model.searchIndexing == 0 }

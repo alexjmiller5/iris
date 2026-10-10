@@ -320,6 +320,7 @@ struct QuickFindCoordinatorTests {
   @Test func workspaceFactoryResolvesFreshRowsAndViewsBeforeInstallingAnything() async throws {
     let workspace = WorkspaceModel()
     await workspace.open(demo: true)
+    await workspace.searchIndexSettled()  // the index builds in the background after open
     let client = try #require(workspace.client)
     let note = try await client.write(
       table: "notes",
