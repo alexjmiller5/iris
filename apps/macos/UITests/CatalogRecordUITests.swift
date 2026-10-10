@@ -57,9 +57,8 @@ final class CatalogRecordUITests: XCTestCase {
     let state = app.popUpButtons["field-state"]
     XCTAssertTrue(state.exists)
     state.click()
-    let ready = app.menuItems.matching(
-      NSPredicate(format: "title CONTAINS %@", "Ready for review.")
-    ).firstMatch
+    // Menu rows show the option value; its description stays in the field help.
+    let ready = app.menuItems.matching(NSPredicate(format: "title == %@", "Ready")).firstMatch
     XCTAssertTrue(ready.waitForExistence(timeout: 5))
     ready.click()
     for text in ["Immutable fixture value", "Derived fixture value"] {

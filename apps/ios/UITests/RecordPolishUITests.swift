@@ -206,8 +206,8 @@ final class RecordPolishUITests: XCTestCase {
     XCTAssertFalse(dismissHelp.exists)
     let state = app.buttons["field-state"]
     state.tap()
-    let ready = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Ready for review."))
-      .firstMatch
+    // Menu rows show the option value; its description stays in the field help.
+    let ready = app.buttons.matching(NSPredicate(format: "label == %@", "Ready")).firstMatch
     XCTAssertTrue(ready.waitForExistence(timeout: 5))
     ready.tap()
     for text in ["Immutable fixture value", "Derived fixture value"] {
