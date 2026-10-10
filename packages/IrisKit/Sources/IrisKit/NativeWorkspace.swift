@@ -592,6 +592,13 @@ public final class NativeWorkspace {
   public func search(_ args: CoreSearchArgs) async throws -> [CoreSearchHit] {
     try await decode(CoreRequests.Search(args), cancellableRead: true)
   }
+  /// One bounded step of the search index, the only thing that builds it. Queued as a
+  /// passive request, so foreground work submitted after it runs first.
+  public func searchIndexStep(budgetMs: Int) async throws -> CoreSearchIndexStatus {
+    try await decode(
+      CoreRequests.SearchIndexStep(CoreSearchIndexStepArgs(budgetMs: budgetMs)),
+      referenceRead: true)
+  }
   public func listSidebarPins() async throws -> CoreSidebarPinList {
     try await decode(CoreRequests.ListSidebarPins(CoreEmptyArgs()))
   }

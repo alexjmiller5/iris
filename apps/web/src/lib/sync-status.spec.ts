@@ -252,6 +252,23 @@ test('a quiet pill names how the wake signal stands', () => {
 	});
 });
 
+test('a catching-up search index shows after sync work and before the wake signal', () => {
+	expect(syncPill({ ...base, liveness: 'live', indexing: 1234 })).toMatchObject({
+		label: 'Indexing search…',
+		tone: 'busy',
+		title: '1,234 records left to index. Search and links may be incomplete until then.'
+	});
+	expect(syncPill({ ...base, indexing: 1 }).title).toBe(
+		'1 record left to index. Search and links may be incomplete until then.'
+	);
+	expect(syncPill({ ...base, indexing: 0, liveness: 'live' })).toMatchObject({ label: 'Live' });
+	expect(syncPill({ ...base, indexing: 5, syncing: true })).toMatchObject({ label: 'Syncing' });
+	expect(syncPill({ ...base, indexing: 5, pending: 1 })).toMatchObject({ label: 'Syncing' });
+	expect(syncPill({ ...base, indexing: 5, error: 'hub HTTP 500' })).toMatchObject({
+		label: 'Sync error'
+	});
+});
+
 test('shows a long backup action in place of sync state', () => {
 	expect(syncPill({ ...base, activity: 'Restoring 42%' })).toMatchObject({
 		label: 'Restoring 42%',

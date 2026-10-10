@@ -83,6 +83,7 @@
 		type Property,
 		type Filter,
 		type SearchHit,
+		type SearchIndexStatus,
 		type SavedViewRecord,
 		type SavedViewDefinition,
 		type Writeability,
@@ -2240,6 +2241,27 @@
 		workspace.addEventListener('syncprogress', progressed);
 		return () => workspace.removeEventListener('syncprogress', progressed);
 	});
+	// The worker's search index step reports how far it is. Until it catches up, search and
+	// links show what is indexed; finishing refreshes searched rows and links once.
+	let searchIndexing = $state(0);
+	$effect(() => {
+		const workspace = database;
+		if (!workspace) return;
+		const indexed = (event: Event) => {
+			const status = (event as CustomEvent<SearchIndexStatus>).detail;
+			const left = status.indexing ? status.pending : 0;
+			if (searchIndexing && !left) {
+				dataRevision++;
+				if (search.trim()) void refresh().catch((e) => (error = message(e)));
+			}
+			searchIndexing = left;
+		};
+		workspace.addEventListener('searchindex', indexed);
+		return () => {
+			workspace.removeEventListener('searchindex', indexed);
+			searchIndexing = 0;
+		};
+	});
 	async function backgroundSync(workspace: WorkspaceDatabase, connection: HubConnection) {
 		const slow = setTimeout(() => (syncSlow = true), 600);
 		try {
@@ -2755,6 +2777,7 @@
 			onchoose={openSearchHit}
 			onclose={() => showFind(false)}
 			incomplete={skipped.length > 0}
+			indexing={searchIndexing}
 			destinations={findNavigation.destinations}
 			navigationLoading={findNavigation.loading}
 			navigationError={findNavigation.error}
@@ -2920,6 +2943,7 @@
 							error={syncError}
 							activity={backupActivity}
 							{liveness}
+							indexing={searchIndexing}
 							onaction={syncAction}
 						/>
 					</div>

@@ -114,6 +114,16 @@ struct TableOpenPerformanceTests {
     try #require(model.error == nil, "\(model.error ?? "")")
     report("open", started)
     let workspace = try #require(model.client)
+    // The first record a user opens: its backlinks answer from what the index step has built.
+    if let first = try await workspace.rows(view: CoreView(table: tables[0], limit: 1)).first {
+      heartbeat.reset()
+      started = clock.now
+      let page = try await workspace.mentionedBy(
+        CoreMentionedByArgs(table: tables[0], rowId: first.id, limit: 20))
+      report(
+        "first backlinks rows=\(page.rows.count) indexing=\(page.indexing) left=\(model.searchIndexing)",
+        started)
+    }
     let prefixes = (environment["IRIS_TABLE_OPEN_SEARCH"] ?? "t,ta,tas,task,tasks").split(
       separator: ",")
     for prefix in prefixes {
@@ -156,6 +166,11 @@ struct TableOpenPerformanceTests {
       report("\(table) reference labels cells=\(cells)", labels)
       print("tableOpen \(table) max_main_actor_gap_ms=\(heartbeat.worstMilliseconds)")
     }
+    heartbeat.reset()
+    started = clock.now
+    await model.searchIndexSettled()
+    report("search index caught up (after the stages above)", started)
+    print("tableOpen index catch-up max_main_actor_gap_ms=\(heartbeat.worstMilliseconds)")
     heartbeat.stop()
     try await workspace.close()
   }

@@ -13,8 +13,9 @@ export declare function markdownMentions(markdown: string): {
     table: string;
     id: string;
 }[];
-/** Backlinks come from the derived `_core_search_mentions` index that search
- * maintains from Markdown properties; nothing new is stored or synced. */
+/** Backlinks come from the derived `_core_search_mentions` index that the search index
+ * step maintains from Markdown properties; nothing new is stored or synced. A lookup never
+ * builds it: `indexing` says rows still wait for the step, so the list may be incomplete. */
 export declare function mentionedBy(db: SqlDriver, args: MentionedByArgs): Promise<MentionedByPage>;
 export declare function mentionLabels(db: SqlDriver, args: MentionLabelsArgs): Promise<MentionLabel[]>;
 export declare function viewEmbed(db: SqlDriver, args: ViewEmbedArgs): Promise<ViewEmbed>;

@@ -3,13 +3,15 @@ import SwiftUI
 struct QuickFindView: View {
   @Bindable var model: QuickFindCoordinator
   let incomplete: Bool
+  /// Records the search index has yet to index; results cover the rest.
+  var indexing = 0
   let onOpen: (NativeResolvedDestination) throws -> Void
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
-        QuickFindQuery(model: model, incomplete: incomplete, onOpen: onOpen)
+        QuickFindQuery(model: model, incomplete: incomplete, indexing: indexing, onOpen: onOpen)
         if let error = model.metadata.error {
           QuickFindMessage(
             message: error, retryTitle: "Retry destinations",
@@ -26,7 +28,7 @@ struct QuickFindView: View {
           )
           .accessibilityIdentifier("quick-find-error")
         }
-        QuickFindResults(model: model, incomplete: incomplete, onOpen: onOpen)
+        QuickFindResults(model: model, incomplete: incomplete, indexing: indexing, onOpen: onOpen)
         QuickFindFooter(
           count: model.entries.count,
           searching: model.search.loading, discovering: model.metadata.loading,
@@ -53,6 +55,10 @@ struct QuickFindView: View {
         do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
         await model.reloadSearch()
       }
+      .onChange(of: indexing) { old, new in
+        // The index caught up: what was missing may match now.
+        if old > 0, new == 0 { Task { await model.reloadSearch() } }
+      }
       .onDisappear { model.cancel() }
     }
     #if os(macOS)
@@ -68,6 +74,7 @@ struct QuickFindView: View {
 private struct QuickFindQuery: View {
   @Bindable var model: QuickFindCoordinator
   let incomplete: Bool
+  let indexing: Int
   let onOpen: (NativeResolvedDestination) throws -> Void
   @FocusState private var focused: Bool
   @Environment(\.dynamicTypeSize) private var textSize
@@ -92,7 +99,9 @@ private struct QuickFindQuery: View {
         }
       // At accessibility sizes the notes follow the results (QuickFindNotes) so the
       // results keep their room above the keyboard.
-      if !textSize.isAccessibilitySize { QuickFindNotes(incomplete: incomplete) }
+      if !textSize.isAccessibilitySize {
+        QuickFindNotes(incomplete: incomplete, indexing: indexing)
+      }
     }
     .padding()
     .task { focused = true }
@@ -101,11 +110,20 @@ private struct QuickFindQuery: View {
 
 private struct QuickFindNotes: View {
   let incomplete: Bool
+  let indexing: Int
 
   var body: some View {
     Text("Search only records stored on this device.")
       .font(.caption).foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
+    if indexing > 0 {
+      Text(
+        "Indexing… \(indexing.formatted()) \(indexing == 1 ? "record" : "records") left. Results may be incomplete until then."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .accessibilityIdentifier("quick-find-indexing")
+    }
     if incomplete {
       Text("Some hub tables were skipped during sync and may be incomplete here.")
         .font(.caption).foregroundStyle(.secondary)
@@ -117,6 +135,7 @@ private struct QuickFindNotes: View {
 private struct QuickFindResults: View {
   @Bindable var model: QuickFindCoordinator
   let incomplete: Bool
+  let indexing: Int
   let onOpen: (NativeResolvedDestination) throws -> Void
   @Environment(\.dynamicTypeSize) private var textSize
 
@@ -148,7 +167,7 @@ private struct QuickFindResults: View {
           .id(entry.id)
         }
         if textSize.isAccessibilitySize {
-          Section { QuickFindNotes(incomplete: incomplete) }
+          Section { QuickFindNotes(incomplete: incomplete, indexing: indexing) }
         }
       }
       .accessibilityLabel("Results")
@@ -262,4 +281,10 @@ private struct QuickFindFooter: View {
       }
     }.padding().background(.bar)
   }
+}
+
+#Preview("Quick Find notes while indexing") {
+  VStack(alignment: .leading, spacing: 8) {
+    QuickFindNotes(incomplete: true, indexing: 683_952)
+  }.padding()
 }

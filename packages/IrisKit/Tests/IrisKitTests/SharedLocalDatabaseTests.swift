@@ -24,6 +24,8 @@
         credentialStore: MemoryHubCredentials(nil))
       await model.open(url: file)
       #expect(model.error == nil)
+      // An open workspace indexes itself first; these cases start from an idle UI.
+      await model.searchIndexSettled()
       return (root, file, model)
     }
 

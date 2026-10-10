@@ -212,6 +212,8 @@ export interface PillInput {
 	syncDetail?: string;
 	/** The leader tab's wake socket; other tabs leave it unset. */
 	liveness?: Liveness;
+	/** Records the search index step has yet to index (0 when caught up). */
+	indexing?: number;
 }
 export interface Pill {
 	label: string;
@@ -264,6 +266,13 @@ export function syncPill(s: PillInput): Pill {
 		return pill('Paused · usage cap', 'warn', null, 'Hub usage cap reached; sync retries later');
 	if (s.error) return pill('Sync error', 'error', null, s.error);
 	if (s.pending) return pill('Syncing', 'busy');
+	if (s.indexing)
+		return pill(
+			'Indexing search…',
+			'busy',
+			null,
+			`${s.indexing.toLocaleString('en-US')} ${s.indexing === 1 ? 'record' : 'records'} left to index. Search and links may be incomplete until then.`
+		);
 	if (s.liveness === 'reconnecting') return pill('Reconnecting', 'idle');
 	if (s.liveness === 'minute') return pill('Checking every minute', 'warn');
 	return pill(s.liveness === 'live' ? 'Live' : 'Synced', 'ok');

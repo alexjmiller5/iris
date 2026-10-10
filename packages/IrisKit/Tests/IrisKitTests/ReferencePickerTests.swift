@@ -12,6 +12,7 @@ struct ReferencePickerTests {
     let path = directory.appendingPathComponent("references.sqlite").path
     let workspace = try NativeWorkspace(path: path)
     try await workspace.createSample()
+    try await workspace.indexSearch()
     let catalog = try await workspace.catalog()
     #expect(
       catalog.properties.contains { $0["col"] == .string("topic") && $0["type"] == .string("ref") })
@@ -132,6 +133,7 @@ struct ReferencePickerTests {
   @Test func missingReferencesStayStoredAndOnlyCarriedOnesAreRejected() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
+    try await workspace.indexSearch()
     let topic = try #require(try await workspace.rows(table: "topics", search: "Ideas").first)
     let created = try await workspace.write(
       table: "notes",

@@ -13,6 +13,7 @@ export function createLinkedFrom(readPage: (offset: number) => Promise<Mentioned
 		rows: [],
 		nextOffset: null,
 		incomplete: false,
+		indexing: false,
 		loading: false,
 		loaded: false,
 		error: ''
@@ -37,6 +38,7 @@ export function createLinkedFrom(readPage: (offset: number) => Promise<Mentioned
 					rows: [...new Map(rows.map((r) => [JSON.stringify([r.table, r.id]), r])).values()],
 					nextOffset: page.nextOffset,
 					incomplete: page.incomplete,
+					indexing: page.indexing,
 					loading: false,
 					loaded: true
 				});

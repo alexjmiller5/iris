@@ -45,6 +45,7 @@ struct NavigationUIFixtureTests {
       let views = try await workspace.listViews(table: "notes")
       #expect(views.views.first { $0.id == "nav-view" }?.unavailable == nil)
       #expect(views.views.first { $0.id == "nav-broken" }?.unavailable != nil)
+      try await workspace.indexSearch()
       #expect(try await workspace.search(CoreSearchArgs(text: "navflora", limit: 100)).count > 50)
       try await workspace.close()
       let recents = NativeRecentsStore(root: path.deletingLastPathComponent(), workspace: path)

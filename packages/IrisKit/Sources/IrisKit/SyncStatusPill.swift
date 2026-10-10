@@ -20,7 +20,7 @@ enum SyncFailure: Equatable {
 /// The one sync summary every surface shows (sidebar, toolbar, menu bar).
 struct SyncPill: Equatable {
   enum Kind: Equatable {
-    case synced, syncing, pending, offline, rejected, paused, failed, cli, local
+    case synced, syncing, pending, offline, rejected, paused, failed, cli, local, indexing
   }
   let kind: Kind
   let title: String
@@ -30,9 +30,15 @@ struct SyncPill: Equatable {
   /// something actually moves (pending uploads, received rows or a first download).
   static func make(
     replica: Bool, syncing: Bool, movedRows: Int, online: Bool, failure: SyncFailure?,
-    status: WorkspaceSyncStatus?, cliBound: Bool, liveness: SyncLiveness? = nil
+    status: WorkspaceSyncStatus?, cliBound: Bool, liveness: SyncLiveness? = nil,
+    indexing: Int = 0
   ) -> SyncPill {
+    // Search and links answer from what is indexed until the index step catches up.
+    let indexed =
+      indexing > 0
+      ? SyncPill(kind: .indexing, title: "Indexing search…", symbol: "magnifyingglass") : nil
     guard replica else {
+      if let indexed { return indexed }
       return cliBound
         ? SyncPill(kind: .cli, title: "Shared with CLI", symbol: "terminal")
         : SyncPill(kind: .local, title: "Local only", symbol: "internaldrive")
@@ -60,6 +66,7 @@ struct SyncPill: Equatable {
     if pending > 0 {
       return SyncPill(kind: .pending, title: "\(pending) pending", symbol: "clock")
     }
+    if let indexed { return indexed }
     switch liveness {
     case .live: return SyncPill(kind: .synced, title: "Live", symbol: "checkmark.icloud")
     case .reconnecting:
@@ -117,7 +124,7 @@ struct SyncStatusPill: View {
     switch pill.kind {
     case .rejected, .failed: .red
     case .offline, .paused, .pending: .orange
-    case .synced, .syncing, .cli, .local: .secondary
+    case .synced, .syncing, .cli, .local, .indexing: .secondary
     }
   }
 }
@@ -146,6 +153,9 @@ struct SyncStatusPill: View {
         SyncPill.make(
           replica: true, syncing: false, movedRows: 0, online: true, failure: .capped,
           status: status(0, 0), cliBound: false),
+        SyncPill.make(
+          replica: true, syncing: false, movedRows: 0, online: true, failure: nil,
+          status: status(0, 0), cliBound: false, indexing: 1200),
       ], id: \.title
     ) { SyncStatusPill(pill: $0) {} }
   }.padding()

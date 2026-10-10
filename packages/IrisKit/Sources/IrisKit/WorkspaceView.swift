@@ -306,7 +306,9 @@ public struct WorkspaceView: View {
       SavedViewsView(model: model, onChoose: recordNavigationSucceeded)
     }
     .sheet(item: $quickFind, onDismiss: openSearchEditor) { find in
-      QuickFindView(model: find, incomplete: !model.skippedTables.isEmpty) { resolved in
+      QuickFindView(
+        model: find, incomplete: !model.skippedTables.isEmpty, indexing: model.searchIndexing
+      ) { resolved in
         guard find.isCurrent, quickFind === find, editor == nil, let client = model.client else {
           throw CancellationError()
         }
@@ -1839,7 +1841,11 @@ private struct RecordEditor: View {
                 canOpen: true, onOpenRecord: openReference
               )
               // Distinct from the incoming section's identity: the Mac form reuses rows by ID.
-              .id([AnyHashable("linked-from"), AnyHashable(identity)])
+              // A caught-up search index reads the backlinks again.
+              .id([
+                AnyHashable("linked-from"), AnyHashable(identity),
+                AnyHashable(model.searchIndexRevision),
+              ])
             }
             Section {
               DisclosureGroup("Record details") {

@@ -387,6 +387,7 @@ struct EditorAutosaveTests {
     let store = EditorDraftStore(root: root, workspace: root.appendingPathComponent("db.sqlite"))
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
+    try await workspace.indexSearch()
     let row = try await workspace.write(
       table: "notes",
       patch: [

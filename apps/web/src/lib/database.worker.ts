@@ -701,6 +701,55 @@ async function dispatch(request: DatabaseRequest) {
 	}
 }
 
+// Only this loop builds the search index: after open, after anything that changes data and
+// while work remains, one bounded step at a time. The first step after a change queues
+// directly behind it, so a later request sees that change indexed; catch-up steps wait a
+// task, so requests queued meanwhile run between them.
+let indexScheduled = false;
+function scheduleIndex(now = false) {
+	if (indexScheduled) return;
+	indexScheduled = true;
+	const enqueue = () => (queue = queue.then(indexStep));
+	if (now) enqueue();
+	else setTimeout(enqueue);
+}
+async function indexStep() {
+	indexScheduled = false;
+	const name = databaseName;
+	if (connection === undefined || !name) return;
+	try {
+		const status = await navigator.locks.request(`iris:dispatch:${name}`, () =>
+			connection === undefined || databaseName !== name
+				? null
+				: local.searchIndexStep({ budgetMs: 50 })
+		);
+		if (!status) return;
+		respond({ searchIndex: status });
+		if (!status.done) scheduleIndex();
+	} catch (error) {
+		// A failed step rolls back and keeps its work; the next change retries it.
+		// Until then nothing is catching up, so the page stops saying so.
+		console.error('Search index step failed', error);
+		respond({ searchIndex: { indexing: false, pending: 0, done: true } });
+	}
+}
+const DATA_CHANGES = [
+	'write',
+	'runRowAction',
+	'undo',
+	'sync',
+	'saveView',
+	'deleteView',
+	'setViewDefault',
+	'setRelatedViewDefault',
+	'saveCatalogProperty',
+	'saveCatalogRule',
+	'pinTable',
+	'unpinTable',
+	'moveTablePin',
+	'restoreReplica'
+];
+
 scope.onmessage = ({ data }) => {
 	// SQLite retries can yield, so even separate read requests must wait their turn.
 	queue = queue.then(async () => {
@@ -725,6 +774,7 @@ scope.onmessage = ({ data }) => {
 				dispatch(data as DatabaseRequest)
 			);
 			respond({ id: data.id, result });
+			if (data.method === 'open' || DATA_CHANGES.includes(data.method)) scheduleIndex(true);
 			// Background sync polls every few seconds; only a sync that moved data refreshes views.
 			const synced = result as { pulled?: number; pushed?: number; rejected?: unknown[] };
 			if (
@@ -732,22 +782,7 @@ scope.onmessage = ({ data }) => {
 					!!synced.pulled ||
 					!!synced.pushed ||
 					!!synced.rejected?.length) &&
-				[
-					'write',
-					'runRowAction',
-					'undo',
-					'sync',
-					'saveView',
-					'deleteView',
-					'setViewDefault',
-					'setRelatedViewDefault',
-					'saveCatalogProperty',
-					'saveCatalogRule',
-					'pinTable',
-					'unpinTable',
-					'moveTablePin',
-					'restoreReplica'
-				].includes(data.method)
+				DATA_CHANGES.includes(data.method)
 			) {
 				channel?.postMessage({ changed: data.method });
 				respond({ changed: data.method });
@@ -766,6 +801,7 @@ scope.onmessage = ({ data }) => {
 			// fail after those changes. The caller owns its refresh/error; notify
 			// the other tabs without racing that error with a second local refresh.
 			if (data?.method === 'sync' && connection !== undefined) {
+				scheduleIndex(true);
 				channel?.postMessage({ changed: 'sync' });
 			}
 		}

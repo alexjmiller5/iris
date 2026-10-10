@@ -65,6 +65,25 @@ struct SyncStatusPillTests {
     #expect(pill(failure: "Hub HTTP 500.", status: status(pending: 1)) == "Offline · 1 pending")
   }
 
+  @Test func aCatchingUpSearchIndexShowsAfterSyncWorkOnEveryKindOfDatabase() {
+    func titled(
+      _ indexing: Int, replica: Bool = true, pending: Int = 0, online: Bool = true,
+      cli: Bool = false
+    ) -> String {
+      SyncPill.make(
+        replica: replica, syncing: false, movedRows: 0, online: online, failure: nil,
+        status: status(pending: pending), cliBound: cli, liveness: .live, indexing: indexing
+      ).title
+    }
+    #expect(titled(1200) == "Indexing search…")
+    #expect(titled(0) == "Live")
+    #expect(titled(5, pending: 1) == "1 pending")
+    #expect(titled(5, online: false) == "Offline")
+    #expect(titled(5, replica: false, cli: true) == "Indexing search…")
+    #expect(titled(5, replica: false) == "Indexing search…")
+    #expect(titled(0, replica: false) == "Local only")
+  }
+
   @Test func sharedFilesReflectTheCLIAndNeverOfferSync() {
     #expect(pill(replica: false, cli: true) == "Shared with CLI")
     #expect(

@@ -17,6 +17,7 @@
 		onchoose,
 		onclose,
 		incomplete,
+		indexing = 0,
 		destinations = [],
 		navigationLoading = false,
 		navigationError = '',
@@ -28,6 +29,8 @@
 		onchoose: (hit: SearchHit) => boolean | void | Promise<boolean | void>;
 		onclose: () => void;
 		incomplete: boolean;
+		/** Records the search index has yet to index; results cover the rest. */
+		indexing?: number;
 		destinations?: PaletteDestination[];
 		navigationLoading?: boolean;
 		navigationError?: string;
@@ -167,6 +170,13 @@
 		<p class="incomplete">
 			<IconAlertTriangle size={17} aria-hidden="true" />
 			Results may be incomplete because some tables are skipped.
+		</p>
+	{/if}
+	{#if indexing}
+		<p class="incomplete" role="status">
+			<IconLoader2 size={17} aria-hidden="true" />
+			Indexing… {indexing.toLocaleString('en-US')}
+			{indexing === 1 ? 'record' : 'records'} left. Results may be incomplete until then.
 		</p>
 	{/if}
 	<p class="status" role="status">

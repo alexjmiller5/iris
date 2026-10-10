@@ -7,6 +7,8 @@ final class LinkedFromModel {
   private(set) var rows: [CoreMentionedByRow] = []
   private(set) var nextOffset: CoreCount?
   private(set) var incomplete = false
+  /// The search index step is still catching up, so recent mentions may be missing.
+  private(set) var indexing = false
   private(set) var loading = false
   private(set) var loaded = false
   private(set) var error: String?
@@ -48,6 +50,7 @@ final class LinkedFromModel {
       }
       nextOffset = page.nextOffset
       incomplete = page.incomplete
+      indexing = page.indexing
       loaded = true
     } catch {
       if version == generation, !isDisposed { self.error = error.localizedDescription }
@@ -95,7 +98,11 @@ struct LinkedFromView: View {
           Text(error).foregroundStyle(.red)
           Button("Retry links") { Task { await model.load(more: !model.rows.isEmpty) } }
         } else if model.loaded && model.rows.isEmpty {
-          Text("No stored records mention this record.").foregroundStyle(.secondary)
+          Text(
+            model.indexing
+              ? "No links found yet. Search is still indexing this device."
+              : "No stored records mention this record."
+          ).foregroundStyle(.secondary)
         } else if model.nextOffset != nil {
           Button("Load more links") { Task { await model.load(more: true) } }
         }
@@ -103,7 +110,11 @@ struct LinkedFromView: View {
         ProgressView("Loading links")
       }
     } header: {
-      Text("Linked from")
+      if model?.indexing == true {
+        Text("Linked from (indexing)").accessibilityIdentifier("linked-from-indexing")
+      } else {
+        Text("Linked from")
+      }
     } footer: {
       Text("Records stored on this device whose text mentions this record.")
     }
@@ -113,5 +124,16 @@ struct LinkedFromView: View {
       await next.load()
     }
     .onDisappear { model?.dispose() }
+  }
+}
+
+#Preview("Linked from while indexing") {
+  Form {
+    LinkedFromView(
+      makeModel: {
+        LinkedFromModel(table: "topics", rowID: "t") { _ in
+          CoreMentionedByPage(rows: [], nextOffset: nil, incomplete: false, indexing: true)
+        }
+      }, canOpen: true, onOpenRecord: { _, _ in })
   }
 }

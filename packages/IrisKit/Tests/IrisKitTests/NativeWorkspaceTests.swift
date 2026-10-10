@@ -14,6 +14,9 @@ struct NativeWorkspaceTests {
         "title": .string("Café synthetic record"), "body": .string("# A searchable quokka body"),
       ])
     let id = try #require(created["id"])
+    // Search reads only what the index step built.
+    #expect(try await workspace.search(CoreSearchArgs(text: "cafe", table: "notes")).isEmpty)
+    try await workspace.indexSearch()
     let hits = try await workspace.search(CoreSearchArgs(text: "cafe", table: "notes", limit: 5))
     #expect(hits.count == 1)
     #expect(hits.first?.id == id.text)
@@ -28,13 +31,16 @@ struct NativeWorkspaceTests {
         "id": id,
         "body": .string("Changed to platypus"),
       ], expectedUpdatedAt: created["updated_at"]?.text)
+    try await workspace.indexSearch()
     #expect(try await workspace.search(CoreSearchArgs(text: "quokka", table: "notes")).isEmpty)
     #expect(
       try await workspace.search(CoreSearchArgs(text: "platypus", table: "notes")).first?.id
         == id.text)
     _ = try await workspace.write(table: "notes", patch: ["id": id, "deleted_at": .bool(true)])
+    try await workspace.indexSearch()
     #expect(try await workspace.search(CoreSearchArgs(text: "platypus", table: "notes")).isEmpty)
     _ = try await workspace.write(table: "notes", patch: ["id": id, "deleted_at": .null])
+    try await workspace.indexSearch()
     #expect(
       try await workspace.search(CoreSearchArgs(text: "platypus", table: "notes")).first?.id
         == id.text)
@@ -44,6 +50,8 @@ struct NativeWorkspaceTests {
   @Test func catalogAndRecordLifecycleUsesSharedCore() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
+    // The model runs the index step after open; reads then follow local edits.
+    try await workspace.indexSearch()
     let catalog = try await workspace.catalog()
     #expect(catalog.tables.contains { $0["id"] == .string("notes") })
     #expect(
@@ -75,6 +83,8 @@ struct NativeWorkspaceTests {
   @Test func invalidWriteRollsBackAndQueueRecovers() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
+    // The model runs the index step after open; reads then follow local edits.
+    try await workspace.indexSearch()
     let created = try await workspace.write(table: "notes", patch: ["title": .string("Keep this")])
     let id = try #require(created["id"])
     do {
@@ -96,6 +106,8 @@ struct NativeWorkspaceTests {
   @Test func staleEditorCannotOverwriteNewerRevision() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
+    // The model runs the index step after open; reads then follow local edits.
+    try await workspace.indexSearch()
     let original = try await workspace.write(table: "notes", patch: ["title": .string("Original")])
     let id = try #require(original["id"])
     let revision = try #require(original["updated_at"]?.text)
@@ -116,6 +128,8 @@ struct NativeWorkspaceTests {
   @Test func concurrentCallsCannotEnterAnAwaitingTransaction() async throws {
     let workspace = try NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
+    // The model runs the index step after open; reads then follow local edits.
+    try await workspace.indexSearch()
     try await withThrowingTaskGroup(of: Void.self) { group in
       for index in 0..<16 {
         group.addTask {
@@ -138,6 +152,8 @@ struct NativeWorkspaceTests {
     let path = directory.appendingPathComponent("workspace.sqlite").path
     let workspace = try NativeWorkspace(path: path)
     try await workspace.createSample()
+    // The model runs the index step after open; reads then follow local edits.
+    try await workspace.indexSearch()
     _ = try await workspace.write(table: "notes", patch: ["title": .string("Persistent fixture")])
     await #expect(throws: Error.self) { try await workspace.createSample() }
     try await workspace.close()

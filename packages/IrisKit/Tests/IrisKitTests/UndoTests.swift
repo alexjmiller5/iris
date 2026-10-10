@@ -279,6 +279,7 @@ struct UndoTests {
     let path = root.appendingPathComponent("fixture.sqlite").path
     let first = try NativeWorkspace(path: path)
     try await first.createSample()
+    try await first.indexSearch()
     let row = try await first.write(table: "notes", patch: ["title": .string("Initial")])
     let action = try #require(try await first.undoStatus().action)
     let other = try NativeWorkspace(path: path)

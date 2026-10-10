@@ -33,7 +33,9 @@
 </script>
 
 <section aria-label="Linked from" class="incoming">
-	<header><h3>Linked from</h3></header>
+	<header>
+		<h3>Linked from{#if $model.indexing}<span class="indexing" role="status">(indexing)</span>{/if}</h3>
+	</header>
 	{#if $model.incomplete}<p class="partial" role="status">
 			Local links may be incomplete. Some tables are not fully downloaded.
 		</p>{/if}
@@ -45,7 +47,9 @@
 		>{/if}
 	{#if $model.loading && !$model.rows.length}<p role="status">Loading links…</p>
 	{:else if $model.loaded && !$model.rows.length && !$model.error}<p>
-			No local records mention this record.
+			{$model.indexing
+				? 'No links found yet. Search is still indexing this device.'
+				: 'No local records mention this record.'}
 		</p>{/if}
 	<ul>
 		{#each $model.rows as row (`${row.table}/${row.id}`)}
@@ -80,6 +84,11 @@
 	h3 {
 		font-size: 0.9rem;
 		font-weight: 650;
+	}
+	.indexing {
+		margin-left: 0.35em;
+		color: var(--color-muted);
+		font-weight: 400;
 	}
 	p {
 		margin: 0.65rem 0;

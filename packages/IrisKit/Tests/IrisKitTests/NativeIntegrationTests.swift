@@ -89,6 +89,7 @@ import Testing
 
   @Test func lookupSearchesOnlyTheConfiguredTablesDisplayTitles() async throws {
     try await fixture { workspace, url, index, binding in
+      try await workspace.indexSearch()
       let model = settings(workspace, url, index, binding)
       let title = try #require(try await workspace.rows(table: "notes").first?.record["title"]?.text)
       let word = try #require(title.split(separator: " ").first.map(String.init))

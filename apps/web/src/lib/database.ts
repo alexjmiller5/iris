@@ -27,6 +27,10 @@ export class WorkspaceDatabase extends EventTarget {
 				this.dispatchEvent(new CustomEvent('syncprogress', { detail: data.syncProgress }));
 				return;
 			}
+			if (data.searchIndex) {
+				this.dispatchEvent(new CustomEvent('searchindex', { detail: data.searchIndex }));
+				return;
+			}
 			if (data.changed) {
 				// detail: the database method that changed data, here or in another tab.
 				this.dispatchEvent(new CustomEvent('change', { detail: data.changed }));

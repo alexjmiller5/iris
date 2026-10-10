@@ -447,7 +447,59 @@ final class WorkspaceModel {
     return SyncPill.make(
       replica: isReplica, syncing: syncing, movedRows: syncProgress?.processedRows ?? 0,
       online: online, failure: syncError.map(SyncFailure.init), status: syncStatus,
-      cliBound: cliSyncBound, liveness: liveness)
+      cliBound: cliSyncBound, liveness: liveness, indexing: searchIndexing)
+  }
+
+  /// Records the search index has yet to index (0 when caught up). Until then search and
+  /// links answer from what is indexed.
+  private(set) var searchIndexing = 0
+  /// Moves when the index catches up, so backlinks and searched rows read it again.
+  private(set) var searchIndexRevision = 0
+  @ObservationIgnored private var searchIndexTask: Task<Void, Never>?
+  @ObservationIgnored private var searchIndexAgain = false
+  static let searchIndexBudget = 25
+
+  /// Only this loop builds the search index: after open, sync rounds and local or shared-file
+  /// changes, and while work remains. Core runs on the main actor, so each step is short,
+  /// queued as a passive request that foreground reads pass, with a pause between steps.
+  func scheduleSearchIndex() {
+    searchIndexAgain = true
+    guard searchIndexTask == nil, let client else { return }
+    searchIndexTask = Task { @MainActor [weak self] in
+      while true {
+        guard let self, self.client === client, !Task.isCancelled else { break }
+        self.searchIndexAgain = false
+        let status: CoreSearchIndexStatus
+        do { status = try await client.searchIndexStep(budgetMs: Self.searchIndexBudget) } catch {
+          // A failed step rolls back and keeps its work; the next change retries it.
+          // Until then nothing is catching up, so the UI stops saying so.
+          Self.log.error("Search index step failed: \(error.localizedDescription, privacy: .public)")
+          if self.client === client { self.searchIndexing = 0 }
+          break
+        }
+        guard self.client === client else { break }
+        let left = status.indexing ? status.pending : 0
+        if self.searchIndexing > 0, left == 0 {
+          self.searchIndexRevision += 1
+          if !self.search.isEmpty { await self.reload() }
+        }
+        self.searchIndexing = left
+        if status.done, !self.searchIndexAgain { break }
+        try? await Task.sleep(for: .milliseconds(10))
+      }
+      self?.searchIndexTask = nil
+    }
+  }
+
+  /// Returns once the index loop has nothing left to do (tests that need an idle UI).
+  func searchIndexSettled() async {
+    while let task = searchIndexTask { await task.value }
+  }
+
+  private func stopSearchIndex() {
+    searchIndexTask?.cancel()
+    searchIndexTask = nil
+    searchIndexing = 0
   }
 
   /// Coming back online pulls immediately instead of waiting out a failure backoff.
@@ -1504,6 +1556,7 @@ final class WorkspaceModel {
 
   func open(demo: Bool = false, url: URL? = nil) async {
     workspaceGeneration += 1
+    stopSearchIndex()
     loading = true
     error = nil
     attachments?.stop()
@@ -1599,6 +1652,7 @@ final class WorkspaceModel {
         }
       }
       await reload()
+      scheduleSearchIndex()
     } catch {
       self.error = error.localizedDescription
       client = nil
@@ -1917,7 +1971,11 @@ final class WorkspaceModel {
     while !Task.isCancelled, generation == workspaceGeneration, client === workspace {
       do {
         let version = try observer.currentVersion()
-        if version != observer.version, !loading, !writingRecord, !undoing, !savingView {
+        // Index steps commit too; while they run, a version change may be only theirs.
+        // ponytail: the change is read once the loop ends, so one extra reload per catch-up.
+        if version != observer.version, !loading, !writingRecord, !undoing, !savingView,
+          searchIndexTask == nil
+        {
           let next = try await workspace.catalog()
           guard !Task.isCancelled, generation == workspaceGeneration, client === workspace else {
             return
@@ -1932,6 +1990,8 @@ final class WorkspaceModel {
           }
           cliSyncBound = (try? observer.cliHubBound()) ?? false
           if error == nil { observer.acknowledge(version) }
+          // Another writer's rows wait in the index queue.
+          scheduleSearchIndex()
         }
       } catch is CancellationError { return } catch {
         guard generation == workspaceGeneration, client === workspace else { return }
@@ -2084,6 +2144,8 @@ final class WorkspaceModel {
     rows = []
     search = ""
     trash = false
+    stopSearchIndex()
+    scheduleSearchIndex()
     if let old { Task { try? await old.close() } }
   }
 
@@ -2099,6 +2161,8 @@ final class WorkspaceModel {
       if client === self.client, generation == workspaceGeneration {
         syncing = false
         syncProgress = nil
+        // Pulled rows (even from a failed round) wait in the index queue.
+        scheduleSearchIndex()
         if completed {
           uploadedSyncRevision = max(uploadedSyncRevision, outgoingRevision)
           if !syncCancelledByUser { automaticRetryAfter = .distantPast }
@@ -2270,6 +2334,7 @@ final class WorkspaceModel {
 
   private func recordLocalChange() {
     localSyncRevision += 1
+    scheduleSearchIndex()
     widgets?.scheduleRefresh(partial: isReplica)
     integrations?.scheduleRefresh()
     scheduleAutomaticSync()
@@ -2343,6 +2408,7 @@ final class WorkspaceModel {
       self.error = error.localizedDescription
       return
     }
+    stopSearchIndex()
     client = nil
     localObserver = nil
     transport = nil

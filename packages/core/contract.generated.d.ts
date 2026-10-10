@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "d755a41650c72a2601752484767421625a654d0673c6f360e01424d91d3cc351";
+export declare const CORE_CONTRACT_HASH = "66f681fca6b21a6881bc0db89903a44461cbb7b2e000d0e40154f9be6d7fa50c";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -198,6 +198,14 @@ export type SearchHit = {
     id: string;
     label: string;
     excerpt: string;
+};
+export type SearchIndexStepArgs = {
+    budgetMs?: Count;
+};
+export type SearchIndexStatus = {
+    indexing: boolean;
+    pending: Count;
+    done: boolean;
 };
 export type SavedViewDefinition = {
     version: Count;
@@ -1145,6 +1153,7 @@ export type MentionedByPage = {
     rows: MentionedByRow[];
     nextOffset: Count | null;
     incomplete: boolean;
+    indexing: boolean;
 };
 export type ViewEmbedArgs = {
     table: string;
@@ -1220,6 +1229,10 @@ export interface CoreOperations {
     search: {
         args: SearchArgs;
         result: SearchHit[];
+    };
+    searchIndexStep: {
+        args: SearchIndexStepArgs;
+        result: SearchIndexStatus;
     };
     listViews: {
         args: ListViewsArgs;

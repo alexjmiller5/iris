@@ -17,7 +17,12 @@ struct LinkedFromTests {
       ])
     let model = LinkedFromModel(
       table: "topics", rowID: topic.id, readPage: { try await workspace.mentionedBy($0) })
+    // Before the index step reaches the note, the lookup answers at once and says so.
     await model.load()
+    #expect(model.rows.isEmpty && model.indexing)
+    try await workspace.indexSearch()
+    await model.load()
+    #expect(!model.indexing)
     #expect(model.rows.map(\.id) == [note["id"]?.text])
     #expect(model.rows.first?.label == "Mentions a topic")
     #expect(model.rows.first?.table == "notes")
@@ -51,14 +56,15 @@ struct LinkedFromTests {
       #expect(args.table == "topics" && args.rowId == "t" && args.limit == 20)
       return args.offset == 20
         ? CoreMentionedByPage(
-          rows: [Self.row("b"), Self.row("c")], nextOffset: nil, incomplete: true)
+          rows: [Self.row("b"), Self.row("c")], nextOffset: nil, incomplete: true, indexing: false)
         : CoreMentionedByPage(
-          rows: [Self.row("a"), Self.row("b")], nextOffset: 20, incomplete: false)
+          rows: [Self.row("a"), Self.row("b")], nextOffset: 20, incomplete: false, indexing: true)
     }
     await model.load()
     await model.load(more: true)
     #expect(model.rows.map(\.id) == ["a", "b", "c"])
-    #expect(model.incomplete && model.nextOffset == nil)
+    // The latest page says whether the index is still catching up.
+    #expect(model.incomplete && model.nextOffset == nil && !model.indexing)
     await model.load()
     #expect(model.rows.map(\.id) == ["a", "b"])
     #expect(offsets == [0, 20, 0])
@@ -70,7 +76,8 @@ struct LinkedFromTests {
       table: "topics", rowID: "t",
       readPage: { _ in
         current = false
-        return CoreMentionedByPage(rows: [Self.row("late")], nextOffset: nil, incomplete: false)
+        return CoreMentionedByPage(
+          rows: [Self.row("late")], nextOffset: nil, incomplete: false, indexing: false)
       }, isCurrent: { current })
     await model.load()
     #expect(model.rows.isEmpty && !model.loaded)
