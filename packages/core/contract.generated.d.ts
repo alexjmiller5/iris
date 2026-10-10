@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "2c2c9fa6e77b79f9a360a8ddcbc43a610b384fee7f98130d6a51c9ca92d49d98";
+export declare const CORE_CONTRACT_HASH = "73766cc14d68ff46aa87850ab00315968a3e3c3c0b596463560e4cb046e74a8d";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -32,6 +32,7 @@ export type OptionDef = {
     v: string;
     d?: string;
     sort?: number;
+    color?: "default" | "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink" | "red";
 };
 export type PropertyFlag = number | boolean;
 export type Property = {
@@ -958,6 +959,7 @@ export type CatalogProjectionOption = {
     v: string;
     d?: string;
     sort?: number;
+    color?: "default" | "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink" | "red";
 };
 export type CatalogProjectedProperty = {
     column: string;

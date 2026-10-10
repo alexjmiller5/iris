@@ -117,16 +117,36 @@ struct CatalogEditorView: View {
         Section("Options") {
           ForEach($model.options) { $option in
             HStack(alignment: .top) {
-              VStack {
+              VStack(alignment: .leading) {
                 TextField("Value", text: $option.value)
                 TextField("Description", text: $option.description, axis: .vertical)
+                Picker(selection: $option.color) {
+                  Text("No color").tag(String?.none)
+                  ForEach(OptionPalette.names, id: \.self) { name in
+                    Label {
+                      Text(OptionPalette.title(name))
+                    } icon: {
+                      if let dot = OptionPalette.dot(name) { dot }
+                    }
+                    .tag(String?.some(name))
+                  }
+                } label: {
+                  HStack {
+                    Image(systemName: "paintpalette").accessibilityHidden(true)
+                    Text("Color")
+                    OptionChip(
+                      value: option.value.isEmpty ? "Preview" : option.value, color: option.color)
+                  }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("catalog-option-color-\(option.value)")
               }
               Button("Remove", role: .destructive) {
                 model.options.removeAll { $0.id == option.id }
               }
             }
           }
-          Button("Add option") { model.options.append(.init(value: "", description: "")) }
+          Button("Add option") { model.addOption() }
           TextField("Options query", text: text("options_sql"), axis: .vertical)
         }
       }

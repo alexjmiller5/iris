@@ -26,13 +26,17 @@ test('select values are a checkbox list with the chosen options checked', () => 
 					col: 'status',
 					type: 'select',
 					label: 'Status',
-					options: [{ v: 'Open' }, { v: 'Done' }]
+					options: [{ v: 'Open' }, { v: 'Done', color: 'green' }]
 				}
 			],
 			onchange: () => {}
 		}
 	}).body;
 	expect(html.match(/type="checkbox"/g)).toHaveLength(2);
-	expect(html).toMatch(/type="checkbox"[^>]*checked[^>]*>\s*<span[^>]*>Done/);
-	expect(html).not.toMatch(/type="checkbox"[^>]*checked[^>]*>\s*<span[^>]*>Open/);
+	const chip = (value: string) =>
+		new RegExp(`type="checkbox"[^>]*checked[^>]*>(\\s|<!--[^>]*-->)*<span[^>]*>${value}`);
+	expect(html).toMatch(chip('Done'));
+	expect(html).not.toMatch(chip('Open'));
+	expect(html).toMatch(/<span class="option-chip" data-color="green">Done<\/span>/);
+	expect(html).toMatch(/<span class="option-chip">Open<\/span>/);
 });

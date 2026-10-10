@@ -26,6 +26,8 @@ struct NativePropertyValue: View {
           .id(Self.referenceID(field: field, value: value, workspace: workspace))
       } else if field.type == "markdown" && !value.isEmpty {
         NativeMarkdownPreview(value: value)
+      } else if let values = Self.choiceValues(type: field.type, value: value) {
+        OptionChips(field: field, values: values)
       } else {
         Text(Self.text(type: field.type, value: value))
       }
@@ -54,6 +56,16 @@ struct NativePropertyValue: View {
       return values.isEmpty ? "Not set" : values.joined(separator: ", ")
     }
     return value
+  }
+
+  /// Select and multi-select source as chip values; nil keeps the text fallback.
+  nonisolated static func choiceValues(type: String, value: String) -> [String]? {
+    if type == "select" { return value.isEmpty ? nil : [value] }
+    guard type == "multi_select",
+      let values = try? JSONDecoder().decode([String].self, from: Data(value.utf8)),
+      !values.isEmpty
+    else { return nil }
+    return values
   }
 
   struct ReferenceID: Hashable {

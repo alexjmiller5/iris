@@ -15,6 +15,8 @@
 	import type { Property, Row, RowAction, ViewLayoutItem } from 'iris-core/client';
 	import type { AttachmentOutbox } from './attachments';
 	import FieldEditor from './FieldEditor.svelte';
+	import OptionChip from './OptionChip.svelte';
+	import { selectValues } from './option-colors';
 	import type { RetainedFileResolver } from './retained-files';
 	import {
 		createCellEditor,
@@ -516,6 +518,13 @@
 										onclick={() => open(cell.rowId)}
 										>{format(property, row[property.col]) || cell.rowId}</button
 									>
+								{:else if property.type === 'select' || property.type === 'multi_select'}<span
+										class="cell-value cell-chips"
+										>{#each selectValues(property, row[property.col]) as value, index (index)}<OptionChip
+												{property}
+												{value}
+											/>{/each}</span
+									>
 								{:else}<span class="cell-value">{format(property, row[property.col])}</span>{/if}
 							</td>
 						{/if}{/each}
@@ -697,6 +706,14 @@
 		white-space: nowrap;
 		text-overflow: ellipsis;
 		max-width: 100%;
+	}
+	.cell-chips {
+		display: flex;
+		gap: 4px;
+	}
+	.cell-chips :global(.option-chip) {
+		flex: 0 1 auto;
+		min-width: 1.75rem;
 	}
 	.record-link {
 		color: var(--color-accent);

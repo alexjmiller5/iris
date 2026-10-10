@@ -150,7 +150,17 @@ struct RecordPresentationView: View {
     -> some View
   {
     VStack(alignment: .leading, spacing: 12) {
-      Text("\(column.value ?? "No value") (\(column.rowIds.count))").font(.headline)
+      HStack(spacing: 6) {
+        if let value = column.value {
+          OptionChip(value: value, color: group?.optionColor(value))
+        } else {
+          Text("No value")
+        }
+        Text("(\(column.rowIds.count))").foregroundStyle(.secondary)
+      }
+      .font(.headline)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel("\(column.value ?? "No value") (\(column.rowIds.count))")
       ForEach(column.rowIds.map { Data($0.utf8) }, id: \.self) { id in
         if let row = byID[id] { boardCard(row, choices: choices) }
       }
@@ -171,7 +181,21 @@ struct RecordPresentationView: View {
       Button(row.label) { onOpen(row) }.buttonStyle(.plain)
       Menu("Move") {
         ForEach(Array(choices.enumerated()), id: \.offset) { item in
-          Button(item.element.value ?? "No value") { move(row, to: item.element.value) }
+          Button {
+            move(row, to: item.element.value)
+          } label: {
+            if let value = item.element.value,
+              let dot = OptionPalette.dot(group?.optionColor(value))
+            {
+              Label {
+                Text(value)
+              } icon: {
+                dot
+              }
+            } else {
+              Text(item.element.value ?? "No value")
+            }
+          }
         }
       }.disabled(!canMove)
     }.padding(12).frame(maxWidth: .infinity, alignment: .leading)

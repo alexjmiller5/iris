@@ -393,7 +393,7 @@ private struct FilterRuleForm: View {
           filter.value = Data(filter.value.utf8) == Data(choice.utf8) ? "" : choice
         } label: {
           HStack {
-            Text(choice).foregroundStyle(.primary)
+            OptionChip(value: choice, color: field?.optionColor(choice))
             Spacer()
             if Data(filter.value.utf8) == Data(choice.utf8) {
               Image(systemName: "checkmark").foregroundStyle(.tint).accessibilityHidden(true)

@@ -12,6 +12,9 @@ final class CatalogEditorModel: Identifiable {
     var value: String
     var description: String
     var rank: JSONValue?
+    var color: String?
+    /// Option keys this editor does not show, kept as stored.
+    var other: WorkspaceRecord = [:]
   }
   let id = UUID()
   let workspace: WorkspaceModel
@@ -50,8 +53,11 @@ final class CatalogEditorModel: Identifiable {
     if mode == .property, ["select", "multi_select"].contains(fields["type"]?.text ?? "") {
       result["options"] = .array(
         options.map { option in
-          var row: WorkspaceRecord = ["v": .string(option.value), "d": .string(option.description)]
+          var row = option.other
+          row["v"] = .string(option.value)
+          row["d"] = .string(option.description)
           if let rank = option.rank { row["sort"] = rank }
+          if let color = option.color { row["color"] = .string(color) }
           return .object(row)
         })
     }
@@ -84,7 +90,9 @@ final class CatalogEditorModel: Identifiable {
       options = values.compactMap { value in
         guard case .object(let row) = value else { return nil }
         return Option(
-          value: row["v"]?.text ?? "", description: row["d"]?.text ?? "", rank: row["sort"])
+          value: row["v"]?.text ?? "", description: row["d"]?.text ?? "", rank: row["sort"],
+          color: row["color"]?.text,
+          other: row.filter { !["v", "d", "sort", "color"].contains($0.key) })
       }
     } else {
       options = []
@@ -92,6 +100,11 @@ final class CatalogEditorModel: Identifiable {
     failure = nil
     receipt = nil
     baseline = snapshot
+  }
+  /// A new option starts with the next palette color; the editor can change it.
+  func addOption() {
+    options.append(
+      Option(value: "", description: "", color: OptionPalette.newColor(index: options.count)))
   }
   func save() async {
     guard !saving else { return }

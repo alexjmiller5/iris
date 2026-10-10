@@ -10,6 +10,8 @@
 	import { calendarMonth } from './calendar-month';
 	import { calendarContext } from './calendar-context';
 	import RecordCover from './RecordCover.svelte';
+	import OptionChip from './OptionChip.svelte';
+	import { richSelect } from './option-colors';
 	import type { RetainedFileResolver } from './retained-files';
 	import { IconGripVertical } from '@tabler/icons-svelte';
 	let {
@@ -46,6 +48,12 @@
 		start = { x: 0, y: 0 };
 	const byID = $derived(new Map(rows.map((row) => [String(row.id), row])));
 	const label = (row: Row) => displayName(row, display);
+	const rich = richSelect();
+	const groupProperty = $derived(
+		presentation.kind === 'board'
+			? properties.find((p) => p.col === presentation.groupColumn)
+			: undefined
+	);
 	const layout = $derived.by(() => {
 		try {
 			if (presentation.kind === 'calendar' && presentation.dateColumn) {
@@ -148,7 +156,13 @@
 					data-board-column={index}
 					aria-label={`Column ${column.value ?? 'No value'}`}
 				>
-					<h2>{column.value ?? 'No value'} <span>{column.rowIds.length}</span></h2>
+					<h2>
+						{#if column.value != null && groupProperty}<OptionChip
+								property={groupProperty}
+								value={column.value}
+							/>{:else}{column.value ?? 'No value'}{/if}
+						<span>{column.rowIds.length}</span>
+					</h2>
 					{#each column.rowIds as id (id)}{@const row = byID.get(id)!}
 						<div class:dragging={dragging === id} class="card board-card">
 							<div class="card-title">
@@ -163,6 +177,7 @@
 								<button class="record-title" onclick={() => onopen(id)}>{label(row)}</button>
 							</div>
 							<select
+								class:rich
 								aria-label={`Move ${label(row)}`}
 								value={column.value ?? ''}
 								disabled={!canMove}
@@ -172,8 +187,12 @@
 									void onmove(row, next);
 								}}
 							>
+								{#if rich}<button type="button"><selectedcontent></selectedcontent></button>{/if}
 								{#each layout.board.columns as choice}<option value={choice.value ?? ''}
-										>{choice.value ?? 'No value'}</option
+										>{#if rich && choice.value != null && groupProperty}<OptionChip
+												property={groupProperty}
+												value={choice.value}
+											/>{:else}{choice.value ?? 'No value'}{/if}</option
 									>{/each}
 							</select>
 						</div>
@@ -266,7 +285,10 @@
 		font-size: 0.9rem;
 		margin: 0 0 12px;
 		display: flex;
+		align-items: center;
 		justify-content: space-between;
+		gap: 8px;
+		min-width: 0;
 	}
 	h2 span,
 	.coverage {

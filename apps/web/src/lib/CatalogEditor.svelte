@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { focusReturn } from './popover';
+	import { OPTION_COLORS } from 'iris-core/client';
+	import { IconCheck, IconPalette } from '@tabler/icons-svelte';
+	import OptionChip from './OptionChip.svelte';
+	import { newOptionColor } from './option-colors';
 	let dialog: HTMLDialogElement;
 	onDestroy(focusReturn());
 	$effect(() => {
@@ -114,7 +118,12 @@
 						deprecated: Number(form.deprecated),
 						...(['select', 'multi_select'].includes(form.type)
 							? {
-									options: options.map((o) => ({ ...o, v: o.v, d: o.d ?? '' })),
+									options: options.map(({ color, ...o }) => ({
+										...o,
+										v: o.v,
+										d: o.d ?? '',
+										...(color ? { color } : {})
+									})),
 									options_sql: form.optionsSQL || null
 								}
 							: {}),
@@ -255,7 +264,37 @@
 											aria-label={`Option ${index + 1} description`}
 											bind:value={option.d}
 										/></label
-									><button
+									>
+									<fieldset class="colors">
+										<legend
+											><IconPalette size={16} aria-hidden="true" />Color
+											<OptionChip
+												property={{ options: [option] }}
+												value={option.v || 'Preview'}
+											/></legend
+										>
+										{#each [undefined, ...OPTION_COLORS] as color (color ?? 'none')}
+											<label
+												class="swatch"
+												data-color={color}
+												title={color ? color[0].toUpperCase() + color.slice(1) : 'No color'}
+												><input
+													type="radio"
+													name={`option-${index}-color`}
+													aria-label={`Option ${index + 1} ${color ?? 'no'} color`}
+													checked={option.color === color}
+													onchange={() => {
+														option.color = color;
+														dirty = true;
+													}}
+												/>{#if option.color === color}<IconCheck
+														size={14}
+														aria-hidden="true"
+													/>{/if}</label
+											>
+										{/each}
+									</fieldset>
+									<button
 										type="button"
 										onclick={() => {
 											options = options.filter((_, i) => i !== index);
@@ -266,7 +305,7 @@
 							<button
 								type="button"
 								onclick={() => {
-									options = [...options, { v: '', d: '' }];
+									options = [...options, { v: '', d: '', color: newOptionColor(options.length) }];
 									dirty = true;
 								}}>Add option</button
 							>
@@ -435,6 +474,78 @@
 		gap: 0.5rem;
 		padding: 0.75rem;
 		border: 1px solid var(--color-rule);
+	}
+	.colors {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+	}
+	.colors legend {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		margin-bottom: 0.375rem;
+	}
+	.swatch {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 1.75rem;
+		height: 1.75rem;
+		border-radius: 0.375rem;
+		color: var(--color-option-ink);
+		box-shadow: inset 0 0 0 1px var(--color-rule);
+		cursor: pointer;
+	}
+	.swatch:not([data-color]) {
+		color: var(--color-ink);
+		background: linear-gradient(
+			to top right,
+			transparent calc(50% - 1px),
+			var(--color-muted) calc(50% - 1px) calc(50% + 1px),
+			transparent calc(50% + 1px)
+		);
+	}
+	.swatch input {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+	.swatch:has(input:focus-visible) {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
+	}
+	.swatch[data-color='default'] {
+		background: var(--color-option-default);
+	}
+	.swatch[data-color='gray'] {
+		background: var(--color-option-gray);
+	}
+	.swatch[data-color='brown'] {
+		background: var(--color-option-brown);
+	}
+	.swatch[data-color='orange'] {
+		background: var(--color-option-orange);
+	}
+	.swatch[data-color='yellow'] {
+		background: var(--color-option-yellow);
+	}
+	.swatch[data-color='green'] {
+		background: var(--color-option-green);
+	}
+	.swatch[data-color='blue'] {
+		background: var(--color-option-blue);
+	}
+	.swatch[data-color='purple'] {
+		background: var(--color-option-purple);
+	}
+	.swatch[data-color='pink'] {
+		background: var(--color-option-pink);
+	}
+	.swatch[data-color='red'] {
+		background: var(--color-option-red);
 	}
 	[role='alert'] {
 		color: #b42318;

@@ -70,7 +70,7 @@ struct NativeChoiceField: View {
               )
               .tag(Data())
               ForEach(projected.choices.filter { !$0.value.isEmpty }) { option in
-                Text(label(option)).tag(option.id)
+                choiceLabel(option).tag(option.id)
               }
             }
             .pickerStyle(.menu)
@@ -126,9 +126,11 @@ struct NativeChoiceField: View {
                 value = selection.value
                 focus.wrappedValue = nil
               } label: {
-                Label(option.value.isEmpty ? "Empty value" : option.value, systemImage: "xmark")
+                OptionChip(
+                  value: option.value, color: field.optionColor(option.value),
+                  trailingSymbol: "xmark")
               }
-              .buttonStyle(.bordered)
+              .buttonStyle(.plain)
               .accessibilityLabel("Remove \(label(option))")
               .accessibilityIdentifier("remove-choice-\(field.id)-\(option.value)")
               .help(option.description ?? "Remove this choice")
@@ -140,7 +142,11 @@ struct NativeChoiceField: View {
       if !available.isEmpty {
         Menu("Add choice") {
           ForEach(available) { option in
-            Button(label(option)) { choose(option.value) }
+            Button {
+              choose(option.value)
+            } label: {
+              choiceLabel(option)
+            }
           }
         }.accessibilityIdentifier("add-choice-\(field.id)")
       }
@@ -153,6 +159,19 @@ struct NativeChoiceField: View {
             .disabled(customValue.isEmpty || projected.selection.contains(customValue))
         }
       }
+    }
+  }
+
+  /// Menu rows keep the text label; a palette dot marks colored options.
+  @ViewBuilder private func choiceLabel(_ option: NativeChoiceOption) -> some View {
+    if let dot = OptionPalette.dot(field.optionColor(option.value)) {
+      Label {
+        Text(label(option))
+      } icon: {
+        dot
+      }
+    } else {
+      Text(label(option))
     }
   }
 

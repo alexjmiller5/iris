@@ -7,6 +7,8 @@
 	import { onDestroy } from 'svelte';
 	import { IconPlus, IconX } from '@tabler/icons-svelte';
 	import { creationOffer } from './reference-create';
+	import OptionChip from './OptionChip.svelte';
+	import { richSelect } from './option-colors';
 	let {
 		id,
 		property,
@@ -56,6 +58,8 @@
 		}
 	}
 	const multi = $derived(property.type === 'multi_select' || property.type === 'multi_ref');
+	// Browsers with customizable selects show option chips; others keep plain text.
+	const rich = richSelect();
 	const choices = $derived([
 		...new Set([
 			...options,
@@ -251,6 +255,7 @@
 	{:else if property.type === 'select' || property.type === 'multi_select'}
 		<select
 			{id}
+			class:rich
 			aria-invalid={invalid ? true : undefined}
 			aria-describedby={invalid}
 			aria-label={label}
@@ -265,15 +270,18 @@
 						: event.currentTarget.value
 				)}
 		>
+			{#if rich && !multi}<button type="button"><selectedcontent></selectedcontent></button>{/if}
 			{#if !multi}<option value="">Choose an option</option>{/if}
-			{#each choices as choice (choice)}<option value={choice}
-					>{choice}{property.options?.find((o) => o.v === choice)?.d
-						? ` - ${property.options.find((o) => o.v === choice)?.d}`
-						: ''}</option
+			{#each choices as choice (choice)}
+				{@const description = property.options?.find((o) => o.v === choice)?.d}
+				<option value={choice} title={rich ? description : undefined}
+					>{#if rich}<OptionChip {property} value={choice} />{:else}{choice}{description
+							? ` - ${description}`
+							: ''}{/if}</option
 				>{/each}
 		</select>
 		{#if multi}<div class="chips">
-				{#each list(value) as choice}<span class="chip">{choice}</span>{/each}
+				{#each list(value) as choice}<OptionChip {property} value={choice} />{/each}
 			</div>{/if}
 	{:else if property.type === 'bool'}
 		<div class="boolean">

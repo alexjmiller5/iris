@@ -28,5 +28,5 @@ export * from './changeset-client.ts';
 export * from './calendar-rows.ts';
 export * from './board-rows.ts';
 export { getViewDefault, setViewDefault, ensureDefaultView, getRelatedViewDefault, setRelatedViewDefault } from './view-defaults.ts';
-export { saveCatalogProperty, saveCatalogRule } from './catalog-edit.ts';
+export { saveCatalogProperty, saveCatalogRule, OPTION_COLORS } from './catalog-edit.ts';
 export * from './backup.ts';

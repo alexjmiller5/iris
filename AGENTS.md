@@ -459,6 +459,20 @@ or while view settings are unsaved. Core
 resolves the current saved action, validates its ordinary write and publishes
 undo only after commit. Local receipts remain subject to sync rejection.
 
+Select and multi-select values render as option chips tinted by the catalog
+option's `color` (the ten Notion palette names from core `OPTION_COLORS`); an
+uncolored or unknown color stays a neutral outlined chip. Web tokens
+`--color-option-*` live in `theme.css` (light and dark, chip ink AA on every
+tint, `option-palette.spec.ts`); `OptionChip.svelte` and `option-colors.ts`
+serve grids, board headers, filter value lists and pickers. Browsers with
+customizable selects (`richSelect()`) show chips inside `<select>` options and
+the closed control, with option descriptions as tooltips; others keep plain
+text options, so never render rich option content unguarded. Native
+`OptionPalette`/`OptionChip` mirror the same hex values; system menus show a
+palette dot. Both catalog editors write `color` per option (new options take
+the next palette color, never default) and submit option keys they do not show
+as stored, so core refuses an unknown key instead of an editor dropping it.
+
 Native catalog choices load through `NativeWorkspace.options`; controls only
 change draft bindings. Keep selected unknown choices and exact UTF-8 option keys,
 and expose malformed multi-select source for explicit repair. Late option replies

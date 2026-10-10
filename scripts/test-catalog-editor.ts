@@ -38,7 +38,9 @@ try {
  const sync=async()=>{const since=await cdp.evaluate('new Date().toISOString()');await cdp.until(`(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${js(since)}`);};
  await click('Connect');await cdp.until(`!!(${button('New record')})&&!(${button('New record')}).disabled`);
  await click('Edit catalog');await click('Status');await click('Add option');
- await cdp.fill(field('Option 1 value'),'Ready');await cdp.fill(field('Option 1 description'),'Reviewed and ready');await click('Save property');await has('Saved to the catalog and its change log.');
+ await cdp.fill(field('Option 1 value'),'Ready');await cdp.fill(field('Option 1 description'),'Reviewed and ready');
+ expect(await cdp.evaluate(`(${field('Option 1 gray color')}).checked`)).toBe(true);
+ await cdp.click(field('Option 1 blue color'));await cdp.until(`document.querySelector('.option .option-chip')?.dataset.color==='blue'`);await click('Save property');await has('Saved to the catalog and its change log.');
  await click('Add property');await cdp.fill(field('Property ID'),'review_score');await select('Property type','number');await cdp.fill(field('Property description'),'Synthetic review score');await click('Save property');await has('Saved to the catalog and its change log.');
  await click('Close catalog');await sync();await click('Edit catalog');await click('Rules');await click('Add rule');await cdp.fill(field('Rule ID'),'nonnegative');await cdp.fill(field('Rule guidance'),'Quantity cannot be negative.');await select('Rule kind','invariant');await cdp.fill(field('Rule SQL'),'SELECT * FROM missing_table');
  await cdp.click(`Array.from(document.querySelectorAll('label')).find(e=>e.textContent.replace(/\\s+/g,' ').includes('Reject record writes that violate this invariant'))?.querySelector('input')`);
@@ -49,14 +51,14 @@ try {
  // New logged DDL invalidates old coverage. Real sync must reestablish it before ordinary writes.
  await sync();
  await expect.poll(()=>db.db.query('SELECT count(*) AS n FROM catalog_log').get()?.n).toBe(3);
- expect(JSON.parse(String(db.db.query("SELECT options FROM catalog_properties WHERE col='status'").get()?.options))[0].d).toBe('Reviewed and ready');
+ expect(JSON.parse(String(db.db.query("SELECT options FROM catalog_properties WHERE col='status'").get()?.options))[0]).toMatchObject({d:'Reviewed and ready',color:'blue'});
  expect(db.db.query('PRAGMA table_info(widgets)').all().some((r:any)=>r.name==='review_score')).toBe(true);
  await click('Fixture record');await cdp.fill(element('#field-quantity'),'-1');await click('Save record');await has('Quantity cannot be negative.');
  expect(await cdp.evaluate(`(${element('#field-quantity')}).value`)).toBe('-1');
  expect(db.db.query("SELECT quantity FROM widgets WHERE id='fixture-record'").get()?.quantity).toBe(42);
  await cdp.fill(element('#field-quantity'),'43');await click('Save record');await cdp.until(`!(${button('Save record')}).disabled`);await click('Close record');await sync();
  await expect.poll(()=>db.db.query("SELECT quantity FROM widgets WHERE id='fixture-record'").get()?.quantity).toBe(43);
- console.log('PASS catalog property/options/column/rule editing, failed-rule draft retention, catalog_log hub readback, coverage refresh, actual rule failure and corrected record save.');
+ console.log('PASS catalog property/options/option color/column/rule editing, failed-rule draft retention, catalog_log hub readback, coverage refresh, actual rule failure and corrected record save.');
 } catch(error) {if(page)console.error(await page.evaluate('document.body.innerText'));throw error;}
 finally {
  if(page){await page.navigate(new URL('/',url).href).catch(()=>{});await page.command('Storage.clearDataForOrigin',{origin,storageTypes:'all'}).catch(()=>{});page.close();}

@@ -117,3 +117,39 @@ test('configured action columns reorder data and keep the first visible data cel
 	).toBe(true);
 	window.close();
 });
+
+test('select and multi-select cells show option chips tinted by catalog color', () => {
+	const window = new Window();
+	window.document.body.innerHTML = render(RecordGrid, {
+		props: {
+			rows: [{ id: 'a', title: 'Alpha', status: 'Done', tags: '["Home","Loose"]' }],
+			properties: [
+				{ col: 'title', label: 'Record' },
+				{ col: 'status', type: 'select', options: [{ v: 'Done', color: 'green' }] },
+				{ col: 'tags', type: 'multi_select', options: [{ v: 'Home', color: 'blue' }] }
+			],
+			widths: {},
+			busy: false,
+			canCreate: false,
+			format: (_p, value) => String(value ?? ''),
+			canEdit: () => true,
+			onbegin: async () => false as const,
+			oncommit: async () => ({}),
+			onopen: async () => false,
+			onnew: async () => false,
+			onduplicate: async () => false
+		}
+	}).body;
+	const chips = (column: string) =>
+		[...window.document.querySelectorAll(`[data-column="${column}"] .option-chip`)].map((chip) => [
+			chip.textContent,
+			chip.getAttribute('data-color')
+		]);
+	expect(chips('status')).toEqual([['Done', 'green']]);
+	expect(chips('tags')).toEqual([
+		['Home', 'blue'],
+		['Loose', null]
+	]);
+	expect(chips('title')).toEqual([]);
+	window.close();
+});

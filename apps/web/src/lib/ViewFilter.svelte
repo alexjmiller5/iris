@@ -1,4 +1,5 @@
 <script lang="ts">
+	import OptionChip from './OptionChip.svelte';
 	import type { Property } from 'iris-core/client';
 	import { IconX } from '@tabler/icons-svelte';
 	import { DATE_TYPES, defaultRule, operatorsFor, opLabel, type Rule } from './filter-bar';
@@ -183,7 +184,10 @@
 							name={`${id}-values`}
 							checked={rule.values.includes(choice.id)}
 							onchange={(e) => toggle(choice.id, e.currentTarget.checked)}
-						/><span>{choice.label}</span></label
+						/>{#if refs}<span>{choice.label}</span>{:else}<OptionChip
+								{property}
+								value={choice.label}
+							/>{/if}</label
 					>
 				{:else}
 					<p class="hint">{refs ? 'No matching records' : 'No options'}</p>

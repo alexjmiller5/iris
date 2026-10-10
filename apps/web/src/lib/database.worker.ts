@@ -212,6 +212,11 @@ async function connect(name: string) {
 	);
 }
 
+const DEMO_STATUS_OPTIONS = JSON.stringify([
+	{ v: 'Draft', color: 'yellow' },
+	{ v: 'Ready', color: 'green' }
+]);
+
 async function seedDemo() {
 	// Synthetic data lives only in the separate, unsyncable demo database.
 	const system = `id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
@@ -244,7 +249,7 @@ async function seedDemo() {
 	]);
 	for (const [col, label, sort, type, required, options, defaultValue] of [
 		['title', 'Title', 0, 'text', 1, null, null],
-		['status', 'Status', 1, 'select', 0, JSON.stringify([{ v: 'Draft' }, { v: 'Ready' }]), 'Draft'],
+		['status', 'Status', 1, 'select', 0, DEMO_STATUS_OPTIONS, 'Draft'],
 		['body', 'Body', 2, 'markdown', 0, null, null]
 	] satisfies Value[][]) {
 		await db.run(
@@ -286,6 +291,10 @@ async function migrateDemo() {
 		'INSERT OR IGNORE INTO catalog_properties(id,tbl,col,label,sort,type,ref_table) VALUES (?,?,?,?,?,?,?)',
 		['notes.related', 'notes', 'related', 'Related note', 3, 'ref', 'notes']
 	);
+	await db.run("UPDATE catalog_properties SET options=? WHERE id='notes.status' AND options=?", [
+		DEMO_STATUS_OPTIONS,
+		JSON.stringify([{ v: 'Draft' }, { v: 'Ready' }])
+	]);
 }
 
 // Backup files live in OPFS under backups/<staged|recovery|exports>/<name>;

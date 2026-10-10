@@ -29,7 +29,7 @@ export async function createSample(db: SqlDriver) {
     await db.run("INSERT INTO catalog_tables (id,kind,display,purpose) VALUES ('notes','table','title','A sample collection for local notes.'),('topics','table','title','Topics for organizing sample notes.'),('history','table','col','Read-only record of edits.')");
     for (const [col, label, type, required, defaults, options, description] of [
       ['title', 'Title', 'text', 1, null, null, 'A short, descriptive title.'],
-      ['status', 'Status', 'select', 0, 'Draft', JSON.stringify([{v:'Draft'},{v:'Ready'}]), 'Choose Draft or Ready.'],
+      ['status', 'Status', 'select', 0, 'Draft', JSON.stringify([{v:'Draft',color:'yellow'},{v:'Ready',color:'green'}]), 'Choose Draft or Ready.'],
       ['body', 'Body', 'markdown', 0, null, null, 'Markdown source. Formatting is preserved when you save.'],
     ] as const) {
       await db.run('INSERT INTO catalog_properties (id,tbl,col,label,type,required,default_value,options,description,sort) VALUES (?,?,?,?,?,?,?,?,?,?)',
