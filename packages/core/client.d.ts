@@ -1,2 +1,2 @@
-// Generated from soma-core. SHA-256: c37c94e78778d0bfdd0ec59013b7bcff048689e0e199d637d5fdab9ea072d403
+// Generated from soma-core. SHA-256: 18261c91ce942b5a6d9ef351e1c5571f151609b47f3779815b1faf592fc11dc5
 export * from './index.d.ts';
