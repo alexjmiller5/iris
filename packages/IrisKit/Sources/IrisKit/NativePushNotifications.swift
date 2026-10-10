@@ -22,6 +22,7 @@ import UserNotifications
   private(set) var token: Data?
   private(set) var error: String?
   private var observers: [UUID: (Data) -> Void] = [:]
+  private var syncWakes: [UUID: @MainActor () async -> Bool] = [:]
   var platform: CorePushPlatform {
     #if os(macOS)
       .macos
@@ -35,6 +36,18 @@ import UserNotifications
     return id
   }
   func removeObserver(_ id: UUID) { observers.removeValue(forKey: id) }
+  func observeSyncWake(_ wake: @escaping @MainActor () async -> Bool) -> UUID {
+    let id = UUID()
+    syncWakes[id] = wake
+    return id
+  }
+  func removeSyncWake(_ id: UUID) { syncWakes.removeValue(forKey: id) }
+  /// A silent hub push: every open workspace runs one round. True when any moved data.
+  func syncWake() async -> Bool {
+    var moved = false
+    for wake in Array(syncWakes.values) where await wake() { moved = true }
+    return moved
+  }
   func received(_ token: Data) {
     self.token = token
     error = nil
@@ -81,6 +94,13 @@ import UserNotifications
     ) {
       NativePushNotifications.shared.failed()
     }
+    /// The hub's silent change push reaches a running app, focused or not.
+    public func application(
+      _ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]
+    ) {
+      guard userInfo["somaSync"] != nil else { return }
+      Task { _ = await NativePushNotifications.shared.syncWake() }
+    }
   }
 #else
   extension IrisPushAppDelegate: UIApplicationDelegate {
@@ -101,6 +121,13 @@ import UserNotifications
       _ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
       NativePushNotifications.shared.failed()
+    }
+    /// The hub's silent change push wakes a backgrounded app for one round.
+    public func application(
+      _ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]
+    ) async -> UIBackgroundFetchResult {
+      guard userInfo["somaSync"] != nil else { return .noData }
+      return await NativePushNotifications.shared.syncWake() ? .newData : .noData
     }
   }
 #endif

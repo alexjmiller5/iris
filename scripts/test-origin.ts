@@ -38,7 +38,13 @@ export async function synced(
 	},
 	timeout = 15000
 ) {
-	const since = await page.evaluate(() => new Date().toISOString());
+	// A quiet workspace with a live wake socket runs no timed round for a minute;
+	// focus wakes one, as it does for a person returning to the tab.
+	const since = await page.evaluate(() => {
+		const now = new Date().toISOString();
+		window.dispatchEvent(new Event('focus'));
+		return now;
+	});
 	await page.waitForFunction(
 		(since) => (document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > since,
 		since,

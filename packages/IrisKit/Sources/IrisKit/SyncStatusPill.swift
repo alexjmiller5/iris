@@ -30,7 +30,7 @@ struct SyncPill: Equatable {
   /// something actually moves (pending uploads, received rows or a first download).
   static func make(
     replica: Bool, syncing: Bool, movedRows: Int, online: Bool, failure: SyncFailure?,
-    status: WorkspaceSyncStatus?, cliBound: Bool
+    status: WorkspaceSyncStatus?, cliBound: Bool, liveness: SyncLiveness? = nil
   ) -> SyncPill {
     guard replica else {
       return cliBound
@@ -60,7 +60,14 @@ struct SyncPill: Equatable {
     if pending > 0 {
       return SyncPill(kind: .pending, title: "\(pending) pending", symbol: "clock")
     }
-    return SyncPill(kind: .synced, title: "Synced", symbol: "checkmark.icloud")
+    switch liveness {
+    case .live: return SyncPill(kind: .synced, title: "Live", symbol: "checkmark.icloud")
+    case .reconnecting:
+      return SyncPill(kind: .synced, title: "Reconnecting", symbol: "arrow.clockwise.icloud")
+    case .minute:
+      return SyncPill(kind: .synced, title: "Checking every minute", symbol: "clock.arrow.circlepath")
+    case nil: return SyncPill(kind: .synced, title: "Synced", symbol: "checkmark.icloud")
+    }
   }
 }
 

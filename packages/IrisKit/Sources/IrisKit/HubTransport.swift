@@ -17,6 +17,9 @@ struct HubTransport: Sendable {
   /// Backup routes outlast the ordinary budget: the hub exports its whole database
   /// before answering, and a download can be hundreds of megabytes.
   private let backupSession: URLSession
+  /// The change socket stays open for the whole foreground session; its pings
+  /// keep it from going idle.
+  private let socketSession: URLSession
 
   init(endpoint: String, token: String, configuration: URLSessionConfiguration = .ephemeral) throws
   {
@@ -58,6 +61,27 @@ struct HubTransport: Sendable {
     long.timeoutIntervalForResource = 3600
     backupSession = URLSession(
       configuration: long, delegate: RefuseRedirects(), delegateQueue: nil)
+    let socket = configuration.copy() as! URLSessionConfiguration
+    socket.timeoutIntervalForRequest = 120
+    socket.timeoutIntervalForResource = 7 * 86400
+    socketSession = URLSession(
+      configuration: socket, delegate: RefuseRedirects(), delegateQueue: nil)
+  }
+
+  /// soma's change WebSocket, authenticated like every other request.
+  func changeRequest() throws -> URLRequest {
+    guard var parts = URLComponents(string: endpoint + "/v1/changes") else {
+      throw WorkspaceError(message: "Invalid hub URL.", violations: [])
+    }
+    parts.scheme = parts.scheme == "http" ? "ws" : "wss"
+    guard let url = parts.url else { throw WorkspaceError(message: "Invalid hub URL.", violations: []) }
+    var request = URLRequest(url: url)
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    return request
+  }
+
+  func changeConnection() throws -> any HubWakeConnection {
+    URLSessionWakeConnection(socketSession.webSocketTask(with: try changeRequest()))
   }
 
   static let backupKey =

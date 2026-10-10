@@ -196,8 +196,9 @@ try {
 		await expect(editor).toBeHidden();
 		await expect(page.getByRole('button', { name: /^Remove filter/ })).toHaveCount(0);
 		await expect(shown(3)).toBeVisible();
-		// Two later sync rounds cover the autosave delay and its push.
-		await synced(page);
+		// Absence takes a window: the 500 ms view autosave, its 750 ms push debounce,
+		// then one round that finishes after both.
+		await page.waitForTimeout(1500);
 		await synced(page);
 		expect(await storedFilters()).toEqual([]);
 	});

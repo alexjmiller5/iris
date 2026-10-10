@@ -56,6 +56,8 @@ targets:
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
         IrisWidgetAppGroup: $(IRIS_WIDGET_APP_GROUP)
+        # The hub's silent change push runs one sync round in the background.
+        UIBackgroundModes: [remote-notification]
         CFBundleURLTypes:
           - CFBundleURLName: com.alexmiller.iris.open
             CFBundleTypeRole: Viewer

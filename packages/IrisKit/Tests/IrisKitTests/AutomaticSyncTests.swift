@@ -251,6 +251,74 @@ struct AutomaticSyncTests {
     }
   }
 
+  @Test func aLiveSocketReplacesTheShortCheckAndEachChangeRunsARound() async throws {
+    let hub = FakeWakeHub()
+    try await withFixture(signal: hub.signal()) { model, loops in
+      loops.append(
+        Task {
+          await model.runAutomaticSync(
+            interval: .milliseconds(200), liveInterval: .seconds(60), debounce: .milliseconds(20))
+        })
+      try await waitUntil(model) { model.liveness == .live && AutoSyncHub.rounds >= 1 && !model.syncing }
+      #expect(model.syncPill.title == "Live")
+      try await Task.sleep(for: .milliseconds(300))  // the socket-open round settles
+      let settled = AutoSyncHub.rounds
+      try await Task.sleep(for: .seconds(1))
+      #expect(AutoSyncHub.rounds == settled, "A live socket must stop the 200 ms check")
+      hub.connections[0].deliver(#"{"seq":2,"tables":["notes"]}"#)
+      try await waitUntil(model) { AutoSyncHub.rounds == settled + 1 && !model.syncing }
+      // Down: the short check resumes and the pill says so.
+      hub.refusing = true
+      hub.connections[0].drop()
+      try await waitUntil(model) { model.liveness == .reconnecting }
+      #expect(model.syncPill.title == "Reconnecting")
+      let dropped = AutoSyncHub.rounds
+      try await Task.sleep(for: .seconds(1))
+      #expect(AutoSyncHub.rounds >= dropped + 3, "Rounds while down: \(AutoSyncHub.rounds - dropped)")
+    }
+  }
+
+  @Test func aChangeDuringARoundRunsOneMoreAfterIt() async throws {
+    let hub = FakeWakeHub()
+    try await withFixture(signal: hub.signal()) { model, loops in
+      loops.append(
+        Task {
+          await model.runAutomaticSync(
+            interval: .seconds(60), liveInterval: .seconds(60), debounce: .milliseconds(20))
+        })
+      try await waitUntil(model) { model.liveness == .live && AutoSyncHub.rounds >= 1 && !model.syncing }
+      try await Task.sleep(for: .milliseconds(300))
+      let before = AutoSyncHub.rounds
+      let held = AutoSyncHub.holdNextRound()
+      hub.connections[0].deliver(#"{"seq":2,"tables":["notes"]}"#)
+      try #require(await held.wait(), "The change must start a round")
+      hub.connections[0].deliver(#"{"seq":3,"tables":["notes"]}"#)
+      try await Task.sleep(for: .milliseconds(100))
+      AutoSyncHub.release()
+      try await waitUntil(model) { AutoSyncHub.rounds == before + 2 && !model.syncing }
+      try await Task.sleep(for: .milliseconds(300))
+      #expect(AutoSyncHub.rounds == before + 2)
+    }
+  }
+
+  @Test func aSilentPushRunsOneRoundUnlessTheSocketIsLive() async throws {
+    let hub = FakeWakeHub()
+    try await withFixture(signal: hub.signal()) { model, loops in
+      // Backgrounded: no foreground loop, so the push is the only trigger.
+      #expect(await model.pushWake() == false)  // nothing moved
+      #expect(AutoSyncHub.rounds == 1)
+      try await save(model, title: "Written before the push")
+      _ = await model.pushWake()
+      #expect(AutoSyncHub.uploadedTitles == ["Written before the push"])
+      loops.append(Task { await model.runAutomaticSync(interval: .seconds(60), debounce: .milliseconds(20)) })
+      try await waitUntil(model) { model.liveness == .live && !model.syncing }
+      try await Task.sleep(for: .milliseconds(300))
+      let live = AutoSyncHub.rounds
+      #expect(await model.pushWake() == false)
+      #expect(AutoSyncHub.rounds == live, "The live socket already covers the push")
+    }
+  }
+
   @Test func quietRoundsLeaveLoadedRowsAlone() async throws {
     try await withFixture { model, _ in
       let revision = model.syncDataRevision
@@ -281,11 +349,11 @@ struct AutomaticSyncTests {
   }
 
   private func withFixture(
-    runtime: IrisCoreRuntime? = nil,
+    runtime: IrisCoreRuntime? = nil, signal: HubChangeSignal? = nil,
     _ body: (WorkspaceModel, inout [Task<Void, Never>]) async throws -> Void,
     sourceLocation: SourceLocation = #_sourceLocation
   ) async throws {
-    let (model, directory) = try await fixture(runtime: runtime)
+    let (model, directory) = try await fixture(runtime: runtime, signal: signal)
     var loops: [Task<Void, Never>] = []
     do {
       try await body(model, &loops)
@@ -330,7 +398,9 @@ struct AutomaticSyncTests {
     await cleanup.value
   }
 
-  private func fixture(runtime: IrisCoreRuntime? = nil) async throws -> (WorkspaceModel, URL) {
+  private func fixture(runtime: IrisCoreRuntime? = nil, signal: HubChangeSignal? = nil) async throws
+    -> (WorkspaceModel, URL)
+  {
     AutoSyncHub.reset()
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -338,8 +408,10 @@ struct AutomaticSyncTests {
     configuration.protocolClasses = [AutoSyncHub.self]
     let hub = try HubTransport(
       endpoint: "https://automatic-sync.invalid", token: "fixture", configuration: configuration)
+    // No socket unless a test scripts one: the plain 2 s check is the baseline.
     let model = WorkspaceModel(
-      localURL: { directory.appendingPathComponent("local.sqlite") }, makeTransport: { _ in hub })
+      localURL: { directory.appendingPathComponent("local.sqlite") }, makeTransport: { _ in hub },
+      changeSignal: { _ in signal })
     do {
       try await model.connect(
         HubCredentials(endpoint: hub.endpoint, token: "fixture"), remember: false,

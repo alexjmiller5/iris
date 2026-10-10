@@ -38,6 +38,20 @@ struct SyncStatusPillTests {
     #expect(pill(failure: "Hub HTTP 401.") == "Sync issue")
   }
 
+  @Test func aQuietPillNamesHowTheWakeSocketStands() {
+    func titled(_ liveness: SyncLiveness, pending: Int = 0, online: Bool = true) -> String {
+      SyncPill.make(
+        replica: true, syncing: false, movedRows: 0, online: online, failure: nil,
+        status: status(pending: pending), cliBound: false, liveness: liveness
+      ).title
+    }
+    #expect(titled(.live) == "Live")
+    #expect(titled(.reconnecting) == "Reconnecting")
+    #expect(titled(.minute) == "Checking every minute")
+    #expect(titled(.live, pending: 1) == "1 pending")
+    #expect(titled(.live, online: false) == "Offline")
+  }
+
   @Test func quietPeriodicRoundsDoNotFlickerToSyncing() {
     // A 2-second catch-up that moves nothing keeps the steady state.
     #expect(pill(syncing: true) == "Synced")

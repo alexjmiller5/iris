@@ -212,6 +212,8 @@ public struct WorkspaceView: View {
       guard scenePhase == .active else { return }
       for await reachable in networkReachability() { model.setOnline(reachable) }
     }
+    // Silent hub pushes reach this workspace in the background too.
+    .task { await model.observePushWakes() }
     // Quiet periodic rounds change nothing; refresh dependents only when data moved.
     .onChange(of: model.syncDataRevision) {
       let recents = model.recents

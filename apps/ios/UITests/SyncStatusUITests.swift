@@ -48,8 +48,9 @@ final class SyncStatusUITests: XCTestCase {
 
     _ = try await gate("release")
     // The seeded replica first uploads its 50,000 synthetic rows; Syncing lasts until then.
-    expect(pill, "Synced", timeout: 300)
-    capture(app, "pill-synced")
+    // The gate's wake socket is open, so the quiet state is Live.
+    expect(pill, "Live", timeout: 300)
+    capture(app, "pill-live")
 
     _ = try await gate("mode/offline")
     expect(pill, "Offline")

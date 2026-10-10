@@ -572,15 +572,25 @@ cancellation. Sync progress comes from core's `Hub.progress` (native
 known full download and time left extrapolated from them; the web pill and the
 native status sheet show it. Sync has read-only progress, cooperative transport cancellation
 (used by close) and a 15-minute round deadline; there is no manual sync action.
-The scene's single foreground task pulls on activation, then every 2 seconds while
-active and online. The system path monitor pauses it offline and pulls at once
-when a path returns; background scenes stop it. Successful local record/view saves
+The scene's single foreground task pulls on activation and whenever the hub's
+change socket (`HubChangeSignal`: `URLSessionWebSocketTask` on soma's
+`GET /v1/changes`, Bearer auth) signals a change or (re)opens. Between signals it
+checks every 60 seconds while the socket is live (or down past two minutes) and
+every 2 seconds while it reconnects; ping/pong and backoff match the web. The
+socket only wakes the loop: it is not a core request and never touches the
+database. The pill reads Live, Reconnecting or Checking every minute where it
+would say Synced. The system path monitor pauses the loop offline and pulls at
+once when a path returns; background scenes stop it and its socket. Successful local record/view saves
 and undo debounce catch-up by 750 ms; edits during a round queue another round
 after its receipt. Failure delays automatic retry by 60 seconds until the next
 activation or reconnection. A round that moved nothing and left the catalog
 unchanged refreshes only writeability and status counters, never rows, recents,
-pins or the inbox. Workspace/session guards cancel obsolete timers. No closed-app
-delivery is implied.
+pins or the inbox. Workspace/session guards cancel obsolete timers. A hub change
+also sends a throttled silent push (`somaSync`); `IrisPushAppDelegate` hands it to
+`NativePushNotifications.syncWake`, and each open workspace without a live socket
+runs one round (iOS `remote-notification` background mode). It reaches only
+installations with a push registration (Enable alerts); a terminated iOS app is
+not relaunched into a round.
 Native SQLite connections force `legacy_alter_table=OFF` so logged renames
 rewrite trigger/view references consistently across hosts. Recovery repairs only
 an exact canonical timestamp trigger whose direct table rename is in the local

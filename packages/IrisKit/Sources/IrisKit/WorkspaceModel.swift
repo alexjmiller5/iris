@@ -394,6 +394,8 @@ final class WorkspaceModel {
   private var uploadedSyncRevision = 0
   /// Connectivity from the host's path monitor. Offline pauses automatic rounds.
   private(set) var online = true
+  /// The foreground loop's change socket; nil while no loop runs.
+  private(set) var liveness: SyncLiveness?
   /// The last automatic round's failure. Shown only through the sync pill.
   private(set) var syncError: String?
   /// Bumped when a round received or sent data, so views refresh only then.
@@ -445,7 +447,7 @@ final class WorkspaceModel {
     return SyncPill.make(
       replica: isReplica, syncing: syncing, movedRows: syncProgress?.processedRows ?? 0,
       online: online, failure: syncError.map(SyncFailure.init), status: syncStatus,
-      cliBound: cliSyncBound)
+      cliBound: cliSyncBound, liveness: liveness)
   }
 
   /// Coming back online pulls immediately instead of waiting out a failure backoff.
@@ -593,6 +595,7 @@ final class WorkspaceModel {
   }
   private let resolveLocalURL: @MainActor () throws -> URL
   private let makeTransport: @MainActor (HubCredentials) throws -> HubTransport
+  private let makeChangeSignal: @MainActor (HubTransport) -> HubChangeSignal?
   private let credentialStore: any HubCredentialStorage
 
   private(set) var downloadPreferences = ReplicaPreferences()
@@ -636,10 +639,14 @@ final class WorkspaceModel {
       try HubTransport(endpoint: $0.endpoint, token: $0.token)
     },
     credentialStore: any HubCredentialStorage = HubCredentialStore(),
-    widgetLibrary: WidgetLibrary? = WidgetLibrary.installed()
+    widgetLibrary: WidgetLibrary? = WidgetLibrary.installed(),
+    changeSignal: @escaping @MainActor (HubTransport) -> HubChangeSignal? = {
+      HubChangeSignal(transport: $0)
+    }
   ) {
     resolveLocalURL = localURL
     self.makeTransport = makeTransport
+    makeChangeSignal = changeSignal
     self.credentialStore = credentialStore
     self.widgetLibrary = widgetLibrary
   }
@@ -2164,27 +2171,91 @@ final class WorkspaceModel {
   }
 
   /// The view runs one loop while this workspace is in the foreground: it pulls
-  /// on activation, then every `interval` while online. Local commits only
-  /// schedule catch-up; neither saves nor navigation await it.
+  /// on activation and whenever the hub's change socket signals or (re)opens.
+  /// Between signals it checks every `liveInterval` while the socket is live (or
+  /// long down) and every `interval` while it reconnects. The socket only wakes
+  /// the loop; rounds stay the one request owner of the database. Local commits
+  /// only schedule catch-up; neither saves nor navigation await it.
   func runAutomaticSync(
-    interval: Duration = .seconds(2), debounce: Duration = .milliseconds(750)
+    interval: Duration = .seconds(2), liveInterval: Duration = .seconds(60),
+    debounce: Duration = .milliseconds(750)
   ) async {
-    guard !Task.isCancelled, client != nil, transport != nil else { return }
+    guard !Task.isCancelled, client != nil, let transport else { return }
     let generation = workspaceGeneration
     let session = UUID()
     stopAutomaticSync()
     automaticSyncSession = session
     automaticSyncDebounce = debounce
-    defer { if automaticSyncSession == session { stopAutomaticSync() } }
+    let (wakes, wake) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    let listener = makeChangeSignal(transport).map { signal in
+      Task { @MainActor [weak self] in
+        for await event in signal.events() {
+          guard let self, self.automaticSyncSession == session else { return }
+          switch event {
+          case .wake: wake.yield()
+          case .state(let state):
+            // A drop may have lost a message: check now, then on the short cadence.
+            if self.liveness == .live, state == .reconnecting { wake.yield() }
+            self.liveness = state
+          }
+        }
+      }
+    }
+    defer {
+      listener?.cancel()
+      wake.finish()
+      if automaticSyncSession == session {
+        liveness = nil
+        stopAutomaticSync()
+      }
+    }
     attachments?.retry()
     automaticRetryAfter = .distantPast
     scheduleAutomaticSync()
+    var iterator = wakes.makeAsyncIterator()
+    var activation = true
     while generation == workspaceGeneration, automaticSyncSession == session, !Task.isCancelled {
-      if !syncing, online, Date() >= automaticRetryAfter { await synchronize() }
-      do { try await Task.sleep(for: interval) } catch { return }
-      guard generation == workspaceGeneration, automaticSyncSession == session, !Task.isCancelled
+      // At activation a round already in flight is fresh enough. A later wake may
+      // postdate the running round, so it runs once more after it.
+      if online, Date() >= automaticRetryAfter, !(activation && syncing) {
+        while syncing {
+          do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+        }
+        await synchronize()
+      }
+      activation = false
+      let pause = liveness == .live || liveness == .minute ? liveInterval : interval
+      let timer = Task {
+        try await Task.sleep(for: pause)
+        wake.yield()
+      }
+      let woke = await iterator.next()
+      timer.cancel()
+      guard woke != nil, generation == workspaceGeneration, automaticSyncSession == session,
+        !Task.isCancelled
       else { return }
     }
+  }
+
+  /// A silent hub push while no foreground loop holds a live socket (a backgrounded
+  /// or hidden app): one round. True when it moved data.
+  func pushWake() async -> Bool {
+    guard isReplica, client != nil, transport != nil, !cliSyncBound, liveness != .live else {
+      return false
+    }
+    while syncing {
+      do { try await Task.sleep(for: .milliseconds(100)) } catch { return false }
+    }
+    let revision = syncDataRevision
+    await synchronize()
+    return syncError == nil && syncDataRevision != revision
+  }
+
+  /// Routes the app delegate's silent pushes here for as long as the view lives.
+  func observePushWakes(_ device: NativePushNotifications = .shared) async {
+    let id = device.observeSyncWake { [weak self] in await self?.pushWake() ?? false }
+    defer { device.removeSyncWake(id) }
+    while !Task.isCancelled { try? await Task.sleep(for: .seconds(86_400)) }
   }
 
   private func recordLocalChange() {

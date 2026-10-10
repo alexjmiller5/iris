@@ -4,10 +4,15 @@ Start with --port 0, pass the printed URL as TEST_RUNNER_IRIS_TEST_TABLE_NAV_HUB
 Only synthetic replicas on explicitly selected disposable simulators may use it.
 GET /fixture/mode/<offline|accept|reject> switches sync replies: offline (the
 default) answers 503, accept completes empty rounds, reject refuses notes pushes.
+Outside offline mode GET /v1/changes opens the wake socket: it answers "ping"
+with "pong" and never signals a change, so the app reports Live.
 """
 
 import argparse
+import base64
+import hashlib
 import json
+import struct
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -43,10 +48,36 @@ class Handler(BaseHTTPRequestHandler):
             waiting.clear()
         elif self.path == "/fixture/release":
             released.set()
+        elif self.path == "/v1/changes" and mode != "offline":
+            self.wake_socket()
+            return
         elif self.path != "/fixture/status":
             self.reply(503, {"error": "Synthetic service unavailable"})
             return
         self.reply(200, {"waiting": waiting.is_set()})
+
+    def wake_socket(self):
+        key = self.headers["Sec-WebSocket-Key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+        self.send_response(101)
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", base64.b64encode(hashlib.sha1(key.encode()).digest()).decode())
+        self.end_headers()
+        self.close_connection = True
+        try:
+            while len(head := self.rfile.read(2)) == 2:
+                size = head[1] & 0x7F
+                if size >= 126:
+                    size = struct.unpack(">H" if size == 126 else ">Q", self.rfile.read(2 if size == 126 else 8))[0]
+                mask = self.rfile.read(4) if head[1] & 0x80 else bytes(4)
+                data = bytes(b ^ mask[i % 4] for i, b in enumerate(self.rfile.read(size)))
+                if head[0] & 0x0F == 8:
+                    break
+                if head[0] & 0x0F == 1 and data == b"ping":
+                    self.wfile.write(b"\x81\x04pong")
+                    self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_POST(self):
         raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
