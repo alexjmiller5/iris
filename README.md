@@ -290,10 +290,10 @@ Markdown uses the same editor as web, bundled locally in WebKit. Type `# ` or
 Formatting actions appear when text is selected; the options menu contains
 Source, Undo and Redo. Records have no Save button: choices save on change, typed
 fields after a short pause or when you leave them, and Markdown after a 600 ms typing
-pause; **Done** (Cmd+S or Escape on Mac) saves anything pending and closes. Closing or
-opening a related record also collects the final input. Later typing stays in the draft
-while a write is pending, and successful receipts advance the editor's revision without
-replacing those changes. A value the catalog refuses stays editable with its message
+pause; **Done** (Cmd+S or Escape on Mac; Escape closes an open popover first) saves
+anything pending and closes. Closing or opening a related record also collects the final
+input. Later typing stays in the draft while a write is pending, and successful receipts
+advance the editor's revision without replacing those changes. A value the catalog refuses stays editable with its message
 while the rest of the record saves; another failed edit waits for a change or **Retry
 saving**. The status says **Saved on this device** only after the write succeeds; hub
 synchronization is separate. Records opened from a list appear at once and become

@@ -1976,7 +1976,11 @@ private struct RecordEditor: View {
         ).post()
       }
       #if os(macOS)
-        .onExitCommand(perform: done)
+        // Escape closes like Done. As a key equivalent it reaches an open popover first.
+        .background {
+          Button("Close record", action: done).keyboardShortcut(.cancelAction)
+          .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
+        }
       #endif
       .onChange(of: editor.recovery == nil) { _, ready in
         if ready {

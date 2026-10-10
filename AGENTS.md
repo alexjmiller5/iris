@@ -402,7 +402,8 @@ silently discarding later typing. Preserve unknown existing multi-select values.
 
 Record pages save themselves (web `+page.svelte` with `record-autosave.ts`, native
 `RecordEditorModel`); there is no Save, Cancel or Discard, only Done (native, Cmd+S and
-Escape on Mac) to save what is pending and close. Choices, dates, checkboxes and
+Escape on Mac) to save what is pending and close. Mac Escape is a hidden `.cancelAction`
+button, never `onExitCommand`, which also fires while a help popover is open. Choices, dates, checkboxes and
 references commit on change, typed fields after 500 ms idle or on blur, Markdown after
 its 600 ms pause. Each write carries only changed fields and is one core receipt (one
 Undo step), one at a time behind the record's latest revision, so leaving mid-typing
