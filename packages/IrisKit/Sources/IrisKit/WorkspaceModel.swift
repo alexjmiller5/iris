@@ -742,19 +742,6 @@ final class WorkspaceModel {
     guard let client, let table else { return nil }
     return WorkspaceEditingContext(workspace: client, table: table, draftStore: draftStore)
   }
-  func refreshedRecordContext(
-    _ resolved: NativeResolvedDestination, workspace: NativeWorkspace, generation: Int
-  ) throws -> WorkspaceEditingContext {
-    try requireNavigationReady(workspace: workspace, generation: generation)
-    guard resolved.destination.table == table, resolved.row != nil,
-      resolved.catalog.tables.contains(where: { $0["id"] == .string(resolved.destination.table) })
-    else {
-      throw WorkspaceError(message: "The table changed. Open the record again.", violations: [])
-    }
-    catalog = resolved.catalog
-    return WorkspaceEditingContext(
-      workspace: workspace, table: resolved.destination.table, draftStore: draftStore)
-  }
   var displayColumn: String {
     tables.first { $0["id"]?.text == table }?["display"]?.text.nonempty ?? "id"
   }
@@ -1736,6 +1723,18 @@ final class WorkspaceModel {
     return RecordResolution(record: record, failures: result.failed)
   }
 
+  /// The stored full row by exact id, active or trashed: what an open editor merges.
+  func storedRow(id: String, context: WorkspaceEditingContext) async throws -> WorkspaceRecord? {
+    for trash in [false, true] {
+      let found = try await context.workspace.rows(
+        view: CoreView(
+          table: context.table, filters: [CoreFilter(column: "id", op: .eq, value: .string(id))],
+          limit: 1, trash: trash))
+      if let row = found.first(where: { $0.byteExactID == Data(id.utf8) }) { return row.record }
+    }
+    return nil
+  }
+
   @discardableResult
   func save(_ patch: WorkspaceRecord, original: WorkspaceRecord?, context: WorkspaceEditingContext?)
     async throws -> WorkspaceRecord
@@ -1747,9 +1746,15 @@ final class WorkspaceModel {
       throw WorkspaceError(
         message: "The workspace or table changed. Reopen the record before saving.", violations: [])
     }
-    guard !undoing, !writingRecord else {
+    guard !undoing else {
       throw WorkspaceError(
         message: "Wait for the current record operation to finish.", violations: [])
+    }
+    // Another editor's autosave may still be landing: queue behind it.
+    while writingRecord { try await Task.sleep(for: .milliseconds(20)) }
+    guard context.workspace === client, context.table == table else {
+      throw WorkspaceError(
+        message: "The workspace or table changed. Reopen the record before saving.", violations: [])
     }
     let generation = workspaceGeneration
     let query = queryKey

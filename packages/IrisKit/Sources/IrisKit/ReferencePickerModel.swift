@@ -58,6 +58,7 @@ final class ReferencePickerModel {
   private(set) var creation: RecordEditorModel?
   private(set) var creating = false
   private var labels: [Data: String] = [:]
+  private(set) var resolved = false
   private var revision = 0
   private let load: (CoreView) async throws -> [WorkspaceRow]
 
@@ -112,7 +113,10 @@ final class ReferencePickerModel {
 
   func cancelCreation() { creation = nil }
 
-  func label(for id: String) -> String { labels[Data(id.utf8)] ?? "Unavailable" }
+  /// "Loading…" until the selection's labels are read, so nothing reads as unavailable early.
+  func label(for id: String) -> String {
+    labels[Data(id.utf8)] ?? (resolved ? "Unavailable" : "Loading…")
+  }
 
   func choose(_ row: WorkspaceRow) {
     labels[row.byteExactID] = row.label
@@ -121,15 +125,26 @@ final class ReferencePickerModel {
 
   func remove(_ id: String) { selection.remove(id) }
 
+  /// Labels for the selection: one read per 64 ids (the core's any-of group bound).
   func resolveSelected() async {
-    for id in selection.ids {
+    var ids: [String] = []
+    for id in selection.ids where !ids.contains(where: { Data($0.utf8) == Data(id.utf8) }) {
+      ids.append(id)
+    }
+    for start in stride(from: 0, to: ids.count, by: 64) {
+      let chunk = Array(ids[start..<min(start + 64, ids.count)])
       do {
+        // Case-insensitive id collation can match extra rows; exact bytes pick the label.
         let result = try await load(
           CoreView(
-            table: table, filters: [CoreFilter(column: "id", op: .eq, value: .string(id))], limit: 1
-          ))
+            table: table, limit: 200,
+            groups: [
+              CoreFilterGroup(
+                match: "any",
+                filters: chunk.map { CoreFilter(column: "id", op: .eq, value: .string($0)) })
+            ]))
         guard !Task.isCancelled else { return }
-        if let row = result.first(where: { $0.byteExactID == Data(id.utf8) }) {
+        for row in result where chunk.contains(where: { Data($0.utf8) == row.byteExactID }) {
           labels[row.byteExactID] = row.label
         }
       } catch {
@@ -137,6 +152,7 @@ final class ReferencePickerModel {
         self.error = error.localizedDescription
       }
     }
+    resolved = true
   }
 
   func reload(more: Bool = false) async {

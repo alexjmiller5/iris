@@ -65,7 +65,7 @@ final class BackupUITests: XCTestCase {
     RunLoop.current.run(until: Date().addingTimeInterval(2))
     let hubConnection = app.buttons["Hub connection"]
     for _ in 0..<4 where !hubConnection.exists {
-      if app.navigationBars["New record"].exists { app.buttons["Cancel"].tap() }
+      if app.navigationBars["New record"].exists { app.buttons["done-record"].tap() }
       tap(app.buttons["workspace-menu"])
       _ = hubConnection.waitForExistence(timeout: 3)
     }
@@ -152,7 +152,9 @@ final class BackupUITests: XCTestCase {
         return
       }
       // A toolbar control can report not hittable while it is visibly enabled.
-      if element.exists, element.isEnabled, element.frame.minY < 140, Date() > deadline.addingTimeInterval(-15) {
+      if element.exists, element.isEnabled, element.frame.minY < 140,
+        Date() > deadline.addingTimeInterval(-15)
+      {
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         return
       }

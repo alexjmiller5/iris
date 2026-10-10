@@ -69,12 +69,6 @@ struct WorkspaceExportTests {
   @Test func closingAnUnchangedRecordDoesNotStrandExport() async throws {
     let fixture = try await ExportWorkspaceFixture()
     let model = fixture.model
-    let workspace = try #require(model.client)
-    let row = try #require(model.rows.first)
-    let resolved = try await NativeDestinationResolver(workspace: workspace).resolve(
-      NativeDestination(table: "notes", rowID: row.id), isCurrent: { true })
-    _ = try model.refreshedRecordContext(
-      resolved, workspace: workspace, generation: model.workspaceGeneration)
     #expect(model.canExportLoadedRows)
     #expect(try model.captureLoadedRowsForExport(at: capturedAt).rows == model.rows.map(\.record))
     await model.close()

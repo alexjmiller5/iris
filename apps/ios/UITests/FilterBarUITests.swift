@@ -26,7 +26,7 @@ final class FilterBarUITests: XCTestCase {
     title.typeText("Filterbar Ready")
     tap(app.buttons["field-status"])
     tap(app.buttons["Ready"])
-    tap(app.navigationBars["New record"].buttons["save-record"])
+    tap(app.navigationBars["New record"].buttons["done-record"])
     let ready = record(app, "Filterbar Ready")
     XCTAssertTrue(ready.waitForExistence(timeout: 10))
 

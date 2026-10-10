@@ -25,10 +25,11 @@ final class RecordPolishUITests: XCTestCase {
       .press(
         forDuration: 0.1,
         thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.45)))
-    XCTAssertTrue(app.buttons["inline-save"].exists)
+    XCTAssertTrue(app.buttons["inline-done"].exists)
+    XCTAssertFalse(app.buttons["inline-save"].exists, "Edits save themselves; there is no Save")
     XCTAssertEqual(title.value as? String, inlineDraft)
     capture(app, "inline-property-editor")
-    app.buttons["inline-save"].tap()
+    app.buttons["inline-done"].tap()
     XCTAssertTrue(edit.waitForExistence(timeout: 5))
     XCTAssertEqual(edit.value as? String, inlineDraft)
     edit.tap()
@@ -39,27 +40,22 @@ final class RecordPolishUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
     XCTAssertEqual(title.value as? String, draft)
     XCTAssertGreaterThan(title.frame.height, 40, "Long properties must wrap instead of clipping")
-    app.buttons["save-record"].tap()
+    app.buttons["done-record"].tap()
     XCTAssertTrue(edit.waitForExistence(timeout: 5))
     XCTAssertEqual(edit.value as? String, draft)
+    // Leaving mid-typing still saves: Done right after typing keeps the text.
     edit.tap()
     title.tap()
-    title.typeText("Discard ")
-    app.buttons["inline-cancel"].tap()
-    if app.buttons["Keep editing"].exists {
-      app.buttons["Keep editing"].tap()
-    } else {
-      app.otherElements["PopoverDismissRegion"].tap()
-    }
-    XCTAssertTrue(app.buttons["inline-save"].exists)
-    app.buttons["inline-cancel"].tap()
-    app.buttons["Discard changes"].tap()
-    XCTAssertEqual(edit.value as? String, draft)
+    title.typeText("Saved ")
+    let typed = title.value as? String
+    app.buttons["inline-done"].tap()
+    XCTAssertTrue(edit.waitForExistence(timeout: 5))
+    XCTAssertEqual(edit.value as? String, typed)
     let status = app.buttons["inline-property-status"]
     status.tap()
     app.buttons["field-status"].tap()
     app.buttons["Ready"].tap()
-    app.buttons["inline-save"].tap()
+    app.buttons["inline-done"].tap()
     XCTAssertTrue(status.label.contains("Ready"))
     XCTAssertFalse(status.label.contains("Draft"))
     capture(app, "inline-save-and-popup-draft")
@@ -90,7 +86,7 @@ final class RecordPolishUITests: XCTestCase {
     for _ in 0..<5 where !empty.isHittable { app.swipeDown() }
     empty.tap()
     XCTAssertFalse(topic.exists, "An edited field must stay in its disclosure until reopening")
-    app.buttons["save-record"].tap()
+    app.buttons["done-record"].tap()
     let referenceLabel = app.buttons["inline-property-topic"]
     XCTAssertTrue(referenceLabel.waitForExistence(timeout: 5))
     XCTAssertTrue(
@@ -171,8 +167,7 @@ final class RecordPolishUITests: XCTestCase {
     for _ in 0..<12 where !title.isHittable { app.swipeDown() }
     XCTAssertEqual(title.value as? String, draft)
     capture(app, "record-draft-after-rules")
-    app.navigationBars.buttons["Cancel"].tap()
-    app.buttons["Discard changes"].tap()
+    app.buttons["done-record"].tap()
   }
 
   func testCatalogRuleFailureRetainsDraftAndReadOnlyMetadata() throws {
@@ -233,8 +228,9 @@ final class RecordPolishUITests: XCTestCase {
     rules.tap()
     XCTAssertTrue(app.staticTexts["Fixture title is blocked."].waitForExistence(timeout: 5))
     app.navigationBars.buttons.element(boundBy: 0).tap()
-    app.buttons["save-record"].tap()
-    XCTAssertTrue(app.navigationBars["Record"].exists, "Rejected Save must not dismiss the editor")
+    // Autosave meets the rule: the refusal shows inline and the editor stays open.
+    XCTAssertTrue(
+      app.navigationBars["Record"].exists, "A refused value must not dismiss the editor")
     XCTAssertTrue(
       app.staticTexts.matching(
         NSPredicate(format: "label CONTAINS %@", "Fixture title is blocked.")
@@ -244,7 +240,7 @@ final class RecordPolishUITests: XCTestCase {
     XCTAssertEqual(detail.value as? String, "Retained second edit")
     capture(app, "catalog-rejected-draft")
     replaceCatalogText(title, with: "Allowed")
-    app.buttons["save-record"].tap()
+    app.buttons["done-record"].tap()
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
     let saved = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Allowed"))
       .firstMatch
@@ -258,7 +254,7 @@ final class RecordPolishUITests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch.exists)
     }
     capture(app, "catalog-corrected-readback")
-    app.navigationBars["Record"].buttons["Cancel"].tap()
+    app.buttons["done-record"].tap()
   }
 
   private func replaceCatalogText(_ field: XCUIElement, with value: String) {

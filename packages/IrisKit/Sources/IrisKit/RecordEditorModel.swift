@@ -42,12 +42,12 @@ final class RecordEditorModel {
     defer { resumeMarkdownEditors() }
     try await collectMarkdownEditors(lock: true)
     guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
-    try await flushMarkdown()
+    try await flushAutosave()
     guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
     guard !dirty, !needsReview else {
       throw WorkspaceError(
         message:
-          "Save the other record changes before opening this link. Your draft has been kept.",
+          "Some changes could not be saved. Fix them before opening this link. Your draft has been kept.",
         violations: [])
     }
     return try await open(href)
@@ -74,6 +74,12 @@ final class RecordEditorModel {
   }
 
   private(set) var draft: RecordDraft
+  /// False while the editor shows a listed row; the fresh full row unlocks writes.
+  private(set) var loaded: Bool
+  /// The stored row as of now, for merging a conflicting write. Supplied by the host.
+  @ObservationIgnored var latest: (@MainActor () async throws -> WorkspaceRecord?)?
+  /// Values a validation refused: kept out of autosave, with their message, until edited.
+  private var refused: [String: (value: String, violation: Violation)] = [:]
   private(set) var recoveryChoices: [StoredEditorDraft] = []
   var recovery: StoredEditorDraft? { recoveryChoices.first }
   private(set) var failure: String?
@@ -199,15 +205,17 @@ final class RecordEditorModel {
   private var debounceTask: Task<Void, Never>?
   private var inFlight: Task<Void, any Error>?
   private let table: String
-  private let recordID: String?
+  private var recordID: String?
   private let store: EditorDraftStore?
   private let debounce: Duration
+  private let typingDelay: Duration
   private let write: @MainActor (WorkspaceRecord, WorkspaceRecord?) async throws -> WorkspaceRecord
   private var unreadableDraft = false
   private var journalID = UUID().uuidString
   private var captureID: UUID?
   private var pendingWrite: PendingEditorWrite?
   private var reviewRequired = false
+  private var recoveryPending = false
   private final class Owner {
     weak var editor: RecordEditorModel?
     init(_ editor: RecordEditorModel) { self.editor = editor }
@@ -220,24 +228,29 @@ final class RecordEditorModel {
   init(
     properties: [WorkspaceRecord], original: WorkspaceRecord?, table: String,
     store: EditorDraftStore?, debounce: Duration = .milliseconds(600),
+    typingDelay: Duration = .milliseconds(500), loaded: Bool = true,
     recovered: StoredEditorDraft? = nil,
     write: @escaping @MainActor (WorkspaceRecord, WorkspaceRecord?) async throws -> WorkspaceRecord
   ) {
     draft = RecordDraft(properties: properties, original: original)
+    self.loaded = loaded
     self.table = table
     recordID = recovered != nil ? recovered!.recordID : original?["id"]?.text
     self.store = store
     self.debounce = debounce
+    self.typingDelay = typingDelay
     self.write = write
-    do {
-      recoveryChoices =
-        try recovered.map { [$0] }
-        ?? store?.all().filter {
-          $0.table == table && $0.recordID.map { Data($0.utf8) } == recordID.map { Data($0.utf8) }
-        } ?? []
-    } catch {
-      unreadableDraft = true
-      failure = "The saved draft could not be opened. It has been kept."
+    // A listed row paints first: its journals load with the fresh row, off the first frame.
+    if let recovered {
+      recoveryChoices = [recovered]
+    } else if loaded {
+      do { recoveryChoices = try Self.journals(in: store, table: table, recordID: recordID) } catch
+      {
+        unreadableDraft = true
+        failure = "The saved draft could not be opened. It has been kept."
+      }
+    } else {
+      recoveryPending = store != nil
     }
     Self.owners = Self.owners.filter { $0.value.editor != nil }
     Self.owners[ownerKey(journalID)] = Owner(self)
@@ -246,21 +259,36 @@ final class RecordEditorModel {
   var dirty: Bool { draft.patch.keys.contains { $0 != "id" } || !draft.unknownValues.isEmpty }
   var needsReview: Bool { reviewRequired }
   var isNew: Bool { draft.original == nil }
-  var markdownSaved: Bool {
-    !isNew && !saving && failure == nil && recovery == nil
-      && !markdownPatch.keys.contains(where: { $0 != "id" })
+  /// Everything stored: no pending, refused or failed change.
+  var saved: Bool {
+    !isNew && !saving && failure == nil && recovery == nil && fieldViolations.isEmpty
+      && !autosavePatch.keys.contains(where: { $0 != "id" })
   }
-  var markdownPatch: WorkspaceRecord {
-    let columns = Set(draft.fields.filter { $0.type == "markdown" }.map(\.id))
-    return draft.patch.filter { $0.key == "id" || columns.contains($0.key) }
+  /// Changed fields autosave writes: the draft's patch minus values a validation refused.
+  var autosavePatch: WorkspaceRecord {
+    draft.patch.filter { key, _ in
+      guard let entry = refused[key] else { return true }
+      return Data((draft.values[key] ?? "").utf8) != Data(entry.value.utf8)
+    }
+  }
+  /// Write failures plus refusals still matching their field's draft, for inline display.
+  var fieldViolations: [Violation] {
+    violations
+      + refused.sorted { $0.key < $1.key }.compactMap { column, entry in
+        Data((draft.values[column] ?? "").utf8) == Data(entry.value.utf8) ? entry.violation : nil
+      }
   }
   var status: String {
     if let failure { return failure }
     if undoing { return "Undoing saved change…" }
-    if isTrashed { return "This record is in the trash. Restore it before saving your draft." }
-    if autosavePaused { return "Autosave paused. Review your draft, then save the record." }
-    if isNew { return "Draft · Save the record to keep it" }
-    return markdownSaved ? "Saved on this device" : "Unsaved changes"
+    if isTrashed { return "This record is in the trash. Restore it before editing." }
+    if autosavePaused { return "Autosave paused. Review your draft, then save it." }
+    if !fieldViolations.isEmpty { return "Some values were not saved." }
+    if saving || !isNew && autosavePatch.keys.contains(where: { $0 != "id" }) {
+      return "Saving…"
+    }
+    if isNew { return dirty ? "Saving…" : "New record" }
+    return "Saved on this device"
   }
 
   /// Prepare a fresh editor before presenting it or changing navigation context.
@@ -377,16 +405,79 @@ final class RecordEditorModel {
       failure = "Could not keep a recovery draft. " + error.localizedDescription
       return
     }
-    guard !isNew, !autosavePaused, !isTrashed,
-      draft.fields.contains(where: { $0.id == column && $0.type == "markdown" })
-    else {
-      return
+    scheduleAutosave(after: delay(for: column))
+  }
+
+  /// Choices commit on change; typed fields after an idle pause; Markdown on its own.
+  private func delay(for column: String) -> Duration {
+    switch draft.fields.first(where: { $0.id == column })?.type {
+    case "markdown": debounce
+    case "text", "number", "int", "url", "email", "phone", "json", nil: typingDelay
+    default: .zero
     }
+  }
+
+  private var canAutosave: Bool {
+    loaded && !autosavePaused && !isTrashed && recovery == nil && !reviewRequired && !undoing
+      && !unreadableDraft
+  }
+
+  private func scheduleAutosave(after delay: Duration) {
+    guard canAutosave else { return }
     debounceTask?.cancel()
-    debounceTask = Task { [weak self, debounce] in
-      do { try await Task.sleep(for: debounce) } catch { return }
-      try? await self?.flushMarkdown()
+    debounceTask = Task { [weak self] in
+      if delay > .zero {
+        do { try await Task.sleep(for: delay) } catch { return }
+      }
+      try? await self?.flushAutosave()
     }
+  }
+
+  /// Leaving a field (or the record) commits its pending edit without the pause.
+  func commitPending() {
+    scheduleAutosave(after: .zero)
+  }
+
+  private nonisolated static func journals(
+    in store: EditorDraftStore?, table: String, recordID: String?
+  ) throws -> [StoredEditorDraft] {
+    try store?.all().filter {
+      $0.table == table && $0.recordID.map { Data($0.utf8) } == recordID.map { Data($0.utf8) }
+    } ?? []
+  }
+
+  /// Reads this record's recovery journals off the main actor; editing waits for them.
+  func prepareRecovery() async {
+    guard recoveryPending else { return }
+    let (store, table, recordID) = (store, table, recordID)
+    let result = await Task.detached {
+      Result { try Self.journals(in: store, table: table, recordID: recordID) }
+    }.value
+    guard recoveryPending else { return }
+    recoveryPending = false
+    switch result {
+    case .success(let journals): recoveryChoices = journals
+    case .failure:
+      unreadableDraft = true
+      failure = "The saved draft could not be opened. It has been kept."
+    }
+  }
+
+  /// A fresh or newer stored row: untouched fields take it, local edits and the field
+  /// being typed in stay drafts, and later writes carry its revision.
+  func adoptStored(_ row: WorkspaceRecord, focused: String? = nil) {
+    guard !saving, !recoveryPending,
+      (row["id"]?.text).map({ Data($0.utf8) })
+        == (draft.original?["id"]?.text).map({ Data($0.utf8) })
+    else { return }
+    let wasLoaded = loaded
+    if row["updated_at"] != draft.original?["updated_at"] || !wasLoaded {
+      draft.reconcileUndo(row, keeping: focused)
+    }
+    loaded = true
+    try? persist()
+    // Edits made while the listed row showed were held for this revision.
+    if !wasLoaded && autosavePatch.keys.contains(where: { $0 != "id" }) { commitPending() }
   }
 
   func resumeDraft(_ selected: StoredEditorDraft? = nil) {
@@ -455,28 +546,62 @@ final class RecordEditorModel {
     recoveryChoices.removeAll { $0.id == saved.id }
   }
 
-  func flushMarkdown(retry: Bool = false) async throws {
+  /// Store every pending change now, one write at a time.
+  func flushAutosave(retry: Bool = false) async throws {
     debounceTask?.cancel()
     guard !undoing, !autosavePaused, !isTrashed else {
       throw WorkspaceError(message: status, violations: violations)
     }
+    // Edits wait for the fresh row; adopting it commits them.
+    guard loaded else { return }
     if retry { failedPatch = nil }
-    guard !isNew else {
-      try persist()
-      return
-    }
     try checkRecovery()
     while true {
       if let inFlight {
         try await inFlight.value
         continue
       }
-      let patch = markdownPatch
+      let patch = autosavePatch
       guard patch.keys.contains(where: { $0 != "id" }) else {
         if let failure { throw WorkspaceError(message: failure, violations: violations) }
         return
       }
-      try await submit(patch)
+      do { try await submit(patch) } catch {
+        guard let refusal = error as? WorkspaceError, try await recover(from: refusal, patch: patch)
+        else { throw error }
+      }
+    }
+  }
+
+  /// A conflict merges the stored row; a refusal naming only patched fields keeps those
+  /// values out of later patches. Either way the rest of the record can still save.
+  private func recover(from error: WorkspaceError, patch: WorkspaceRecord) async throws -> Bool {
+    if error.violations.contains(where: { $0.rule == "conflict" }) {
+      guard !isNew, let latest, let fresh = try await latest(),
+        fresh["updated_at"] != draft.original?["updated_at"]
+      else { return false }
+      draft.reconcileUndo(fresh)
+    } else {
+      let columns = error.violations.map(\.col)
+      guard !columns.isEmpty, columns.allSatisfy({ $0 != "id" && patch[$0] != nil }) else {
+        return false
+      }
+      for violation in error.violations {
+        refused[violation.col] = (Self.formText(patch[violation.col]), violation)
+      }
+    }
+    failedPatch = nil
+    failure = nil
+    violations = []
+    try persist()
+    return true
+  }
+
+  private static func formText(_ value: JSONValue?) -> String {
+    switch value {
+    case .bool(let flag)?: flag ? "true" : "false"
+    case .null?, nil: ""
+    case let value?: value.text
     }
   }
 
@@ -530,7 +655,13 @@ final class RecordEditorModel {
       do {
         try self.persist()
         let receipt = try await self.write(patch, self.draft.original)
+        if self.recordID == nil, let created = receipt["id"]?.text {
+          // The creation journal moves to the record it created.
+          try? self.store?.remove(table: self.table, recordID: nil, draftID: self.journalID)
+          self.recordID = created
+        }
         self.draft.acknowledge(receipt, sent: patch)
+        for key in patch.keys { self.refused[key] = nil }
         self.pendingWrite = nil
         self.failedPatch = nil
         self.failure = nil

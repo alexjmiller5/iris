@@ -10,7 +10,8 @@ final class IncomingReferencesUITests: XCTestCase {
     let app = try openTarget()
     defer { app.terminate() }
     for pass in 0..<2 {
-      XCTAssertFalse(app.buttons["save-record"].exists)
+      XCTAssertFalse(
+        app.textFields["field-title"].exists, "Read-only records show no editable fields")
       let group = app.buttons["notes · Related topics"]
       reveal(group, in: app)
       tap(group)
@@ -31,7 +32,8 @@ final class IncomingReferencesUITests: XCTestCase {
       NSPredicate(format: "label CONTAINS %@", "Full incoming body 00")
     ).firstMatch
     reveal(fullBody, in: app)
-    XCTAssertFalse(app.buttons["save-record"].exists)
+    XCTAssertFalse(
+      app.textFields["field-title"].exists, "Read-only records show no editable fields")
     let emptyGroup = app.buttons["notes · Related topics"]
     reveal(emptyGroup, in: app, down: true)
     tap(emptyGroup)
@@ -63,7 +65,7 @@ final class IncomingReferencesUITests: XCTestCase {
     tap(options)
     tap(app.webViews.descendants(matching: .any)["Body source"])
     expectValue(app.webViews.textViews["Body"], "Composed full body")
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     openTargetRecord(app)
     reveal(group, in: app)
     tap(group)
@@ -127,7 +129,7 @@ final class IncomingReferencesUITests: XCTestCase {
     tap(app.alerts.buttons["Discard changes and open"])
     expectValue(title, "Incoming 01")
     XCTAssertEqual(app.navigationBars.matching(identifier: "Record").count, 1)
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     openTargetRecord(app)
     expectValue(title, "Target notebook")
     reveal(options, in: app)

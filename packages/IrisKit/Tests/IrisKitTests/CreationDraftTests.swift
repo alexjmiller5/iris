@@ -33,11 +33,11 @@ struct CreationDraftTests {
     if edit == "type then clear" { editor.setValue("Ready", for: "status") }
     if edit != "untouched" { editor.setValue("", for: "status", explicit: true) }
     #expect(editor.draft.patch["status"] == (edit == "untouched" ? nil : .null))
-    try await editor.flushMarkdown()
     #expect(
       runtime.context.evaluateScript("IrisSql.all('SELECT total_changes() AS n')[0].n")!.toInt32()
         == before)
-    try await editor.saveAll()
+    // The first autosave creates the row; untouched fields still take core defaults.
+    try await editor.flushAutosave()
     let saved = try #require(editor.draft.original)
     #expect(saved["status"] == (edit == "untouched" ? .string("Draft") : .null))
     #expect(editor.draft.values["status"] == (edit == "untouched" ? "Draft" : ""))
@@ -136,10 +136,8 @@ struct CreationDraftTests {
     release.resume()
     try await saving.value
     let id = try #require(editor.draft.original?["id"])
-    #expect(editor.draft.original?["status"] == .string("Draft"))
-    #expect(editor.dirty && calls.count == 1)
-    #expect(editor.draft.patch == ["id": id, "status": .null])
-    try await editor.saveAll()
+    // The receipt keeps the clear made during the write; autosave sends it next.
+    try await editor.flushAutosave()
     #expect(calls == [["title": .string("Created")], ["id": id, "status": .null]])
     #expect(editor.draft.original?["status"] == .null)
     #expect(!editor.dirty)

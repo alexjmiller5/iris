@@ -71,7 +71,8 @@ struct ReferencePickerTests {
     await old.value
     #expect(model.rows.map(\.label) == ["Chosen name"])
     #expect(model.selection.ids == ["missing-id", "chosen-id"])
-    #expect(model.label(for: "missing-id") == "Unavailable")
+    // Unread selections read as loading, never as unavailable, until resolved.
+    #expect(model.label(for: "missing-id") == "Loading…")
     #expect(model.label(for: "chosen-id") == "Chosen name")
   }
 
@@ -110,13 +111,17 @@ struct ReferencePickerTests {
       table: "topics", value: #"["missing","existing"]"#, multiple: true
     ) { view in
       #expect(view.table == "topics")
-      #expect(view.limit == 1)
-      let id: String
-      if case .string(let value) = view.filters?.first?.value { id = value } else { id = "" }
-      lookedUp.append(id)
-      return id == "existing"
-        ? [WorkspaceRow(record: ["id": .string(id)], label: "Named record")] : []
+      // One any-of read for the whole selection.
+      let ids = (view.groups?.first?.filters ?? []).compactMap { filter -> String? in
+        if case .string(let value) = filter.value { return value }
+        return nil
+      }
+      #expect(view.groups?.first?.match == "any")
+      lookedUp += ids
+      return ids.contains("existing")
+        ? [WorkspaceRow(record: ["id": .string("existing")], label: "Named record")] : []
     }
+    #expect(model.label(for: "existing") == "Loading…")
     await model.resolveSelected()
     #expect(lookedUp == ["missing", "existing"])
     #expect(model.label(for: "existing") == "Named record")

@@ -243,7 +243,7 @@ struct ReferenceNavigationTests {
       try await withCheckedThrowingContinuation { receipt = $0 }
     }
     source.setValue("Pending", for: "body")
-    let save = Task { try await source.flushMarkdown() }
+    let save = Task { try await source.flushAutosave() }
     while receipt == nil { await Task.yield() }
     source.setValue("Body", for: "body")
     let navigation = ReferenceNavigationModel(

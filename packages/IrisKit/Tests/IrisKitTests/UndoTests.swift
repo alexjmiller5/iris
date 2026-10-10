@@ -43,7 +43,7 @@ struct UndoTests {
     for _ in 0..<100 where held == nil { await Task.yield() }
     #expect(held != nil && editor.saving)
     await #expect(throws: WorkspaceError.self) { try await editor.saveAll() }
-    await #expect(throws: WorkspaceError.self) { try await editor.flushMarkdown() }
+    await #expect(throws: WorkspaceError.self) { try await editor.flushAutosave() }
     editor.setValue("Final newer draft", for: "body")
     let savedPending = try #require(try store.all().first)
     #expect(savedPending.undoUnconfirmed == true)
@@ -128,7 +128,7 @@ struct UndoTests {
     try await editor.performUndo(action) { tombstone }
     #expect(editor.isTrashed && editor.autosavePaused)
     await #expect(throws: WorkspaceError.self) { try await editor.saveAll() }
-    await #expect(throws: WorkspaceError.self) { try await editor.flushMarkdown(retry: true) }
+    await #expect(throws: WorkspaceError.self) { try await editor.flushAutosave(retry: true) }
     try await editor.saveAll(["id": .string("record"), "deleted_at": .null])
     #expect(!editor.isTrashed && editor.autosavePaused)
     #expect(editor.draft.values["body"] == "Keep this draft")
@@ -148,7 +148,7 @@ struct UndoTests {
       try await withCheckedThrowingContinuation { pending = $0 }
     }
     editor.setValue("Pending body", for: "body")
-    let saving = Task { try await editor.flushMarkdown() }
+    let saving = Task { try await editor.flushAutosave() }
     for _ in 0..<100 where pending == nil { await Task.yield() }
     await #expect(throws: WorkspaceError.self) {
       try await editor.performUndo(action) {

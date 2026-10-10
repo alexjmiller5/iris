@@ -19,7 +19,7 @@ final class InlineMarkdownUITests: XCTestCase {
     for _ in 0..<5 where !rich.isHittable { app.swipeUp() }
     rich.tap()
     rich.typeText(" Full page final input")
-    app.navigationBars["Record"].buttons["save-record"].tap()
+    app.navigationBars["Record"].buttons["done-record"].tap()
     XCTAssertTrue(open.waitForExistence(timeout: 5))
     open.tap()
     XCTAssertTrue(rich.waitForExistence(timeout: 10))
@@ -86,7 +86,7 @@ final class InlineMarkdownUITests: XCTestCase {
     XCTAssertTrue(title.waitForExistence(timeout: 5))
     title.tap()
     title.typeText("Markdown keyboard fixture")
-    app.navigationBars["New record"].buttons["save-record"].tap()
+    app.navigationBars["New record"].buttons["done-record"].tap()
     let row = app.cells.containing(.button, identifier: "Markdown keyboard fixture, Open record")
       .firstMatch
     XCTAssertTrue(row.waitForExistence(timeout: 5))

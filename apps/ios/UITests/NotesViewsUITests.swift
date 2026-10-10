@@ -51,7 +51,7 @@ final class NotesViewsUITests: XCTestCase {
     XCTAssertTrue(app.buttons["Open Working draft"].exists)
     XCTAssertFalse(app.buttons["Open Retired lantern plan"].exists)
     capture(app, "ios-3-related-history-not-retired")
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
 
     tap(app.buttons["quick-find"])
     let query = app.textFields["quick-find-query"]

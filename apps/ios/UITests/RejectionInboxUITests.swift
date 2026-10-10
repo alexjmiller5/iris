@@ -41,13 +41,13 @@ final class RejectionInboxUITests: XCTestCase {
     expectBody(app, "Rejected save body")
     // The submitted payload predates the current row. Success proves Review used
     // the current revision, and the relaunch proves the paused journal was durable.
-    tap(app.navigationBars["Record"].buttons["save-record"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
     findRecord(app, id: "issues-save", title: "Issues save submitted")
     expectValue(title, "Issues save submitted")
     XCTAssertFalse(app.buttons["Resume draft"].exists)
     expectBody(app, "Rejected save body")
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 5))
     openIssues(app)
     XCTAssertTrue(
@@ -66,7 +66,7 @@ final class RejectionInboxUITests: XCTestCase {
     expectValue(title, "Issues stale newer")
     tap(app.buttons["Resume draft"])
     expectValue(title, "Issues stale submitted")
-    tap(app.navigationBars["Record"].buttons["save-record"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     let conflict = app.staticTexts.matching(
       NSPredicate(format: "label CONTAINS %@", "Row changed since it was selected")
     ).firstMatch
@@ -90,7 +90,7 @@ final class RejectionInboxUITests: XCTestCase {
     tap(app.buttons["Open saved record"])
     expectValue(title, "Issues stale newer")
     expectBody(app, "Newer saved body")
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 5))
     findRecord(app, id: "issues-stale", title: "Issues stale newer")
     XCTAssertTrue(app.buttons["Resume draft"].waitForExistence(timeout: 5))
@@ -157,7 +157,8 @@ final class RejectionInboxUITests: XCTestCase {
   }
 
   private func keepAndClose(_ app: XCUIApplication) {
-    tap(app.navigationBars["Record"].buttons["keep-record-draft"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
+    tap(app.buttons["keep-record-draft"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
   }
 

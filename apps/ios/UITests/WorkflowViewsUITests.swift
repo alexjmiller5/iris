@@ -38,13 +38,15 @@ final class WorkflowViewsUITests: XCTestCase {
     XCTAssertTrue(review.waitForNonExistence(timeout: 5))
     views.tap()
     app.buttons["Default view"].tap()
-    let record = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Viewfixture Alpha"))
-      .firstMatch
+    let record = app.buttons.matching(
+      NSPredicate(format: "label BEGINSWITH %@", "Viewfixture Alpha")
+    )
+    .firstMatch
     XCTAssertTrue(record.waitForExistence(timeout: 5))
     record.tap()
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.buttons["field-status"].label.contains("Ready"))
-    app.navigationBars["Record"].buttons["Cancel"].tap()
+    app.navigationBars["Record"].buttons["done-record"].tap()
     views.tap()
     queue.tap()
     XCTAssertFalse(review.exists)

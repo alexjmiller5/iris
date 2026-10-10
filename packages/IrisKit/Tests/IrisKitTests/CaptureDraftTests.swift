@@ -11,7 +11,7 @@ import Testing
     ["col": .string("retired"), "type": .string("text"), "deprecated": .bool(true)],
   ]
 
-  @Test func captureIsRecoverableAndCreatesOneRealRowOnlyAfterExplicitSave() async throws {
+  @Test func captureIsRecoverableUntilItsFirstAutosaveCreatesOneRealRow() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let store = EditorDraftStore(
@@ -29,19 +29,18 @@ import Testing
       return try await workspace.write(table: "notes", patch: patch)
     }
     try editor.installCaptureDraft(id: id, text: text, column: "body")
+    #expect(try await workspace.rows(table: "notes").map(\.record) == before.map(\.record))
     editor.setValue("Synthetic capture", for: "title")
     try editor.installCaptureDraft(id: id, text: text, column: "body")
-    try await editor.flushMarkdown()
-    #expect(try await workspace.rows(table: "notes").map(\.record) == before.map(\.record))
     let journals = try store.all()
     #expect(journals.count == 1)
     let journal = try #require(journals.first)
     #expect(journal.captureID == id && journal.recordID == nil)
     #expect(Data(journal.draft.values["body"]!.utf8) == Data(text.utf8))
     #expect(journal.draft.values["title"] == "Synthetic capture")
-    try await editor.saveAll()
+    try await editor.flushAutosave()
     try editor.installCaptureDraft(id: id, text: text, column: "body")
-    try await editor.saveAll()
+    try await editor.flushAutosave()
     let after = try await workspace.rows(table: "notes")
     #expect(after.count == before.count + 1)
     #expect(
@@ -181,7 +180,7 @@ import Testing
     }
     #expect(try store.all().isEmpty)
     try editor.installCaptureDraft(id: UUID(), text: nil, column: nil)
-    try await editor.flushMarkdown()
+    try await editor.flushAutosave()
     #expect(try store.all().count == 1)
     #expect(try store.all().count == 1 && !editor.dirty)
   }

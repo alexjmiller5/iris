@@ -53,7 +53,7 @@ final class HumanUndoUITests: XCTestCase {
       field.click()
       field.typeKey("a", modifierFlags: .command)
       field.typeText(title)
-      app.buttons["save-record"].click()
+      app.buttons["done-record"].click()
       XCTAssertTrue(grid.buttons["Open \(title)"].waitForExistence(timeout: 10))
     }
     open("A place to start")
@@ -74,7 +74,7 @@ final class HumanUndoUITests: XCTestCase {
     let restored = NSPredicate(format: "value == %@", "A place to start")
     expectation(for: restored, evaluatedWith: field)
     waitForExpectations(timeout: 5)
-    app.buttons["Cancel"].firstMatch.click()
+    app.buttons["done-record"].click()
     XCTAssertTrue(grid.buttons["Open A place to start"].waitForExistence(timeout: 10))
   }
 }

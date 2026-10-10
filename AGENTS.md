@@ -43,7 +43,7 @@ schema from the operator. Ordinary table defaults are unaffected.
   recoverable editor journal before consuming it and records the UUID in bounded
   `quick-add-receipts.json`, so retried or late deliveries never open a second draft.
   The share extension (IrisExtensionSupport only) puts one URL or text into a
-  Quick Add source's display column; only explicit Save creates a row.
+  Quick Add source's display column; presenting a non-empty capture creates its row.
 - NativeIntegrationSettings holds per-workspace identities only: Spotlight tables,
   the Shortcuts lookup table (default none) and the daily-section widget source.
   Spotlight indexes display titles of enabled tables in a protected Core Spotlight
@@ -334,8 +334,8 @@ fields and validation failures stay visible. A title-only saved view keeps a
 catalog-valid title or ID column because core rejects empty projections. Resetting
 layout removes the projection; it never removes record values or resets widths.
 Mobile property editing and the full record pop-up share RecordEditorModel and its
-recovery journal. Resolve a fresh full row and field editability before inline
-editing; immutable/derived fields and recovery use the full presentation. Expand
+recovery journal. Catalog and the listed row decide inline editability;
+immutable/derived fields and recovery use the full presentation. Expand
 transfers the existing model, never a reconstructed draft. Full records embed visible
 Markdown bodies below their properties. Retain one WebKit holder per exact field
 ID through form recycling; collect all holders before save, close, Undo or record
@@ -398,19 +398,24 @@ record's `updated_at` as `expectedUpdatedAt` to prevent stale editor overwrites.
 Keep drafts separate from the stored row and reconcile successful writes without
 silently discarding later typing. Preserve unknown existing multi-select values.
 
-Web record pages save themselves (`+page.svelte` with `record-autosave.ts`); there is
-no Save, Cancel or Discard. Choices, dates, checkboxes and references commit on change,
-typed fields after 500 ms idle or on blur, Markdown after its 600 ms pause. Each write
-carries only changed fields and is one core receipt (one Undo step). Writes queue one at
-a time on the editor's session (table, id, latest revision), so leaving mid-typing still
-lands; context changes, unload and Undo flush first. A refusal whose violations all name
-patched columns keeps those values out of later patches with an inline error while the
-rest saves; any other refusal stops retries until the draft changes. A conflict or a
-`change` event merges stored values into untouched fields, never the focused field.
-New records are created by their first valid edit; Duplicate creates at once. A row
-opened from the list paints in the same frame; the form stays `inert` until the fresh
-full row arrives. Undo and rejected-edit review stay paused until their explicit
-Save draft.
+Record pages save themselves (web `+page.svelte` with `record-autosave.ts`, native
+`RecordEditorModel`); there is no Save, Cancel or Discard, only Done (native, Cmd+S and
+Escape on Mac) to save what is pending and close. Choices, dates, checkboxes and
+references commit on change, typed fields after 500 ms idle or on blur, Markdown after
+its 600 ms pause. Each write carries only changed fields and is one core receipt (one
+Undo step), one at a time behind the record's latest revision, so leaving mid-typing
+still lands; context changes, unload, background and Undo flush first. A refusal whose
+violations all name patched columns keeps those values out of later patches with an
+inline error while the rest saves; any other refusal stops retries until the draft
+changes. A conflict, a web `change` event or a newer listed revision merges the stored
+row into untouched fields, never into the field being typed in. New records are created
+by their first valid edit; Duplicate and a non-empty capture create when presented.
+A row opened from the list paints in the same frame from the listed row (web form
+`inert`, native hit testing off) while the editor reads the fresh full row and, native,
+its recovery journals off the main actor; nothing awaits the database before first
+paint. Reference labels read in one any-of request per field and show "Loading…", never
+"Unavailable", until read. Undo and rejected-edit review stay paused until their explicit
+Save draft; Done with unsaveable changes offers Keep draft and close or Discard.
 
 The web view toolbar holds the view switcher (its menu renames, copies, deletes and
 sets defaults), Filter, Sort and layout. Filter chips edit `filter-bar.ts` rules:
@@ -485,7 +490,7 @@ Human Undo uses the core's bounded session stack of 100 validated receipts. Disp
 "Undo last saved change" and submit that displayed receipt ID; never reconstruct
 inverses or expose history as undo. Web Undo saves pending record edits first, so it
 reverts the latest field edit. Merge unchanged fields from the returned row while
-preserving newer drafts; those drafts require an explicit Save before autosave resumes.
+preserving newer drafts; those drafts require Save draft before autosave resumes.
 Failures retain the draft and action. A returned tombstone stays read-only until
 explicit Restore, which also preserves the retained draft. Text-editor Undo stays
 separate. Cmd-Z/Ctrl-Z outside typing controls dispatches the current receipt; never
@@ -665,8 +670,8 @@ enabled and dismisses open surfaces itself; edits are already journaled. Propert
 to their individual buttons.
 RecordEditorModel capture preparation retains its handoff UUID in the ordinary
 recoverable creation journal. Pending delivery retries preserve edits and refuse
-to fork another live editor. Empty captures stay recoverable; only explicit Save
-creates a row. Entry-point navigation and workspace/writeability checks remain
+to fork another live editor. Empty captures stay recoverable; the first autosave
+creates the row. Entry-point navigation and workspace/writeability checks remain
 the host's responsibility.
 Markdown previews parse a bounded prefix off the main actor and never rewrite
 source. Only the active cell mounts a rich editor. Its prepared record model owns

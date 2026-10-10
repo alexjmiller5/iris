@@ -114,12 +114,14 @@ struct RecordDraft: Codable {
     values.filter { key, value in !fields.contains(where: { $0.id == key }) && !value.isEmpty }
   }
 
-  mutating func reconcileUndo(_ receipt: WorkspaceRecord) {
+  /// Untouched fields take the stored row; local changes (and `keeping`, the field being
+  /// typed in) stay drafts. The stored row becomes the baseline and revision.
+  mutating func reconcileUndo(_ receipt: WorkspaceRecord, keeping: String? = nil) {
     let changes = patch
     var empty = literalEmptyFields
     for field in fields {
       let value = field.formValue(receipt[field.id])
-      if changes[field.id] == nil {
+      if changes[field.id] == nil && keeping.map({ Data($0.utf8) }) != Data(field.id.utf8) {
         values[field.id] = value
         if receipt[field.id] == .string("") {
           empty.insert(field.id)

@@ -28,12 +28,12 @@ final class InlineMarkdownUITests: XCTestCase {
     rich.click()
     rich.typeKey("a", modifierFlags: .command)
     rich.typeText("# Inline heading\n\n- First item")
-    XCTAssertLessThanOrEqual(grid.buttons["inline-save"].frame.maxX, grid.frame.maxX)
+    XCTAssertLessThanOrEqual(grid.buttons["inline-done"].frame.maxX, grid.frame.maxX)
     let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
     screenshot.name = "inline-markdown-cell"
     screenshot.lifetime = .keepAlways
     add(screenshot)
-    grid.buttons["inline-save"].click()
+    grid.buttons["inline-done"].click()
     XCTAssertTrue(rich.waitForNonExistence(timeout: 5))
     let preview = grid.staticTexts.matching(
       NSPredicate(format: "value CONTAINS %@", "Inline heading")

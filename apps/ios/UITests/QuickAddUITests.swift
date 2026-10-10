@@ -27,7 +27,7 @@ import XCTest
     draft.name = "quick-add-prepared-draft"
     draft.lifetime = .keepAlways
     add(draft)
-    app.buttons["save-record"].tap()
+    app.buttons["done-record"].tap()
     let saved = app.buttons.matching(
       NSPredicate(format: "label BEGINSWITH %@", "Quick Add fixture saved")
     ).firstMatch

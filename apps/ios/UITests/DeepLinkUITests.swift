@@ -96,7 +96,7 @@ final class DeepLinkUITests: XCTestCase {
     tap(title)
     let name = "Link fixture " + UUID().uuidString
     title.typeText(name)
-    tap(app.buttons["save-record"])
+    tap(app.buttons["done-record"])
     // Other fixture rows can sort ahead of this one; filter before opening it.
     let search = app.searchFields.firstMatch
     tap(search)
@@ -105,7 +105,7 @@ final class DeepLinkUITests: XCTestCase {
     let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
     tap(row)
     copy(app.buttons["copy-record-link"])
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
     let url = try pastedURL(app)
     tap(row)
@@ -115,7 +115,7 @@ final class DeepLinkUITests: XCTestCase {
     XCUIDevice.shared.system.open(url)
     XCTAssertTrue(app.staticTexts["link-waiting-editor"].waitForExistence(timeout: 10))
     XCTAssertEqual(title.value as? String, draft)
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     let confirmation = app.sheets["Discard unsaved changes?"]
     XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
     // iOS presents this confirmation as a popover; tapping outside keeps editing.
@@ -125,14 +125,16 @@ final class DeepLinkUITests: XCTestCase {
     XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
     XCTAssertEqual(title.value as? String, draft)
     XCTAssertTrue(app.staticTexts["link-waiting-editor"].exists)
-    tap(app.navigationBars["Record"].buttons["Cancel"])
-    tap(app.buttons["Discard changes"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
+    if app.buttons["Discard changes"].waitForExistence(timeout: 2) {
+      tap(app.buttons["Discard changes"])
+    }
     XCTAssertTrue(app.buttons["open-pending-link"].waitForExistence(timeout: 10))
     tap(app.buttons["open-pending-link"])
     XCTAssertTrue(title.waitForExistence(timeout: 10))
     XCTAssertEqual(title.value as? String, name)
     XCTAssertFalse(app.staticTexts["link-waiting-editor"].exists)
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
 
     // Receipt while idle still waits for an explicit Open.

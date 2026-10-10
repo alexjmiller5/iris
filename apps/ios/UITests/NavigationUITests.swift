@@ -50,7 +50,7 @@ final class NavigationUITests: XCTestCase {
     tap(title)
     title.typeText(" revised")
     let draft = try XCTUnwrap(title.value as? String)
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     let confirmation = app.sheets["Discard unsaved changes?"]
     XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
     // iOS presents this confirmation as a popover; tapping outside cancels it.
@@ -59,13 +59,13 @@ final class NavigationUITests: XCTestCase {
     title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
     expect(title, value: draft)
-    tap(app.navigationBars["Record"].buttons["save-record"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 5))
     tap(app.buttons["quick-find"])
     setQuery(draft, in: app)
     tap(app.buttons["quick-find-result-notes-nav-note-51"])
     expect(title, value: draft)
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     showSidebar(app)
     // The shared displayName contract trims labels; stored editor values stay exact.
     let displayLabel = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -102,14 +102,15 @@ final class NavigationUITests: XCTestCase {
     reveal(trash, in: app)
     tap(trash)
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
-    XCTAssertFalse(app.buttons["save-record"].exists)
+    XCTAssertFalse(
+      app.textFields["field-title"].exists, "Read-only records show no editable fields")
     tap(app.buttons["Restore record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 5))
     showSidebar(app)
     reveal(trash, in: app)
     tap(trash)
-    XCTAssertTrue(app.buttons["save-record"].waitForExistence(timeout: 5))
-    tap(app.navigationBars["Record"].buttons["Cancel"])
+    XCTAssertTrue(app.textFields["field-title"].waitForExistence(timeout: 5))
+    tap(app.navigationBars["Record"].buttons["done-record"])
     showSidebar(app)
     let system = app.buttons["System tables"]
     reveal(system, in: app)

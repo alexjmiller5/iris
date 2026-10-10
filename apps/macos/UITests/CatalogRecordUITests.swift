@@ -84,20 +84,20 @@ final class CatalogRecordUITests: XCTestCase {
     rules.click()
     XCTAssertTrue(app.staticTexts["Fixture title is blocked."].waitForExistence(timeout: 5))
     app.buttons["Back"].firstMatch.click()
-    app.buttons["save-record"].click()
+    // Autosave meets the rule: the refusal shows inline and the editor stays open.
     XCTAssertTrue(
       app.staticTexts.matching(
         NSPredicate(
           format: "value CONTAINS %@ OR label CONTAINS %@", "Fixture title is blocked.",
           "Fixture title is blocked.")
       ).firstMatch.waitForExistence(timeout: 5))
-    XCTAssertTrue(app.buttons["save-record"].exists, "Rejected Save must keep the record open")
+    XCTAssertTrue(app.buttons["done-record"].exists, "A refused value must keep the record open")
     XCTAssertEqual(title.value as? String, "Blocked")
     XCTAssertEqual(detail.value as? String, "Retained second edit")
     capture(app, "catalog-rejected-draft")
     form.scroll(byDeltaX: 0, deltaY: 400)
     replace(title, with: "Allowed")
-    app.buttons["save-record"].click()
+    app.buttons["done-record"].click()
     let saved = app.buttons["Open Allowed"]
     XCTAssertTrue(saved.waitForExistence(timeout: 10))
     saved.click()
@@ -111,7 +111,7 @@ final class CatalogRecordUITests: XCTestCase {
         ).firstMatch.exists)
     }
     capture(app, "catalog-corrected-readback")
-    app.buttons["Cancel"].click()
+    app.buttons["done-record"].click()
   }
 
   private func replace(_ field: XCUIElement, with value: String) {

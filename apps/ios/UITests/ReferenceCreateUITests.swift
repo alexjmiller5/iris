@@ -80,7 +80,7 @@ final class ReferenceCreateUITests: XCTestCase {
     tap(app.buttons["create-reference-save"])
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 10))
     XCTAssertTrue(label("company", app: app).contains("Initech"))
-    tap(app.buttons["save-record"])
+    tap(app.buttons["done-record"])
     capture(app, "ios-saved")
   }
 

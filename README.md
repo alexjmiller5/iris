@@ -288,14 +288,16 @@ extensionless references retain their text presentation.
 Markdown uses the same editor as web, bundled locally in WebKit. Type `# ` or
 `## ` for headings, `- ` for bullets, or `/` on an empty line for block choices.
 Formatting actions appear when text is selected; the options menu contains
-Source, Undo and Redo. Existing records autosave
-editable Markdown after a 600 ms typing pause. **Save** collects every live body
-and awaits the local write; closing or opening a related record also collects
-the final input before checking for unsaved changes. Other property changes and new records still require
-**Save**. Later typing stays in the draft while a write is pending, and successful
-receipts advance the editor's revision without replacing those changes. A failed
-identical edit waits for a change or explicit retry. The status says **Saved on
-this device** only after the write succeeds; hub synchronization is separate.
+Source, Undo and Redo. Records have no Save button: choices save on change, typed
+fields after a short pause or when you leave them, and Markdown after a 600 ms typing
+pause; **Done** (Cmd+S or Escape on Mac) saves anything pending and closes. Closing or
+opening a related record also collects the final input. Later typing stays in the draft
+while a write is pending, and successful receipts advance the editor's revision without
+replacing those changes. A value the catalog refuses stays editable with its message
+while the rest of the record saves; another failed edit waits for a change or **Retry
+saving**. The status says **Saved on this device** only after the write succeeds; hub
+synchronization is separate. Records opened from a list appear at once and become
+editable when their full stored row has been read.
 
 **Undo last saved change** and **Cmd-Z** (Ctrl-Z on non-Mac browsers) reverse
 human changes in the open workspace, including record creation, edits, trash,
@@ -306,8 +308,8 @@ it does not restore old timestamps. Success reveals the preceding action, with n
 this session stack. While typing, Cmd-Z keeps the text editor's normal undo.
 An open editor's newer draft stays intact, including when Undo affects another
 record. Its autosave pauses
-until an explicit **Save**, also after a failed Undo. While paused, Markdown
-**Keep draft and close** keeps the draft without saving it. Undoing a creation can put the record
+until **Save draft**, also after a failed Undo. While paused, **Done** offers
+**Keep draft and close**, which keeps the draft without saving it. Undoing a creation can put the record
 in trash; use **Restore record**, then review and save the retained draft separately.
 The live Markdown snapshot must be safely journaled before Undo can run.
 An interrupted Undo with no confirmed result keeps the draft for the same
@@ -724,9 +726,8 @@ Save and close collect live snapshots to include the final keystroke. The island
 no database or credential bridge and blocks network access. Web record pages have no
 Save button: choices save on change, typed fields after a short pause or when you leave
 them, and Markdown after its typing pause; a value the catalog refuses stays editable with
-an inline error while the rest of the record saves. Native editors autosave existing
-Markdown bodies and collect them before Save; property edits and new records require Save.
-Every save uses the shared validated write path.
+an inline error while the rest of the record saves. Native editors do the same and
+collect live Markdown before Done. Every save uses the shared validated write path.
 
 Browser checks for the editor use a dedicated `iris-markdown.localhost`
 review tab:
@@ -770,9 +771,8 @@ runs on connection and explicit request,
 not in the background. Native device approval installs a dedicated credential
 only after the hub session is validated; manual token entry is also available.
 The graph is available on web and macOS; iOS graph presentation
-is outside the MVP. Native property edits and new records require explicit Save;
-existing-record Markdown autosaves locally. Recovered stale drafts retain their
-source for review; automatic conflict merging is not implemented.
+is outside the MVP. Record edits autosave locally; a conflicting stored change merges
+into fields you have not edited. Recovered stale drafts retain their source for review.
 
 Browser OPFS availability is required, including for the local catalog and
 binding used by online browsing. The app has no service worker or promise that

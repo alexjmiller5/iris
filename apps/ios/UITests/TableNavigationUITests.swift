@@ -48,7 +48,7 @@ final class TableNavigationUITests: XCTestCase {
     title.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
     title.typeText(" saved during sync")
     let savedTitle = try XCTUnwrap(title.value as? String)
-    tap(app.buttons["inline-save"], app)
+    tap(app.buttons["inline-done"], app)
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 5), app.debugDescription)
     tap(app.buttons["workspace-status"], app)
     XCTAssertTrue(

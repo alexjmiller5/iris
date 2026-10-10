@@ -72,7 +72,7 @@ struct RejectedDraftTests {
     editor.setValue("Corrected body", for: "body")
     try await Task.sleep(for: .milliseconds(30))
     #expect(calls.isEmpty)
-    await #expect(throws: WorkspaceError.self) { try await editor.flushMarkdown() }
+    await #expect(throws: WorkspaceError.self) { try await editor.flushAutosave() }
     #expect(calls.isEmpty)
     try await editor.saveAll()
     #expect(calls.count == 1)

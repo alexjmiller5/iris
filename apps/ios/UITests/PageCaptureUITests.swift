@@ -28,7 +28,7 @@ final class PageCaptureUITests: XCTestCase {
     screenshot.lifetime = .keepAlways
     add(screenshot)
     app.alerts.buttons["OK"].tap()
-    XCTAssertTrue(app.buttons["save-record"].exists)
+    XCTAssertTrue(app.buttons["done-record"].exists)
     XCTAssertFalse(app.buttons["capture-save-png"].exists)
   }
 }

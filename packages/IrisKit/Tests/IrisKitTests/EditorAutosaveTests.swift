@@ -14,12 +14,12 @@ struct EditorAutosaveTests {
     "body": .string("Old"), "updated_at": .string("revision-1"),
   ]
 
-  @Test func autosaveWritesOnlyMarkdownAndSerializesLaterTypingWithReceiptRevision() async throws {
+  @Test func autosaveSerializesLaterTypingWithReceiptRevision() async throws {
     var calls: [(WorkspaceRecord, WorkspaceRecord?)] = []
     var first: CheckedContinuation<WorkspaceRecord, any Error>?
     let editor = RecordEditorModel(
       properties: properties, original: original, table: "notes",
-      store: nil, debounce: .seconds(60)
+      store: nil, debounce: .seconds(60), typingDelay: .seconds(60)
     ) { patch, baseline in
       calls.append((patch, baseline))
       if calls.count == 1 {
@@ -29,15 +29,15 @@ struct EditorAutosaveTests {
         "updated_at": .string("revision-3")
       ]) { _, new in new }
     }
-    editor.setValue("Unsaved title", for: "title")
     editor.setValue("First body", for: "body")
-    let flush = Task { try await editor.flushMarkdown() }
+    let flush = Task { try await editor.flushAutosave() }
     for _ in 0..<100 where first == nil { await Task.yield() }
     #expect(first != nil)
     #expect(editor.saving)
-    #expect(!editor.markdownSaved)
+    #expect(!editor.saved)
     editor.setValue("Later body", for: "body")
-    let secondFlush = Task { try await editor.flushMarkdown() }
+    editor.setValue("Typed during the write", for: "title")
+    let secondFlush = Task { try await editor.flushAutosave() }
     first?.resume(
       returning: original.merging([
         "body": .string("First body"), "updated_at": .string("revision-2"),
@@ -46,14 +46,16 @@ struct EditorAutosaveTests {
     try await secondFlush.value
     #expect(calls.count == 2)
     #expect(calls[0].0 == ["id": .string("fixture"), "body": .string("First body")])
-    #expect(calls[1].0 == ["id": .string("fixture"), "body": .string("Later body")])
+    // Later edits, of any field, go in the next write with the receipt's revision.
+    #expect(
+      calls[1].0
+        == [
+          "id": .string("fixture"), "body": .string("Later body"),
+          "title": .string("Typed during the write"),
+        ])
     #expect(calls[1].1?["updated_at"] == .string("revision-2"))
-    #expect(editor.draft.values["title"] == "Unsaved title")
-    #expect(editor.draft.patch == ["id": .string("fixture"), "title": .string("Unsaved title")])
-    #expect(editor.markdownSaved)
-    try await editor.saveAll()
-    #expect(calls.last?.0 == ["id": .string("fixture"), "title": .string("Unsaved title")])
-    #expect(calls.last?.1?["updated_at"] == .string("revision-3"))
+    #expect(editor.draft.values["title"] == "Typed during the write")
+    #expect(editor.saved)
   }
 
   @Test func failedIdenticalPatchDoesNotRetryUntilExplicitlyRequested() async throws {
@@ -69,17 +71,17 @@ struct EditorAutosaveTests {
     for _ in 0..<100 where editor.failure == nil { try await Task.sleep(for: .milliseconds(10)) }
     #expect(attempts == 1)
     #expect(editor.failure != nil)
-    #expect(!editor.markdownSaved)
-    await #expect(throws: WorkspaceError.self) { try await editor.flushMarkdown() }
+    #expect(!editor.saved)
+    await #expect(throws: WorkspaceError.self) { try await editor.flushAutosave() }
     editor.setValue("Unrelated property", for: "title")
     try await Task.sleep(for: .milliseconds(40))
     #expect(attempts == 1)
-    await #expect(throws: WorkspaceError.self) { try await editor.flushMarkdown(retry: true) }
+    await #expect(throws: WorkspaceError.self) { try await editor.flushAutosave(retry: true) }
     #expect(attempts == 2)
     #expect(editor.draft.values["body"] == "Keep this body")
   }
 
-  @Test func newRecordsWaitForManualSaveAndIgnoreUnloadedColumns() async throws {
+  @Test func newRecordsAreCreatedByTheirFirstEditAndIgnoreUnloadedColumns() async throws {
     var patches: [WorkspaceRecord] = []
     let editor = RecordEditorModel(
       properties: properties, original: nil, table: "notes",
@@ -93,11 +95,9 @@ struct EditorAutosaveTests {
     editor.setValue("New", for: "title")
     editor.setValue("Draft body", for: "body")
     editor.setValue("Must be retained, never submitted", for: "new_catalog_column")
-    try await editor.flushMarkdown()
-    try await Task.sleep(for: .milliseconds(40))
-    #expect(patches.isEmpty)
-    try await editor.saveAll()
+    try await editor.flushAutosave()
     #expect(patches == [["title": .string("New"), "body": .string("Draft body")]])
+    #expect(!editor.isNew)
     #expect(editor.draft.values["new_catalog_column"] == "Must be retained, never submitted")
   }
 
@@ -115,7 +115,7 @@ struct EditorAutosaveTests {
     editor!.setValue("Recover title", for: "title")
     editor!.setValue("Final body!", for: "body")
     editor!.setValue("Unavailable field value", for: "unknown")
-    await #expect(throws: WorkspaceError.self) { try await editor!.flushMarkdown() }
+    await #expect(throws: WorkspaceError.self) { try await editor!.flushAutosave() }
     editor = nil  // Relaunch has no live editor owning the stored variant.
     let reopened = EditorDraftStore(
       root: root.appendingPathComponent("drafts"),
@@ -156,57 +156,63 @@ struct EditorAutosaveTests {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let store = EditorDraftStore(root: root, workspace: root.appendingPathComponent("db.sqlite"))
-    var pending: CheckedContinuation<WorkspaceRecord, any Error>?
+    var pending: [CheckedContinuation<WorkspaceRecord, any Error>] = []
     let editor = RecordEditorModel(
       properties: properties, original: original, table: "notes",
-      store: store, debounce: .seconds(60)
+      store: store, debounce: .seconds(60), typingDelay: .seconds(60)
     ) { _, _ in
-      try await withCheckedThrowingContinuation { pending = $0 }
+      try await withCheckedThrowingContinuation { pending.append($0) }
     }
     editor.setValue("Submitted", for: "body")
-    let flush = Task { try await editor.flushMarkdown() }
-    for _ in 0..<100 where pending == nil { await Task.yield() }
+    let flush = Task { try await editor.flushAutosave() }
+    for _ in 0..<100 where pending.isEmpty { await Task.yield() }
     editor.setValue("Dirty property", for: "title")
-    pending?.resume(
+    pending[0].resume(
       returning: original.merging([
         "body": .string("Submitted"), "updated_at": .string("revision-2"),
       ]) { _, new in new })
-    try await flush.value
+    // The later edit is the next write; until its receipt it stays journaled.
+    for _ in 0..<100 where pending.count < 2 { await Task.yield() }
     let saved = try #require(try store.load(table: "notes", recordID: "fixture"))
     #expect(saved.draft.patch == ["id": .string("fixture"), "title": .string("Dirty property")])
     #expect(saved.draft.original?["updated_at"] == .string("revision-2"))
+    pending[1].resume(
+      returning: original.merging([
+        "body": .string("Submitted"), "title": .string("Dirty property"),
+        "updated_at": .string("revision-3"),
+      ]) { _, new in new })
+    try await flush.value
+    #expect(try store.load(table: "notes", recordID: "fixture") == nil)
   }
 
-  @Test func realCorePersistsBodyThenPropertyAndRejectsExternalRevision() async throws {
+  @Test func realCorePersistsEveryFieldAndKeepsAConflictingEditWithoutAMerge() async throws {
     let model = WorkspaceModel()
     await model.open(demo: true)
     let context = try #require(model.editingContext)
     let row = try #require(model.rows.first?.record)
     let editor = RecordEditorModel(
       properties: model.properties, original: row,
-      table: context.table, store: nil, debounce: .seconds(60)
+      table: context.table, store: nil, debounce: .seconds(60), typingDelay: .seconds(60)
     ) { patch, baseline in
       try await model.save(patch, original: baseline, context: context)
     }
-    editor.setValue("Pending property", for: "title")
+    editor.setValue("Autosaved property", for: "title")
     editor.setValue("# Autosaved synthetic source!", for: "body")
-    try await editor.flushMarkdown()
-    let bodySaved = try #require(try await context.workspace.rows(table: "notes").first?.record)
-    #expect(bodySaved["body"] == .string("# Autosaved synthetic source!"))
-    #expect(bodySaved["title"] == row["title"])
-    try await editor.saveAll()
-    let propertySaved = try #require(try await context.workspace.rows(table: "notes").first?.record)
-    #expect(propertySaved["title"] == .string("Pending property"))
+    try await editor.flushAutosave()
+    let saved = try #require(try await context.workspace.rows(table: "notes").first?.record)
+    #expect(saved["body"] == .string("# Autosaved synthetic source!"))
+    #expect(saved["title"] == .string("Autosaved property"))
     _ = try await context.workspace.write(
       table: "notes",
       patch: [
         "id": row["id"]!,
         "body": .string("Other client"),
-      ], expectedUpdatedAt: propertySaved["updated_at"]?.text)
+      ], expectedUpdatedAt: saved["updated_at"]?.text)
+    // With no host reader to merge from, a conflict keeps the draft for review.
     editor.setValue("Retain my conflicting edit", for: "body")
-    await #expect(throws: WorkspaceError.self) { try await editor.flushMarkdown() }
+    await #expect(throws: WorkspaceError.self) { try await editor.flushAutosave() }
     #expect(editor.draft.values["body"] == "Retain my conflicting edit")
-    #expect(!editor.markdownSaved)
+    #expect(!editor.saved)
     #expect(
       try await context.workspace.rows(table: "notes").first?.record["body"]
         == .string("Other client"))
@@ -237,7 +243,7 @@ struct EditorAutosaveTests {
     try await Task.sleep(for: .milliseconds(40))
     #expect(calls == 0)
     #expect(editor.failure != nil)
-    await #expect(throws: WorkspaceError.self) { try await editor.flushMarkdown() }
+    await #expect(throws: WorkspaceError.self) { try await editor.flushAutosave() }
     #expect(calls == 1)
     #expect(
       try store.load(table: "notes", recordID: "fixture")?.draft.values["body"] == "Closed draft")
@@ -279,11 +285,11 @@ struct EditorAutosaveTests {
       throw WorkspaceError(message: "Invalid synthetic source", violations: [])
     }
     editor.setValue("Invalid", for: "body")
-    await #expect(throws: WorkspaceError.self) { try await editor.flushMarkdown() }
+    await #expect(throws: WorkspaceError.self) { try await editor.flushAutosave() }
     editor.setValue("Old", for: "body")
-    try await editor.flushMarkdown()
+    try await editor.flushAutosave()
     #expect(editor.failure == nil)
-    #expect(editor.markdownSaved)
+    #expect(editor.saved)
     #expect(try store.load(table: "notes", recordID: "fixture") == nil)
   }
 
@@ -306,13 +312,13 @@ struct EditorAutosaveTests {
       ]) { _, new in new }
     }
     editor.setValue("Submitted body", for: "body")
-    let saving = Task { try await editor.flushMarkdown() }
+    let saving = Task { try await editor.flushAutosave() }
     for _ in 0..<100 where pending == nil { await Task.yield() }
     let receipt = try #require(pending)
     editor.setValue("Old", for: "body")
     let journal = try store.load(table: "notes", recordID: "fixture")
     #expect(journal?.draft.values["body"] == "Old")
-    #expect(!editor.markdownSaved)
+    #expect(!editor.saved)
     receipt.resume(
       returning: original.merging([
         "body": .string("Submitted body"), "updated_at": .string("revision-2"),
@@ -397,7 +403,7 @@ struct EditorAutosaveTests {
       return try await withCheckedThrowingContinuation { held = $0 }
     }
     editor.setValue("B", for: "body")
-    let saving = Task { try await editor.flushMarkdown() }
+    let saving = Task { try await editor.flushAutosave() }
     for _ in 0..<1000 where held == nil { await Task.yield() }
     let heldReceipt = try #require(held)
     editor.setValue("A", for: "body")
@@ -419,8 +425,8 @@ struct EditorAutosaveTests {
     #expect(recovered.draft.values["body"] == "A")
     #expect(recovered.draft.original?["updated_at"] == row["updated_at"])
     #expect(recovered.failure != nil)
-    #expect(!recovered.markdownSaved)
-    await #expect(throws: WorkspaceError.self) { try await recovered.flushMarkdown() }
+    #expect(!recovered.saved)
+    await #expect(throws: WorkspaceError.self) { try await recovered.flushAutosave() }
     await #expect(throws: WorkspaceError.self) { try await recovered.saveAll() }
     #expect(try store.all().contains { $0.draft.values["body"] == "A" && $0.pendingWrite != nil })
     // End the simulated killed host only after verifying the actual committed
@@ -520,7 +526,7 @@ struct EditorAutosaveTests {
     #expect(fresh.draft.values["body"] == "Submitted")
     #expect(try store.all().count == 1)
     fresh.setValue("Reviewed source", for: "body")
-    try await fresh.flushMarkdown()
+    try await fresh.flushAutosave()
     #expect(try store.all().first?.draft.values["title"] == "Recovered property")
   }
 

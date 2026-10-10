@@ -60,7 +60,7 @@ final class SyncStatusUITests: XCTestCase {
     title.tap()
     title.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
     title.typeText(" kept offline")
-    app.buttons["inline-save"].tap()
+    app.buttons["inline-done"].tap()
     expect(pill, "Offline · 1 pending")
     XCTAssertFalse(app.staticTexts["Saving…"].exists)
     capture(app, "pill-offline-pending")

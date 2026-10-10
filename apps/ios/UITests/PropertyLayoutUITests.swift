@@ -75,7 +75,8 @@ final class PropertyLayoutUITests: XCTestCase {
     name.tap()
     // The field starts with the applied view's name ("Default view").
     let current = (name.value as? String)?.count ?? 0
-    name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current) + "Title focus")
+    name.typeText(
+      String(repeating: XCUIKeyboardKey.delete.rawValue, count: current) + "Title focus")
     app.buttons["save-view-copy"].tap()
     XCTAssertTrue(app.staticTexts["saved-view-receipt"].waitForExistence(timeout: 5))
     app.navigationBars["Saved views"].buttons["Done"].tap()
@@ -95,7 +96,7 @@ final class PropertyLayoutUITests: XCTestCase {
     XCTAssertTrue(status.isHittable)
     status.tap()
     app.buttons["Ready"].tap()
-    app.buttons["save-record"].tap()
+    app.buttons["done-record"].tap()
     app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
       .firstMatch.tap()
     app.staticTexts["More properties"].tap()

@@ -21,20 +21,21 @@ final class RecordGridUITests: XCTestCase {
     XCTAssertTrue(field.waitForExistence(timeout: 5))
     XCTAssertEqual(app.sheets.count, 0)
     XCTAssertFalse(app.buttons["new-record"].isEnabled)
-    XCTAssertTrue(app.buttons["Close workspace"].isEnabled, "Close dismisses the inline editor itself")
+    XCTAssertTrue(
+      app.buttons["Close workspace"].isEnabled, "Close dismisses the inline editor itself")
     field.click()
     field.typeKey("a", modifierFlags: .command)
     field.typeText("Changed inside the table")
     let selectedRow = grid.tableRows.matching(NSPredicate(format: "selected == true")).firstMatch
     XCTAssertTrue(selectedRow.exists)
     XCTAssertGreaterThanOrEqual(field.frame.minY, selectedRow.frame.minY)
-    XCTAssertLessThanOrEqual(grid.buttons["inline-save"].frame.maxY, selectedRow.frame.maxY)
+    XCTAssertLessThanOrEqual(grid.buttons["inline-done"].frame.maxY, selectedRow.frame.maxY)
     capture(app, name: "inline-text-edit")
     grid.buttons["inline-open-record"].click()
     let fullField = app.sheets.textFields["field-title"]
     XCTAssertTrue(fullField.waitForExistence(timeout: 5))
     XCTAssertEqual(fullField.value as? String, "Changed inside the table")
-    app.buttons["save-record"].click()
+    app.buttons["done-record"].click()
     XCTAssertTrue(grid.waitForExistence(timeout: 5))
     XCTAssertTrue(
       grid.staticTexts.matching(NSPredicate(format: "value == %@", "Changed inside the table"))
@@ -141,7 +142,7 @@ final class RecordGridUITests: XCTestCase {
     XCTAssertTrue(
       app.sheets.descendants(matching: .any).matching(identifier: "field-body").firstMatch.exists)
     XCTAssertTrue(app.sheets.webViews.textViews["Body"].waitForExistence(timeout: 10))
-    app.buttons["Cancel"].click()
+    app.buttons["done-record"].click()
     XCTAssertTrue(grid.waitForExistence(timeout: 5))
   }
 }

@@ -29,13 +29,13 @@ final class TypedFieldsUITests: XCTestCase {
   func testInlineDoesNotOfferAnEditorForImmutableProperties() throws {
     let app = try openFixture("dates")
     defer { app.terminate() }
-    app.navigationBars["Record"].buttons["Cancel"].tap()
+    app.navigationBars["Record"].buttons["done-record"].tap()
     let locked = app.buttons["inline-property-locked"].firstMatch
     for _ in 0..<10 where !locked.isHittable { app.swipeUp() }
     locked.tap()
     XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 5))
     XCTAssertFalse(app.textFields["field-locked"].exists)
-    XCTAssertFalse(app.buttons["inline-save"].exists)
+    XCTAssertFalse(app.buttons["inline-done"].exists)
   }
 
   func testLinkInputsRemainVisibleWithinCompactRows() throws {
@@ -73,13 +73,13 @@ final class TypedFieldsUITests: XCTestCase {
     tap(spelling)
     tap(
       app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Second spelling")).firstMatch)
-    tap(app.navigationBars["Record"].buttons["save-record"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(
       app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Not options for tags"))
         .firstMatch.waitForExistence(timeout: 5))
     reveal(removeUnknown, in: app, down: true)
     tap(removeUnknown)
-    tap(app.navigationBars["Record"].buttons["save-record"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
     app.terminate()
     app.launch()
@@ -113,7 +113,7 @@ final class TypedFieldsUITests: XCTestCase {
     reveal(app.buttons["clear-date-day"], in: app)
     tap(app.buttons["clear-date-day"])
     XCTAssertTrue(app.buttons["choose-date-day"].waitForExistence(timeout: 5))
-    tap(app.navigationBars["Record"].buttons["save-record"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
     app.terminate()
     app.launch()
@@ -131,7 +131,7 @@ final class TypedFieldsUITests: XCTestCase {
     formatter.timeZone = .current
     formatter.dateFormat = "yyyy-MM-dd"
     let today = formatter.string(from: Date())
-    tap(app.navigationBars["Record"].buttons["save-record"])
+    tap(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["Record"].waitForNonExistence(timeout: 10))
     app.terminate()
     app.launch()

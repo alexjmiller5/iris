@@ -27,7 +27,7 @@ final class PageCaptureUITests: XCTestCase {
       app.staticTexts["Capture metadata is missing or invalid."].waitForExistence(timeout: 5))
     app.buttons["OK"].click()
     XCTAssertEqual(title.value as? String, "Kept capture draft")
-    XCTAssertTrue(app.buttons["save-record"].exists)
+    XCTAssertTrue(app.buttons["done-record"].exists)
     XCTAssertFalse(app.buttons["capture-save-png"].exists)
   }
 }

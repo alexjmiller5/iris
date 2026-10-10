@@ -92,11 +92,11 @@ struct DuplicateDraftTests {
     #expect(savedDraft.draft.patch["nullable"] == .null)
     #expect(savedDraft.draft.patch["empty_text"] == .string(""))
     #expect(Data(savedDraft.draft.patch["payload"]!.text.utf8) == Data(jsonSource.utf8))
-    try await editor.flushMarkdown()
+    // Duplicate is creation intent: the copy is stored by its first autosave.
     #expect(
       runtime.context.evaluateScript("IrisSql.all('SELECT total_changes() AS n')[0].n")!.toInt32()
         == before)
-    try await editor.saveAll()
+    try await editor.flushAutosave()
     let copy = try #require(editor.draft.original)
     #expect(copy["id"] != source["id"])
     #expect(

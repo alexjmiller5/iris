@@ -61,7 +61,7 @@ final class PresentationUITests: XCTestCase {
     XCTAssertEqual(records.count, 1)
     records.firstMatch.click()
     XCTAssertTrue(app.textFields["field-title"].waitForExistence(timeout: 5))
-    app.buttons["Cancel"].firstMatch.click()
+    app.buttons["done-record"].click()
     layout("Board")
     XCTAssertTrue(app.staticTexts["Draft (1)"].waitForExistence(timeout: 5))
     app.menuButtons["Move"].click()
@@ -70,7 +70,7 @@ final class PresentationUITests: XCTestCase {
     records.firstMatch.click()
     XCTAssertTrue(app.popUpButtons["field-status"].waitForExistence(timeout: 5))
     XCTAssertEqual(app.popUpButtons["field-status"].value as? String, "Ready")
-    app.buttons["Cancel"].firstMatch.click()
+    app.buttons["done-record"].click()
     capture(app, "board-saved-move")
   }
   private func capture(_ app: XCUIApplication, _ name: String) {

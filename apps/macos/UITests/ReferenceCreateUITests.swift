@@ -91,7 +91,7 @@ final class ReferenceCreateUITests: XCTestCase {
     domain.typeText("initech.example")
     click(app.buttons["create-reference-save"])
     XCTAssertTrue(label("company", app: app).contains("Initech"))
-    click(app.buttons["save-record"])
+    click(app.buttons["done-record"])
     capture(app, "mac-saved")
   }
 
