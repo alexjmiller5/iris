@@ -93,12 +93,66 @@ struct OptionChips: View {
   let values: [String]
 
   var body: some View {
-    HStack(spacing: 4) {
+    ChipFlow(spacing: 4) {
       ForEach(Array(values.enumerated()), id: \.offset) { _, value in
         OptionChip(value: value, color: field.optionColor(value))
       }
     }
     .accessibilityRepresentation { Text(values.joined(separator: ", ")) }
+  }
+}
+
+/// Chips wrap onto as many lines as they need instead of all shrinking to an ellipsis.
+struct ChipFlow: Layout {
+  var spacing: CGFloat = 4
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    Self.frames(sizes(subviews, proposal), width: proposal.width ?? .infinity, spacing: spacing)
+      .size
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    let frames = Self.frames(sizes(subviews, proposal), width: bounds.width, spacing: spacing)
+      .frames
+    for (subview, frame) in zip(subviews, frames) {
+      subview.place(
+        at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+        proposal: ProposedViewSize(frame.size))
+    }
+  }
+
+  private func sizes(_ subviews: Subviews, _ proposal: ProposedViewSize) -> [CGSize] {
+    subviews.map { subview in
+      let natural = subview.sizeThatFits(.unspecified)
+      guard let width = proposal.width, natural.width > width else { return natural }
+      return subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+    }
+  }
+
+  /// Line-by-line placement; a chip wider than the line gets the line's width.
+  static func frames(_ sizes: [CGSize], width: CGFloat, spacing: CGFloat)
+    -> (size: CGSize, frames: [CGRect])
+  {
+    var frames: [CGRect] = []
+    var x: CGFloat = 0
+    var y: CGFloat = 0
+    var line: CGFloat = 0
+    var widest: CGFloat = 0
+    for size in sizes {
+      let size = CGSize(width: min(size.width, width), height: size.height)
+      if x > 0, x + size.width > width {
+        x = 0
+        y += line + spacing
+        line = 0
+      }
+      frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+      widest = max(widest, x + size.width)
+      x += size.width + spacing
+      line = max(line, size.height)
+    }
+    return (CGSize(width: widest, height: y + line), frames)
   }
 }
 

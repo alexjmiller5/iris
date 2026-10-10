@@ -178,7 +178,8 @@ private struct QuickFindEntryRow: View {
   var body: some View {
     HStack(alignment: .top) {
       VStack(alignment: .leading, spacing: 4) {
-        Text(entry.label).font(.headline).foregroundStyle(.primary).lineLimit(2)
+        Text(entry.label.wrappingAtUnderscores).font(.headline).foregroundStyle(.primary)
+          .lineLimit(2).accessibilityLabel(entry.label)
         // Kind, table and status stack at accessibility sizes instead of breaking words.
         let caption =
           textSize.isAccessibilitySize
@@ -192,7 +193,9 @@ private struct QuickFindEntryRow: View {
           } else {
             Text("Table")
           }
-          if entry.id.rowID != nil || entry.id.viewID != nil { Text(entry.id.table) }
+          if entry.id.rowID != nil || entry.id.viewID != nil {
+            Text(entry.id.table.wrappingAtUnderscores).accessibilityLabel(entry.id.table)
+          }
           if let status = entry.status {
             Text(status.value)
               .padding(.horizontal, 6)

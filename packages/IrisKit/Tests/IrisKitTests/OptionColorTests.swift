@@ -66,3 +66,24 @@ struct OptionColorTests {
     await workspace.close()
   }
 }
+
+struct ChipFlowTests {
+  @Test func chipsWrapOntoNewLinesInsteadOfShrinking() {
+    let sizes = [
+      CGSize(width: 60, height: 20), CGSize(width: 50, height: 20), CGSize(width: 70, height: 22),
+    ]
+    let wide = ChipFlow.frames(sizes, width: 300, spacing: 4)
+    #expect(wide.frames.map(\.origin.y) == [0, 0, 0])
+    #expect(wide.size == CGSize(width: 188, height: 22))
+    let narrow = ChipFlow.frames(sizes, width: 120, spacing: 4)
+    #expect(
+      narrow.frames.map(\.origin) == [
+        CGPoint(x: 0, y: 0), CGPoint(x: 64, y: 0), CGPoint(x: 0, y: 24),
+      ])
+    #expect(narrow.frames.map(\.size) == sizes)
+    #expect(narrow.size == CGSize(width: 114, height: 46))
+    // One chip wider than the line keeps its own line at the line's width.
+    let long = ChipFlow.frames([CGSize(width: 500, height: 20)], width: 120, spacing: 4)
+    #expect(long.frames == [CGRect(x: 0, y: 0, width: 120, height: 20)])
+  }
+}

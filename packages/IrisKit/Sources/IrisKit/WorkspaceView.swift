@@ -935,17 +935,23 @@ public struct WorkspaceView: View {
         }
       }.disabled(!canFind).accessibilityIdentifier("resume-unsaved-draft")
     }
-    if model.isReplica,
-      model.syncResult?.rejected.isEmpty == false || !model.skippedTables.isEmpty
-    {
-      SyncDetails(model: model)
-    }
+    // Rejections and skipped tables live in the pill and its status sheet; the current
+    // table's own incompleteness is PartialReplicaNotice above.
     if let error = model.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
     if let purpose = model.tables.first(where: { $0["id"]?.text == model.table })?["purpose"]?
       .text.nonempty
     {
       Text(purpose).font(.callout).foregroundStyle(.secondary)
     }
+  }
+
+  /// Empty-list guidance never invites an action the table cannot take.
+  nonisolated static func emptyRecordsMessage(filtered: Bool, trash: Bool, canCreate: Bool)
+    -> String
+  {
+    if filtered { return "Try a different search or filter." }
+    if trash { return "Deleted records appear here." }
+    return canCreate ? "Create a record to get started." : "This table has no records yet."
   }
 
   private var recordList: some View {
@@ -966,8 +972,10 @@ public struct WorkspaceView: View {
           ContentUnavailableView(
             model.trash ? "Trash is empty" : "No records", systemImage: "tray",
             description: Text(
-              model.search.isEmpty && model.filters.isEmpty && model.filterGroups.isEmpty
-                ? "Create a record to get started." : "Try a different search or filter."))
+              Self.emptyRecordsMessage(
+                filtered: !model.search.isEmpty || !model.filters.isEmpty
+                  || !model.filterGroups.isEmpty,
+                trash: model.trash, canCreate: model.canWrite)))
         }
         ForEach(displayedRows, id: \.byteExactID) { row in
           VStack(alignment: .leading, spacing: 2) {

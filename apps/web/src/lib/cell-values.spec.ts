@@ -50,6 +50,7 @@ describe('json cells', () => {
 		expect(jsonText('{"checking": 12.5, "note": "ok", "inner": {"a": [1]}}')).toBe(
 			'checking: 12.5, note: ok, inner: {"a":[1]}'
 		);
+		expect(jsonText('{"cover": null, "kind": "list"}')).toBe('kind: list');
 		expect(jsonText('[{"a":1},{"b":2}]')).toBe('2 items');
 		expect(jsonText('[{"a":1}]')).toBe('1 item');
 		expect(jsonText('{}')).toBe('');

@@ -62,7 +62,8 @@ private struct SidebarTableRow: View {
       Button(action: onOpen) {
         Label {
           VStack(alignment: .leading, spacing: 3) {
-            Text(table.id).foregroundStyle(.primary)
+            Text(table.id.wrappingAtUnderscores).foregroundStyle(.primary)
+              .accessibilityLabel(table.id)
             if let purpose = table.purpose {
               Text(purpose).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }

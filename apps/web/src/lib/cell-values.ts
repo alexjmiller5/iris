@@ -51,6 +51,7 @@ export function jsonText(value: unknown): string {
 			: `${json.length} ${json.length === 1 ? 'item' : 'items'}`;
 	if (json && typeof json === 'object')
 		return Object.entries(json)
+			.filter(([, v]) => v !== null)
 			.map(([key, v]) => `${key}: ${scalar(v) ? v : JSON.stringify(v)}`)
 			.join(', ');
 	return json == null ? '' : String(json);

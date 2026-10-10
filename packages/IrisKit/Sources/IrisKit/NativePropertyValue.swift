@@ -95,7 +95,8 @@ struct NativePropertyValue: View {
       return items.map(\.text).joined(separator: ", ")
     case .array(let items): return "\(items.count) \(items.count == 1 ? "item" : "items")"
     case .object(let fields):
-      return fields.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value.text)" }
+      return fields.filter { $0.value != .null }.sorted { $0.key < $1.key }
+        .map { "\($0.key): \($0.value.text)" }
         .joined(separator: ", ")
     default: return json.text
     }

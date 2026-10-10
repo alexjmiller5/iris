@@ -54,10 +54,33 @@ struct NativePropertyValueTests {
     #expect(
       NativePropertyValue.text(type: "json", value: #"{"checking": 12.5, "note": "ok"}"#)
         == "checking: 12.5, note: ok")
+    #expect(
+      NativePropertyValue.text(type: "json", value: #"{"cover": null, "kind": "list"}"#)
+        == "kind: list")
     #expect(NativePropertyValue.text(type: "json", value: #"[{"a":1},{"b":2}]"#) == "2 items")
     #expect(NativePropertyValue.text(type: "json", value: #"[{"a":1}]"#) == "1 item")
     #expect(NativePropertyValue.text(type: "json", value: "[]") == "Not set")
     #expect(NativePropertyValue.text(type: "json", value: "not json {") == "not json {")
+  }
+  @Test @MainActor func emptyListsOnlyInviteCreationWhenAllowed() {
+    #expect(
+      WorkspaceView.emptyRecordsMessage(filtered: false, trash: false, canCreate: true)
+        == "Create a record to get started.")
+    #expect(
+      WorkspaceView.emptyRecordsMessage(filtered: false, trash: false, canCreate: false)
+        == "This table has no records yet.")
+    #expect(
+      WorkspaceView.emptyRecordsMessage(filtered: false, trash: true, canCreate: true)
+        == "Deleted records appear here.")
+    #expect(
+      WorkspaceView.emptyRecordsMessage(filtered: true, trash: true, canCreate: true)
+        == "Try a different search or filter.")
+  }
+  @Test func tableNamesWrapAfterUnderscores() {
+    #expect(
+      "people_sync_observations".wrappingAtUnderscores == "people_\u{200B}sync_\u{200B}observations"
+    )
+    #expect("tasks".wrappingAtUnderscores == "tasks")
   }
   @Test func datesUseStrictParsingAndUTC() throws {
     let locale = Locale(identifier: "en_US")

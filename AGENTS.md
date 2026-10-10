@@ -441,6 +441,11 @@ objects read `key: value` and lists of records as a count; Markdown previews dro
 Notion-flavored tags (callout, details, mention-*, file, empty-block) and link
 targets; dates and UTC timestamps use the native format. Whole JSON numbers read
 as JavaScript writes them (`1`, never `1.0`). Unparseable source shows as stored.
+Chips wrap onto new lines (native `ChipFlow`) or clip at the cell edge (web) rather
+than all shrinking. Snake_case table names break after underscores (`BreakName`,
+`wrappingAtUnderscores`, display only), never mid-word or by hyphenation. Table
+lists carry no sync details: rejections and skipped tables live in the pill and its
+status sheet; a skipped current table shows its own notice.
 The web grid passes virtua's `ssrCount` only to server renders: in a browser it
 would hold the first rows until a scroll.
 

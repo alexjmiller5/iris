@@ -43,6 +43,9 @@ struct CatalogField: Identifiable, Codable {
 }
 extension String {
   var nonempty: String? { isEmpty ? nil : self }
+  /// Snake_case identifiers wrap after underscores instead of hyphenating mid-word at
+  /// large text sizes. Display only; keep the plain name for identity and accessibility.
+  var wrappingAtUnderscores: String { replacingOccurrences(of: "_", with: "_\u{200B}") }
 }
 
 struct RecordDraft: Codable {
