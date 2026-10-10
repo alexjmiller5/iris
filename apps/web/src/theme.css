@@ -94,6 +94,8 @@ input {
 }
 .option-chip[data-color='default'] {
 	background: var(--color-option-default);
+	/* The pale default tint keeps a hairline so it reads on bone backgrounds. */
+	box-shadow: inset 0 0 0 1px var(--color-rule);
 }
 .option-chip[data-color='gray'] {
 	background: var(--color-option-gray);

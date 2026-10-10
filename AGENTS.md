@@ -870,7 +870,9 @@ Web design tokens live in `apps/web/src/theme.css`; use Tabler UI icons,
 accessible controls, keyboard focus and narrow-screen layouts. Native views use
 SwiftUI semantic styles. The graph initially fits the viewport; zoom keeps the
 same offline SVG and table navigation, with one step reaching readable size.
-Native graph changes must regenerate the bundled island.
+Native graph changes must regenerate the bundled island. The editor and graph
+islands embed `theme.css`, so any theme token edit also needs `bun run
+bundle:editor` and `bun run bundle:graph` (CI diffs both resources).
 `islands.css` explicitly scopes Tailwind sources to the embedded components;
 unrelated web files must not change native artifacts. Verify this with
 `bun scripts/test-island-builds.ts` before publishing regenerated resources.

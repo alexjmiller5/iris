@@ -1139,7 +1139,7 @@ public struct WorkspaceView: View {
   @ViewBuilder private var recordContent: some View {
     if model.viewPresentation.kind != "table" {
       VStack(alignment: .leading, spacing: 0) {
-        ScrollView { recordNotices }
+        ScrollView { recordNotices.padding(.horizontal) }
           .scrollBounceBehavior(.basedOnSize)
           .frame(maxHeight: 180)
           .fixedSize(horizontal: false, vertical: true)

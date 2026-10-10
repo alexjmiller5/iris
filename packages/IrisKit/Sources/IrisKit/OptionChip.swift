@@ -36,11 +36,15 @@ enum OptionPalette {
     // The saturated (dark appearance) tint reads on light and dark menus alike.
     #if canImport(UIKit)
       let color = UIColor(hex: tint.1)
-      return UIImage(systemName: "circle.fill")
-        .map { Image(uiImage: $0.withTintColor(color, renderingMode: .alwaysOriginal)) }
+      return UIImage(
+        systemName: "circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 9)
+      )
+      .map { Image(uiImage: $0.withTintColor(color, renderingMode: .alwaysOriginal)) }
     #else
       let image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)?
-        .withSymbolConfiguration(.init(paletteColors: [NSColor(hex: tint.1)]))
+        .withSymbolConfiguration(
+          NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
+            .applying(.init(paletteColors: [NSColor(hex: tint.1)])))
       image?.isTemplate = false
       return image.map(Image.init(nsImage:))
     #endif
@@ -67,8 +71,11 @@ struct OptionChip: View {
     .foregroundStyle(tint == nil ? Color.primary : OptionPalette.ink)
     .background(tint ?? .clear, in: RoundedRectangle(cornerRadius: 4))
     .overlay {
-      if tint == nil {
-        RoundedRectangle(cornerRadius: 4).strokeBorder(Color.secondary.opacity(0.45))
+      // Neutral chips are outlined; the pale default tint keeps a hairline so it
+      // still reads on grouped backgrounds.
+      if tint == nil || color == "default" {
+        RoundedRectangle(cornerRadius: 4)
+          .strokeBorder(Color.secondary.opacity(tint == nil ? 0.45 : 0.25))
       }
     }
   }

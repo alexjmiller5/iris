@@ -162,16 +162,18 @@ struct NativeChoiceField: View {
     }
   }
 
-  /// Menu rows keep the text label; a palette dot marks colored options.
+  /// Menu rows show the value (descriptions stay in the field help); a palette dot marks
+  /// colored options.
   @ViewBuilder private func choiceLabel(_ option: NativeChoiceOption) -> some View {
+    let name = option.value.isEmpty ? "Empty value" : option.value
     if let dot = OptionPalette.dot(field.optionColor(option.value)) {
       Label {
-        Text(label(option))
+        Text(name)
       } icon: {
         dot
       }
     } else {
-      Text(label(option))
+      Text(name)
     }
   }
 
