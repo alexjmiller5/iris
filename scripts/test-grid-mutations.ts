@@ -133,6 +133,13 @@ const mutations = [
     browser: "cancelled cell navigation",
   },
   {
+    name: "browser grid keeps the server render range until a scroll",
+    file: grid,
+    before: "ssrCount={browser ? undefined : 5}",
+    after: "ssrCount={5}",
+    render: true,
+  },
+  {
     name: "virtualizer observes table instead of scroll container",
     file: grid,
     before: "\n\t\t\t\t{scrollRef}",

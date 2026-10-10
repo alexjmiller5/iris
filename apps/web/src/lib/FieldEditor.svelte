@@ -9,6 +9,7 @@
 	import { creationOffer } from './reference-create';
 	import OptionChip from './OptionChip.svelte';
 	import { richSelect } from './option-colors';
+	import { isFlag } from './cell-values';
 	let {
 		id,
 		property,
@@ -283,7 +284,7 @@
 		{#if multi}<div class="chips">
 				{#each list(value) as choice}<OptionChip {property} value={choice} />{/each}
 			</div>{/if}
-	{:else if property.type === 'bool'}
+	{:else if isFlag(property)}
 		<div class="boolean">
 			<input
 				{id}

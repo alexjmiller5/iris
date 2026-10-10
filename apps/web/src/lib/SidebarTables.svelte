@@ -29,7 +29,10 @@
 				aria-current={String(table.id) === current ? 'page' : undefined}
 				{disabled}
 				onclick={() => onchoose(String(table.id))}
-				><IconDatabase size={16} /><span>{String(table.id)}</span></button
+				><IconDatabase size={16} /><span
+					>{#each String(table.id).split('_') as part, index (index)}{#if index}_<wbr
+							/>{/if}{part}{/each}</span
+				></button
 			>
 			{#if onpin}<button
 					class="pin-action"
@@ -115,6 +118,10 @@
 	@media (max-width: 700px) {
 		nav {
 			display: flex;
+		}
+		/* Rows keep their width so the strip scrolls instead of crushing every name. */
+		.table-row {
+			flex: none;
 		}
 		button {
 			flex: none;

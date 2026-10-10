@@ -411,6 +411,13 @@
 		margin: -4px -4px -10px;
 		padding: 4px 4px 10px;
 	}
+	/* Phones hide scrollbars, so chips wrap instead of hiding behind the edge. */
+	@media (max-width: 700px) {
+		.chips {
+			flex-wrap: wrap;
+			overflow-x: visible;
+		}
+	}
 	.chip-main:focus-visible,
 	.chip-x:focus-visible {
 		outline-offset: -2px;

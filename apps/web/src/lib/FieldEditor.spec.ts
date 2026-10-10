@@ -102,6 +102,20 @@ test('false stays an unchecked checkbox with an explicit clear control', () => {
 	expect(window.document.querySelector('[aria-label="Clear Active"]')).not.toBeNull();
 	window.close();
 });
+test('an int whose only options are 0 and 1 edits as a checkbox', () => {
+	const window = field({
+		property: { col: 'notify', type: 'int', options: [{ v: '0' }, { v: '1' }] },
+		value: '1'
+	});
+	const box = window.document.querySelector('input[type="checkbox"]');
+	expect(box?.hasAttribute('checked')).toBe(true);
+	expect(window.document.querySelector('.boolean span')?.textContent).toBe('Yes');
+	window.close();
+	const plain = field({ property: { col: 'qty', type: 'int' }, value: '1' });
+	expect(plain.document.querySelector('input[type="checkbox"]')).toBeNull();
+	plain.close();
+});
+
 test('unknown reference remains selected and unavailable instead of being silently cleared', () => {
 	const window = field({
 		property: { col: 'project', type: 'ref' },

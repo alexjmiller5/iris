@@ -35,7 +35,11 @@
 					aria-current={current === pin.tbl ? 'page' : undefined}
 					aria-label={`Open pinned ${pin.tbl}`}
 					disabled={disabled || !!pin.unavailable}
-					onclick={() => onchoose(pin.tbl)}><IconPin size={16} /><span>{pin.tbl}</span></button
+					onclick={() => onchoose(pin.tbl)}
+					><IconPin size={16} /><span
+						>{#each pin.tbl.split('_') as part, index (index)}{#if index}_<wbr
+								/>{/if}{part}{/each}</span
+					></button
 				>
 				<div class="actions">
 					<button

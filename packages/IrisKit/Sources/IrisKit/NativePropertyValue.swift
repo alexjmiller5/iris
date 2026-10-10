@@ -26,6 +26,10 @@ struct NativePropertyValue: View {
           .id(Self.referenceID(field: field, value: value, workspace: workspace))
       } else if field.type == "markdown" && !value.isEmpty {
         NativeMarkdownPreview(value: value)
+      } else if field.isFlag, let on = Self.flagValue(value) {
+        Image(systemName: on ? "checkmark.square.fill" : "square")
+          .foregroundStyle(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+          .accessibilityLabel(on ? "Yes" : "No")
       } else if let values = Self.choiceValues(type: field.type, value: value) {
         OptionChips(field: field, values: values)
       } else {
@@ -46,10 +50,8 @@ struct NativePropertyValue: View {
         timeZone: TimeZone(secondsFromGMT: 0)!)
       return date.formatted(format) + (kind == .datetime ? " UTC" : "")
     }
-    if type == "bool" {
-      if ["true", "1", "1.0"].contains(value) { return "Yes" }
-      if ["false", "0", "0.0"].contains(value) { return "No" }
-    }
+    if type == "bool", let on = flagValue(value) { return on ? "Yes" : "No" }
+    if type == "json" { return jsonText(value) }
     if type == "multi_select",
       let values = try? JSONDecoder().decode([String].self, from: Data(value.utf8))
     {
@@ -58,14 +60,45 @@ struct NativePropertyValue: View {
     return value
   }
 
-  /// Select and multi-select source as chip values; nil keeps the text fallback.
+  /// Stored flag source as true/false; empty and anything else is nil.
+  nonisolated static func flagValue(_ value: String) -> Bool? {
+    if ["true", "1", "1.0"].contains(value) { return true }
+    if ["false", "0", "0.0"].contains(value) { return false }
+    return nil
+  }
+
+  /// Select, multi-select and json lists of plain values as chips; nil keeps the text fallback.
   nonisolated static func choiceValues(type: String, value: String) -> [String]? {
     if type == "select" { return value.isEmpty ? nil : [value] }
+    if type == "json" {
+      guard
+        case .array(let items)? = try? JSONDecoder().decode(JSONValue.self, from: Data(value.utf8)),
+        !items.isEmpty, items.allSatisfy(\.isScalar)
+      else { return nil }
+      return items.map(\.text)
+    }
     guard type == "multi_select",
       let values = try? JSONDecoder().decode([String].self, from: Data(value.utf8)),
       !values.isEmpty
     else { return nil }
     return values
+  }
+
+  /// Other json as readable text: objects as `key: value`, lists of records as a count.
+  nonisolated static func jsonText(_ value: String) -> String {
+    guard let json = try? JSONDecoder().decode(JSONValue.self, from: Data(value.utf8)) else {
+      return value
+    }
+    switch json {
+    case .array(let items) where items.isEmpty: return "Not set"
+    case .array(let items) where items.allSatisfy(\.isScalar):
+      return items.map(\.text).joined(separator: ", ")
+    case .array(let items): return "\(items.count) \(items.count == 1 ? "item" : "items")"
+    case .object(let fields):
+      return fields.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value.text)" }
+        .joined(separator: ", ")
+    default: return json.text
+    }
   }
 
   struct ReferenceID: Hashable {

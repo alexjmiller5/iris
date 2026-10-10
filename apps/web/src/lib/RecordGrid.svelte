@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
+	// virtua keeps an ssrCount range until the first scroll, so only server renders use one.
+	import { browser } from '$app/environment';
 	import { Virtualizer } from 'virtua/svelte';
 	import {
 		IconPlus,
@@ -9,14 +11,16 @@
 		IconArrowUp,
 		IconArrowDown,
 		IconSortAscending,
-		IconSortDescending
+		IconSortDescending,
+		IconSquare,
+		IconSquareCheckFilled
 	} from '@tabler/icons-svelte';
 	import { anchored } from './popover';
 	import type { Property, Row, RowAction, ViewLayoutItem } from 'iris-core/client';
 	import type { AttachmentOutbox } from './attachments';
 	import FieldEditor from './FieldEditor.svelte';
 	import OptionChip from './OptionChip.svelte';
-	import { selectValues } from './option-colors';
+	import { chipValues, flagValue, isFlag } from './cell-values';
 	import type { RetainedFileResolver } from './retained-files';
 	import {
 		createCellEditor,
@@ -437,7 +441,7 @@
 				as="tbody"
 				item="tr"
 				itemSize={44}
-				ssrCount={5}
+				ssrCount={browser ? undefined : 5}
 				startMargin={40}
 				keepMounted={activeIndex < 0 ? [] : [activeIndex]}
 				itemProps={({ index }) => ({
@@ -518,9 +522,18 @@
 										onclick={() => open(cell.rowId)}
 										>{format(property, row[property.col]) || cell.rowId}</button
 									>
-								{:else if property.type === 'select' || property.type === 'multi_select'}<span
+								{:else if isFlag(property) && flagValue(row[property.col]) !== null}{@const on =
+										flagValue(row[property.col])}<span class="cell-value cell-flag" class:on
+										>{#if on}<IconSquareCheckFilled
+												size={18}
+												aria-hidden="true"
+											/>{:else}<IconSquare size={18} aria-hidden="true" />{/if}<span class="sr-only"
+											>{on ? 'Yes' : 'No'}</span
+										></span
+									>
+								{:else if chipValues(property, row[property.col])}<span
 										class="cell-value cell-chips"
-										>{#each selectValues(property, row[property.col]) as value, index (index)}<OptionChip
+										>{#each chipValues(property, row[property.col]) ?? [] as value, index (index)}<OptionChip
 												{property}
 												{value}
 											/>{/each}</span
@@ -711,9 +724,17 @@
 		display: flex;
 		gap: 4px;
 	}
+	.cell-flag {
+		display: flex;
+		align-items: center;
+		color: var(--color-muted);
+	}
+	.cell-flag.on {
+		color: var(--color-accent);
+	}
+	/* Leading chips stay readable; the rest clip at the cell edge (one long chip still truncates). */
 	.cell-chips :global(.option-chip) {
-		flex: 0 1 auto;
-		min-width: 1.75rem;
+		flex: none;
 	}
 	.record-link {
 		color: var(--color-accent);

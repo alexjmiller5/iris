@@ -18,6 +18,47 @@ struct NativePropertyValueTests {
     #expect(NativePropertyValue.text(type: "date", value: "2024-02-30") == "2024-02-30")
     #expect(NativePropertyValue.text(type: "ref", value: "Named target") == "Unavailable")
   }
+  @Test func wholeNumbersReadLikeJavaScript() {
+    #expect(JSONValue.number(1).text == "1")
+    #expect(JSONValue.number(-3).text == "-3")
+    #expect(JSONValue.number(0).text == "0")
+    #expect(JSONValue.number(2.5).text == "2.5")
+    #expect(JSONValue.number(9_007_199_254_740_991).text == "9007199254740991")
+    #expect(JSONValue.number(1e300).text == "1e+300")
+  }
+  @Test func flagsAreBooleansAndZeroOneInts() {
+    func field(_ type: String, _ options: [String]? = nil) -> CatalogField {
+      var property: WorkspaceRecord = ["col": .string("c"), "type": .string(type)]
+      if let options { property["options"] = .array(options.map { .object(["v": .string($0)]) }) }
+      return CatalogField(property: property)
+    }
+    #expect(field("bool").isFlag)
+    #expect(field("int", ["0", "1"]).isFlag)
+    #expect(field("int", ["1", "0"]).isFlag)
+    for other in [field("int"), field("int", ["0", "1", "2"]), field("number", ["0", "1"])] {
+      #expect(!other.isFlag)
+    }
+    for yes in ["1", "1.0", "true", JSONValue.number(1).text] {
+      #expect(NativePropertyValue.flagValue(yes) == true)
+    }
+    for no in ["0", "0.0", "false"] { #expect(NativePropertyValue.flagValue(no) == false) }
+    for unknown in ["", "2", "yes"] { #expect(NativePropertyValue.flagValue(unknown) == nil) }
+  }
+  @Test func jsonListsAreChipsAndObjectsReadAsText() {
+    #expect(
+      NativePropertyValue.choiceValues(type: "json", value: #"["Alpha", "Beta", 3, true]"#)
+        == ["Alpha", "Beta", "3", "true"])
+    for value in [#"{"a":1}"#, #"[{"a":1}]"#, #"[["x"]]"#, "not json", "[]"] {
+      #expect(NativePropertyValue.choiceValues(type: "json", value: value) == nil)
+    }
+    #expect(
+      NativePropertyValue.text(type: "json", value: #"{"checking": 12.5, "note": "ok"}"#)
+        == "checking: 12.5, note: ok")
+    #expect(NativePropertyValue.text(type: "json", value: #"[{"a":1},{"b":2}]"#) == "2 items")
+    #expect(NativePropertyValue.text(type: "json", value: #"[{"a":1}]"#) == "1 item")
+    #expect(NativePropertyValue.text(type: "json", value: "[]") == "Not set")
+    #expect(NativePropertyValue.text(type: "json", value: "not json {") == "not json {")
+  }
   @Test func datesUseStrictParsingAndUTC() throws {
     let locale = Locale(identifier: "en_US")
     let date = NativePropertyValue.text(type: "date", value: "2024-02-29", locale: locale)

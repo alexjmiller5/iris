@@ -90,6 +90,15 @@ try {
   await expect(page.getByRole("grid", { name: "Records" })).toBeVisible();
   await expect.poll(() => cells.count()).toBeGreaterThan(0);
   expect(await cells.count()).toBeLessThan(100);
+  // First paint fills the scroll viewport before any scroll, not a fixed handful of rows.
+  await expect
+    .poll(() =>
+      page!
+        .locator(".grid-scroll")
+        .evaluate((el) => el.querySelectorAll("tbody tr").length * 44 >= el.clientHeight - 44),
+    )
+    .toBe(true);
+  console.log("PASS first paint fills the grid viewport before scrolling");
   await page
     .locator(".grid-scroll")
     .evaluate((el) => (el.scrollTop = el.scrollHeight));

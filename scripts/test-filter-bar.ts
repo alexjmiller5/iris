@@ -231,6 +231,8 @@ try {
     await open(page);
     const picker = page.getByLabel("View", { exact: true });
     await picker.selectOption(view);
+    // Rows mount once the grid has measured its viewport.
+    await expect(rows().first()).toBeVisible();
     const before = await rows().count();
     // Hold this tab's view saves for a moment, as a slow device would.
     await page.evaluate(() => {
@@ -270,7 +272,7 @@ try {
     await expect(rows()).toHaveCount(before);
   });
 
-  await check("at 390px the toolbar wraps and chips scroll in their own row", async () => {
+  await check("at 390px the toolbar and its chips wrap inside the page", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     for (const text of ["e", "o", "a"]) {
       await page.getByRole("button", { name: "Add filter" }).click();
@@ -284,10 +286,17 @@ try {
       return {
         page: document.documentElement.scrollWidth - window.innerWidth,
         chips: row.scrollWidth - row.clientWidth,
+        // Phones hide scrollbars: every chip must be fully on screen, none behind the edge.
+        offscreen: [...row.querySelectorAll(".chip")].filter(
+          (chip) => chip.getBoundingClientRect().right > window.innerWidth,
+        ).length,
+        lines: new Set([...row.querySelectorAll(".chip")].map((chip) => chip.getBoundingClientRect().top)).size,
       };
     });
     expect(layout.page).toBeLessThanOrEqual(0);
-    expect(layout.chips).toBeGreaterThan(0);
+    expect(layout.chips).toBeLessThanOrEqual(0);
+    expect(layout.offscreen).toBe(0);
+    expect(layout.lines).toBeGreaterThan(1);
     await shot("07-narrow");
     await page.getByRole("button", { name: "Add filter" }).click();
     await shot("08-narrow-picker");

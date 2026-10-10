@@ -55,6 +55,7 @@ struct FilterBar: View {
       }
       .buttonStyle(.bordered)
       .controlSize(.small)
+      .padding(.horizontal)
       if !model.filters.isEmpty || !model.filterGroups.isEmpty || !model.sortRules.isEmpty
         || !flagSuggestions.isEmpty
       {
@@ -79,16 +80,21 @@ struct FilterBar: View {
               .accessibilityIdentifier("flag-chip-\(flag.id)")
             }
           }
+          // Inset inside the scroll view, so chips scroll to the screen edges instead of
+          // being clipped at the bar's margin.
+          .padding(.horizontal)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Active filters and sorts")
+        .accessibilityIdentifier("filter-chip-row")
       }
       if let error = model.viewSaveError {
         Text(error).font(.caption).foregroundStyle(.red).lineLimit(3)
           .accessibilityIdentifier("view-save-error")
+          .padding(.horizontal)
       }
     }
-    .padding(.horizontal).padding(.vertical, 6)
+    .padding(.vertical, 6)
     .frame(maxWidth: .infinity, alignment: .leading)
     .disabled(disabled)
     .onChange(of: adding) { if !adding { model.scheduleViewSave() } }

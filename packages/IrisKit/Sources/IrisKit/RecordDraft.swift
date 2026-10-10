@@ -19,6 +19,8 @@ struct CatalogField: Identifiable, Codable {
     }
     return value?.text ?? ""
   }
+  /// A Boolean, or an int whose only catalog options are 0 and 1.
+  var isFlag: Bool { type == "bool" || (type == "int" && options.sorted() == ["0", "1"]) }
   var options: [String] {
     guard case .array(let options) = property["options"] else { return [] }
     return options.compactMap {

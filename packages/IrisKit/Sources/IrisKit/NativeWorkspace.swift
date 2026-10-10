@@ -11,6 +11,9 @@ extension CoreJSONValue {
   public var text: String {
     switch self {
     case .string(let value): value
+    // Whole numbers read as JavaScript writes them: "1", never "1.0".
+    case .number(let value) where value.rounded() == value && abs(value) <= 9_007_199_254_740_991:
+      String(Int64(value))
     case .number(let value): String(value)
     case .bool(let value): value ? "true" : "false"
     case .null: ""
@@ -18,6 +21,12 @@ extension CoreJSONValue {
     }
   }
   public var isTrue: Bool { self == .bool(true) || self == .number(1) }
+  var isScalar: Bool {
+    switch self {
+    case .string, .number, .bool: true
+    default: false
+    }
+  }
 }
 // Forms consume a dictionary projection, not a second wire DTO.
 public struct WorkspaceCatalog: Hashable, Sendable {

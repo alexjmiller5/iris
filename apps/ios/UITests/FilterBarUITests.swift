@@ -42,6 +42,12 @@ final class FilterBarUITests: XCTestCase {
     gone(start)
     XCTAssertTrue(ready.exists)
     capture(app, "ios-3-narrowed-grid")
+    // Chips scroll edge to edge: the row spans the window and the first chip keeps the margin.
+    let row = app.descendants(matching: .any)["filter-chip-row"]
+    let window = app.windows.firstMatch.frame
+    XCTAssertEqual(row.frame.minX, window.minX, accuracy: 1)
+    XCTAssertEqual(row.frame.maxX, window.maxX, accuracy: 1)
+    XCTAssertGreaterThanOrEqual(app.buttons["filter-chip-0"].frame.minX, window.minX + 12)
 
     tap(app.buttons["filter-bar-sort"])
     tap(app.buttons["add-sort"])

@@ -15,8 +15,21 @@ struct NativeMarkdownPreview: View {
       }
   }
 
+  /// Notion-flavored tags (callout, details, mention-*, file, empty-block) keep only their
+  /// text, and their tab-indented children become ordinary blocks.
+  nonisolated static func plainSource(_ source: String) -> String {
+    source
+      .replacing(
+        #/<\/?(?:mention-[\w-]+|span|a|b|i|u|s|em|strong|code|sup|sub)(?:\s[^<>]*)?\/?>/#
+          .ignoresCase(), with: ""
+      )
+      .replacing(#/<br\s*\/?>/#.ignoresCase(), with: " ")
+      .replacing(#/<\/?[A-Za-z][\w-]*(?:\s[^<>]*)?\/?>/#, with: "")
+      .replacing(#/^\t+/#.anchorsMatchLineEndings(), with: "")
+  }
+
   nonisolated static func render(_ source: String) -> AttributedString {
-    let bounded = String(decoding: source.utf8.prefix(4096), as: UTF8.self)
+    let bounded = plainSource(String(decoding: source.utf8.prefix(4096), as: UTF8.self))
     guard let parsed = try? AttributedString(markdown: bounded) else {
       return AttributedString(bounded)
     }

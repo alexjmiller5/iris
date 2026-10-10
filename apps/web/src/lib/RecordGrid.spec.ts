@@ -153,3 +153,43 @@ test('select and multi-select cells show option chips tinted by catalog color', 
 	expect(chips('title')).toEqual([]);
 	window.close();
 });
+
+test('flag cells show a checkbox state and json lists show chips', () => {
+	const window = new Window();
+	window.document.body.innerHTML = render(RecordGrid, {
+		props: {
+			rows: [
+				{ id: 'a', title: 'Alpha', notify: 1.0, done: 0, tags: '["Red", "Blue"]', raw: '{"k":1}' }
+			],
+			properties: [
+				{ col: 'title', label: 'Title' },
+				{ col: 'notify', label: 'Notify', type: 'int', options: [{ v: '0' }, { v: '1' }] },
+				{ col: 'done', label: 'Done', type: 'bool' },
+				{ col: 'tags', label: 'Tags', type: 'json' },
+				{ col: 'raw', label: 'Raw', type: 'json' }
+			],
+			widths: {},
+			busy: false,
+			canCreate: false,
+			format: (_p: unknown, value: unknown) => `text:${String(value ?? '')}`,
+			canEdit: () => false,
+			onbegin: async () => false as const,
+			oncommit: async () => ({}),
+			onopen: async () => false,
+			onnew: async () => false,
+			onduplicate: async () => false
+		} as never
+	}).body;
+	const cell = (column: string) =>
+		window.document.querySelector(`[role="gridcell"][data-row="a"][data-column="${column}"]`);
+	expect(cell('notify')?.querySelector('.cell-flag.on svg')).not.toBeNull();
+	expect(cell('notify')?.textContent?.trim()).toBe('Yes');
+	expect(cell('done')?.querySelector('.cell-flag:not(.on) svg')).not.toBeNull();
+	expect(cell('done')?.textContent?.trim()).toBe('No');
+	expect(
+		[...(cell('tags')?.querySelectorAll('.option-chip') ?? [])].map((chip) => chip.textContent)
+	).toEqual(['Red', 'Blue']);
+	expect(cell('raw')?.querySelector('.option-chip')).toBeNull();
+	expect(cell('raw')?.textContent?.trim()).toBe('text:{"k":1}');
+	window.close();
+});

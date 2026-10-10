@@ -35,6 +35,7 @@
 	import RejectedEdits from '$lib/RejectedEdits.svelte';
 	import type { RejectionSnapshot } from '$lib/rejection-inbox';
 	import RecordGrid from '$lib/RecordGrid.svelte';
+	import { dateText, flagValue, isFlag, jsonText, markdownPreview } from '$lib/cell-values';
 	import BulkActions from '$lib/BulkActions.svelte';
 	import { runBulkRecords, type BulkRecordResult } from '$lib/bulk-records';
 	import ExportPanel from '$lib/export/ExportPanel.svelte';
@@ -1124,7 +1125,11 @@
 		displayName(row, catalog.tables.find((t) => t.id === p.ref_table)?.display as string | null);
 	const cell = (p: Property, value: unknown): string => {
 		if (value == null) return '';
-		if (p.type === 'bool') return value ? 'Yes' : 'No';
+		if (isFlag(p) && flagValue(value) !== null) return flagValue(value) ? 'Yes' : 'No';
+		if (p.type === 'json') return jsonText(value);
+		if (p.type === 'markdown') return markdownPreview(String(value));
+		const date = dateText(p.type, value);
+		if (date) return date;
 		if (p.type === 'ref') return names[JSON.stringify([p.ref_table, value])] ?? String(value);
 		if (p.type === 'multi_ref')
 			return list(String(value))

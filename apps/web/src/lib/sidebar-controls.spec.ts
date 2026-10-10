@@ -113,3 +113,20 @@ test('unavailable/loading recent entries remain visible with a reason and indepe
 	expect(doc.querySelector('[role="status"]')?.textContent).toContain('Recents could not be saved');
 	window.close();
 });
+
+test('long snake_case table names break after underscores, never mid-word', () => {
+	const window = documentFor(
+		render(SidebarTables, {
+			props: {
+				tables: [{ id: 'people_sync_observations', readOnly: false }],
+				current: '',
+				disabled: false,
+				onchoose: () => {}
+			}
+		}).body
+	);
+	const name = window.document.querySelector('nav[aria-label="Tables"] button span');
+	expect(name?.textContent).toBe('people_sync_observations');
+	expect(name?.innerHTML.replace(/<!--.*?-->/g, '')).toBe('people_<wbr>sync_<wbr>observations');
+	window.close();
+});

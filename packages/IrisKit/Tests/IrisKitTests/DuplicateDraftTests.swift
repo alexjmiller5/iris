@@ -80,7 +80,7 @@ struct DuplicateDraftTests {
     #expect(
       editor.draft.patch == [
         "title": .string("Copy"), "body": .string(" # Raw\n\ncafé and cafe\u{301}\n"),
-        "nullable": .null, "qty": .string("0.0"), "flag": .bool(false),
+        "nullable": .null, "qty": .string("0"), "flag": .bool(false),
         "code": .string("SET-ONCE"), "tags": .string("[ \"Unknown\", \"e\u{301}\" ]"),
         "empty_text": .string(""), "payload": .string(jsonSource),
       ])

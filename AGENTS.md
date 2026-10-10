@@ -325,6 +325,8 @@ Saved views use the core contract and the canonical `core/schema/saved-views.jso
 manifest vendored by `bundle-core.ts`. Only explicit app-owned local/sample
 initialization may create missing storage; replicas receive logged DDL through
 sync, and external files or name collisions are never adopted or repaired.
+Core refuses a new, renamed or Undo-restored view whose name another live view of
+the table already has; clients show that refusal, never pick names themselves.
 The core bundle source hash includes the manifest. Keep the applied view's
 revision until the user reopens it, even when a refreshed list has a newer one.
 Definitions control layout; edit queries must return full rows, not the
@@ -429,10 +431,22 @@ value are never saved. Every view change applies to the query at once;
 ordinary `saveView` with the latest revision this tab wrote, after edits settle and
 never while a filter or sort popover is open. Context changes, unload and Undo
 flush it first, so Cmd-Z reverts the latest view edit. Search and Trash are browsing
-state and are not saved.
+state and are not saved. Below 700 px the chip row wraps (phones hide scrollbars);
+wider, it scrolls in its own row.
+
+Cell values are presentation only (`cell-values.ts`, `NativePropertyValue`): a
+`bool`, or an `int` whose only catalog options are 0 and 1, is a flag shown as a
+checkbox (and edited as one on web); `json` lists of plain values are chips,
+objects read `key: value` and lists of records as a count; Markdown previews drop
+Notion-flavored tags (callout, details, mention-*, file, empty-block) and link
+targets; dates and UTC timestamps use the native format. Whole JSON numbers read
+as JavaScript writes them (`1`, never `1.0`). Unparseable source shows as stored.
+The web grid passes virtua's `ssrCount` only to server renders: in a browser it
+would hold the first rows until a scroll.
 
 The native `FilterBar` (iPhone and Mac) sits above the records with Filter and Sort
-popovers and a chip row. Filter is a searchable property list (Add filter group
+popovers and a chip row that scrolls edge to edge, its margin inside the scroll view
+so no chip clips at the bar's inset. Filter is a searchable property list (Add filter group
 inside) that adds a chip and pushes its type editor: select options as checkmarks,
 text, number, date with Today, Boolean and the existing reference picker. Chips edit
 on tap and remove with x; Sort holds ordered rules with direction toggles and drag
