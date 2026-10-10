@@ -24,7 +24,8 @@ export async function fixtureChanges(source: string) {
 		upgrade(request: Request, response: Response, server: Server<unknown>) {
 			if (response.status !== 101) return response;
 			const protocol = response.headers.get('Sec-WebSocket-Protocol');
-			return server.upgrade(request, { headers: protocol ? { 'Sec-WebSocket-Protocol': protocol } : {} })
+			// Bun refuses an empty headers object: native clients offer no subprotocol.
+			return server.upgrade(request, protocol ? { headers: { 'Sec-WebSocket-Protocol': protocol } } : undefined)
 				? undefined
 				: new Response('upgrade failed', { status: 400 });
 		},
