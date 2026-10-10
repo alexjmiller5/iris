@@ -20,7 +20,12 @@ test('backlinks page forward, deduplicate and refresh from the first page', asyn
 		return pages[offset ? 1 : 0];
 	});
 	await model.load();
-	expect(get(model)).toMatchObject({ loaded: true, nextOffset: 2, incomplete: false, indexing: true });
+	expect(get(model)).toMatchObject({
+		loaded: true,
+		nextOffset: 2,
+		incomplete: false,
+		indexing: true
+	});
 	await model.load(true);
 	expect(get(model).rows.map((r) => r.id)).toEqual(['a', 'b', 'c']);
 	// The latest page says whether the index is still catching up.
@@ -55,7 +60,12 @@ test('a failed page keeps loaded rows and its offset for retry', async () => {
 	let fail = false;
 	const model = createLinkedFrom(async (offset) => {
 		if (fail) throw Error('Index unavailable');
-		return { rows: [row(String(offset))], nextOffset: offset + 1, incomplete: false, indexing: false };
+		return {
+			rows: [row(String(offset))],
+			nextOffset: offset + 1,
+			incomplete: false,
+			indexing: false
+		};
 	});
 	await model.load();
 	fail = true;

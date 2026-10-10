@@ -34,7 +34,9 @@
 
 <section aria-label="Linked from" class="incoming">
 	<header>
-		<h3>Linked from{#if $model.indexing}<span class="indexing" role="status">(indexing)</span>{/if}</h3>
+		<h3>
+			Linked from{#if $model.indexing}<span class="indexing" role="status">(indexing)</span>{/if}
+		</h3>
 	</header>
 	{#if $model.incomplete}<p class="partial" role="status">
 			Local links may be incomplete. Some tables are not fully downloaded.
