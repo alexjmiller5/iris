@@ -88,10 +88,11 @@ struct TableOpenPerformanceTests {
     #expect(
       (trace.firstIndex(of: "rows") ?? .max) < (trace.firstIndex(of: "writeability") ?? .max),
       "Editing checks wait until rows are loaded")
-    // Generous for shared CI runners; local runs are a fraction of these.
-    #expect(painted < .milliseconds(500))
-    #expect(visible.map { $0 < .seconds(1) } == true)
-    #expect(labels < .milliseconds(500))
+    // Generous for the release workflow's Intel runner (about 5x the arm Check runner);
+    // local runs are a fraction of these. The trace checks above are the structural guard.
+    #expect(painted < .seconds(2))
+    #expect(visible.map { $0 < .seconds(3) } == true)
+    #expect(labels < .seconds(1))
     try await workspace.close()
   }
 
