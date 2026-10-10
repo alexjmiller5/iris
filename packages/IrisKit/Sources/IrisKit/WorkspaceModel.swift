@@ -507,6 +507,20 @@ final class WorkspaceModel {
     }
   }
 
+  /// A small workspace (the sample, a few local tables) is indexed before open returns, as if
+  /// search were synchronous; a large catch-up stops here and continues in the background loop.
+  private func indexSmallWorkspace(_ workspace: NativeWorkspace) async {
+    do {
+      while client === workspace {
+        let status = try await workspace.searchIndexStep(budgetMs: 100, background: false)
+        searchIndexing = status.indexing ? status.pending : 0
+        if status.done || status.pending > Self.searchIndexCatchUp { return }
+      }
+    } catch {
+      Self.log.error("Search index step failed: \(error.localizedDescription, privacy: .public)")
+    }
+  }
+
   /// Returns once the index loop has nothing left to do (tests that need an idle UI).
   func searchIndexSettled() async {
     while let task = searchIndexTask { await task.value }
@@ -1668,6 +1682,7 @@ final class WorkspaceModel {
         }
       }
       await reload()
+      await indexSmallWorkspace(workspace)
       scheduleSearchIndex()
     } catch {
       self.error = error.localizedDescription

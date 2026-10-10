@@ -17,6 +17,19 @@ struct SearchIndexLoopTests {
     let model = WorkspaceModel(widgetLibrary: nil)
     await model.open(demo: true)
     let workspace = try #require(model.client)
+    // A small workspace is indexed before open returns (read before the background loop
+    // can run): searchable at once.
+    let report = try workspace.diagnosticReport(version: "0", build: "0")
+    let snapshot =
+      (try JSONSerialization.jsonObject(with: Data(report.utf8)) as? [String: Any])?["snapshot"]
+      as? [String: Any]
+    let completed = (snapshot?["completed"] as? [[String: Any]] ?? []).compactMap { $0["method"] as? String }
+    #expect(completed.contains("searchIndexStep"))
+    #expect(try await workspace.searchIndexStep(budgetMs: 0).done)
+    let title = try #require(try await workspace.rows(table: "notes").first?.label)
+    let word = try #require(title.split(separator: " ").first.map(String.init))
+    #expect(!(try await workspace.search(CoreSearchArgs(text: word, table: "notes")).isEmpty))
+    #expect(model.searchIndexing == 0)
     let created = try await workspace.write(
       table: "notes", patch: ["title": .string("Wombat loop fixture")])
     model.scheduleSearchIndex()
