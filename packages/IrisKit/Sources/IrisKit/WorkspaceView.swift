@@ -1811,7 +1811,11 @@ private struct RecordEditor: View {
             }
           }
           if let original = editor.draft.original {
-            if let identity = model.incomingReferencesIdentity(context: context, row: original) {
+            // Backlinks read after the fresh row: their search preparation can be slow
+            // and must never hold the open behind it.
+            if editor.loaded,
+              let identity = model.incomingReferencesIdentity(context: context, row: original)
+            {
               IncomingReferencesView(
                 makeModel: {
                   model.makeIncomingReferences(
@@ -2258,6 +2262,8 @@ private struct RecordEditor: View {
   private var recordHeading: String {
     guard var record = editor.draft.original else { return "New record" }
     if let title = model.titleProperty?.id, let value = editor.draft.values[title] {
+      // A cleared title reads as untitled, never as the opaque record ID.
+      if value.isEmpty { return "Untitled" }
       record[title] = .string(value)
     }
     return model.recordTitle(record)
