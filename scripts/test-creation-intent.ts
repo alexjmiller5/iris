@@ -1,6 +1,6 @@
 import { chromium, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { disposableOrigin, workspacePage } from "./test-origin";
+import { disposableOrigin, workspacePage, recordSaved } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 const url =
   process.env.IRIS_TEST_URL ??
@@ -142,7 +142,7 @@ try {
   const all=()=>local('rows',{view:{table:'widgets',limit:200}}) as Promise<any[]>;
   const save=async(title:string)=>{
    await editor.getByLabel('Title',{exact:true}).fill(title);
-   await editor.getByRole('button',{name:'Save record',exact:true}).click();
+   await recordSaved(page);
    await expect(editor.getByRole('heading',{name:title,exact:true})).toBeVisible();
    return (await all()).find(r=>r.title===title);
   };
@@ -217,7 +217,7 @@ try {
    await editor.getByRole('button',{name:'Clear empty',exact:true}).click();
    await editor.getByRole('button',{name:'Clear Title',exact:true}).click();
    const count=(await all()).length;
-   await editor.getByRole('button',{name:'Save record',exact:true}).click();
+   await recordSaved(page);
    await expect(editor.locator('.failure')).toContainText('required');
    expect((await all()).length).toBe(count);
    await expect(editor.getByLabel('code',{exact:true})).toHaveValue('SET-ONCE');

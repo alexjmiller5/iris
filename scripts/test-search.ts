@@ -1,5 +1,5 @@
 import { chromium, expect } from '@playwright/test';
-import { disposableOrigin, workspacePage } from './test-origin';
+import { disposableOrigin, workspacePage, recordSaved } from './test-origin';
 const url=process.env.IRIS_TEST_URL??'http://iris-markdown.localhost:5198/workspace?review';
 const origin=disposableOrigin(url);
 const browser=await chromium.connectOverCDP(process.env.IRIS_TEST_CDP??'http://127.0.0.1:9222');
@@ -19,7 +19,7 @@ try {
  await page.getByRole('button', {name:'Body options',exact:true}).click();
   await page.getByRole('menuitem', {name:'Body source',exact:true}).click();
  await page.getByRole('textbox',{name:'Body',exact:true}).fill('# Astronomía\n\nA telescope observes nebulas.');
- await page.getByRole('button',{name:'Save record',exact:true}).click();
+ await recordSaved(page);
  await expect(page.getByRole('button',{name:'Space journal',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Close record',exact:true}).click();
  await expect(page.getByRole('button',{name:'Find records',exact:false})).toBeEnabled();

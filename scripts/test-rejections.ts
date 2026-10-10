@@ -1,4 +1,4 @@
-import { workspacePage, synced } from './test-origin';
+import { workspacePage, synced, recordSaved } from './test-origin';
 import {chromium,expect} from '@playwright/test';
 const url=process.env.IRIS_TEST_URL??'http://localhost:5196/workspace';
 const hub=process.env.IRIS_TEST_HUB??'http://127.0.0.1:5201';
@@ -22,8 +22,7 @@ try{
   await expect(page.getByRole('heading',{name:'widgets',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'New record',exact:true}).click();
   await page.getByRole('textbox',{name:'Title',exact:true}).fill('Rejected draft');
-  await page.getByRole('button',{name:'Save record',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Save record',exact:true})).toBeEnabled();
+  await recordSaved(page);
   await page.getByRole('button',{name:'Close record',exact:true}).click();
   await pattern('Allowed');
   await expect(page.getByText(/rejected edits? needs? attention/)).toBeVisible({ timeout: 15000 });
@@ -32,8 +31,7 @@ try{
   await page.getByRole('button',{name:'Review rejected edit',exact:true}).first().click();
   await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Rejected draft');
   await page.getByRole('textbox',{name:'Title',exact:true}).fill('Allowed');
-  await page.getByRole('button',{name:'Save record',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Save record',exact:true})).toBeEnabled();
+  await recordSaved(page);
   await page.getByRole('button',{name:'Close record',exact:true}).click();
   await synced(page);
   await expect(page.locator('.rejections')).toHaveCount(0);

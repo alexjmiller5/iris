@@ -51,3 +51,23 @@ export async function synced(
 		{ timeout }
 	);
 }
+
+/** Record pages save themselves: leave the focused field, then wait until the open
+ * record has nothing pending (or a refusal is showing). */
+export async function recordSaved(
+	page: {
+		evaluate<R>(fn: () => R): Promise<R>;
+		waitForFunction(fn: () => boolean, arg?: unknown, options?: { timeout: number }): Promise<unknown>;
+	},
+	timeout = 15000
+) {
+	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+	await page.waitForFunction(
+		() =>
+			['saved', 'failed'].includes(
+				document.querySelector('[aria-label="Record save status"]')?.getAttribute('data-state') ?? ''
+			),
+		undefined,
+		{ timeout }
+	);
+}

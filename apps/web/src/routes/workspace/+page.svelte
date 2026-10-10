@@ -779,13 +779,22 @@
 	const rules = $derived(catalog.rules.filter((r) => r.tbl === table || r.scope === 'estate'));
 	const readOnly = $derived(isReadOnlyTable(table, current));
 	let writePermission = $state<Writeability | null>(null);
-	let permissionRequest = 0;
+	let permissionRequest = 0,
+		permissionContext: unknown = null;
 	const blocked = $derived(!writePermission?.writable);
 	async function loadWriteability() {
 		const workspace = database,
 			target = table,
 			request = ++permissionRequest;
-		writePermission = null;
+		// A re-check of the same table keeps its answer until the new one lands: the
+		// refresh after every autosave must not disable the field being typed in.
+		const context = workspace && target ? [workspace, target] : null;
+		const same =
+			Array.isArray(permissionContext) &&
+			permissionContext[0] === workspace &&
+			permissionContext[1] === target;
+		permissionContext = context;
+		if (!same) writePermission = null;
 		if (!workspace || !target) return;
 		try {
 			const result = await workspace.request('writeability', { table: target });
@@ -1464,6 +1473,7 @@
 		gridDraft = null;
 		gridContext++;
 		permissionRequest++;
+		permissionContext = null;
 		writePermission = null;
 		editorVersion++;
 		rowsRequest++;

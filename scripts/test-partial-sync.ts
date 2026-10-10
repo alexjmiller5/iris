@@ -1,6 +1,6 @@
 import { chromium, expect } from '@playwright/test';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, workspacePage } from './test-origin';
+import { disposableOrigin, workspacePage, recordSaved } from './test-origin';
 
 const source=process.argv[2];
 if(!source)throw Error('Provide the soma checkout');
@@ -53,7 +53,7 @@ try{
  await observer.getByRole('textbox',{name:'Title',exact:true}).fill('Keep this unsaved draft');
  await page.getByRole('button',{name:'Fixture record',exact:true}).click();
  await page.getByLabel('Quantity',{exact:true}).fill('43');
- await page.getByRole('button',{name:'Save record',exact:true}).click();
+ await recordSaved(page);
  for(const tab of [page,observer])await expect(tab.locator('[data-pending="1"]')).toBeVisible();
  await page.getByRole('button',{name:'Close record',exact:true}).click();
  const stamp=new Date(Date.now()+1000).toISOString();

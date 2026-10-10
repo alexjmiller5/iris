@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { resolve } from 'node:path';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, workspacePage } from './test-origin';
+import { disposableOrigin, workspacePage, recordSaved } from './test-origin';
 
 const url = process.env.IRIS_TEST_URL ?? 'http://iris-relations.localhost:5223/workspace?review';
 const origin = disposableOrigin(url);
@@ -255,20 +255,18 @@ try {
 		await page.evaluate(() => { (window as any).holdWrites = true; });
 		await editor.getByLabel('Absent', { exact: true }).selectOption('');
 		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('Pending title');
-		await page.getByRole('button', { name: 'Save record', exact: true }).click();
+		await recordSaved(page);
 		await page.waitForFunction(() => (window as any).heldWrites.length > 0);
 		await expect(open()).toBeDisabled();
 		await page.evaluate(() => (window as any).releaseWrites());
 		await expect(open()).toBeEnabled();
 		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('Fixture record');
-		await page.getByRole('button', { name: 'Save record', exact: true }).click();
-		await expect(page.getByRole('button', { name: 'Save record', exact: true })).toBeEnabled();
+		await recordSaved(page);
 	});
 	await check('body autosave locks reference navigation until the receipt arrives', async () => {
 		// Make the fixture valid for an independent selective run, too.
 		await editor.getByLabel('Absent', { exact: true }).selectOption('');
-		await page.getByRole('button', { name: 'Save record', exact: true }).click();
-		await expect(page.getByRole('button', { name: 'Save record', exact: true })).toBeEnabled();
+		await recordSaved(page);
 		await page.evaluate(() => { (window as any).holdWrites = true; });
 		await editor.getByRole('button', {name:'Body options',exact:true}).click();
   await editor.getByRole('menuitem', {name:'Body source',exact:true}).click();

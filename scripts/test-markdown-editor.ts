@@ -1,5 +1,5 @@
 import { chromium, expect } from '@playwright/test';
-import { disposableOrigin, workspacePage } from './test-origin';
+import { disposableOrigin, workspacePage, recordSaved } from './test-origin';
 
 const url=process.env.IRIS_TEST_URL??'http://iris-markdown.localhost:5198/workspace?review';
 const origin=disposableOrigin(url);
@@ -77,7 +77,7 @@ try {
 	await mode('write');
 	await mode('source');
 	await expect(page.getByRole('textbox',{name:'Body',exact:true})).toHaveValue(original);
-	await page.getByRole('button',{name:'Save record',exact:true}).click();
+	await recordSaved(page);
 	await expect(page.getByRole('button',{name:'Rich editor check',exact:true})).toBeVisible();
 	await page.reload();
 	await page.getByRole('button',{name:'Try sample workspace',exact:true}).click();
@@ -90,7 +90,7 @@ try {
 	await page.getByRole('textbox', {name:'Title',exact:true}).fill('Separate undo history');
 	await mode('source');
 	await page.getByRole('textbox',{name:'Body',exact:true}).fill('Text belonging only to the second record');
-	await page.getByRole('button',{name:'Save record',exact:true}).click();
+	await recordSaved(page);
 	await expect(page.getByRole('button',{name:'Separate undo history',exact:true})).toBeVisible();
 	await page.getByRole('button',{name:'Rich editor check',exact:true}).click();
 	await expect(page.getByRole('heading',{name:'Rich editor check',exact:true})).toBeVisible();

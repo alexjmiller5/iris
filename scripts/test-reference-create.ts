@@ -2,7 +2,7 @@ import { chromium, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, workspacePage } from './test-origin';
+import { disposableOrigin, workspacePage, recordSaved } from './test-origin';
 
 // Usage: bun scripts/test-reference-create.ts <soma-checkout>
 // Open http://iris-reference-create.localhost:5244/workspace?review in the dedicated test page first.
@@ -130,7 +130,7 @@ try {
 		await expect(create('Katherine Johnson')).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'Undo last saved change', exact: true })).toBeEnabled();
 		await shot('created-ref');
-		await editor.getByRole('button', { name: 'Save record', exact: true }).click();
+		await recordSaved(page);
 		await expect(editor.getByText('Edit record / Saved', { exact: true })).toBeVisible();
 		expect(peopleNamed('Katherine Johnson')).toEqual([]);
 		offline = false;
@@ -149,7 +149,7 @@ try {
 			'Dorothy Vaughan'
 		]);
 		await shot('created-multi');
-		await editor.getByRole('button', { name: 'Save record', exact: true }).click();
+		await recordSaved(page);
 		await expect(editor.getByText('Edit record / Saved', { exact: true })).toBeVisible();
 		const attendees = () =>
 			(db.db.query("SELECT attendees FROM meetings WHERE id='meeting-1'").get() as { attendees: string })
@@ -175,7 +175,7 @@ try {
 			'Initech'
 		);
 		await shot('handoff-saved');
-		await editor.getByRole('button', { name: 'Save record', exact: true }).click();
+		await recordSaved(page);
 		await expect(editor.getByText('Edit record / Saved', { exact: true })).toBeVisible();
 	});
 
