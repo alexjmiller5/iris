@@ -2219,7 +2219,9 @@ private struct RecordEditor: View {
           fieldLabel(field)
         }
       }
-      if editor.failure != nil {
+      // Copying is for a draft under review. A live autosave refusal leaves the rows as they
+      // are, so typing on in another field is not disturbed.
+      if editor.failure != nil && (editor.needsReview || editor.autosavePaused) {
         Button("Copy \(field.label)") {
           withMarkdownSnapshot { CopyDraftButton.copy(editor.draft.values[field.id] ?? "") }
         }
