@@ -8,7 +8,8 @@ let network: CDPSession | undefined;
 try{
   const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);
   if(!page)throw new Error(`Open this dedicated test page first: ${url}`);
-  await page.reload();
+  // A plain workspace URL: an earlier run's record link would reopen that record.
+  await page.goto(url);
   await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
   await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
   await page.getByLabel('Hub address').fill(hub);
@@ -25,9 +26,10 @@ try{
   await page.getByRole('textbox',{name:'Title',exact:true}).fill(title);
   await page.getByLabel('Body',{exact:true}).fill('# Local to hub');
   await page.getByLabel('Quantity',{exact:true}).fill('7');
-  await page.getByRole('button',{name:'Save record',exact:true}).click();
+  // The record creates itself from the first valid edit; the rest autosaves locally.
   await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Save record',exact:true})).toBeEnabled();
+  await page.getByLabel('Quantity',{exact:true}).blur();
+  await expect(page.locator('[aria-label="Record save status"]')).toHaveAttribute('data-state','saved');
   await expect(page.getByRole('alert')).toHaveCount(0);
   await page.getByRole('button',{name:'Close record',exact:true}).click();
   await expect(page.getByRole('complementary',{name:'Record editor',exact:true})).toHaveCount(0);
@@ -42,6 +44,24 @@ try{
     return result.rows.find(row=>row.title===title);
   },{timeout:15000}).toMatchObject({title,body:'# Local to hub',quantity:7});
   await expect(page.getByRole('alert')).toHaveCount(0);
+  // Typing then reloading at once (the tab killed mid-pause) still lands on the hub.
+  const hubRow=async(match:(row:Record<string,unknown>)=>boolean)=>{
+    const response=await fetch(`${hub}/v1/rows/pull`,{method:'POST',headers:{Authorization:'Bearer fixture','Content-Type':'application/json'},body:JSON.stringify({table:'widgets',columns:['id','title','body','quantity'],since:'',limit:200})});
+    return ((await response.json()) as {rows:Record<string,unknown>[]}).rows.find(match);
+  };
+  const renamed=`${title} renamed`;
+  await page.getByRole('button',{name:title,exact:true}).click();
+  await expect(page.locator('.record-panel form')).not.toHaveAttribute('inert','');
+  await page.getByRole('textbox',{name:'Title',exact:true}).fill(renamed);
+  page.once('dialog',dialog=>dialog.accept());
+  await page.reload();
+  await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
+  await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
+  await page.getByLabel('Hub address').fill(hub);
+  await page.getByLabel('Device token').fill('fixture');
+  await page.getByRole('button',{name:'Connect',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'widgets',exact:true})).toBeVisible({timeout:15000});
+  await expect.poll(()=>hubRow(row=>row.title===renamed),{timeout:20000}).toMatchObject({title:renamed,quantity:7});
   if(await page.getByRole('button',{name:'Use automatic size rule',exact:true}).count())await page.getByRole('button',{name:'Use automatic size rule',exact:true}).click();
   await page.getByLabel('Automatic sync row limit').fill('0');
   await synced(page);
@@ -49,7 +69,7 @@ try{
   await page.getByRole('button',{name:'Include this table',exact:true}).click();
   await synced(page);
   await expect(page.getByText(/This table is excluded from sync/)).toHaveCount(0);
-  console.log('PASS: browser OPFS pulled the real Worker schema/catalog, created a typed row and synced it back');
+  console.log('PASS: browser OPFS pulled the real Worker schema/catalog, autosaved a typed row offline, synced it back, and a rename typed just before a reload reached the hub');
 }finally{
   if(network){
     await network.send('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1}).catch(()=>{});
