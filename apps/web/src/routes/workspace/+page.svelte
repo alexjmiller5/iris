@@ -331,7 +331,10 @@
 		// First paint shows the list's row; the fresh full row unlocks editing.
 		provisional = $state(false),
 		announcement = $state('');
-	let focusedField: string | null = null;
+	// The focused field once typed in: stored values never replace it.
+	let focusedField: string | null = null,
+		typedInFocus = false;
+	const typingField = () => new Set(focusedField && typedInFocus ? [focusedField] : []);
 	/** The open editor's stored identity, shared by writes that outlive the editor. */
 	let session: { table: string; id: string | null; revision: string | null } = {
 		table: '',
@@ -890,7 +893,7 @@
 				])
 			),
 			rowDraft(stored),
-			new Set(focusedField ? [focusedField] : [])
+			typingField()
 		);
 		selected = stored;
 		draft = merged.values;
@@ -941,12 +944,7 @@
 		});
 		if (!row || database !== workspace || editorVersion !== version) return false;
 		if ((autosaving && !duringWrite) || String(row.updated_at) === current.revision) return false;
-		const merged = mergeRemote(
-			draft,
-			rowDraft(selected),
-			rowDraft(row),
-			new Set(focusedField ? [focusedField] : [])
-		);
+		const merged = mergeRemote(draft, rowDraft(selected), rowDraft(row), typingField());
 		selected = row;
 		draft = merged.values;
 		savedDraft = merged.baseline;
@@ -3385,8 +3383,10 @@
 							commitNow = true;
 						}}
 						onfocusin={(e) => {
-							focusedField =
+							const col =
 								(e.target as Element).closest('[data-col]')?.getAttribute('data-col') ?? null;
+							if (col !== focusedField) typedInFocus = false;
+							focusedField = col;
 						}}
 						onfocusout={() => {
 							// Leaving a field commits it at once.
@@ -3418,6 +3418,7 @@
 										onchange={() => {
 											lastEdited = p.type ?? undefined;
 											commitNow = false;
+											if (focusedField === p.col) typedInFocus = true;
 											if (!selected) explicitCreation = new Set([...explicitCreation, p.col]);
 										}}
 										disabled={locked(p)}
