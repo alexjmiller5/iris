@@ -833,7 +833,11 @@ struct ReferenceReadAdmissionTests {
   init(path: String = ":memory:", seed: Bool = true) async throws {
     runtime = try IrisCoreRuntime()
     workspace = try NativeWorkspace(path: path, runtime: runtime)
-    if seed { try await workspace.createSample() }
+    if seed {
+      try await workspace.createSample()
+      // As open does for a small workspace: no index catch-up runs behind the test.
+      try await workspace.indexSearch()
+    }
     // A warm catalog makes each catalog() one cancellable catalogRevision read.
     _ = try await workspace.catalog()
     runtime.context.evaluateScript(
