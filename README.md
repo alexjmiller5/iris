@@ -721,12 +721,12 @@ Image references are retained as placeholders without loading remote images.
 The native editor uses the same component in a single bundled HTML resource.
 Its bridge accepts document state and emits changes with an opaque draft ID;
 Save and close collect live snapshots to include the final keystroke. The island has
-no database or credential bridge and blocks network access. The web client
-autosaves Markdown on existing records after a short typing pause, with a visible
-saving/saved state. Unrelated property drafts wait for **Save record**; new records
-also require their first explicit save. Conflicts retain the draft. Native editors
-also autosave existing Markdown bodies and collect them before Save; property edits and new
-records require Save. Every save uses the shared validated write path.
+no database or credential bridge and blocks network access. Web record pages have no
+Save button: choices save on change, typed fields after a short pause or when you leave
+them, and Markdown after its typing pause; a value the catalog refuses stays editable with
+an inline error while the rest of the record saves. Native editors autosave existing
+Markdown bodies and collect them before Save; property edits and new records require Save.
+Every save uses the shared validated write path.
 
 Browser checks for the editor use a dedicated `iris-markdown.localhost`
 review tab:
@@ -734,7 +734,7 @@ review tab:
 ```sh
 bun scripts/test-markdown-editor.ts
 bun scripts/test-editor-island.ts
-bun scripts/test-body-autosave.ts
+bun scripts/test-record-autosave.ts   # IRIS_CDP=<another Chrome> when the agent Chrome is busy
 ```
 
 ## Current limits

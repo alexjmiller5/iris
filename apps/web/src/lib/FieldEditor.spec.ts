@@ -114,6 +114,37 @@ test('unknown reference remains selected and unavailable instead of being silent
 	);
 	window.close();
 });
+test('a stored reference reads as loading, not unavailable, until labels arrive', () => {
+	const window = field({
+		property: { col: 'project', type: 'ref' },
+		value: 'stored',
+		referencesLoading: true
+	});
+	expect(window.document.querySelector('option[value="stored"]')?.textContent).toBe('Loading…');
+	window.close();
+});
+test.each(['text', 'number', 'select', 'json', 'date'])(
+	'a refused %s value marks its control invalid and points at the message',
+	(type) => {
+		const window = field({
+			property: { col: 'value', type, options: [{ v: 'A' }] },
+			value: 'refused',
+			invalid: 'field-value-error'
+		});
+		const control = window.document.querySelector('#test-field');
+		expect(control?.getAttribute('aria-invalid')).toBe('true');
+		expect(control?.getAttribute('aria-describedby')).toBe('field-value-error');
+		window.close();
+	}
+);
+test('a valid control carries no invalid marker', () => {
+	const control = field({
+		property: { col: 'value', type: 'text' },
+		value: 'fine'
+	}).document.querySelector('#test-field');
+	expect(control?.hasAttribute('aria-invalid')).toBe(false);
+	expect(control?.hasAttribute('aria-describedby')).toBe(false);
+});
 test('duplicate stored references render one chip per identity', () => {
 	const window = field({
 		property: { col: 'links', type: 'multi_ref' },

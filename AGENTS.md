@@ -396,10 +396,21 @@ whole input before stepping; reject writes and connection-changing commands
 from catalog options/default expressions. Trusted schema replay stays separate. Pass the opened
 record's `updated_at` as `expectedUpdatedAt` to prevent stale editor overwrites.
 Keep drafts separate from the stored row and reconcile successful writes without
-silently discarding later typing. Web body autosave writes only editable Markdown
-columns on existing rows; it updates the acknowledged baseline without replacing
-the live draft. Failed identical patches must not loop. Preserve unknown existing
-multi-select values.
+silently discarding later typing. Preserve unknown existing multi-select values.
+
+Web record pages save themselves (`+page.svelte` with `record-autosave.ts`); there is
+no Save, Cancel or Discard. Choices, dates, checkboxes and references commit on change,
+typed fields after 500 ms idle or on blur, Markdown after its 600 ms pause. Each write
+carries only changed fields and is one core receipt (one Undo step). Writes queue one at
+a time on the editor's session (table, id, latest revision), so leaving mid-typing still
+lands; context changes, unload and Undo flush first. A refusal whose violations all name
+patched columns keeps those values out of later patches with an inline error while the
+rest saves; any other refusal stops retries until the draft changes. A conflict or a
+`change` event merges stored values into untouched fields, never the focused field.
+New records are created by their first valid edit; Duplicate creates at once. A row
+opened from the list paints in the same frame; the form stays `inert` until the fresh
+full row arrives. Undo and rejected-edit review stay paused until their explicit
+Save draft.
 
 The web view toolbar holds the view switcher (its menu renames, copies, deletes and
 sets defaults), Filter, Sort and layout. Filter chips edit `filter-bar.ts` rules:
@@ -458,9 +469,9 @@ validator and writer.
 
 Human Undo uses the core's bounded session stack of 100 validated receipts. Display the action as
 "Undo last saved change" and submit that displayed receipt ID; never reconstruct
-inverses or expose history as undo. Pause body autosave before the request without
-flushing the draft. Merge unchanged fields from the returned row while preserving
-newer drafts; those drafts require an explicit Save before autosave resumes.
+inverses or expose history as undo. Web Undo saves pending record edits first, so it
+reverts the latest field edit. Merge unchanged fields from the returned row while
+preserving newer drafts; those drafts require an explicit Save before autosave resumes.
 Failures retain the draft and action. A returned tombstone stays read-only until
 explicit Restore, which also preserves the retained draft. Text-editor Undo stays
 separate. Cmd-Z/Ctrl-Z outside typing controls dispatches the current receipt; never

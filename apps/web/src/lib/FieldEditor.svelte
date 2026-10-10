@@ -20,7 +20,9 @@
 		onchange,
 		resolveFile,
 		attachments,
-		onopenlink
+		onopenlink,
+		invalid,
+		referencesLoading = false
 	}: {
 		id: string;
 		property: Property;
@@ -36,6 +38,10 @@
 		resolveFile?: RetainedFileResolver;
 		attachments?: AttachmentOutbox;
 		onopenlink?(href: string): Promise<boolean>;
+		/** Id of this field's refusal message; marks the control invalid. */
+		invalid?: string;
+		/** Reference labels are still being read; a stored id is not unavailable yet. */
+		referencesLoading?: boolean;
 	} = $props();
 	const label = $derived(
 		property.label ||
@@ -180,6 +186,8 @@
 		{#if property.type === 'ref'}
 			<select
 				{id}
+				aria-invalid={invalid ? true : undefined}
+				aria-describedby={invalid}
 				aria-label={label}
 				aria-required={!!property.required}
 				{disabled}
@@ -188,13 +196,15 @@
 			>
 				<option value="">No related record</option>
 				{#if value && !references.some((row) => row.id === value)}<option {value}
-						>{value} (not available locally)</option
+						>{referencesLoading ? 'Loading…' : `${value} (not available locally)`}</option
 					>{/if}
 				{#each references as row (row.id)}<option value={row.id}>{row.label}</option>{/each}
 			</select>
 		{:else}
 			<select
 				{id}
+				aria-invalid={invalid ? true : undefined}
+				aria-describedby={invalid}
 				aria-label={label}
 				{disabled}
 				value=""
@@ -230,6 +240,8 @@
 	{:else if property.type === 'json'}
 		<textarea
 			{id}
+			aria-invalid={invalid ? true : undefined}
+			aria-describedby={invalid}
 			aria-label={label}
 			aria-required={!!property.required}
 			rows={4}
@@ -239,6 +251,8 @@
 	{:else if property.type === 'select' || property.type === 'multi_select'}
 		<select
 			{id}
+			aria-invalid={invalid ? true : undefined}
+			aria-describedby={invalid}
 			aria-label={label}
 			aria-required={!!property.required}
 			{disabled}
@@ -265,6 +279,8 @@
 		<div class="boolean">
 			<input
 				{id}
+				aria-invalid={invalid ? true : undefined}
+				aria-describedby={invalid}
 				type="checkbox"
 				aria-label={label}
 				{disabled}
@@ -276,6 +292,8 @@
 	{:else if property.type === 'datetime'}
 		<input
 			{id}
+			aria-invalid={invalid ? true : undefined}
+			aria-describedby={invalid}
 			aria-label={label}
 			aria-required={!!property.required}
 			type="datetime-local"
@@ -287,6 +305,8 @@
 	{:else}
 		<input
 			{id}
+			aria-invalid={invalid ? true : undefined}
+			aria-describedby={invalid}
 			aria-label={label}
 			aria-required={!!property.required}
 			type={property.type === 'date'

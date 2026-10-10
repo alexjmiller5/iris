@@ -14,7 +14,13 @@
 	import { savedUndoShortcut } from '$lib/undo-shortcut';
 	import { resolveDerivedRecord } from '$lib/resolve-derived';
 	import { prepareDuplicate } from '$lib/record-duplicate';
-	import { markdownPatch } from '$lib/record-autosave';
+	import {
+		blockedBy,
+		commitDelay,
+		mergeRemote,
+		withoutBlocked,
+		type Blocked
+	} from '$lib/record-autosave';
 	import { editRevision } from '$lib/record-revision';
 	import { reconcileUndo } from '$lib/record-undo';
 	import FieldEditor from '$lib/FieldEditor.svelte';
@@ -316,8 +322,23 @@
 		error: string;
 	} | null>(null);
 	let undoPaused = $state(false);
-	let bodySaving = $state(false),
-		bodyFailure = $state('');
+	// Record edits save themselves: one write at a time, later edits queue behind it.
+	let autosaving = $state(false),
+		autosaveFailure = $state(''),
+		blockedFields = $state<Blocked>({}),
+		lastEdited = $state<string | undefined>(),
+		commitNow = $state(false),
+		// First paint shows the list's row; the fresh full row unlocks editing.
+		provisional = $state(false),
+		announcement = $state('');
+	let focusedField: string | null = null;
+	/** The open editor's stored identity, shared by writes that outlive the editor. */
+	let session: { table: string; id: string | null; revision: string | null } = {
+		table: '',
+		id: null,
+		revision: null
+	};
+	let autosaveChain: Promise<unknown> = Promise.resolve();
 	let editorVersion = $state(0);
 	let relationOpening = $state<number | null>(null);
 	let gridActionOpening = $state<number | null>(null);
@@ -366,14 +387,10 @@
 			gridDirty
 	);
 	function confirmDiscard() {
-		if (
-			catalogEditing ||
-			writing ||
-			bodySaving ||
-			(dirty && !confirm('Discard unsaved changes to this record?'))
-		)
-			return false;
-		return true;
+		if (catalogEditing || writing) return false;
+		// Leaving saves first; the write lands even after this editor closes.
+		flushAutosave();
+		return !unsaved || confirm('Some changes to this record could not be saved. Discard them?');
 	}
 	function discard() {
 		if (!confirmDiscard()) return false;
@@ -639,6 +656,9 @@
 	}
 	async function duplicateRecord(id: string): Promise<boolean> {
 		if (!database || busy || navigationLoading || readOnly || blocked || trash) return false;
+		flushAutosave();
+		await autosaveChain;
+		if (!database || busy || navigationLoading) return false;
 		const workspace = database,
 			target = table,
 			version = editorVersion,
@@ -650,7 +670,6 @@
 			recordOpenVersion === request &&
 			!busy &&
 			!writing &&
-			!bodySaving &&
 			!navigationLoading;
 		try {
 			const prepared = await prepareDuplicate(workspace, target, id, current);
@@ -661,7 +680,9 @@
 			const copy = duplicateValues(properties, prepared.row);
 			draft = { ...draft, ...copy };
 			copiedCreation = Object.fromEntries(Object.keys(copy).map((col) => [col, prepared.row[col]]));
-			notice = 'Review this unsaved copy, then save to create a new record.';
+			// Duplicate is explicit creation intent: the copy is stored right away.
+			commitNow = true;
+			notice = 'Duplicated. Editing the copy.';
 			return true;
 		} catch (e) {
 			if (current()) error = message(e);
@@ -684,6 +705,8 @@
 			trash === restore;
 		gridActionOpening = request;
 		try {
+			flushAutosave();
+			await autosaveChain;
 			const found = await workspace.request('rows', {
 				view: {
 					table: target,
@@ -774,69 +797,161 @@
 		}
 	}
 	const draftProperties = $derived(properties.filter((p) => Object.hasOwn(draft, p.col)));
-	const bodyPatch = $derived(markdownPatch(properties, draft, selected));
-	const bodySaveKey = $derived(JSON.stringify([editorVersion, bodyPatch]));
+	/** Every editable change not stored yet, minus values a validation refused. */
+	const autosavePatch = $derived(
+		editing && !provisional
+			? withoutBlocked(
+					recordPatch(draftProperties, draft, selected, explicitCreation, copiedCreation ?? {}),
+					blockedFields,
+					draft
+				)
+			: null
+	);
+	const autosaveKey = $derived(JSON.stringify([editorVersion, autosavePatch]));
+	/** Changes autosave cannot store: refused values, a failed write or a paused review. */
+	const unsaved = $derived(
+		(editing &&
+			(Object.entries(blockedFields).some(([col, block]) => draft[col] === block.value) ||
+				(!!autosaveFailure && autosaveFailure === autosaveKey) ||
+				(undoPaused && dirty))) ||
+			gridDirty
+	);
+	const canAutosave = $derived(
+		editing &&
+			!navigationLoading &&
+			!busy &&
+			!undoPaused &&
+			!readOnly &&
+			!blocked &&
+			selected?.deleted_at == null
+	);
+	// Undo, Restore, Resolve and remote merges replace the stored row; writes follow it.
 	$effect(() => {
-		if (
-			!editing ||
-			!bodyPatch ||
-			navigationLoading ||
-			busy ||
-			undoPaused ||
-			readOnly ||
-			blocked ||
-			selected?.deleted_at != null ||
-			bodyFailure === bodySaveKey
-		)
-			return;
-		const patch = bodyPatch,
-			key = bodySaveKey;
-		const timer = setTimeout(() => void saveBody(patch, key), 600);
+		if (selected && session.id === String(selected.id))
+			session.revision = String(selected.updated_at);
+	});
+	$effect(() => {
+		if (!autosavePatch || !canAutosave || autosaving || autosaveFailure === autosaveKey) return;
+		const timer = setTimeout(commitAutosave, commitNow ? 0 : commitDelay(lastEdited));
 		return () => clearTimeout(timer);
 	});
-	async function saveBody(patch: Row, key: string) {
-		if (
-			!database ||
-			!selected ||
-			!editing ||
-			busy ||
-			undoPaused ||
-			selected.deleted_at != null ||
-			key !== bodySaveKey
-		)
-			return;
+	/** Save pending edits now, without waiting for the idle pause. */
+	function flushAutosave() {
+		if (autosavePatch && canAutosave && autosaveFailure !== autosaveKey) commitAutosave();
+	}
+	/** One write per call, queued behind earlier ones. Values are captured now, so a
+	 * write that outlives its editor still lands on the record it was made in. */
+	function commitAutosave() {
+		const patch = $state.snapshot(autosavePatch);
+		if (!database || !patch) return;
 		const workspace = database,
 			version = editorVersion,
-			target = table;
-		bodySaving = true;
-		busy = true;
-		try {
-			const stored = await workspace.request('write', {
-				table: target,
-				patch,
-				expectedUpdatedAt: editRevision(selected)
+			current = session,
+			key = autosaveKey,
+			values = $state.snapshot(draft);
+		commitNow = false;
+		autosaving = true;
+		const run: Promise<unknown> = autosaveChain
+			.then(async () => {
+				const edit = current.id !== null;
+				const stored: Row = await workspace.request('write', {
+					table: current.table,
+					patch: edit ? { ...patch, id: current.id } : patch,
+					...(edit && current.revision ? { expectedUpdatedAt: current.revision } : {})
+				});
+				current.id = String(stored.id);
+				current.revision = String(stored.updated_at);
+				if (database === workspace && editorVersion === version) acknowledge(stored, patch, values);
+				// Undo offers this write next, before the change event's refresh lands.
+				const { action } = await workspace.request('undoStatus', {});
+				if (database === workspace) undoAction = action;
+			})
+			.catch(async (e) => {
+				if (database === workspace && editorVersion === version)
+					await refused(e, patch, values, key);
+			})
+			.finally(() => {
+				if (autosaveChain === run) autosaving = false;
 			});
-			if (database !== workspace || editorVersion !== version || table !== target) return;
-			selected = stored;
-			// Keep the live draft: typing may have continued while the write was pending.
-			const acknowledged = rowDraft(stored);
-			savedDraft = JSON.stringify(
-				Object.fromEntries(Object.keys(draft).map((column) => [column, acknowledged[column] ?? '']))
-			);
-			bodyFailure = '';
-			error = '';
-			await refresh();
-		} catch (e) {
-			if (database === workspace && editorVersion === version) {
-				bodyFailure = key;
-				error = message(e);
-			}
-		} finally {
-			if (database === workspace) {
-				bodySaving = false;
-				busy = false;
-			}
+		autosaveChain = run;
+	}
+	function acknowledge(stored: Row, patch: Row, values: Record<string, string>) {
+		const created = !selected;
+		// Sent fields take their stored form unless typing continued; unsent ones (a
+		// refused value, an edit made during the write) stay drafts; untouched ones
+		// take stored values such as creation defaults.
+		const baseline = rowDraft(selected);
+		const merged = mergeRemote(
+			draft,
+			Object.fromEntries(
+				Object.keys(draft).map((col) => [
+					col,
+					Object.hasOwn(patch, col) ? values[col] : baseline[col]
+				])
+			),
+			rowDraft(stored),
+			new Set(focusedField ? [focusedField] : [])
+		);
+		selected = stored;
+		draft = merged.values;
+		savedDraft = merged.baseline;
+		const cleared = { ...blockedFields };
+		for (const col of Object.keys(patch)) delete cleared[col];
+		blockedFields = cleared;
+		autosaveFailure = '';
+		error = '';
+		announcement = announcement === 'Saved' ? 'Saved.' : 'Saved';
+		if (created) {
+			explicitCreation = new Set();
+			copiedCreation = null;
+			notice = '';
+			void reflectLocation(true);
 		}
+	}
+	async function refused(e: unknown, patch: Row, values: Record<string, string>, key: string) {
+		const violations = (e as { violations?: { col?: string; rule?: string; message?: string }[] })
+			.violations;
+		// Another writer changed the row: merge it, then the effect retries the rest.
+		if (violations?.some((v) => v.rule === 'conflict') && (await adoptLatest(true))) return;
+		const fields = blockedBy(violations, patch, values);
+		if (fields) blockedFields = { ...blockedFields, ...fields };
+		else {
+			autosaveFailure = key;
+			error = message(e);
+		}
+		announcement = `Not saved: ${
+			Object.values(fields ?? {})
+				.map((field) => field.message)
+				.join(' ') || message(e)
+		}`;
+	}
+	/** Merge stored values written elsewhere (sync, another tab) into the open record. */
+	async function adoptLatest(duringWrite = false): Promise<boolean> {
+		const workspace = database,
+			version = editorVersion,
+			current = session;
+		if (!workspace || !editing || provisional || !current.id || !selected) return false;
+		const [row] = await workspace.request('rows', {
+			view: {
+				table: current.table,
+				filters: [{ column: 'id', op: 'eq', value: current.id }],
+				trash: selected.deleted_at != null,
+				limit: 1
+			}
+		});
+		if (!row || database !== workspace || editorVersion !== version) return false;
+		if ((autosaving && !duringWrite) || String(row.updated_at) === current.revision) return false;
+		const merged = mergeRemote(
+			draft,
+			rowDraft(selected),
+			rowDraft(row),
+			new Set(focusedField ? [focusedField] : [])
+		);
+		selected = row;
+		draft = merged.values;
+		savedDraft = merged.baseline;
+		current.revision = String(row.updated_at);
+		return true;
 	}
 	const label = (p: Property) =>
 		p.label || p.col.charAt(0).toUpperCase() + p.col.slice(1).replaceAll('_', ' ');
@@ -1040,14 +1155,17 @@
 			)
 				references[p.col] = found;
 		} catch (e) {
-			if (database === workspace && editorVersion === version) error = message(e);
+			if (database === workspace && editorVersion === version) {
+				references[p.col] ??= [];
+				error = message(e);
+			}
 		}
 	}
 	function message(e: unknown) {
 		return e instanceof Error ? e.message : 'The operation failed. Your saved data is unchanged.';
 	}
 	async function reviewRejected(entry: RejectedEdit) {
-		if (!database || busy || writing || bodySaving || navigationLoading) return;
+		if (!database || busy || writing || navigationLoading) return;
 		const workspace = database,
 			request = ++recordOpenVersion;
 		let version = editorVersion;
@@ -1355,7 +1473,7 @@
 		selected = null;
 		draft = {};
 		savedDraft = '';
-		bodyFailure = '';
+		autosaveFailure = '';
 		rows = [];
 		names = {};
 		references = {};
@@ -1443,6 +1561,8 @@
 			database.addEventListener('change', () => {
 				dataRevision++;
 				void refresh().catch((e) => (error = message(e)));
+				// Sync or another tab may have changed the open record.
+				void adoptLatest().catch(() => {});
 			});
 			const linked = new URL(window.location.href);
 			if (['table', 'view', 'row'].some((key) => linked.searchParams.has(key)))
@@ -1545,7 +1665,7 @@
 	) {
 		const workspace = database,
 			target = table;
-		if (!workspace || busy || writing || bodySaving || navigationLoading || args.table !== target)
+		if (!workspace || busy || writing || autosaving || navigationLoading || args.table !== target)
 			throw new Error('Finish the active operation before editing the catalog.');
 		writing = true;
 		try {
@@ -1618,7 +1738,7 @@
 		selected = null;
 		draft = {};
 		savedDraft = '';
-		bodyFailure = '';
+		autosaveFailure = '';
 		const definition = view?.definition;
 		columns = definition?.columns?.filter((col) => col !== (display ?? 'id')) ?? null;
 		widths = { ...definition?.widths };
@@ -1750,7 +1870,16 @@
 		undoPaused = false;
 		editorVersion++;
 		selected = row;
-		bodyFailure = '';
+		session = {
+			table,
+			id: row ? String(row.id) : null,
+			revision: row ? String(row.updated_at) : null
+		};
+		autosaveFailure = '';
+		blockedFields = {};
+		lastEdited = undefined;
+		commitNow = false;
+		provisional = false;
 		draft = rowDraft(row);
 		references = {};
 		referenceSearch = {};
@@ -1777,7 +1906,9 @@
 	}
 	async function moveBoardRecord(row: Row, value: string | null) {
 		const property = properties.find((p) => p.col === presentation.groupColumn);
-		if (!database || !property || !canEditCell(property) || busy || navigationLoading || dirty) {
+		flushAutosave();
+		await autosaveChain;
+		if (!database || !property || !canEditCell(property) || busy || navigationLoading || unsaved) {
 			error = 'Finish the current edit before moving a record.';
 			return;
 		}
@@ -1803,18 +1934,13 @@
 		}
 	}
 	async function resolveField(property: Property) {
-		if (
-			!database ||
-			!selected ||
-			!connectedHub ||
-			busy ||
-			writing ||
-			bodySaving ||
-			navigationLoading
-		)
-			return;
-		if (dirty) {
-			error = 'Save or discard your changes before resolving. Your draft has been kept.';
+		if (!database || !selected || !connectedHub || busy || writing || navigationLoading) return;
+		// Resolve needs the stored record: save pending edits first.
+		flushAutosave();
+		await autosaveChain;
+		if (dirty || busy || writing) {
+			error =
+				'Some changes could not be saved. Fix them before resolving. Your draft has been kept.';
 			return;
 		}
 		const workspace = database,
@@ -1883,9 +2009,14 @@
 			});
 			if (database !== workspace || editorVersion !== version || table !== target) return;
 			selected = stored;
+			session.id = String(stored.id);
+			session.revision = String(stored.updated_at);
 			draft = rowDraft(stored);
 			savedDraft = JSON.stringify(draft);
-			bodyFailure = '';
+			explicitCreation = new Set();
+			copiedCreation = null;
+			blockedFields = {};
+			autosaveFailure = '';
 			undoPaused = false;
 			await refresh();
 			await reflectLocation(true);
@@ -1899,6 +2030,10 @@
 		}
 	}
 	async function undoLastSavedChange() {
+		if (!database || busy || navigationLoading) return;
+		// Undo reverts the latest edit, so pending edits are saved first.
+		flushAutosave();
+		await autosaveChain;
 		if (!database || busy || navigationLoading) return;
 		if ($viewAutosave.pending) {
 			// Undo reverts the latest view edit, so it must be saved first.
@@ -1964,7 +2099,7 @@
 			} else {
 				undoPaused = dirty;
 			}
-			bodyFailure = '';
+			autosaveFailure = '';
 			notice = `Undid the last saved change in ${action.table}`;
 			await refresh();
 			if (promoted && database === workspace && editorVersion === version)
@@ -1983,6 +2118,8 @@
 		const restoring = selected.deleted_at != null;
 		const preserveDraft = restoring && undoPaused;
 		if (!preserveDraft && !discard()) return;
+		await autosaveChain;
+		if (!database || !selected || busy || navigationLoading) return;
 		const workspace = database,
 			version = editorVersion,
 			target = table;
@@ -2272,6 +2409,11 @@
 			request === recordOpenVersion &&
 			!busy &&
 			sourceIsCurrent();
+		const known =
+			preserveView && table === target.table
+				? rows.find((row) => String(row.id) === target.id)
+				: undefined;
+		if (known) return openListedRecord(known, target.id);
 		let found: Row[];
 		try {
 			// Picker labels and saved-view projections are not editable record snapshots.
@@ -2315,6 +2457,48 @@
 		if (loaded && database === workspace && editorVersion === openedVersion) recordRecent();
 		return true;
 	}
+	/** A row the list already shows paints in the same frame. Editing unlocks when
+	 * the fresh full row arrives: list rows can be projected, truncated or stale. */
+	async function openListedRecord(listed: Row, id: string) {
+		const workspace = database!;
+		if (!discard()) return false;
+		locationRequest++;
+		navigationLoading = false;
+		editing = false;
+		// Asked before the editor's own reads, so the worker answers it first.
+		const fresh = workspace.request('rows', {
+			view: { table, filters: [{ column: 'id', op: 'eq', value: id }], trash, limit: 1 }
+		});
+		edit(listed, false, true);
+		provisional = true;
+		showFind(false);
+		const openedVersion = editorVersion;
+		const current = () => database === workspace && editorVersion === openedVersion;
+		await tick();
+		if (current()) recordHeading?.focus();
+		let row: Row | undefined;
+		try {
+			[row] = await fresh;
+		} catch (e) {
+			if (!current()) return false;
+			closeRecord();
+			throw e;
+		}
+		if (!current()) return false;
+		if (!row) {
+			closeRecord();
+			throw new Error(
+				'This record is not available locally. It may be missing, in the trash, or outside this replica.'
+			);
+		}
+		selected = row;
+		draft = rowDraft(row);
+		savedDraft = JSON.stringify(draft);
+		provisional = false;
+		await reflectLocation();
+		if (current()) recordRecent();
+		return true;
+	}
 	function openSearchHit(hit: SearchHit) {
 		const version = findVersion;
 		return openRecord(hit, () => findVisible && findVersion === version);
@@ -2335,7 +2519,7 @@
 		sourceIsCurrent: () => boolean,
 		reservedRequest?: number
 	): Promise<boolean> {
-		if (!database || busy || writing || bodySaving) return false;
+		if (!database || busy || writing) return false;
 		const workspace = database,
 			sourceEditor = editorVersion,
 			request = reservedRequest ?? ++recordOpenVersion;
@@ -2351,7 +2535,7 @@
 			if (current()) throw e;
 			return false;
 		}
-		if (!current() || busy || writing || bodySaving || !discard()) return false;
+		if (!current() || busy || writing || !discard()) return false;
 		locationRequest++;
 		navigationLoading = false;
 		resetView();
@@ -2393,7 +2577,7 @@
 		}) as LinkRequest)
 	);
 	async function openSourceLink(url: string): Promise<boolean> {
-		if (!database || busy || writing || bodySaving)
+		if (!database || busy || writing)
 			throw Error('Wait for the current save, then open the link again.');
 		const workspace = database,
 			version = editorVersion,
@@ -2497,8 +2681,7 @@
 			savedUndoShortcut(event) &&
 			(undoAction || $viewAutosave.pending) &&
 			!busy &&
-			!navigationLoading &&
-			!bodySaving
+			!navigationLoading
 		) {
 			event.preventDefault();
 			void undoLastSavedChange();
@@ -2516,9 +2699,13 @@
 	}}
 	ononline={() => (online = true)}
 	onoffline={() => (online = false)}
-	onpagehide={() => void viewAutosave.flush()}
+	onpagehide={() => {
+		flushAutosave();
+		void viewAutosave.flush();
+	}}
 	onbeforeunload={(e) => {
-		if (dirty || writing || bodySaving || $viewAutosave.pending) {
+		if (dirty || writing || autosaving || $viewAutosave.pending) {
+			flushAutosave();
 			void viewAutosave.flush();
 			e.preventDefault();
 			e.returnValue = '';
@@ -2620,7 +2807,7 @@
 				<SidebarRecents
 					entries={recentEntries}
 					current={currentDestination()}
-					busy={busy || writing || bodySaving}
+					busy={busy || writing}
 					storageError={[recentReadError, recentStorageError].filter(Boolean).join(' ')}
 					onchoose={openRecent}
 					onremove={removeRecent}
@@ -2628,7 +2815,7 @@
 				<SidebarPinsView
 					pins={activePins}
 					current={table}
-					disabled={busy || writing || bodySaving}
+					disabled={busy || writing}
 					mutationDisabled={pinsDisabled}
 					error={pinState.error || pinState.snapshot?.unavailable || null}
 					onchoose={changeTable}
@@ -2639,7 +2826,7 @@
 				<SidebarTables
 					tables={unpinnedTables(catalog.tables, activePins)}
 					current={table}
-					disabled={busy || writing || bodySaving}
+					disabled={busy || writing}
 					pinDisabled={pinsDisabled}
 					onchoose={changeTable}
 					onpin={(table) => mutatePins(() => pins.pin(table))}
@@ -2659,7 +2846,7 @@
 								{syncRevision}
 								canReview={!busy &&
 									!writing &&
-									!bodySaving &&
+									!autosaving &&
 									!dirty &&
 									!gridDraft &&
 									pendingEdits === 0}
@@ -2694,7 +2881,7 @@
 							connection={connectedHub}
 							canRestore={!busy &&
 								!writing &&
-								!bodySaving &&
+								!autosaving &&
 								!dirty &&
 								!gridDraft &&
 								pendingEdits === 0}
@@ -2765,7 +2952,7 @@
 							<p>This table is excluded from sync. Its local records may be incomplete.</p>
 							<button
 								class="secondary"
-								disabled={busy || writing || bodySaving || !connectedHub || !online}
+								disabled={busy || writing || !connectedHub || !online}
 								onclick={() => {
 									if (database && connectedHub)
 										onlineBrowser = { workspace: database, table, connection: connectedHub };
@@ -2798,7 +2985,7 @@
 						</div>
 						<button
 							class="secondary"
-							disabled={busy || writing || bodySaving || navigationLoading || !table || readOnly}
+							disabled={busy || writing || navigationLoading || !table || readOnly}
 							onclick={() => {
 								if (discard()) catalogEditing = true;
 							}}>Edit catalog</button
@@ -3039,7 +3226,7 @@
 									core={database}
 									total={rejectedCount}
 									snapshot={rejected}
-									disabled={busy || writing || bodySaving || navigationLoading}
+									disabled={busy || writing || navigationLoading}
 									onreview={reviewRejected}
 								/>{/if}
 						{/key}
@@ -3054,7 +3241,7 @@
 								options={optionValues[presentation.groupColumn ?? ''] ?? []}
 								canMove={!busy &&
 									!navigationLoading &&
-									!dirty &&
+									!unsaved &&
 									!!properties.find((p) => p.col === presentation.groupColumn && canEditCell(p))}
 								onmove={moveBoardRecord}
 								resolveFile={resolveRetainedFile}
@@ -3151,11 +3338,7 @@
 				<aside class="record-panel" aria-label="Record editor">
 					<header>
 						<div>
-							<p class="eyebrow">
-								{selected ? 'Edit record' : 'New record'} / {dirty || !selected
-									? 'Unsaved changes'
-									: 'Saved'}
-							</p>
+							<p class="eyebrow">{selected ? 'Edit record' : 'New record'}</p>
 							<h2 bind:this={recordHeading} tabindex="-1">
 								{selected ? title(selected) : 'Untitled'}
 							</h2>
@@ -3176,45 +3359,47 @@
 					{#if undoPaused}<p class="hint" role="status" aria-label="Draft review">
 							Your unsaved draft is kept. {selected?.deleted_at != null
 								? 'Restore the record, then review and save your draft.'
-								: 'Review it and choose Save record to continue.'} Body autosave is paused.
+								: 'Review it, then choose Save draft to store it.'} Autosave is paused.
 						</p>{/if}
-					{#if draftProperties.some((p) => p.type === 'markdown')}
-						<!-- Ordinary autosave is silent; only guidance and failures show. -->
-						{@const bodyState = bodySaving
+					<!-- Saving is silent on screen; assistive technology hears each save or refusal. -->
+					<p
+						class="sr-only"
+						role="status"
+						aria-label="Record save status"
+						data-state={autosaving
 							? 'saving'
-							: !selected
-								? 'new'
-								: bodyPatch
-									? bodyFailure === bodySaveKey
-										? 'failed'
-										: 'pending'
+							: unsaved
+								? 'failed'
+								: autosavePatch
+									? 'pending'
 									: 'saved'}
-						<p
-							role="status"
-							aria-label="Body save status"
-							class="hint"
-							data-state={bodyState}
-							hidden={bodyState !== 'new' && bodyState !== 'failed'}
-						>
-							{bodyState === 'new'
-								? 'Save record to start body autosave'
-								: bodyState === 'failed'
-									? 'Body not saved. Your draft is kept.'
-									: ''}
-						</p>
-					{/if}
+					>
+						{announcement}
+					</p>
 					{#if draftProperties.length !== properties.length}
 						<p class="hint">Properties changed. Reopen this record to edit newly added fields.</p>
 					{/if}
 					<form
 						onsubmit={(e) => {
 							e.preventDefault();
-							save();
+							commitNow = true;
 						}}
+						onfocusin={(e) => {
+							focusedField =
+								(e.target as Element).closest('[data-col]')?.getAttribute('data-col') ?? null;
+						}}
+						onfocusout={() => {
+							// Leaving a field commits it at once.
+							focusedField = null;
+							if (autosavePatch) commitNow = true;
+						}}
+						inert={provisional}
 						novalidate
 					>
 						{#each draftProperties as p (p.col)}
-							<div class="field">
+							{@const refusal =
+								blockedFields[p.col]?.value === draft[p.col] ? blockedFields[p.col].message : ''}
+							<div class="field" data-col={p.col}>
 								<label for={`field-${p.col}`}
 									>{label(p)}{#if p.required}<span class="required" aria-hidden="true"
 											>Required</span
@@ -3229,12 +3414,16 @@
 										{attachments}
 										onopenlink={openSourceLink}
 										bind:value={draft[p.col]}
+										invalid={refusal ? `field-${p.col}-error` : undefined}
 										onchange={() => {
+											lastEdited = p.type ?? undefined;
+											commitNow = false;
 											if (!selected) explicitCreation = new Set([...explicitCreation, p.col]);
 										}}
 										disabled={locked(p)}
 										showReferenceSelections={false}
 										options={optionValues[p.col]}
+										referencesLoading={references[p.col] === undefined}
 										references={(references[p.col] ?? []).map((row) => ({
 											id: String(row.id),
 											label: refTitle(p, row)
@@ -3243,6 +3432,9 @@
 										oncreate={creatable(p) ? (text) => createReference(p, text) : undefined}
 									/>
 								{/key}
+								{#if refusal}<p class="field-error" id={`field-${p.col}-error`}>
+										{refusal} Not saved; the rest of the record is.
+									</p>{/if}
 								{#if p.type === 'ref' || p.type === 'multi_ref'}
 									<div
 										class="relation-links"
@@ -3277,6 +3469,7 @@
 															draft[p.col] = JSON.stringify(
 																list(draft[p.col]).filter((value) => value !== id)
 															);
+															lastEdited = p.type ?? undefined;
 															if (!selected)
 																explicitCreation = new Set([...explicitCreation, p.col]);
 														}}
@@ -3301,7 +3494,6 @@
 											!connectedHub ||
 											busy ||
 											writing ||
-											bodySaving ||
 											navigationLoading ||
 											readOnly ||
 											blocked}
@@ -3332,14 +3524,15 @@
 									disabled={busy || navigationLoading || readOnly || blocked}
 									onclick={() => duplicateRecord(String(selected!.id))}>Duplicate record</button
 								>{/if}
-							<button
-								type="submit"
-								disabled={busy ||
-									navigationLoading ||
-									readOnly ||
-									blocked ||
-									selected?.deleted_at != null}><IconDeviceFloppy size={17} />Save record</button
-							>{#if selected}<button
+							{#if undoPaused}<button
+									type="button"
+									onclick={save}
+									disabled={busy ||
+										navigationLoading ||
+										readOnly ||
+										blocked ||
+										selected?.deleted_at != null}><IconDeviceFloppy size={17} />Save draft</button
+								>{/if}{#if selected}<button
 									type="button"
 									class="secondary"
 									onclick={toggleTrash}
@@ -3746,6 +3939,12 @@
 		font-size: 11px;
 		color: var(--color-muted);
 		font-weight: 400;
+	}
+	.field-error {
+		font-size: 12px;
+		color: var(--color-violation);
+		margin: 7px 0 0;
+		line-height: 1.5;
 	}
 	.field-note {
 		font-size: 12px;

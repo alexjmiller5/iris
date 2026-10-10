@@ -258,7 +258,7 @@ async function sampleWalk(page: Page, scheme: string) {
   await tabTo(close);
   await tabTo(page.locator('.record-panel [contenteditable="true"]').first());
   await page.keyboard.type("Typed by keyboard.");
-  await page.locator('[aria-label="Body save status"][data-state="saved"]').waitFor({ state: "attached" });
+  await page.locator('[aria-label="Record save status"][data-state="saved"]').waitFor({ state: "attached" });
   await audit("record-markdown");
   // The page-capture viewer: an ordinary note is not a capture, so it explains why.
   const capture = role("button", "View page capture");

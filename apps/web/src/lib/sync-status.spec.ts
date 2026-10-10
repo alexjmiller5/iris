@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { ChangeSocket, SyncScheduler, leadership, syncPill, syncProgressLabel } from './sync-status';
+import {
+	ChangeSocket,
+	SyncScheduler,
+	leadership,
+	syncPill,
+	syncProgressLabel
+} from './sync-status';
 import type { Liveness } from './sync-status';
 
 let ready = true;
@@ -241,7 +247,9 @@ test('a quiet pill names how the wake signal stands', () => {
 	});
 	// Every other state still outranks it.
 	expect(syncPill({ ...base, liveness: 'live', pending: 1 })).toMatchObject({ label: 'Syncing' });
-	expect(syncPill({ ...base, liveness: 'live', online: false })).toMatchObject({ label: 'Offline' });
+	expect(syncPill({ ...base, liveness: 'live', online: false })).toMatchObject({
+		label: 'Offline'
+	});
 });
 
 test('shows a long backup action in place of sync state', () => {
