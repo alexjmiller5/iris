@@ -55,6 +55,7 @@
 		resolveDestination,
 		type Destination
 	} from '$lib/workspace-navigation';
+	import { referenceLabels } from '$lib/reference-labels';
 	import {
 		IconDatabase,
 		IconPlus,
@@ -1411,26 +1412,11 @@
 			}
 		};
 		names = {};
-		const labels: Record<string, string> = {};
-		// ponytail: at most 200 visible references per page; batch SQL when larger grids need it.
-		const targets = new Map<string, Property>();
-		for (const p of gridProperties.filter(
-			(p) =>
-				(p.type === 'ref' || p.type === 'multi_ref') &&
-				catalog.tables.some((target) => target.id === p.ref_table)
-		))
-			for (const row of found) {
-				for (const id of p.type === 'multi_ref' ? list(String(row[p.col] ?? '[]')) : [row[p.col]])
-					if (id && targets.size < 200) targets.set(JSON.stringify([p.ref_table, id]), p);
-			}
-		await Promise.all(
-			[...targets].map(async ([key, p]) => {
-				const [target, id] = JSON.parse(key);
-				const matches: Row[] = await workspace.request('rows', {
-					view: { table: target, filters: [{ column: 'id', op: 'eq', value: id }], limit: 1 }
-				});
-				if (matches[0]) labels[key] = refTitle(p, matches[0]);
-			})
+		const labels = await referenceLabels(
+			workspace,
+			gridProperties,
+			found,
+			new Set(catalog.tables.map((t) => String(t.id)))
 		);
 		if (database === workspace && request === rowsRequest) names = labels;
 	}

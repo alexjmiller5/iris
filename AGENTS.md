@@ -251,6 +251,8 @@ use that build number, with distinct install-page, manifest and IPA URLs; the
 status sheet reads the installed app's version from Bundle.main. Installation
 and OTA remain separate.
 
+The web grid labels a page's reference cells with one core `mentionLabels` read per
+200 targets (`reference-labels.ts`); missing and trashed targets show the stored id.
 Shared core owns local FTS5 indexing and search. Web table search and Cmd+K use
 literal word prefixes combined with AND; user input never becomes raw MATCH
 syntax. Index queues survive external edits and reopen, and index updates run
@@ -545,12 +547,23 @@ may pass only a trailing run of passive reference-label reads, preserving order
 among foreground operations. Sync, close, transport-bearing requests and
 transport continuations remain ordering barriers. Passive label callers wait
 outside the database queue, with at most one submitted
-reference read per workspace. This prevents a service or sync barrier from trapping
+reference read per workspace. Reference cells mounted together share one core
+`mentionLabels` read of at most 200 targets (`NativeWorkspace.referenceLabels`),
+never a row read per cell; trashed and missing targets read as unavailable. This prevents a service or sync barrier from trapping
 foreground navigation behind a whole label backlog. Canceling an unsubmitted label
 releases its waiter; an admitted label keeps its transaction ownership. Canceled queued
 catalog/row reads release their reserved file turn without entering SQLite;
 an admitted request always finishes its transaction and callback. Resolve symbolic links before
 opening and refuse hard-linked database files so journals have one identity.
+`NativeWorkspace.catalog()` asks core for `catalogRevision` first and reuses its
+decoded catalog while the revision is unchanged; the whole catalog is about a
+megabyte on a large estate, and navigation and every sync round ask for it.
+`WorkspaceModel.reload` publishes rows before its four writeability checks, which
+walk the schema per table; editing stays unavailable until they answer. Quick
+Find searches are cancellable reads, so a superseded keystroke's queued search
+never runs. `TableOpenPerformanceTests` holds the open path's request sequence
+and budgets on a 10,000-row table; `IRIS_TABLE_OPEN_DB=<disposable copy>` measures
+a real database per stage.
 Native workspace diagnostics are bounded in-memory timing records, copied only by
 explicit user action. Use fixed operation enums, process-local IDs, durations,
 counts and byte totals; never record SQL, arguments, table names, errors, URLs,

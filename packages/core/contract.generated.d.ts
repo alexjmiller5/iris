@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "73766cc14d68ff46aa87850ab00315968a3e3c3c0b596463560e4cb046e74a8d";
+export declare const CORE_CONTRACT_HASH = "d755a41650c72a2601752484767421625a654d0673c6f360e01424d91d3cc351";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -1169,10 +1169,17 @@ export type ViewEmbed = {
     calendar?: CalendarPolicy;
     unavailable?: string;
 };
+export type CatalogRevision = {
+    revision: string;
+};
 export interface CoreOperations {
     catalog: {
         args: EmptyArgs;
         result: Catalog;
+    };
+    catalogRevision: {
+        args: EmptyArgs;
+        result: CatalogRevision;
     };
     rows: {
         args: View;

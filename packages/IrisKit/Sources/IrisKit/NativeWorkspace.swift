@@ -408,7 +408,14 @@ public final class NativeWorkspace {
     onBackupProgress(phase, done, total)
   }
 
+  /// The whole catalog is about a megabyte on a large estate; its revision is one short read.
+  private var cachedCatalog: (revision: String, catalog: WorkspaceCatalog)?
   public func catalog() async throws -> WorkspaceCatalog {
+    // Read before the catalog: a change committed in between only costs the next read.
+    let revision = try await decode(
+      CoreRequests.CatalogRevision(CoreEmptyArgs()), cancellableRead: true
+    ).revision
+    if let cachedCatalog, cachedCatalog.revision == revision { return cachedCatalog.catalog }
     var id: NativeWorkspaceDiagnostics.RequestID?
     let catalog = try await decode(
       CoreRequests.Catalog(CoreEmptyArgs()), cancellableRead: true, onDiagnosticID: { id = $0 })
@@ -417,7 +424,9 @@ public final class NativeWorkspace {
       diagnostics.addMetrics(
         .init(decodeMilliseconds: Self.elapsedMilliseconds(since: started)), to: id)
     }
-    return try WorkspaceCatalog(catalog)
+    let decoded = try WorkspaceCatalog(catalog)
+    cachedCatalog = (revision, decoded)
+    return decoded
   }
   /// Explicit capture only. Never submits a database request, even while navigation waits.
   func diagnosticReport(version: String, build: String) throws -> String {
@@ -429,13 +438,68 @@ public final class NativeWorkspace {
   public func rows(view: CoreView) async throws -> [WorkspaceRow] {
     try await decode(CoreRequests.Rows(view), cancellableRead: true)
   }
-  /// Reads used only to fill passive reference labels in a displayed row.
-  func referenceRows(view: CoreView) async throws -> [WorkspaceRow] {
+  /// Reads that only fill presentation, such as reference labels in displayed rows.
+  func passiveRead<R: CoreRequest>(_ request: R) async throws -> R.Response {
     try Task.checkCancellation()
     try await acquireReferenceRead()
     defer { releaseReferenceRead() }
     try Task.checkCancellation()
-    return try await decode(CoreRequests.Rows(view), cancellableRead: true, referenceRead: true)
+    return try await decode(request, cancellableRead: true, referenceRead: true)
+  }
+  private struct LabelWaiter {
+    let id: UUID
+    let targets: [CoreRecordTarget]
+    let continuation: CheckedContinuation<[CoreMentionLabel], Error>
+  }
+  private var labelWaiters: [LabelWaiter] = []
+  private var labelFlushScheduled = false
+  /// Display labels for reference cells. Cells rendered together share one passive
+  /// read of at most 200 targets instead of one row read each.
+  func referenceLabels(_ targets: [CoreRecordTarget]) async throws -> [CoreMentionLabel] {
+    try Task.checkCancellation()
+    let id = UUID()
+    return try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { continuation in
+        labelWaiters.append(LabelWaiter(id: id, targets: targets, continuation: continuation))
+        guard !labelFlushScheduled else { return }
+        labelFlushScheduled = true
+        // Runs after the cell tasks already scheduled by the same rendering pass.
+        Task { @MainActor [weak self] in await self?.flushReferenceLabels() }
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in
+        guard let self, let index = self.labelWaiters.firstIndex(where: { $0.id == id }) else {
+          return
+        }
+        self.labelWaiters.remove(at: index).continuation.resume(throwing: CancellationError())
+      }
+    }
+  }
+  private func flushReferenceLabels() async {
+    labelFlushScheduled = false
+    let waiters = labelWaiters
+    labelWaiters = []
+    func key(_ target: CoreRecordTarget) -> [Data] {
+      [Data(target.table.utf8), Data(target.id.utf8)]
+    }
+    var seen = Set<[Data]>()
+    let targets = waiters.flatMap(\.targets).filter { seen.insert(key($0)).inserted }
+    var found: [[Data]: CoreMentionLabel] = [:]
+    do {
+      for start in stride(from: 0, to: targets.count, by: 200) {
+        let chunk = Array(targets[start..<min(start + 200, targets.count)])
+        for label in try await passiveRead(
+          CoreRequests.MentionLabels(CoreMentionLabelsArgs(targets: chunk)))
+        {
+          found[key(CoreRecordTarget(table: label.table, id: label.id))] = label
+        }
+      }
+      for waiter in waiters {
+        waiter.continuation.resume(returning: waiter.targets.compactMap { found[key($0)] })
+      }
+    } catch {
+      for waiter in waiters { waiter.continuation.resume(throwing: error) }
+    }
   }
   /// Keep presentation fan-out outside the database queue. A transport or HTTP
   /// resumption barrier can then have at most one passive read ahead of it.
@@ -515,8 +579,9 @@ public final class NativeWorkspace {
   public func resolveSourceLink(_ url: String) async throws -> CoreSourceLinkResult {
     try await decode(CoreRequests.ResolveSourceLink(CoreSourceLinkArgs(url: url)))
   }
+  /// A superseded search still waiting for the database is dropped, not run.
   public func search(_ args: CoreSearchArgs) async throws -> [CoreSearchHit] {
-    try await decode(CoreRequests.Search(args))
+    try await decode(CoreRequests.Search(args), cancellableRead: true)
   }
   public func listSidebarPins() async throws -> CoreSidebarPinList {
     try await decode(CoreRequests.ListSidebarPins(CoreEmptyArgs()))

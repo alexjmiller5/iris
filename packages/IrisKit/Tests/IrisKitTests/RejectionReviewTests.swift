@@ -116,7 +116,7 @@ struct RejectionReviewTests {
     await model.close()
   }
 
-  @Test(arguments: ["catalog", "rows", "writeability"], [false, true])
+  @Test(arguments: ["catalogRevision", "rows", "writeability"], [false, true])
   func changedQueryDiscardsDelayedSuccessAndFailure(_ method: String, _ fail: Bool) async throws {
     let (root, model, workspace, runtime, entry) = try await fixture()
     defer { try? FileManager.default.removeItem(at: root) }

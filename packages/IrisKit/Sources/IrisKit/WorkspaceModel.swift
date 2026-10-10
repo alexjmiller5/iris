@@ -1629,7 +1629,6 @@ final class WorkspaceModel {
     defer {
       if request == revision, self.client === client, query == queryKey { loading = false }
     }
-    await refreshWriteability()
     do {
       try Task.checkCancellation()
       let definition = try currentViewDefinition()
@@ -1667,6 +1666,12 @@ final class WorkspaceModel {
       self.error = error.localizedDescription
       if !append { rows = [] }
     }
+    // After the rows: editing checks cost a schema walk per table and never gate display.
+    guard !Task.isCancelled, request == revision, self.client === client, query == queryKey else {
+      return
+    }
+    loading = false
+    await refreshWriteability()
   }
 
   func resolveDerived(column: String, original: WorkspaceRecord, context: WorkspaceEditingContext?)

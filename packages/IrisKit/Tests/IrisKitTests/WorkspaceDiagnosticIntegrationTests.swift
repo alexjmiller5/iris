@@ -84,7 +84,7 @@ struct WorkspaceDiagnosticIntegrationTests {
     let labels = (0..<5).map { _ in
       Task {
         submitted += 1
-        return try await workspace.referenceRows(view: CoreView(table: "notes"))
+        return try await workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
       }
     }
     try await waitUntil { submitted == labels.count }

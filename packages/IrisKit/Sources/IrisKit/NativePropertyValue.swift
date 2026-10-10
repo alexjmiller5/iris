@@ -82,19 +82,23 @@ struct NativePropertyValue: View {
       ].map { Data($0.utf8) }, workspace: workspace.map(ObjectIdentifier.init))
   }
 
+  /// Live labels for one cell's references, read with the other cells rendered alongside.
   @MainActor static func referenceLabels(
-    field: CatalogField, value: String, load: @escaping (CoreView) async throws -> [WorkspaceRow]
+    field: CatalogField, value: String, workspace: NativeWorkspace
   ) async -> String {
     guard !value.isEmpty else { return "Not set" }
     guard let table = field.property["ref_table"]?.text.nonempty,
-      let model = try? ReferencePickerModel(
-        table: table, value: value, multiple: field.type == "multi_ref", load: load)
+      let selection = try? ReferenceSelection(value: value, multiple: field.type == "multi_ref")
     else { return "Unavailable" }
+    guard !selection.ids.isEmpty else { return "Not set" }
+    let labels =
+      (try? await workspace.referenceLabels(
+        selection.ids.map { CoreRecordTarget(table: table, id: $0) })) ?? []
     guard !Task.isCancelled else { return "Unavailable" }
-    await model.resolveSelected()
-    guard !Task.isCancelled else { return "Unavailable" }
-    return model.selection.ids.isEmpty
-      ? "Not set" : model.selection.ids.map { model.label(for: $0) }.joined(separator: ", ")
+    // Trashed and missing targets read as unavailable, as in the reference picker.
+    return selection.ids.map { id in
+      labels.first { Data($0.id.utf8) == Data(id.utf8) && !$0.trashed }?.label ?? "Unavailable"
+    }.joined(separator: ", ")
   }
 
   private struct ReferenceValue: View {
@@ -113,9 +117,8 @@ struct NativePropertyValue: View {
             resolved = value.isEmpty ? "Not set" : "Unavailable"
             return
           }
-          let label = await NativePropertyValue.referenceLabels(field: field, value: value) {
-            try await workspace.referenceRows(view: $0)
-          }
+          let label = await NativePropertyValue.referenceLabels(
+            field: field, value: value, workspace: workspace)
           guard request == ticket, !Task.isCancelled else { return }
           resolved = label
         }

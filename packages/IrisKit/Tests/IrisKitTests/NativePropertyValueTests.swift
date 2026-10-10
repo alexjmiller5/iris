@@ -45,32 +45,67 @@ struct NativePropertyValueTests {
       NativePropertyValue.referenceID(field: field, value: "é", workspace: nil)
         != NativePropertyValue.referenceID(field: field, value: "e\u{301}", workspace: nil))
   }
-  @Test @MainActor func cancelledResolutionDoesNotPublishLateLabel() async {
-    let started = AsyncStream<Void>.makeStream()
-    let release = AsyncStream<Void>.makeStream()
-    let field = CatalogField(property: ["type": .string("ref"), "ref_table": .string("targets")])
+  @Test @MainActor func cancelledResolutionDoesNotPublishLateLabel() async throws {
+    let workspace = try await sampleWorkspace()
+    let note = try #require(try await workspace.rows(table: "notes").first)
+    let field = CatalogField(property: ["type": .string("ref"), "ref_table": .string("notes")])
     let task = Task {
-      await NativePropertyValue.referenceLabels(field: field, value: "opaque") { _ in
-        started.continuation.yield(())
-        for await _ in release.stream { break }
-        return [WorkspaceRow(record: ["id": .string("opaque")], label: "Late label")]
+      await NativePropertyValue.referenceLabels(field: field, value: note.id, workspace: workspace)
+    }
+    task.cancel()
+    #expect(await task.value == "Unavailable")
+    try await workspace.close()
+  }
+  @Test @MainActor func referencesResolveLabelsAndHideMissingAndTrashedIDs() async throws {
+    let workspace = try await sampleWorkspace()
+    let live = try #require(try await workspace.rows(table: "notes").first)
+    let created = try await workspace.write(
+      table: "notes", patch: ["title": .string("Trashed target")], expectedUpdatedAt: nil)
+    let trashed = try #require(created["id"]?.text)
+    _ = try await workspace.write(
+      table: "notes", patch: ["id": .string(trashed), "deleted_at": .bool(true)],
+      expectedUpdatedAt: created["updated_at"]?.text)
+    let field = CatalogField(property: [
+      "type": .string("multi_ref"), "ref_table": .string("notes"),
+    ])
+    let value = String(
+      decoding: try JSONEncoder().encode([live.id, "missing", trashed]), as: UTF8.self)
+    #expect(
+      await NativePropertyValue.referenceLabels(field: field, value: value, workspace: workspace)
+        == "\(live.label), Unavailable, Unavailable")
+    #expect(
+      await NativePropertyValue.referenceLabels(field: field, value: "[]", workspace: workspace)
+        == "Not set")
+    try await workspace.close()
+  }
+  @Test @MainActor func cellsRenderedTogetherShareOneLabelRead() async throws {
+    let runtime = try IrisCoreRuntime()
+    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await workspace.createSample()
+    let notes = try await workspace.rows(table: "notes")
+    runtime.context.evaluateScript(
+      #"""
+      globalThis.labelTrace = [];
+      const traced = IrisNative.request;
+      IrisNative.request = function(id, method, args) { labelTrace.push(method); return traced(id, method, args); };
+      """#)
+    let field = CatalogField(property: ["type": .string("ref"), "ref_table": .string("notes")])
+    let cells = (0..<60).map { index in
+      Task {
+        await NativePropertyValue.referenceLabels(
+          field: field, value: notes[index % notes.count].id, workspace: workspace)
       }
     }
-    for await _ in started.stream { break }
-    task.cancel()
-    release.continuation.yield(())
-    #expect(await task.value == "Unavailable")
-  }
-  @Test @MainActor func referencesResolveLabelsAndHideMissingIDs() async throws {
-    let field = CatalogField(property: [
-      "type": .string("multi_ref"), "ref_table": .string("targets"),
-    ])
-    let labels = await NativePropertyValue.referenceLabels(
-      field: field, value: #"["found","missing"]"#
-    ) { view in
-      #expect(view.table == "targets")
-      return [WorkspaceRow(record: ["id": .string("found")], label: "Visible label")]
+    for (index, cell) in cells.enumerated() {
+      #expect(await cell.value == notes[index % notes.count].label)
     }
-    #expect(labels == "Visible label, Unavailable")
+    #expect(
+      runtime.context.evaluateScript("labelTrace")?.toArray() as? [String] == ["mentionLabels"])
+    try await workspace.close()
+  }
+  @MainActor private func sampleWorkspace() async throws -> NativeWorkspace {
+    let workspace = try NativeWorkspace(path: ":memory:")
+    try await workspace.createSample()
+    return workspace
   }
 }

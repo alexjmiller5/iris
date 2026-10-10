@@ -43,14 +43,15 @@ struct ReferenceAdmissionPerformanceTests {
     let labels = (0..<300).map { _ in
       Task {
         queued += 1
-        return try await workspace.referenceRows(
-          view: CoreView(
-            table: "notes",
-            filters: [
-              CoreFilter(
-                column: "id", op: .eq,
-                value: .string("reference-note-000"))
-            ], limit: 1))
+        return try await workspace.passiveRead(
+          CoreRequests.Rows(
+            CoreView(
+              table: "notes",
+              filters: [
+                CoreFilter(
+                  column: "id", op: .eq,
+                  value: .string("reference-note-000"))
+              ], limit: 1)))
       }
     }
     try await waitUntil { queued == labels.count }
@@ -73,7 +74,7 @@ struct ReferenceAdmissionPerformanceTests {
     let elapsed = milliseconds(start.duration(to: .now))
     let preceding =
       runtime.context.evaluateScript(
-        "barrierTrace.slice(0, barrierTrace.indexOf('catalog')).filter(x => x === 'rows').length"
+        "barrierTrace.slice(0, barrierTrace.indexOf('catalogRevision')).filter(x => x === 'rows').length"
       )?.toInt32() ?? -1
     print("REFERENCE_BARRIER navigation_ms=\(elapsed) preceding_passive_reads=\(preceding)")
     for label in labels { _ = await label.result }
@@ -137,7 +138,6 @@ struct ReferenceAdmissionPerformanceTests {
         try await waitUntil {
           runtime.context.evaluateScript("releaseReferenceOwner !== null")?.toBool() == true
         }
-        var enqueued = 0
         let labels = (0..<count).map { index in
           Task {
             let field = CatalogField(property: [
@@ -146,14 +146,12 @@ struct ReferenceAdmissionPerformanceTests {
             ])
             return await NativePropertyValue.referenceLabels(
               field: field,
-              value: index.isMultiple(of: 2) ? "reference-note-000" : "reference-topic"
-            ) { view in
-              enqueued += 1
-              return try await workspace.referenceRows(view: view)
-            }
+              value: index.isMultiple(of: 2) ? "reference-note-000" : "reference-topic",
+              workspace: workspace)
           }
         }
-        try await waitUntil { enqueued == count }
+        // The cells' shared label read is queued once its rendering pass settles.
+        try await Task.sleep(for: .milliseconds(50))
         for label in labels.prefix(cancelledCount) { label.cancel() }
         let queuedAt = ContinuousClock.now
         let navigation = Task {
@@ -208,9 +206,9 @@ struct ReferenceAdmissionPerformanceTests {
           runtime.context.evaluateScript(
             #"""
             JSON.stringify({
-              rows: referenceTrace.filter(entry => entry.method === 'rows').length,
+              label_reads: referenceTrace.filter(entry => entry.method === 'mentionLabels').length,
               catalogs: referenceTrace.filter(entry => entry.method === 'catalog').length,
-              catalog_admission_ms: referenceTrace.find(entry => entry.method === 'catalog').milliseconds - referenceReleasedAt
+              catalog_admission_ms: referenceTrace.find(entry => entry.method === 'catalogRevision').milliseconds - referenceReleasedAt
             })
             """#)?.toString() ?? "missing"
         try #require(runtime.context.exception == nil)

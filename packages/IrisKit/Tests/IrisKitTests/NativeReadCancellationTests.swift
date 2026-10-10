@@ -39,10 +39,29 @@ struct NativeReadCancellationTests {
     #expect(
       fixture.admitted
         == submitted.filter { $0 >= cancelledCount }.map {
-          $0.isMultiple(of: 2) ? "catalog" : "rows"
+          $0.isMultiple(of: 2) ? "catalogRevision" : "rows"
         })
     // Draining an entirely cancelled queue must leave admission usable.
     #expect(!(try await fixture.workspace.catalog()).tables.isEmpty)
+    try await fixture.workspace.close()
+  }
+
+  @Test func supersededQueuedSearchNeverRuns() async throws {
+    let fixture = try await ReadAdmissionFixture()
+    defer { fixture.release() }
+    fixture.holdNext()
+    let blocker = Task { try await fixture.workspace.catalog() }
+    try await fixture.waitUntilHeld()
+    fixture.clearTrace()
+    let typed = Task { try await fixture.workspace.search(CoreSearchArgs(text: "s")) }
+    try await waitUntil { (try? inFlightMethods(fixture.workspace))?.contains("search") == true }
+    typed.cancel()
+    let latest = Task { try await fixture.workspace.search(CoreSearchArgs(text: "sample")) }
+    fixture.release()
+    _ = try await blocker.value
+    await #expect(throws: CancellationError.self) { try await typed.value }
+    _ = try await latest.value
+    #expect(fixture.admitted == ["search"], "Only the latest keystroke's search runs")
     try await fixture.workspace.close()
   }
 
@@ -234,10 +253,24 @@ struct WorkspaceReadCancellationTests {
       let original = model.rows
       let undo = model.undoAction
       model.error = "Previous load error"
-      fixture.holdNext(afterAdmission ? "rows" : "writeability")
+      // Rows are a reload's first read. Before admission, it waits behind another held read.
+      fixture.holdNext(afterAdmission ? "rows" : nil)
+      let blocker =
+        afterAdmission ? nil : fixture.track(Task { _ = try? await fixture.workspace.catalog() })
+      if blocker != nil { try await fixture.waitUntilHeld() }
       let reload = fixture.track(Task { await model.reload() })
       defer { fixture.release() }
-      try await fixture.waitUntilHeld()
+      if afterAdmission {
+        try await fixture.waitUntilHeld()
+      } else {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+        while (try? inFlightMethods(fixture.workspace))?.contains("rows") != true,
+          ContinuousClock.now < deadline
+        {
+          try await Task.sleep(for: .milliseconds(5))
+        }
+        try #require((try inFlightMethods(fixture.workspace)).contains("rows"))
+      }
       fixture.runtime.context.evaluateScript(
         fails
           ? "IrisSql.run(\"DROP TABLE notes\")"
@@ -246,6 +279,7 @@ struct WorkspaceReadCancellationTests {
       reload.cancel()
       fixture.release()
       await reload.value
+      await blocker?.value
       #expect(model.rows == original)
       #expect(model.error == "Previous load error")
       #expect(model.undoAction == undo)
@@ -387,7 +421,7 @@ struct ReferenceReadAdmissionTests {
     let labels = (0..<12).map { _ in
       Task {
         submitted += 1
-        return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+        return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
       }
     }
     try await waitUntil { submitted == labels.count }
@@ -415,9 +449,9 @@ struct ReferenceReadAdmissionTests {
     fixture.release()
     _ = try await blocker.value
     #expect(try await navigation.value.destination.table == "topics")
-    let openingIndex = try #require(fixture.admitted.firstIndex(of: "catalog"))
+    let openingIndex = try #require(fixture.admitted.firstIndex(of: "catalogRevision"))
     #expect(fixture.admitted[..<openingIndex].filter { $0 == "rows" }.count <= 1)
-    #expect(fixture.admitted.prefix(3) == ["rows", method, "catalog"])
+    #expect(fixture.admitted.prefix(3) == ["rows", method, "catalogRevision"])
     for label in labels { #expect(!(try await label.value).isEmpty) }
     _ = await remote.result
     try await fixture.workspace.close()
@@ -429,7 +463,7 @@ struct ReferenceReadAdmissionTests {
     let fixture = try await ReadAdmissionFixture()
     fixture.holdNext("rows")
     let active = Task {
-      try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     defer { fixture.release() }
     try await fixture.waitUntilHeld()
@@ -438,7 +472,7 @@ struct ReferenceReadAdmissionTests {
     let cancelled = Task {
       defer { cancelledFinished = true }
       submitted = true
-      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     try await waitUntil { submitted }
     await Task.detached { cancelled.cancel() }.value
@@ -446,7 +480,7 @@ struct ReferenceReadAdmissionTests {
     await #expect(throws: CancellationError.self) { try await cancelled.value }
     #expect(fixture.holding && fixture.admitted == ["rows"])
     let live = Task {
-      try await fixture.workspace.referenceRows(view: CoreView(table: "topics"))
+      try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "topics")))
     }
     fixture.release()
     #expect(!(try await active.value).isEmpty)
@@ -459,12 +493,13 @@ struct ReferenceReadAdmissionTests {
     let fixture = try await ReadAdmissionFixture()
     fixture.holdNext("rows")
     let failed = Task {
-      try await fixture.workspace.referenceRows(view: CoreView(table: "missing_fixture_table"))
+      try await fixture.workspace.passiveRead(
+        CoreRequests.Rows(CoreView(table: "missing_fixture_table")))
     }
     defer { fixture.release() }
     try await fixture.waitUntilHeld()
     let live = Task {
-      try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     fixture.release()
     await #expect(throws: WorkspaceError.self) { try await failed.value }
@@ -477,22 +512,22 @@ struct ReferenceReadAdmissionTests {
     var cancelled: Task<[WorkspaceRow], Error>?
     fixture.holdNext("rows")
     let active = Task {
-      // referenceRows hands its permit to the next waiter before returning.
+      // passiveRead hands its permit to the next waiter before returning.
       // Cancel that waiter in this same actor turn, before it can resume.
       defer { cancelled?.cancel() }
-      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     defer { fixture.release() }
     try await fixture.waitUntilHeld()
     var submitted = 0
     cancelled = Task {
       submitted += 1
-      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     try await waitUntil { submitted == 1 }
     let live = Task {
       submitted += 1
-      return try await fixture.workspace.referenceRows(view: CoreView(table: "topics"))
+      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "topics")))
     }
     try await waitUntil { submitted == 2 }
     fixture.release()
@@ -508,7 +543,7 @@ struct ReferenceReadAdmissionTests {
     let fixture = try await ReadAdmissionFixture()
     fixture.holdNext("rows")
     let active = Task {
-      try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     defer { fixture.release() }
     try await fixture.waitUntilHeld()
@@ -516,7 +551,7 @@ struct ReferenceReadAdmissionTests {
     let waiting = (0..<6).map { _ in
       Task {
         submitted += 1
-        return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+        return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
       }
     }
     try await waitUntil { submitted == waiting.count }
@@ -545,19 +580,16 @@ struct ReferenceReadAdmissionTests {
     defer { fixture.release() }
     try await fixture.waitUntilHeld()
     fixture.clearTrace()
-    var enqueued = 0
     let labels = (0..<8).map { _ in
       Task {
         await NativePropertyValue.referenceLabels(
           field: CatalogField(property: ["type": .string("ref"), "ref_table": .string("notes")]),
-          value: row.id
-        ) { view in
-          enqueued += 1
-          return try await fixture.workspace.referenceRows(view: view)
-        }
+          value: row.id, workspace: fixture.workspace)
       }
     }
-    try await waitUntil { enqueued == labels.count }
+    try await waitUntil {
+      (try? inFlightMethods(fixture.workspace))?.contains("mentionLabels") == true
+    }
     var navigating = false
     let navigation = Task {
       navigating = true
@@ -569,9 +601,10 @@ struct ReferenceReadAdmissionTests {
     _ = try await blocker.value
     #expect(try await navigation.value.destination.table == "topics")
     #expect(
-      fixture.admitted.first == "catalog",
+      fixture.admitted.first == "catalogRevision",
       "Mounted old reference labels must not block destination resolution")
     for label in labels { #expect(await label.value == row.label) }
+    #expect(fixture.admitted.filter { $0 == "mentionLabels" }.count == 1)
     try await fixture.workspace.close()
   }
 
@@ -591,22 +624,19 @@ struct ReferenceReadAdmissionTests {
     defer { fixture.release() }
     try await fixture.waitUntilHeld()
     fixture.clearTrace()
-    var enqueued = 0
     var completedLabels: Set<Int> = []
     let labels = (0..<20).map { index in
       Task {
         let result = await NativePropertyValue.referenceLabels(
           field: CatalogField(property: ["type": .string("ref"), "ref_table": .string("notes")]),
-          value: row.id
-        ) { view in
-          enqueued += 1
-          return try await fixture.workspace.referenceRows(view: view)
-        }
+          value: row.id, workspace: fixture.workspace)
         completedLabels.insert(index)
         return result
       }
     }
-    try await waitUntil { enqueued == labels.count }
+    try await waitUntil {
+      (try? inFlightMethods(fixture.workspace))?.contains("mentionLabels") == true
+    }
     var navigating = false
     let navigation = Task {
       navigating = true
@@ -622,10 +652,10 @@ struct ReferenceReadAdmissionTests {
     let completedBeforeCancellation = completedLabels
     if cancelOnActivation { for label in labels { label.cancel() } }
     await model.reload()
-    #expect(fixture.admitted.first == "catalog")
+    #expect(fixture.admitted.first == "catalogRevision")
     #expect(
-      fixture.admitted.filter { $0 == "rows" }.count < labels.count,
-      "New rows must publish before the passive-label backlog drains, even during delayed teardown")
+      fixture.admitted.filter { $0 == "mentionLabels" }.count <= 1,
+      "Twenty mounted labels share one passive read, so rows never wait behind a label backlog")
     #expect(model.table == "topics" && !model.loading && model.error == nil)
     #expect(model.writeability?.writable == true)
     let original = try #require(model.rows.first?.record)
@@ -633,13 +663,11 @@ struct ReferenceReadAdmissionTests {
       ["id": original["id"]!, "title": .string("Saved after navigation")],
       original: original, context: context)
     #expect(model.rows.first?.label == "Saved after navigation")
-    #expect(
-      fixture.admitted.filter { $0 == "rows" }.count < labels.count,
-      "Saving and its refresh must also complete before the passive-label backlog drains")
     for (index, label) in labels.enumerated() {
       let cancelledBeforeCompletion =
         cancelOnActivation && !completedBeforeCancellation.contains(index)
-      #expect(await label.value == (cancelledBeforeCompletion ? "Unavailable" : row.label))
+      let value = await label.value
+      #expect(value == row.label || (cancelledBeforeCompletion && value == "Unavailable"))
     }
     try await fixture.workspace.close()
   }
@@ -652,7 +680,7 @@ struct ReferenceReadAdmissionTests {
     var queued = 0
     let before = Task {
       queued += 1
-      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     defer { fixture.release() }
     try await fixture.waitUntilHeld()
@@ -666,7 +694,7 @@ struct ReferenceReadAdmissionTests {
     try await waitUntil { queued == 2 }
     let after = Task {
       queued += 1
-      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     try await waitUntil { queued == 3 }
     let secondWrite = Task {
@@ -711,7 +739,7 @@ struct ReferenceReadAdmissionTests {
     var queued = 0
     let before = Task {
       queued += 1
-      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     try await waitUntil { queued == 1 }
     let remote = Task {
@@ -725,7 +753,7 @@ struct ReferenceReadAdmissionTests {
     try await waitUntil { queued == 2 }
     let after = Task {
       queued += 1
-      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     try await waitUntil { queued == 3 }
     let navigation = Task {
@@ -739,7 +767,7 @@ struct ReferenceReadAdmissionTests {
     _ = await remote.result
     #expect(!(try await navigation.value).tables.isEmpty)
     _ = try await after.value
-    #expect(fixture.admitted == ["rows", method, "catalog", "rows"])
+    #expect(fixture.admitted == ["rows", method, "catalogRevision", "rows"])
     try await fixture.workspace.close()
   }
 
@@ -753,7 +781,7 @@ struct ReferenceReadAdmissionTests {
     var queued = 0
     let before = Task {
       queued += 1
-      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     try await waitUntil { queued == 1 }
     let close = Task {
@@ -763,7 +791,7 @@ struct ReferenceReadAdmissionTests {
     try await waitUntil { queued == 2 }
     let after = Task {
       queued += 1
-      return try await fixture.workspace.referenceRows(view: CoreView(table: "notes"))
+      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     try await waitUntil { queued == 3 }
     let navigation = Task {
@@ -806,6 +834,8 @@ struct ReferenceReadAdmissionTests {
     runtime = try IrisCoreRuntime()
     workspace = try NativeWorkspace(path: path, runtime: runtime)
     if seed { try await workspace.createSample() }
+    // A warm catalog makes each catalog() one cancellable catalogRevision read.
+    _ = try await workspace.catalog()
     runtime.context.evaluateScript(
       #"""
       globalThis.readAdmissionTrace = [];
@@ -949,4 +979,13 @@ private final class ReadAdmissionTransport: URLProtocol, @unchecked Sendable {
     client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
   }
   override func stopLoading() {}
+}
+
+/// Methods of requests queued or running in the workspace's database queue.
+@MainActor private func inFlightMethods(_ workspace: NativeWorkspace) throws -> [String] {
+  let report = try workspace.diagnosticReport(version: "0", build: "0")
+  let snapshot =
+    (try JSONSerialization.jsonObject(with: Data(report.utf8)) as? [String: Any])?["snapshot"]
+    as? [String: Any]
+  return (snapshot?["inFlight"] as? [[String: Any]] ?? []).compactMap { $0["method"] as? String }
 }

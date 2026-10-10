@@ -13,6 +13,7 @@ final class NativeWorkspaceDiagnostics {
     case sessionRevocationResult, referenceSources, referencedBy, rejections, runRowAction
     case resolveSourceLink, sample, prepareLocalViews, prepareLocalPins, close
     case listSidebarPins, pinTable, unpinTable, moveTablePin
+    case catalogRevision, mentionLabels, ensureDefaultView
   }
 
   enum Phase: String, Codable { case queued, active, suspended, completed }

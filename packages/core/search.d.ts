@@ -21,3 +21,5 @@ export declare function prepareSearch(db: SqlDriver, catalog: Catalog): Promise<
 export declare function assertSearchSupport(db: SqlDriver): Promise<void>;
 /** Search only the local replica. Missing/skipped remote tables are not queried. */
 export declare function search(db: SqlDriver, args: SearchArgs): Promise<SearchHit[]>;
+/** Ranked matches per search; more matches than this rank only the most recently indexed. */
+export declare const SEARCH_RANKED_MATCHES = 2000;
