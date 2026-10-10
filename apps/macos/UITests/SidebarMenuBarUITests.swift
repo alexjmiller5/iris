@@ -14,7 +14,10 @@ final class SidebarMenuBarUITests: XCTestCase {
     // A previous run may have left the sidebar hidden; start from the visible state.
     if !visible(pill) { app.typeKey("\\", modifierFlags: .command) }
     XCTAssertTrue(wait(pill, visible: true))
-    XCTAssertEqual(pill.label, "Local only")
+    // The background search index may still be catching up right after launch.
+    let localOnly = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "label == 'Local only'"), object: pill)
+    XCTAssertEqual(XCTWaiter.wait(for: [localOnly], timeout: 30), .completed, pill.label)
     XCTAssertFalse(app.buttons["sync-now"].exists)
     capture("mac-sidebar-visible")
 

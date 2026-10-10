@@ -21,7 +21,12 @@ final class AccessibilityAuditUITests: XCTestCase {
     let pill = app.buttons["workspace-status"]
     if !(pill.exists && pill.isHittable) { app.typeKey("\\", modifierFlags: .command) }
     XCTAssertTrue(pill.waitForExistence(timeout: 5))
-    XCTAssertEqual(pill.label, "Local only", "The sync pill speaks its state")
+    // The background search index may still be catching up right after launch.
+    let localOnly = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "label == 'Local only'"), object: pill)
+    XCTAssertEqual(
+      XCTWaiter.wait(for: [localOnly], timeout: 30), .completed,
+      "The sync pill speaks its state: \(pill.label)")
     try audit(app, "window")
 
     // Popovers: Escape closes them.
