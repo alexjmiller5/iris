@@ -2259,8 +2259,8 @@ final class WorkspaceModel {
         if let cachedCatalog { catalog = cachedCatalog }
         if table == nil { table = tables.first?["id"]?.text }
         syncDataRevision += 1
-        // A failed round can still have committed some pulled pages.
-        scheduleSearchIndex()
+        // A failed round can still have committed the pages it received.
+        if (syncProgress?.processedRows ?? 0) > 0 { scheduleSearchIndex() }
         await reload()
         guard client === self.client, generation == workspaceGeneration else { return false }
         if !syncCancelledByUser { syncError = error.localizedDescription }

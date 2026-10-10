@@ -669,6 +669,7 @@ async function dispatch(request: DatabaseRequest) {
 		case 'writeability':
 			return local.writeability(args);
 		case 'sync': {
+			received = 0;
 			if (databaseName === 'iris-demo')
 				throw new Error('Demo workspaces cannot sync. Open your workspace first.');
 			if (
@@ -692,7 +693,12 @@ async function dispatch(request: DatabaseRequest) {
 				createHttpHub(args.endpoint, args.token, (url, init) =>
 					fetch(url, { ...init, signal: AbortSignal.timeout(120_000) })
 				),
-				{ progress: (state: unknown) => respond({ syncProgress: state }) }
+				{
+					progress: (state: unknown) => {
+						received = Number((state as { rowsReceived?: number }).rowsReceived) || 0;
+						respond({ syncProgress: state });
+					}
+				}
 			);
 			return createCoreHandlers(db, () => hub, 'iris').sync(args);
 		}
@@ -706,6 +712,8 @@ async function dispatch(request: DatabaseRequest) {
 // directly behind it, so a later request sees that change indexed; catch-up steps wait a
 // task, so requests queued meanwhile run between them.
 let indexScheduled = false;
+/** Rows the current or last sync round received, from its progress reports. */
+let received = 0;
 function scheduleIndex(now = false) {
 	if (indexScheduled) return;
 	indexScheduled = true;
@@ -802,7 +810,8 @@ scope.onmessage = ({ data }) => {
 			// fail after those changes. The caller owns its refresh/error; notify
 			// the other tabs without racing that error with a second local refresh.
 			if (data?.method === 'sync' && connection !== undefined) {
-				scheduleIndex(true);
+				// A failed round can still have committed the pages it received.
+				if (received) scheduleIndex(true);
 				channel?.postMessage({ changed: 'sync' });
 			}
 		}
