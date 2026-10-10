@@ -683,9 +683,17 @@ can commit before a later request fails. Refresh rows, counts and writeability
 in every open tab while retaining editor drafts and the original sync error.
 Connected web workspaces sync by themselves through `sync-status.ts`: push 750 ms
 after a committed write (worker `change` events carry the method, so other tabs'
-writes count), pull every 2 s while visible and online, wake on visibility, focus
-and online, one run at a time, backing off to 60 s on errors. One visible connected
-tab holds the `iris:sync-leader:<database>` Web Lock; hidden tabs release it. The
+writes count), pull when the hub's wake socket signals a change or (re)opens, wake
+on visibility, focus and online, one run at a time, backing off to 60 s on errors.
+Between signals the visible, online leader checks every 60 s while the socket is
+live and every 2 s while it reconnects. One visible connected tab holds the
+`iris:sync-leader:<database>` Web Lock and the socket (`ChangeSocket` on soma's
+`GET /v1/changes`, token as the `soma-token.<token>` subprotocol); hidden tabs
+release both. A ping every 30 s without a pong within 10 s drops the socket;
+reconnects back off from 1 s doubling to 30 s, and after two minutes down the
+client retries and checks once a minute. The pill shows Live, Reconnecting or
+Checking every minute where it would say Synced. Synthetic test hubs serve the
+real `ChangeSignal` through `scripts/fixture-changes.ts`. The
 worker broadcasts a sync only when it pulled, pushed or rejected rows, so idle polls
 never refresh views. `SyncStatus.svelte` in the sidebar is the only sync/save status;
 add no sync or refresh buttons, progress bars or save notices. Cmd/Ctrl+\ toggles

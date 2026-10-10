@@ -2,7 +2,8 @@ import { workspacePage } from './test-origin';
 import { chromium, expect, type Page } from '@playwright/test';
 
 // Background sync without any sync control: pushes after a write, pulls outside
-// rows, survives offline, keeps drafts, and one tab leads. Needs scripts/test-hub.ts.
+// rows the moment the hub's wake socket signals them, stays quiet while idle,
+// survives offline, keeps drafts, and one tab leads. Needs scripts/test-hub.ts.
 const url = process.env.IRIS_TEST_URL ?? 'http://127.0.0.1:5197/workspace';
 const hub = process.env.IRIS_TEST_HUB ?? 'http://127.0.0.1:5200';
 const shots = process.env.IRIS_TEST_SHOTS;
@@ -63,7 +64,7 @@ try {
 	};
 	await connect(page);
 	const pill = page.getByLabel(/^Sync status:/);
-	await expect(pill).toHaveAccessibleName('Sync status: Synced');
+	await expect(pill).toHaveAccessibleName('Sync status: Live');
 	for (const name of ['Sync now', 'Cancel sync', 'Refresh', 'Refresh usage'])
 		await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
 	await shot(page, '01-synced');
@@ -90,13 +91,26 @@ try {
 	expect(pushMs).toBeLessThan(2000);
 	await expect(grid.getByText('Saving…')).toHaveCount(0);
 
-	// A row written elsewhere appears without interaction.
+	// Idle with a live socket: no timer-driven rounds (the fallback is a minute).
+	// Our own push comes back as one wake first; let that round finish.
+	await expect(pill).toHaveAccessibleName('Sync status: Live');
+	await page.waitForTimeout(2000);
+	const cursorReads: string[] = [];
+	const countCursor = (request: { url(): string }) => {
+		if (new URL(request.url()).pathname === '/v1/cursor') cursorReads.push(request.url());
+	};
+	page.context().on('request', countCursor);
+	await page.waitForTimeout(10_000);
+	page.context().off('request', countCursor);
+	expect(cursorReads).toHaveLength(0);
+
+	// A row written elsewhere appears without interaction, as soon as the hub signals it.
 	const outsideId = `outside-${Date.now()}`;
 	await hubInsert(outsideId, `Outside ${outsideId}`);
 	const pullStart = Date.now();
 	await expect(cell('title', outsideId)).toBeVisible({ timeout: 5000 });
 	const pullMs = Date.now() - pullStart;
-	expect(pullMs).toBeLessThan(3500);
+	expect(pullMs).toBeLessThan(1500);
 	await shot(page, '02-outside-row');
 
 	// An open cell draft survives a pull that changes the table underneath it.
@@ -131,7 +145,7 @@ try {
 	await shot(page, '03-offline-pending');
 	expect((await hubRow(outsideId))?.title).not.toBe(local);
 	await conditions(true);
-	await expect(pill).toHaveAccessibleName('Sync status: Synced', { timeout: 5000 });
+	await expect(pill).toHaveAccessibleName('Sync status: Live', { timeout: 5000 });
 	await expect.poll(async () => (await hubRow(outsideId))?.title, { timeout: 5000 }).toBe(local);
 	await offline();
 	offline = undefined;
@@ -173,7 +187,7 @@ try {
 	await expect(sidebar).toBeVisible();
 	await shot(page, '06-sidebar-open');
 	console.log(
-		`PASS: pushed in ${pushMs} ms, outside row in ${pullMs} ms, offline drained, one leader, sidebar toggles and persists`
+		`PASS: pushed in ${pushMs} ms, no idle rounds in 10 s, outside row in ${pullMs} ms, offline drained, one leader, sidebar toggles and persists`
 	);
 } finally {
 	await offline?.();

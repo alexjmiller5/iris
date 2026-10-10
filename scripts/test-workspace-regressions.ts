@@ -67,7 +67,7 @@ try {
 		await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 		await page.getByLabel('Device token').fill('fixture');
 		await page.getByRole('button', { name: 'Connect', exact: true }).click();
-		await expect(page.getByLabel(/^Sync status:/)).toHaveAccessibleName('Sync status: Synced', { timeout: 30000 });
+		await expect(page.getByLabel(/^Sync status:/)).toHaveAccessibleName('Sync status: Live', { timeout: 30000 });
 	}
 	await connect();
 	await page.getByRole('navigation', { name: 'Tables' }).getByRole('button', { name: 'widgets', exact: true }).click({ timeout: 15000 });

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { SyncScheduler, leadership, syncPill, syncProgressLabel } from './sync-status';
+import { ChangeSocket, SyncScheduler, leadership, syncPill, syncProgressLabel } from './sync-status';
+import type { Liveness } from './sync-status';
 
 let ready = true;
 let runs = 0;
@@ -46,6 +47,23 @@ test('pulls every 2 s while ready', async () => {
 	await vi.advanceTimersByTimeAsync(1);
 	expect(runs).toBe(2);
 	await vi.advanceTimersByTimeAsync(4000);
+	expect(runs).toBe(4);
+});
+
+test('checks once a minute while the wake socket is live, every 2 s again once it drops', async () => {
+	scheduler.cadence(60_000);
+	scheduler.wake();
+	await vi.advanceTimersByTimeAsync(0);
+	expect(runs).toBe(1);
+	await vi.advanceTimersByTimeAsync(59_999);
+	expect(runs).toBe(1);
+	await vi.advanceTimersByTimeAsync(1);
+	expect(runs).toBe(2);
+	await vi.advanceTimersByTimeAsync(10_000);
+	scheduler.cadence(2000);
+	await vi.advanceTimersByTimeAsync(2000);
+	expect(runs).toBe(3);
+	await vi.advanceTimersByTimeAsync(2000);
 	expect(runs).toBe(4);
 });
 
@@ -215,6 +233,17 @@ test('pill names exactly one state, in priority order', () => {
 	expect(syncPill({ ...base, lastSync: null }).title).toBe('No sync completed yet');
 });
 
+test('a quiet pill names how the wake signal stands', () => {
+	expect(syncPill({ ...base, liveness: 'live' })).toMatchObject({ label: 'Live', tone: 'ok' });
+	expect(syncPill({ ...base, liveness: 'reconnecting' })).toMatchObject({ label: 'Reconnecting' });
+	expect(syncPill({ ...base, liveness: 'minute' })).toMatchObject({
+		label: 'Checking every minute'
+	});
+	// Every other state still outranks it.
+	expect(syncPill({ ...base, liveness: 'live', pending: 1 })).toMatchObject({ label: 'Syncing' });
+	expect(syncPill({ ...base, liveness: 'live', online: false })).toMatchObject({ label: 'Offline' });
+});
+
 test('shows a long backup action in place of sync state', () => {
 	expect(syncPill({ ...base, activity: 'Restoring 42%' })).toMatchObject({
 		label: 'Restoring 42%',
@@ -257,4 +286,138 @@ test('a long sync names the tables left and, once the size is known, the time le
 			tone: 'busy'
 		}
 	);
+});
+
+class FakeSocket {
+	static all: FakeSocket[] = [];
+	sent: string[] = [];
+	closed = false;
+	onopen: (() => void) | null = null;
+	onmessage: ((event: { data: unknown }) => void) | null = null;
+	onclose: (() => void) | null = null;
+	onerror: (() => void) | null = null;
+	constructor(
+		readonly url: string,
+		readonly protocols: string[]
+	) {
+		FakeSocket.all.push(this);
+	}
+	send(data: string) {
+		this.sent.push(data);
+	}
+	close() {
+		if (this.closed) return;
+		this.closed = true;
+		this.onclose?.();
+	}
+	open() {
+		this.onopen?.();
+	}
+	receive(data: string) {
+		this.onmessage?.({ data });
+	}
+	drop() {
+		this.onerror?.();
+		this.close();
+	}
+}
+
+function socketFixture() {
+	FakeSocket.all = [];
+	const wakes: number[] = [];
+	const states: Liveness[] = [];
+	const socket = new ChangeSocket(
+		'https://hub.example/',
+		'lt_abc',
+		{ wake: () => wakes.push(Date.now()), state: (s) => states.push(s) },
+		(url, protocols) => new FakeSocket(url, protocols) as unknown as WebSocket
+	);
+	const last = () => FakeSocket.all.at(-1)!;
+	return { socket, wakes, states, last };
+}
+
+test('the wake socket authenticates with the token subprotocol and wakes a round on open and on each change', async () => {
+	const { socket, wakes, states, last } = socketFixture();
+	socket.want(true);
+	expect(last().url).toBe('wss://hub.example/v1/changes');
+	expect(last().protocols).toEqual(['soma-changes-v1', 'soma-token.lt_abc']);
+	expect(wakes).toHaveLength(0);
+	last().open();
+	expect(states.at(-1)).toBe('live');
+	expect(wakes).toHaveLength(1);
+	last().receive('{"seq":7,"tables":["notes"]}');
+	expect(wakes).toHaveLength(2);
+	last().receive('pong');
+	last().receive('not json');
+	expect(wakes).toHaveLength(2);
+	socket.want(false);
+	expect(last().closed).toBe(true);
+	await vi.advanceTimersByTimeAsync(120_000);
+	expect(FakeSocket.all).toHaveLength(1);
+});
+
+test('a dropped socket reconnects with backoff and a silent one is closed after a missed pong', async () => {
+	const { socket, states, last } = socketFixture();
+	socket.want(true);
+	last().open();
+	last().drop();
+	expect(states.at(-1)).toBe('reconnecting');
+	await vi.advanceTimersByTimeAsync(999);
+	expect(FakeSocket.all).toHaveLength(1);
+	await vi.advanceTimersByTimeAsync(1);
+	expect(FakeSocket.all).toHaveLength(2);
+	last().drop();
+	await vi.advanceTimersByTimeAsync(1999);
+	expect(FakeSocket.all).toHaveLength(2);
+	await vi.advanceTimersByTimeAsync(1);
+	expect(FakeSocket.all).toHaveLength(3);
+	// A healthy connection resets the backoff and pings every 30 s.
+	last().open();
+	await vi.advanceTimersByTimeAsync(30_000);
+	expect(last().sent).toEqual(['ping']);
+	last().receive('pong');
+	await vi.advanceTimersByTimeAsync(30_000);
+	expect(last().sent).toEqual(['ping', 'ping']);
+	// No pong within 10 s: the connection is dead even if the OS has not said so.
+	await vi.advanceTimersByTimeAsync(10_000);
+	expect(last().closed).toBe(true);
+	expect(states.at(-1)).toBe('reconnecting');
+	await vi.advanceTimersByTimeAsync(1000);
+	expect(FakeSocket.all).toHaveLength(4);
+	socket.want(false);
+});
+
+test('a socket down for two minutes falls back to checking every minute', async () => {
+	const { socket, states, last } = socketFixture();
+	socket.want(true);
+	// Never opens: every attempt fails for three minutes.
+	for (let i = 0; i < 6; i++) {
+		last().drop();
+		await vi.advanceTimersByTimeAsync(30_000);
+	}
+	expect(states.at(-1)).toBe('minute');
+	const count = FakeSocket.all.length;
+	last().drop();
+	await vi.advanceTimersByTimeAsync(59_999);
+	expect(FakeSocket.all).toHaveLength(count);
+	await vi.advanceTimersByTimeAsync(1);
+	expect(FakeSocket.all).toHaveLength(count + 1);
+	last().open();
+	expect(states.at(-1)).toBe('live');
+	socket.want(false);
+});
+
+test('a socket that drops after a long healthy life reconnects at once, not once a minute', async () => {
+	const { socket, states, last } = socketFixture();
+	socket.want(true);
+	last().open();
+	for (let i = 0; i < 10; i++) {
+		await vi.advanceTimersByTimeAsync(30_000);
+		last().receive('pong');
+	}
+	last().drop();
+	expect(states.at(-1)).toBe('reconnecting');
+	await vi.advanceTimersByTimeAsync(1000);
+	expect(FakeSocket.all).toHaveLength(2);
+	socket.want(false);
 });

@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { fixtureChanges } from './fixture-changes';
 
 // Real Worker, synthetic SQLite. Explicit source path keeps this optional
 // integration harness usable without a prescribed sibling checkout layout.
@@ -30,8 +31,10 @@ for(const [name,columns] of Object.entries({
 db.db.exec(`INSERT INTO catalog_tables(id,kind,display,purpose) VALUES ('widgets','table','title','Synthetic integration workspace');
 INSERT INTO catalog_properties(id,tbl,col,label,sort,type,required) VALUES ('widgets.title','widgets','title','Title',0,'text',1),('widgets.body','widgets','body','Body',1,'markdown',0),('widgets.quantity','widgets','quantity','Quantity',2,'int',0);
 INSERT INTO widgets(id,title,body,quantity) VALUES ('fixture-record','Fixture record','# From the hub',4);`);
+const changes=await fixtureChanges(source);
 const port=Number(process.env.IRIS_TEST_HUB_PORT??5200);
-const server=Bun.serve({hostname:'127.0.0.1',port,fetch(request){
-  return worker.fetch(request,{DB:db,AUTH_DB:auth,HUB_TOKEN:'operator-fixture',LOGIN_ACCESS_AUD:'fixture-aud',CORS_ORIGINS:process.env.IRIS_TEST_ORIGIN??'http://127.0.0.1:5197'},{access:{aud:'fixture-aud',async getIdentity(){return {email:'owner@example.test'};}},waitUntil(p:Promise<unknown>){void p.catch(()=>{});}});
-}});
+const server=Bun.serve({hostname:'127.0.0.1',port,async fetch(request,bun){
+  const response=await worker.fetch(request,{DB:db,AUTH_DB:auth,CHANGES:changes.CHANGES,HUB_TOKEN:'operator-fixture',LOGIN_ACCESS_AUD:'fixture-aud',CORS_ORIGINS:process.env.IRIS_TEST_ORIGIN??'http://127.0.0.1:5197'},{access:{aud:'fixture-aud',async getIdentity(){return {email:'owner@example.test'};}},waitUntil(p:Promise<unknown>){void p.catch(()=>{});}});
+  return changes.upgrade(request,response,bun);
+},websocket:changes.websocket});
 console.log(`Synthetic hub listening at ${server.url}`);

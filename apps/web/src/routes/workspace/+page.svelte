@@ -92,9 +92,11 @@
 	import HubEnrollment from '$lib/HubEnrollment.svelte';
 	import SyncStatus from '$lib/SyncStatus.svelte';
 	import {
+		ChangeSocket,
 		SyncScheduler,
 		leadership,
 		syncProgressLabel,
+		type Liveness,
 		type SyncProgress
 	} from '$lib/sync-status';
 	import type { HubConnection } from '$lib/device-enrollment';
@@ -2067,8 +2069,10 @@
 		if (current() && !accepted) throw failure ?? new Error('Connection failed.');
 	}
 
-	// Sync runs by itself: push 750 ms after a write, pull every 2 s while this tab is visible.
+	// Sync runs by itself: push 750 ms after a write, pull when the hub signals a change,
+	// and check every 60 s (2 s while its socket is down) while this tab is visible.
 	let backupActivity = $state('');
+	let liveness = $state<Liveness | undefined>();
 	let connecting = $state(false),
 		syncSlow = $state(false),
 		syncDetail = $state(''),
@@ -2145,13 +2149,32 @@
 			},
 			() => {}
 		);
+		// The leader holds the hub's wake socket; a change message or a (re)opened
+		// socket starts a round. While it is down, the 2 s check stands in.
+		const socket = new ChangeSocket(connection.endpoint, connection.token, {
+			wake: () => scheduler.wake(),
+			state: (state) => {
+				liveness = state;
+				scheduler.cadence(state === 'reconnecting' ? 2000 : 60_000);
+			}
+		});
+		const listen = () => {
+			const on = leader && document.visibilityState === 'visible' && navigator.onLine;
+			socket.want(on);
+			if (!on) {
+				liveness = undefined;
+				scheduler.cadence(2000);
+			}
+		};
 		// One visible tab runs the loop; the others refresh from its change broadcasts.
 		const lead = leadership(navigator.locks, 'iris:sync-leader:workspace', (on) => {
 			leader = on;
+			listen();
 			if (on) scheduler.wake();
 		});
 		const wake = () => {
 			lead.want(document.visibilityState === 'visible');
+			listen();
 			scheduler.wake();
 		};
 		const changed = (event: Event) => {
@@ -2161,15 +2184,19 @@
 		workspace.addEventListener('change', changed);
 		document.addEventListener('visibilitychange', wake);
 		window.addEventListener('online', wake);
+		window.addEventListener('offline', listen);
 		window.addEventListener('focus', wake);
 		wake();
 		return () => {
 			wakeSync = () => {};
 			scheduler.stop();
+			socket.want(false);
+			liveness = undefined;
 			lead.want(false);
 			workspace.removeEventListener('change', changed);
 			document.removeEventListener('visibilitychange', wake);
 			window.removeEventListener('online', wake);
+			window.removeEventListener('offline', listen);
 			window.removeEventListener('focus', wake);
 		};
 	});
@@ -2706,6 +2733,7 @@
 							{lastSync}
 							error={syncError}
 							activity={backupActivity}
+							{liveness}
 							onaction={syncAction}
 						/>
 					</div>

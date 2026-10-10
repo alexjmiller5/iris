@@ -76,7 +76,7 @@ try {
 	await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 	await page.getByLabel('Device token').fill('fixture');
 	await page.getByRole('button', { name: 'Connect', exact: true }).click();
-	await expect(page.getByLabel('Sync status: Synced', { exact: true })).toBeVisible({ timeout: 15000 });
+	await expect(page.getByLabel('Sync status: Live', { exact: true })).toBeVisible({ timeout: 15000 });
 	// Local writes push automatically; 'online' wakes a scheduler that backed off while the hub was down.
 	const pushed = async (done: () => boolean) => {
 		await page.evaluate(() => window.dispatchEvent(new Event('online')));

@@ -385,7 +385,7 @@ async function hubWalk(page: Page, scheme: string) {
     await page.keyboard.press("Enter");
     await page.getByRole("heading", { name: "widgets", exact: true }).waitFor({ timeout: 60_000 });
     const pill = page.getByLabel(/^Sync status:/);
-    await page.waitForFunction(() => document.querySelector('[aria-label="Sync status: Synced"]'), null, { timeout: 30_000 });
+    await page.waitForFunction(() => document.querySelector('[aria-label="Sync status: Live"]'), null, { timeout: 30_000 });
     await audit("hub-synced");
 
     for (const [name, state] of [[/^Notifications/, "notifications"], ["Settings", "settings-usage"]] as const) {

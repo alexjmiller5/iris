@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { fixtureChanges } from './fixture-changes';
 
 /** Actual service Worker with disposable, synthetic D1 state. */
 export async function regressionHub(source: string, origin: string, port = 0, options: {
@@ -38,9 +39,11 @@ export async function regressionHub(source: string, origin: string, port = 0, op
 		('second-record','Second record','Second body','Dynamic',NULL),
 		('legacy-record','Legacy record','Legacy body','Dynamic','["Legacy","Dynamic"]');`);
 	const handler = options.wrap?.(worker) ?? worker;
-	const server = Bun.serve({ hostname: '127.0.0.1', port, fetch(request) {
-		return handler.fetch(request, { DB: db, HUB_TOKEN: 'fixture-root', AUTH_DB: auth, CORS_ORIGINS: origin, ...options.env }, { ...options.context, waitUntil(p: Promise<unknown>) { void p.catch(() => {}); } });
-	} });
+	const changes = await fixtureChanges(source);
+	const server = Bun.serve({ hostname: '127.0.0.1', port, async fetch(request, bun) {
+		const response = await handler.fetch(request, { DB: db, HUB_TOKEN: 'fixture-root', AUTH_DB: auth, CHANGES: changes.CHANGES, CORS_ORIGINS: origin, ...options.env }, { ...options.context, waitUntil(p: Promise<unknown>) { void p.catch(() => {}); } });
+		return changes.upgrade(request, response, bun);
+	}, websocket: changes.websocket });
 	return { server, db, auth };
 }
 

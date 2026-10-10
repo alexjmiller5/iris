@@ -1,4 +1,5 @@
-/** Background sync cadence: push shortly after writes, pull often while someone is looking. */
+/** Background sync cadence: push shortly after writes; between hub wake signals, check
+ * every `pullInterval` (2 s while the socket is down, 60 s while it is live). */
 export class SyncScheduler {
 	syncing = false;
 	failures = 0;
@@ -9,7 +10,7 @@ export class SyncScheduler {
 	constructor(
 		private readonly host: { ready(): boolean; run(): Promise<void> },
 		private readonly onchange: () => void,
-		private readonly options = { pushDelay: 750, pullInterval: 2000, maxBackoff: 60_000 }
+		private options = { pushDelay: 750, pullInterval: 2000, maxBackoff: 60_000 }
 	) {}
 
 	/** A local write committed; push it once writes settle. */
@@ -17,9 +18,16 @@ export class SyncScheduler {
 		this.schedule(this.options.pushDelay);
 	}
 
-	/** Visibility, focus, network or connection changed: sync now if allowed. */
+	/** Visibility, focus, network, connection or a hub change signal: sync now if allowed. */
 	wake() {
 		this.schedule(0);
+	}
+
+	/** The idle check interval changed (the wake socket opened or dropped). */
+	cadence(pullInterval: number) {
+		if (pullInterval === this.options.pullInterval) return;
+		this.options = { ...this.options, pullInterval };
+		if (!this.syncing && !this.failures) this.schedule(pullInterval);
 	}
 
 	stop() {
@@ -58,6 +66,103 @@ export class SyncScheduler {
 			this.schedule(
 				this.failures ? Math.min(pullInterval * 2 ** this.failures, maxBackoff) : pullInterval
 			);
+	}
+}
+
+/** How the hub's change signal stands: a live socket, a recent drop being retried,
+ * or a socket down so long that the client checks once a minute. */
+export type Liveness = 'live' | 'reconnecting' | 'minute';
+
+/** The hub's WebSocket wake signal. Any change message starts a round; opening (or
+ * reopening) the socket starts one too, which covers messages missed while down.
+ * Browsers cannot set headers on a WebSocket, so the token rides as a subprotocol. */
+export class ChangeSocket {
+	private ws: WebSocket | null = null;
+	private wanted = false;
+	private attempt = 0;
+	private downSince = 0;
+	private retry: ReturnType<typeof setTimeout> | undefined;
+	private ping: ReturnType<typeof setInterval> | undefined;
+	private pong: ReturnType<typeof setTimeout> | undefined;
+
+	constructor(
+		private readonly hub: string,
+		private readonly token: string,
+		private readonly on: { wake(): void; state(liveness: Liveness): void },
+		private readonly connect = (url: string, protocols: string[]) => new WebSocket(url, protocols),
+		private readonly timing = { ping: 30_000, pong: 10_000, maxRetry: 30_000, minute: 120_000 }
+	) {}
+
+	want(on: boolean) {
+		if (on === this.wanted) return;
+		this.wanted = on;
+		if (on) {
+			this.downSince = Date.now();
+			this.open();
+		} else this.teardown();
+	}
+
+	private open() {
+		const url = new URL('/v1/changes', this.hub);
+		url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:';
+		try {
+			this.ws = this.connect(url.href, ['soma-changes-v1', `soma-token.${this.token}`]);
+		} catch {
+			return this.dropped();
+		}
+		const ws = this.ws;
+		ws.onopen = () => {
+			if (ws !== this.ws) return;
+			this.attempt = 0;
+			this.on.state('live');
+			this.on.wake();
+			this.ping = setInterval(() => {
+				ws.send('ping');
+				// A dead connection may never finish a close handshake: drop it now.
+				this.pong ??= setTimeout(() => this.dropped(), this.timing.pong);
+			}, this.timing.ping);
+		};
+		ws.onmessage = (event) => {
+			if (ws !== this.ws) return;
+			if (event.data === 'pong') {
+				clearTimeout(this.pong);
+				this.pong = undefined;
+				return;
+			}
+			try {
+				if (typeof JSON.parse(String(event.data))?.seq === 'number') this.on.wake();
+			} catch {
+				/* Not a change message. */
+			}
+		};
+		ws.onclose = ws.onerror = () => {
+			if (ws === this.ws) this.dropped();
+		};
+	}
+
+	private dropped() {
+		const wasLive = this.attempt === 0 && this.ws !== null && this.ping !== undefined;
+		this.teardown();
+		if (!this.wanted) return;
+		if (wasLive) this.downSince = Date.now();
+		const minute = Date.now() - this.downSince >= this.timing.minute;
+		this.on.state(minute ? 'minute' : 'reconnecting');
+		const delay = minute ? 60_000 : Math.min(1000 * 2 ** this.attempt, this.timing.maxRetry);
+		this.attempt++;
+		this.retry = setTimeout(() => this.open(), delay);
+	}
+
+	private teardown() {
+		clearTimeout(this.retry);
+		clearInterval(this.ping);
+		clearTimeout(this.pong);
+		this.retry = this.ping = this.pong = undefined;
+		const ws = this.ws;
+		this.ws = null;
+		if (ws) {
+			ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+			ws.close();
+		}
 	}
 }
 
@@ -105,6 +210,8 @@ export interface PillInput {
 	activity?: string;
 	/** Where a long sync stands (syncProgressLabel). */
 	syncDetail?: string;
+	/** The leader tab's wake socket; other tabs leave it unset. */
+	liveness?: Liveness;
 }
 export interface Pill {
 	label: string;
@@ -157,7 +264,9 @@ export function syncPill(s: PillInput): Pill {
 		return pill('Paused · usage cap', 'warn', null, 'Hub usage cap reached; sync retries later');
 	if (s.error) return pill('Sync error', 'error', null, s.error);
 	if (s.pending) return pill('Syncing', 'busy');
-	return pill('Synced', 'ok');
+	if (s.liveness === 'reconnecting') return pill('Reconnecting', 'idle');
+	if (s.liveness === 'minute') return pill('Checking every minute', 'warn');
+	return pill(s.liveness === 'live' ? 'Live' : 'Synced', 'ok');
 }
 
 /** Core's sync progress (SyncProgress), as the database worker forwards it. */
