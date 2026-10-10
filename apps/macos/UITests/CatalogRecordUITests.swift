@@ -72,7 +72,12 @@ final class CatalogRecordUITests: XCTestCase {
     capture(app, "catalog-metadata")
     replace(title, with: "Blocked")
     let detail = app.textFields["field-detail"]
-    replace(detail, with: "Retained second edit")
+    XCTAssertTrue(detail.isHittable)
+    detail.click()
+    // Leaving the title saves it; the refusal lands while Detail has focus and must keep it.
+    XCTAssertTrue(app.buttons["Retry saving"].waitForExistence(timeout: 10))
+    detail.typeKey("a", modifierFlags: .command)
+    detail.typeText("Retained second edit")
     let form = app.scrollViews["record-form"]
     let rules = app.buttons["catalog-rules"]
     // macOS XCUI click can hit the sheet toolbar when a Form row is clipped.
