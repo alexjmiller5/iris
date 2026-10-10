@@ -102,6 +102,9 @@ public final class NativeWorkspace {
   }
   private var requests: [Work] = []
   private var active: Request?
+  /// When foreground (non-passive) work last arrived or finished. Background index steps
+  /// wait for a quiet moment, so a burst of reads (a table open) never queues behind one.
+  private(set) var lastForegroundActivity = ContinuousClock.now
   private var suspended: [Int: Request] = [:]
   private var networks: [Int: Task<Void, Never>] = [:]
   private var nextID = 0
@@ -926,6 +929,7 @@ public final class NativeWorkspace {
             insertion -= 1
           }
         }
+        if !referenceRead { lastForegroundActivity = .now }
         requests.insert(
           .request(
             Request(
@@ -1056,6 +1060,7 @@ public final class NativeWorkspace {
     } catch { complete(.failure(error)) }
   }
   private func complete(_ result: Result<JSONValue, Error>) {
+    if active?.referenceRead == false { lastForegroundActivity = .now }
     var outcome = result
     if !closed, database.isInsideTransaction {
       do {

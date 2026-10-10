@@ -24,7 +24,8 @@ struct SearchIndexLoopTests {
       try await workspace.search(CoreSearchArgs(text: "wombat", table: "notes")).first?.id
         == created["id"]?.text
     }
-    #expect(model.searchIndexing == 0)
+    // Queued edits go before the remaining backfill; the loop then catches up on its own.
+    try await eventually { model.searchIndexing == 0 }
     #expect(try await workspace.searchIndexStep(budgetMs: 0).done)
   }
 
@@ -40,7 +41,8 @@ struct SearchIndexLoopTests {
     let model = WorkspaceModel(widgetLibrary: nil)
     model.client = workspace
     model.scheduleSearchIndex()
-    try await eventually { model.searchIndexing > 0 }
+    // The first step reconciles; wait for one that indexed rows.
+    try await eventually { model.searchIndexing > 0 && model.searchIndexing < 20_000 }
     // A search queued now passes the next index step instead of waiting for the whole build.
     let clock = ContinuousClock()
     var hits: [CoreSearchHit] = []
@@ -53,5 +55,28 @@ struct SearchIndexLoopTests {
     try await eventually { model.searchIndexing == 0 }
     #expect(try await workspace.searchIndexStep(budgetMs: 0).done)
     #expect(try await workspace.search(CoreSearchArgs(text: "bulk", limit: 50)).count == 50)
+  }
+
+  @Test func aBurstOfForegroundReadsHoldsTheIndexLoopUntilItGoesQuiet() async throws {
+    let runtime = try IrisCoreRuntime()
+    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await workspace.createSample()
+    runtime.context.evaluateScript(
+      #"""
+      IrisSql.run("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<5000) INSERT INTO notes(id,title,updated_at) SELECT printf('quiet-%05d',i),'Quiet note '||i,'2026-01-01T00:00:00.000Z' FROM n");
+      """#)
+    let model = WorkspaceModel(widgetLibrary: nil)
+    model.client = workspace
+    model.scheduleSearchIndex()
+    try await eventually { model.searchIndexing > 0 }  // reconciled: a large catch-up
+    let left = model.searchIndexing
+    // A table open's reads, back to back: no index step slips in between them.
+    for _ in 0..<8 {
+      _ = try await workspace.catalog()
+      try await Task.sleep(for: .milliseconds(40))
+    }
+    #expect(model.searchIndexing == left, "No step ran during the burst")
+    try await eventually { model.searchIndexing == 0 }
+    #expect(try await workspace.searchIndexStep(budgetMs: 0).done)
   }
 }

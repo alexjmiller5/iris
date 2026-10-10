@@ -458,16 +458,30 @@ final class WorkspaceModel {
   @ObservationIgnored private var searchIndexTask: Task<Void, Never>?
   @ObservationIgnored private var searchIndexAgain = false
   static let searchIndexBudget = 25
+  static let searchIndexQuiet = Duration.milliseconds(150)
+  /// Above this many records left, steps wait for foreground quiet; smaller queues (local
+  /// edits, a sync round, a small workspace) are indexed at once.
+  static let searchIndexCatchUp = 1_000
 
   /// Only this loop builds the search index: after open, sync rounds and local or shared-file
   /// changes, and while work remains. Core runs on the main actor, so each step is short,
-  /// queued as a passive request that foreground reads pass, with a pause between steps.
+  /// queued as a passive request that foreground reads pass; during a large catch-up a step
+  /// runs only once foreground work has been quiet for `searchIndexQuiet`.
   func scheduleSearchIndex() {
     searchIndexAgain = true
     guard searchIndexTask == nil, let client else { return }
     searchIndexTask = Task { @MainActor [weak self] in
+      var waiting = ContinuousClock.now
+      var catchingUp = false
       while true {
         guard let self, self.client === client, !Task.isCancelled else { break }
+        // A large catch-up indexes while idle: foreground work arriving in a burst runs
+        // first, though constant foreground work still lets a step through every second.
+        let quiet = client.lastForegroundActivity.duration(to: .now)
+        if catchingUp, quiet < Self.searchIndexQuiet, waiting.duration(to: .now) < .seconds(1) {
+          try? await Task.sleep(for: Self.searchIndexQuiet - quiet)
+          continue
+        }
         self.searchIndexAgain = false
         let status: CoreSearchIndexStatus
         do { status = try await client.searchIndexStep(budgetMs: Self.searchIndexBudget) } catch {
@@ -479,6 +493,7 @@ final class WorkspaceModel {
         }
         guard self.client === client else { break }
         let left = status.indexing ? status.pending : 0
+        catchingUp = status.pending > Self.searchIndexCatchUp
         if self.searchIndexing > 0, left == 0 {
           self.searchIndexRevision += 1
           if !self.search.isEmpty { await self.reload() }
@@ -486,6 +501,7 @@ final class WorkspaceModel {
         self.searchIndexing = left
         if status.done, !self.searchIndexAgain { break }
         try? await Task.sleep(for: .milliseconds(10))
+        waiting = .now
       }
       self?.searchIndexTask = nil
     }
