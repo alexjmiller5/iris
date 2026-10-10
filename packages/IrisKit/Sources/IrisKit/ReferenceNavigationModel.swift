@@ -56,15 +56,20 @@ final class ReferenceNavigationModel {
   private func resolve(_ target: RecordReference, discard: Bool) async -> ReferenceDestination? {
     guard isCurrent(), !Task.isCancelled else { return nil }
     cancel()
+    let request = revision
+    loading = true
+    defer { if request == revision { loading = false } }
+    if !discard {
+      // Pending edits save first; only changes that cannot be stored ask to be discarded.
+      try? await editor.flushAutosave()
+      guard request == revision, isCurrent(), !Task.isCancelled else { return nil }
+    }
     guard !editor.saving else {
       error = "Wait for the current save to finish before opening a related record."
       return nil
     }
-    let request = revision
     let values = editor.draft.values.mapValues { Data($0.utf8) }
     let baseline = editor.draft.original
-    loading = true
-    defer { if request == revision { loading = false } }
     do {
       let rows = try await read(
         CoreView(

@@ -234,7 +234,7 @@ struct ReferenceNavigationTests {
     try other.discardDraft()
   }
 
-  @Test func inFlightAutosaveCannotBeDiscardedEvenWhenDraftEqualsOldBaseline() async throws {
+  @Test func navigationWaitsForAnInFlightAutosaveAndAsksOnlyIfItFails() async throws {
     var receipt: CheckedContinuation<WorkspaceRecord, any Error>?
     let source = RecordEditorModel(
       properties: properties, original: original, table: "notes",
@@ -246,15 +246,21 @@ struct ReferenceNavigationTests {
     let save = Task { try await source.flushAutosave() }
     while receipt == nil { await Task.yield() }
     source.setValue("Body", for: "body")
+    var reads = 0
     let navigation = ReferenceNavigationModel(
       editor: source,
       read: { _ in
-        Issue.record("A reference read started during a pending save")
+        #expect(!source.saving, "A reference read started during a pending save")
+        reads += 1
         return [target]
       })
-    #expect(await navigation.open(table: "topics", id: "target") == nil)
-    #expect(navigation.error != nil)
+    let opening = Task { await navigation.open(table: "topics", id: "target") }
+    for _ in 0..<50 { await Task.yield() }
+    #expect(reads == 0 && navigation.loading)
     receipt?.resume(throwing: WorkspaceError(message: "Synthetic save failure", violations: []))
+    // The failed draft cannot be stored, so leaving asks before it is discarded.
+    #expect(await opening.value == nil)
+    #expect(navigation.confirmation != nil)
     await #expect(throws: WorkspaceError.self) { try await save.value }
     try source.discardDraft()
   }

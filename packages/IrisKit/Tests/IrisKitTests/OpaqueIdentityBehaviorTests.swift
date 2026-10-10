@@ -160,17 +160,13 @@ struct OpaqueIdentityBehaviorTests {
     let guarded = try ReferencePickerModel(
       table: "notes", value: selected, multiple: true,
       load: { view in
-        // A mismatched lookup must not overwrite another selected record's label either.
-        guard case .string(let requested) = view.filters?.first?.value else {
-          Issue.record("Expected an exact ID lookup")
-          return []
+        // One any-of lookup for both exact IDs; a row for one never labels the other.
+        let requested = (view.groups?.first?.filters ?? []).compactMap { filter -> String? in
+          if case .string(let value) = filter.value { return value }
+          return nil
         }
-        return [
-          row(
-            first,
-            title: bytes(requested) == bytes(first)
-              ? "First label" : "Wrong lookup label")
-        ]
+        #expect(requested.map(bytes) == [bytes(first), bytes(second)])
+        return [row(first, title: "First label")]
       })
     await guarded.resolveSelected()
     #expect(guarded.label(for: first) == "First label")

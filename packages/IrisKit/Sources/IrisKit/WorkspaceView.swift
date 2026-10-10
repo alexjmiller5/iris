@@ -1634,7 +1634,7 @@ private struct RecordEditor: View {
               } label: {
                 Label("Undo", systemImage: "arrow.uturn.backward")
               }.disabled(
-                editor.saving || editor.recovery != nil || editor.needsReview || model.undoing
+                editor.recovery != nil || editor.needsReview || model.undoing
               )
               .accessibilityIdentifier("undo-inline")
             }
@@ -1645,7 +1645,7 @@ private struct RecordEditor: View {
                 onExpand(editor)
               }
             }
-            .disabled(editor.saving).accessibilityIdentifier("inline-open-record")
+            .accessibilityIdentifier("inline-open-record")
             Button("Done", action: done)
               .buttonStyle(.borderedProminent).accessibilityIdentifier("inline-done")
           }.font(.subheadline)
@@ -1782,7 +1782,7 @@ private struct RecordEditor: View {
                 Label("Undo last saved change", systemImage: "arrow.uturn.backward")
               }
               .disabled(
-                editor.saving || editor.recovery != nil || editor.needsReview || model.undoing
+                editor.recovery != nil || editor.needsReview || model.undoing
               )
               .accessibilityIdentifier("undo-editor")
             }
@@ -1821,14 +1821,14 @@ private struct RecordEditor: View {
                   model.makeIncomingReferences(
                     context: context, row: original, isCurrent: editorIsCurrent)
                 },
-                canOpen: !editor.saving, onOpenRecord: openReference
+                canOpen: true, onOpenRecord: openReference
               )
               .id(identity)
               LinkedFromView(
                 makeModel: {
                   model.makeLinkedFrom(context: context, row: original, isCurrent: editorIsCurrent)
                 },
-                canOpen: !editor.saving, onOpenRecord: openReference
+                canOpen: true, onOpenRecord: openReference
               )
               // Distinct from the incoming section's identity: the Mac form reuses rows by ID.
               .id([AnyHashable("linked-from"), AnyHashable(identity)])
@@ -1909,6 +1909,9 @@ private struct RecordEditor: View {
         saving = false
       }
       do {
+        // Undo reverts the latest edit, so pending edits save first.
+        try? await editor.flushAutosave()
+        let action = model.undoAction ?? action
         try await editor.performUndo(
           action, isCurrent: editorIsCurrent,
           collect: { try await collectMarkdown(lock: true) }
@@ -1925,7 +1928,7 @@ private struct RecordEditor: View {
     editorFields
       .allowsHitTesting(editor.loaded)
       .savedUndoShortcut(
-        enabled: focusedField == nil && !editor.saving && !saving
+        enabled: focusedField == nil && !saving
           && editor.recovery == nil && !editor.needsReview && !model.undoing
           && model.undoAction != nil
       ) {
@@ -2140,7 +2143,7 @@ private struct RecordEditor: View {
         {
           ReferenceField(
             field: field, value: .constant(editor.draft.original?[field.id]?.text ?? ""),
-            workspace: workspace, canEdit: false, canOpen: !editor.saving,
+            workspace: workspace, canEdit: false,
             availability: referenceAvailability(field), onOpenRecord: openReference)
         } else {
           NativePropertyValue(
@@ -2572,7 +2575,7 @@ struct FieldInput: View {
         if let workspace, field.property["ref_table"]?.text.nonempty != nil {
           ReferenceField(
             field: field, value: $value, workspace: workspace, onOpen: { focus.wrappedValue = nil },
-            canOpen: !editor.saving, availability: referenceAvailability,
+            availability: referenceAvailability,
             creator: referenceCreator, onOpenRecord: onOpenReference)
         } else {
           Text("Reference choices are unavailable. The original value has been preserved.")
@@ -2612,7 +2615,7 @@ struct FieldInput: View {
               openRecord()
             }
             .buttonStyle(.borderless)
-            .disabled(linkOpening || editor.saving)
+            .disabled(linkOpening)
             .accessibilityIdentifier("open-record-\(field.id)")
             if let linkError { Text(linkError).font(.caption).foregroundStyle(.red) }
           }
@@ -2622,7 +2625,7 @@ struct FieldInput: View {
   }
 
   private func openRecord() {
-    guard !linkOpening, !editor.saving, isCurrent(), let workspace else { return }
+    guard !linkOpening, isCurrent(), let workspace else { return }
     let original = value
     linkOpening = true
     linkError = nil
@@ -2631,7 +2634,7 @@ struct FieldInput: View {
       do {
         let result = try await workspace.resolveSourceLink(original)
         guard isCurrent(), Data(value.utf8) == Data(original.utf8),
-          !Task.isCancelled, !editor.saving
+          !Task.isCancelled
         else { return }
         guard let destination = result.destination else {
           linkError = "This record is not available in this workspace."

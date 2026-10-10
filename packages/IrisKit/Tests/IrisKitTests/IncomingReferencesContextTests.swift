@@ -201,8 +201,8 @@ struct IncomingReferencesContextTests {
     let editor = RecordEditorModel(
       properties: host.properties, original: target.record, table: "topics", store: nil
     ) { _, _ in
-      Issue.record("Opening an incoming link must not write")
-      return target.record
+      // Leaving saves first; a refused save leaves a draft that must be confirmed away.
+      throw WorkspaceError(message: "Synthetic refusal", violations: [])
     }
     editor.setValue("Retain until approved", for: "title")
     let navigation = host.makeReferenceNavigation(editor: editor, context: context)

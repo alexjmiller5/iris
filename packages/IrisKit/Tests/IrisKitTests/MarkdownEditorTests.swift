@@ -89,7 +89,7 @@ struct MarkdownEditorTests {
     #expect(result && opened)
   }
 
-  @Test func sourceLinkKeepsOrdinaryDraftWhileSavingFinalMarkdownInput() async throws {
+  @Test func sourceLinkSavesEveryPendingEditWithTheFinalMarkdownInputFirst() async throws {
     let properties: [WorkspaceRecord] = [
       ["col": .string("title"), "type": .string("text")],
       ["col": .string("body"), "type": .string("markdown")],
@@ -100,13 +100,13 @@ struct MarkdownEditorTests {
     var writes: [WorkspaceRecord] = []
     let model = RecordEditorModel(
       properties: properties, original: original, table: "notes", store: nil,
-      debounce: .seconds(60)
+      debounce: .seconds(60), typingDelay: .seconds(60)
     ) { patch, baseline in
       writes.append(patch)
       return baseline!.merging(patch) { _, new in new }
     }
     defer { model.endInlineMarkdown() }
-    model.setValue("Unsaved title", for: "title")
+    model.setValue("Pending title", for: "title")
     let field = CatalogField(property: properties[1])
     let holder = model.markdownEditor(for: field)
     holder.session.markReady()
@@ -119,17 +119,23 @@ struct MarkdownEditorTests {
     var unlocks = 0
     holder.session.resumeEditing = { unlocks += 1 }
     var resolved = false
-    await #expect(throws: WorkspaceError.self) {
-      try await model.openMarkdownLink("https://example.com/unresolved", isCurrent: { true }) { _ in
-        resolved = true
-        return false
-      }
+    let opened = try await model.openMarkdownLink(
+      "https://example.com/unresolved", isCurrent: { true }
+    ) { _ in
+      // Leaving saves first: the lookup sees a clean, stored record.
+      #expect(!model.dirty)
+      resolved = true
+      return false
     }
-    #expect(!resolved, "Ordinary property drafts must block navigation before lookup")
-    #expect(writes == [["id": .string("row"), "body": .string("Final body input")]])
-    #expect(model.draft.values["title"] == "Unsaved title")
-    #expect(model.draft.original?["title"] == .string("Original title"))
-    #expect(model.draft.patch == ["id": .string("row"), "title": .string("Unsaved title")])
+    #expect(!opened && resolved)
+    #expect(
+      writes == [
+        [
+          "id": .string("row"), "title": .string("Pending title"),
+          "body": .string("Final body input"),
+        ]
+      ])
+    #expect(model.draft.original?["title"] == .string("Pending title"))
     #expect(model.markdownEditor(for: field) === holder)
     #expect(holder.session.document.value == "Final body input")
     #expect(holder.session.isActive && unlocks == 1)

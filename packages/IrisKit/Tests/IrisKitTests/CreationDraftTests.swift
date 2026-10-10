@@ -182,7 +182,10 @@ struct CreationDraftTests {
   }
 
   @Test func collectingAnUntouchedMarkdownSnapshotDoesNotOverrideItsCoreDefault() async throws {
-    let editor = RecordEditorModel(properties: fields, original: nil, table: "notes", store: nil) {
+    // A long pause keeps autosave out of this check of the draft's patch.
+    let editor = RecordEditorModel(
+      properties: fields, original: nil, table: "notes", store: nil, debounce: .seconds(60)
+    ) {
       _, _ in
       Issue.record("Collecting a snapshot must not write")
       return [:]
