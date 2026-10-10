@@ -257,23 +257,23 @@ Shared core owns local FTS5 indexing and search. Web table search and Cmd+K use
 literal word prefixes combined with AND; user input never becomes raw MATCH syntax.
 Index queues survive external edits and reopen. Only core's bounded
 `searchIndexStep` builds the index, never a search or backlink request: the web
-database worker queues a step right behind open and every data-changing request,
-then catch-up steps (50 ms) one task apart so requests run between them;
-`WorkspaceModel.scheduleSearchIndex` does the same natively after open, sync rounds,
-local commits and observed shared-file changes, as passive 25 ms requests that
-foreground reads pass (core runs on the main actor). Open indexes a workspace with
-at most 1,000 records left before returning (the sample, small local files); while
-more are left, a step waits for 150 ms without foreground requests (at most a
-second), so a table open never queues behind one. The shared-file observer ignores
-version changes while that loop runs. Until a step reports `done`, the sync pill
-reads "Indexing search…" (below sync, connection and error states), Quick Find and
-Cmd+K note how many records are left, and Linked from shows "(indexing)"; catching
-up refreshes backlinks and searched rows once. Provenance and size-rule tables stay
-unindexed unless core's `search_tables` setting opts them in. No client scan
-fallback or parallel search implementation. Cross-table results carry table/id
-identities; opening one must re-read it, respect unsaved drafts and ignore a
-cancelled dialog. Search covers locally replicated rows and identifies skipped-table
-incompleteness.
+database worker queues a step right behind open and every data-changing request (a
+sync only when it moved data), then catch-up steps (50 ms) one task apart so
+requests run between them; `WorkspaceModel.scheduleSearchIndex` does the same
+natively after open, sync rounds that moved data, local commits and observed
+shared-file changes, as passive 25 ms requests that foreground reads pass (core runs
+on the main actor). Open indexes a workspace with at most 1,000 records left before
+returning (the sample, small local files); while more are left, a step waits for 150
+ms without foreground requests (at most a second), so a table open never queues
+behind one. The shared-file observer ignores version changes while that loop runs.
+Until a step reports `done`, the sync pill reads "Indexing search…" (below sync,
+connection and error states), Quick Find and Cmd+K note how many records are left,
+and Linked from shows "(indexing)"; catching up refreshes backlinks and searched
+rows once. Provenance and size-rule tables stay unindexed unless core's
+`search_tables` setting opts them in. No client scan fallback or parallel search
+implementation. Cross-table results carry table/id identities; opening one must
+re-read it, respect unsaved drafts and ignore a cancelled dialog. Search covers
+locally replicated rows and identifies skipped-table incompleteness.
 The web command palette also lists tables and saved views. Read saved views once
 per opening through the core, preserve selection by kind/table/id as entries
 arrive, and re-resolve destinations before navigating. Closing cancels late replies.

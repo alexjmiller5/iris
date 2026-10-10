@@ -774,16 +774,17 @@ scope.onmessage = ({ data }) => {
 				dispatch(data as DatabaseRequest)
 			);
 			respond({ id: data.id, result });
-			if (data.method === 'open' || DATA_CHANGES.includes(data.method)) scheduleIndex(true);
-			// Background sync polls every few seconds; only a sync that moved data refreshes views.
+			// Background sync polls every few seconds; only a sync that moved data refreshes
+			// views and gives the index rows to catch up on.
 			const synced = result as { pulled?: number; pushed?: number; rejected?: unknown[] };
-			if (
+			const moved =
 				(data.method !== 'sync' ||
 					!!synced.pulled ||
 					!!synced.pushed ||
 					!!synced.rejected?.length) &&
-				DATA_CHANGES.includes(data.method)
-			) {
+				DATA_CHANGES.includes(data.method);
+			if (data.method === 'open' || moved) scheduleIndex(true);
+			if (moved) {
 				channel?.postMessage({ changed: data.method });
 				respond({ changed: data.method });
 			}

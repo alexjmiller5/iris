@@ -2192,8 +2192,6 @@ final class WorkspaceModel {
       if client === self.client, generation == workspaceGeneration {
         syncing = false
         syncProgress = nil
-        // Pulled rows (even from a failed round) wait in the index queue.
-        scheduleSearchIndex()
         if completed {
           uploadedSyncRevision = max(uploadedSyncRevision, outgoingRevision)
           if !syncCancelledByUser { automaticRetryAfter = .distantPast }
@@ -2240,6 +2238,8 @@ final class WorkspaceModel {
         }
         if changed {
           syncDataRevision += 1
+          // Pulled rows wait in the index queue; a quiet round leaves the index alone.
+          scheduleSearchIndex()
           await reload()
         } else {
           // A quiet round leaves rows alone; coverage and counters can still change.
@@ -2259,6 +2259,8 @@ final class WorkspaceModel {
         if let cachedCatalog { catalog = cachedCatalog }
         if table == nil { table = tables.first?["id"]?.text }
         syncDataRevision += 1
+        // A failed round can still have committed some pulled pages.
+        scheduleSearchIndex()
         await reload()
         guard client === self.client, generation == workspaceGeneration else { return false }
         if !syncCancelledByUser { syncError = error.localizedDescription }
