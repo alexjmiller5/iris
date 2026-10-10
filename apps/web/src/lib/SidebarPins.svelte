@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BreakName from './BreakName.svelte';
 	import { IconPin, IconPinnedOff, IconChevronUp, IconChevronDown } from '@tabler/icons-svelte';
 	import type { SidebarPin } from 'iris-core/client';
 	let {
@@ -36,10 +37,7 @@
 					aria-label={`Open pinned ${pin.tbl}`}
 					disabled={disabled || !!pin.unavailable}
 					onclick={() => onchoose(pin.tbl)}
-					><IconPin size={16} /><span
-						>{#each pin.tbl.split('_') as part, index (index)}{#if index}_<wbr
-								/>{/if}{part}{/each}</span
-					></button
+					><IconPin size={16} /><span><BreakName name={pin.tbl} /></span></button
 				>
 				<div class="actions">
 					<button

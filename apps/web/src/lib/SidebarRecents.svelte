@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BreakName from './BreakName.svelte';
 	import { IconDatabase, IconFile, IconLayoutList, IconX } from '@tabler/icons-svelte';
 	import { recentKey, type RecentEntry } from './sidebar-recents';
 	import type { Destination } from './workspace-navigation';
@@ -40,10 +41,9 @@
 							size={16}
 						/>{/if}
 					<span
-						><strong>{entry.label}</strong>
-						<small>{entry.context}{entry.trash ? ' · Trash' : ''}</small>{#if entry.loading}<small
-								>Loading…</small
-							>{/if}</span
+						><strong><BreakName name={entry.label} /></strong>
+						<small><BreakName name={entry.context} />{entry.trash ? ' · Trash' : ''}</small
+						>{#if entry.loading}<small>Loading…</small>{/if}</span
 					>
 				</button>
 				<button

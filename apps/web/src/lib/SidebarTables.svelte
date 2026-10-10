@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BreakName from './BreakName.svelte';
 	import { IconDatabase, IconPin } from '@tabler/icons-svelte';
 	import type { Row } from 'iris-core/client';
 	let {
@@ -29,10 +30,7 @@
 				aria-current={String(table.id) === current ? 'page' : undefined}
 				{disabled}
 				onclick={() => onchoose(String(table.id))}
-				><IconDatabase size={16} /><span
-					>{#each String(table.id).split('_') as part, index (index)}{#if index}_<wbr
-							/>{/if}{part}{/each}</span
-				></button
+				><IconDatabase size={16} /><span><BreakName name={String(table.id)} /></span></button
 			>
 			{#if onpin}<button
 					class="pin-action"
