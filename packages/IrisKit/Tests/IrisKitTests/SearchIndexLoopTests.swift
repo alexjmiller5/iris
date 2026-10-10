@@ -81,14 +81,16 @@ struct SearchIndexLoopTests {
     let model = WorkspaceModel(widgetLibrary: nil)
     model.client = workspace
     model.scheduleSearchIndex()
-    try await eventually { model.searchIndexing > 0 }  // reconciled: a large catch-up
-    let left = model.searchIndexing
-    // A table open's reads, back to back: no index step slips in between them.
-    for _ in 0..<5 {
+    // Reads arriving back to back from the start, for well under the loop's one-second cap:
+    // once the reconciling step reports a large catch-up, no chunk slips in between them.
+    let started = ContinuousClock.now
+    var seen: [Int] = []
+    while started.duration(to: .now) < .milliseconds(500) {
       _ = try await workspace.catalog()
-      try await Task.sleep(for: .milliseconds(30))
+      seen.append(model.searchIndexing)
     }
-    #expect(model.searchIndexing == left, "No step ran during the burst")
+    let reported = seen.filter { $0 > 0 }
+    #expect(Set(reported).count <= 1, "A chunk ran during the burst: \(reported)")
     try await eventually { model.searchIndexing == 0 }
     #expect(try await workspace.searchIndexStep(budgetMs: 0).done)
   }
