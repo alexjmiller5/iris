@@ -8,7 +8,7 @@ const worker = 'apps/web/src/lib/database.worker.ts';
 const field = 'apps/web/src/lib/FieldEditor.svelte';
 const bar = 'apps/web/src/lib/filter-bar.ts';
 const mutations: { name: string; file: string; test: string; edits: [string | RegExp, string][] }[] = [
-	{ name: 'write locks removed', file: route, test: 'write in flight locks', edits: [
+	{ name: 'write locks removed', file: route, test: 'trash reply locks', edits: [
 		['class="workspace-controls" disabled={writing}', 'class="workspace-controls" disabled={false}'],
 		[/\n\t\twriting \|\|\n\t\tselected\?\.deleted_at/, '\n\t\tselected?.deleted_at']
 	] },

@@ -1,7 +1,7 @@
 import { chromium, expect, type Page } from "@playwright/test";
 import { resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { disposableOrigin, workspacePage } from "./test-origin";
+import { disposableOrigin, recordReady, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 
 const url =
@@ -195,10 +195,12 @@ try {
   await page.getByText("Use a device token", { exact: true }).click();
   await page.getByLabel("Device token").fill("fixture");
   await page.getByRole("button",{name:"Connect",exact:true}).click();
+  await tables
+    .getByRole("button", { name: "widgets", exact: true })
+    .click({ timeout: 30000 });
   await expect(
     page.getByRole("button", { name: "Fixture record", exact: true }),
   ).toBeVisible({ timeout: 30000 });
-  await tables.getByRole("button", { name: "widgets", exact: true }).click();
   await expect(recents).toBeVisible();
   await expect(recent("widgets")).toBeEnabled();
   console.log("PASS: successful table navigation records a destination");
@@ -207,8 +209,7 @@ try {
   ).toBeVisible();
   const title = () =>
     editor.getByRole("textbox", { name: "Title", exact: true });
-  const save = () =>
-    editor.getByRole("button", { name: "Save record", exact: true });
+  const saveStatus = page.locator('[aria-label="Record save status"]');
   const query = () => new URL(page.url()).searchParams;
   const stored = () =>
     page.evaluate(
@@ -350,7 +351,7 @@ try {
     },
   );
   await run(
-    "writes do not recreate a removed recent and pending receipt blocks navigation",
+    "autosaves do not recreate a removed recent and a pending receipt leaves navigation open",
     async () => {
       await navigateTable("projects");
       await home();
@@ -360,6 +361,7 @@ try {
           exact: true,
         })
         .click();
+      await recordReady(page);
       await settled();
       const label = await title().inputValue();
       await recents
@@ -371,14 +373,17 @@ try {
         .click();
       await settled();
       const before = await stored();
-      await title().fill("Saved without bump");
       await page.evaluate(() => ((window as any).hold = "write"));
-      await save().click();
+      await title().fill("Saved without bump");
+      await page.evaluate(() =>
+        (document.activeElement as HTMLElement | null)?.blur(),
+      );
       await page.waitForFunction(() => (window as any).held.length === 1);
-      await expect(recent("projects")).toBeDisabled();
+      // Leaving saves pending edits first and a held write still lands, so navigation stays open.
+      await expect(recent("projects")).toBeEnabled();
       expect(query().get("row")).toBe("fixture-record");
       await page.evaluate(() => (window as any).release());
-      await expect(save()).toBeEnabled();
+      await expect(saveStatus).toHaveAttribute("data-state", "saved");
       await settled();
       expect(await stored()).toEqual(before);
       expect(
@@ -460,7 +465,7 @@ try {
         .getByRole("main")
         .getByRole("button", { name: "widgets", exact: true })
         .click();
-      await expect(save()).toBeDisabled();
+      await expect(editor.locator("#field-display")).toBeDisabled();
       await expect(
         editor.getByRole("button", { name: "Move to trash", exact: true }),
       ).toBeDisabled();
@@ -505,7 +510,7 @@ try {
       await external("trash");
       await expect(recent("Saved without bump")).toContainText("Trash");
       await recent("Saved without bump").click();
-      await expect(save()).toBeDisabled();
+      await expect(title()).toBeDisabled();
       await expect(
         editor.getByRole("button", { name: "Restore record", exact: true }),
       ).toBeEnabled();

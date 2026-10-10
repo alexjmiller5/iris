@@ -136,6 +136,20 @@ try {
     };
     const enabled = (name: string, yes: boolean) =>
       cdp.until(`!!(${button(name)}) && (${button(name)}).disabled===${!yes}`);
+    // Edits save themselves: leave the field, then wait for the record's save status.
+    const saved = async (state = "saved") => {
+      await cdp.evaluate("document.activeElement?.blur()");
+      await cdp.until(
+        `document.querySelector('[aria-label="Record save status"]')?.dataset.state===${js(state)}`,
+      );
+    };
+    // A listed record paints at once and is inert until its fresh row arrives.
+    const openFixture = async () => {
+      await click("Fixture record");
+      await cdp.until(
+        `document.querySelector('.record-panel form')?.inert===false`,
+      );
+    };
     const bodyHas = (text: string) =>
       cdp.until(`document.body.innerText.includes(${js(text)})`);
     // Read the actual local replica through its existing request API, never a mock receipt.
@@ -156,7 +170,7 @@ try {
     await open();
     await sync();
     await enabled("New record", true);
-    await click("Fixture record");
+    await openFixture();
     await value("quantity", "42");
     await cdp.until(
       `document.querySelector('label[for="field-title"] .required')?.textContent==='Required'`,
@@ -165,7 +179,7 @@ try {
       `(${field("title")})?.closest('.field').innerText.includes('Short fixture title.')`,
     );
     await cdp.until(
-      `Array.from((${field("status")})?.options??[]).some(o=>o.textContent.includes('Ready for review.'))`,
+      `Array.from((${field("status")})?.options??[]).some(o=>(o.title+' '+o.textContent).includes('Ready for review.'))`,
     );
     for (const [col, expected, description] of [
       ["locked", "Immutable fixture value", "Set once"],
@@ -183,13 +197,12 @@ try {
       .all();
     await cdp.fill(field("quantity"), "-1");
     await cdp.fill(field("detail"), "Retained second edit");
-    await click("Save record");
+    await saved("failed");
     await cdp.until(
       `Array.from(document.querySelectorAll('.failure')).some(e=>e.innerText.includes('Quantity cannot be negative.'))`,
     );
     await value("quantity", "-1");
     await value("detail", "Retained second edit");
-    await enabled("Save record", true);
     expect(await stored()).toEqual(before);
     expect((await local("snapshot")).status.pendingUiEdits).toBe(pending);
     expect(
@@ -200,15 +213,15 @@ try {
         .all(),
     ).toEqual(history);
     await click("Close record");
-    await click("Fixture record");
+    await openFixture();
     await value("quantity", "42");
     await value("detail", "Original detail");
     await cdp.fill(field("quantity"), "43");
     await cdp.fill(field("detail"), "Retained second edit");
-    await click("Save record");
+    await saved();
     await cdp.until(`!!document.querySelector('[data-pending="1"]')`);
     await click("Close record");
-    await click("Fixture record");
+    await openFixture();
     await value("quantity", "43");
     await value("detail", "Retained second edit");
     await value("locked", "Immutable fixture value");
@@ -249,9 +262,9 @@ try {
     await open();
     await sync();
     await enabled("New record", true);
-    await click("Fixture record");
+    await openFixture();
     await cdp.fill(field("quantity"), "44");
-    await click("Save record");
+    await saved();
     await cdp.until(`!!document.querySelector('[data-pending="1"]')`);
     await click("Close record");
     await sync();
@@ -276,7 +289,7 @@ try {
     await sync();
     await enabled("New record", false);
     await bodyHas("history");
-    await click("Fixture record");
+    await openFixture();
     await cdp.until(`(${field("quantity")})?.disabled===true`);
     await click("Close record");
     await click("Switch workspace");
@@ -299,10 +312,10 @@ try {
     await cdp.navigate(url);
     await click("Open my workspace");
     await enabled("New record", true);
-    await click("Fixture record");
+    await openFixture();
     await value("quantity", "44");
     await cdp.fill(field("detail"), "Saved after interrupted refresh");
-    await click("Save record");
+    await saved();
     await cdp.until(`!!document.querySelector('[data-pending="1"]')`);
     expect(await stored()).toMatchObject({
       quantity: 44,
@@ -351,7 +364,7 @@ try {
     await sync();
     await enabled("New record", false);
     await bodyHas("Unsupported trigger");
-    await click("Fixture record");
+    await openFixture();
     await value("quantity", "44");
     await cdp.until(`(${field("quantity")})?.disabled===true`);
     console.log(

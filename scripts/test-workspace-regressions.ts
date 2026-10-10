@@ -1,6 +1,6 @@
 import { chromium, expect as base } from '@playwright/test';
 import { installCoreSchemas, logDDL, regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, synced, workspacePage } from './test-origin';
+import { disposableOrigin, recordReady, recordSaved, synced, workspacePage } from './test-origin';
 
 // Write locks, SQL defaults, dynamic options, typed filter chips, column settings,
 // workspace switching and durable pending counts on a synthetic hub workspace.
@@ -72,7 +72,7 @@ try {
 	await connect();
 	await page.getByRole('navigation', { name: 'Tables' }).getByRole('button', { name: 'widgets', exact: true }).click({ timeout: 15000 });
 	await expect(page.getByRole('button', { name: 'Fixture record', exact: true })).toBeVisible();
-	const save = page.getByRole('button', { name: 'Save record', exact: true });
+	const status = page.locator('[aria-label="Record save status"]');
 	const chips = page.getByRole('group', { name: 'Sort and filters', exact: true });
 	const editor = page.getByRole('dialog', { name: 'Edit filter', exact: true });
 	const shown = (count: number) => page.getByText(`${count} ${count === 1 ? 'record' : 'records'} shown`, { exact: true });
@@ -94,10 +94,21 @@ try {
 		catch (error) { failures.push(name); console.error(`FAIL: ${name}\nURL: ${page.url()}\n${error}`); }
 		finally { await page.evaluate(() => (window as any).releaseWrites()); }
 	}
-	async function heldSave() {
+	/** Edit with the write's reply held: its autosave stays in flight until releaseWrites. */
+	async function heldAutosave(edit: () => Promise<void>) {
 		await page.evaluate(() => { (window as any).holdWrites = true; });
-		await save.click();
+		await edit();
+		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 		await page.waitForFunction(() => (window as any).heldWrites.length > 0);
+	}
+	/** Edits save themselves: leave the field, then wait until the record is stored. */
+	async function saved() {
+		await recordSaved(page);
+		await expect(status).toHaveAttribute('data-state', 'saved');
+	}
+	async function openRecord(name: string) {
+		await page.getByRole('button', { name, exact: true }).click();
+		await recordReady(page);
 	}
 	async function bodySource() {
 		if (!await page.locator('textarea[aria-label="Body"]').isVisible()) {
@@ -202,64 +213,58 @@ try {
 		await synced(page);
 		expect(await storedFilters()).toEqual([]);
 	});
-	await check('write in flight locks editable fields', async () => {
-		await page.getByRole('button', { name: 'Fixture record', exact: true }).click();
-		await (await bodySource()).fill('Saved body');
-		await heldSave();
-		await expect(await bodySource()).toBeDisabled();
-		await expect(page.getByLabel('Tags', { exact: true })).toBeDisabled();
+	await check('autosave in flight keeps fields editable and lands', async () => {
+		await openRecord('Fixture record');
+		const source = await bodySource();
+		await heldAutosave(() => source.fill('Saved body'));
+		await expect(await bodySource()).toBeEnabled();
+		await expect(page.getByLabel('Tags', { exact: true })).toBeEnabled();
 		await page.evaluate(() => (window as any).releaseWrites());
-		await expect(save).toBeEnabled();
+		await expect(status).toHaveAttribute('data-state', 'saved');
 		await reopen();
-		await page.getByRole('button', { name: 'Fixture record', exact: true }).click();
+		await openRecord('Fixture record');
 		await expect(await bodySource()).toHaveValue('Saved body');
 	});
-	await check('write in flight locks record table workspace and route navigation', async () => {
-		await page.getByRole('button', { name: 'Fixture record', exact: true }).click();
-		await (await bodySource()).fill('Still record one');
-		await heldSave();
-		for (const name of ['Second record', 'Close record', 'Switch workspace', 'Table graph'])
-			await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
-		await expect(page.getByRole('navigation', { name: 'Tables', exact: true }).getByRole('button', { name: 'widgets', exact: true })).toBeDisabled();
-		const currentURL = page.url();
-		await page.locator('a.wordmark').evaluate((el: HTMLAnchorElement) => el.click());
-		await expect(page).toHaveURL(currentURL);
-		await page.evaluate(() => (window as any).releaseWrites());
-		await expect(save).toBeEnabled();
-		await page.getByRole('button', { name: 'Close record', exact: true }).click();
-		await page.getByRole('button', { name: 'Second record', exact: true }).click();
+	await check('autosave in flight leaves record navigation open and the edit lands', async () => {
+		await openRecord('Fixture record');
+		const source = await bodySource();
+		await heldAutosave(() => source.fill('Still record one'));
+		for (const name of ['Second record', 'Close record', 'Table graph'])
+			await expect(page.getByRole('button', { name, exact: true })).toBeEnabled();
+		await openRecord('Second record');
 		await expect(await bodySource()).toHaveValue('Second body');
+		await page.evaluate(() => (window as any).releaseWrites());
+		await page.getByRole('button', { name: 'Close record', exact: true }).click();
+		await openRecord('Fixture record');
+		await expect(await bodySource()).toHaveValue('Still record one');
 	});
 	await check('canonical SQL and physical defaults survive another edit', async () => {
 		await page.getByRole('button', { name: 'New record', exact: true }).click();
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Default proof');
-		await save.click();
-		await expect(save).toBeEnabled();
+		await saved();
 		await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('42');
 		await expect(page.getByLabel('Status', { exact: true })).toHaveValue('Dynamic');
 		await (await bodySource()).fill('Unrelated change');
-		await save.click();
-		await expect(save).toBeEnabled();
+		await saved();
 		await reopen();
 		await page.getByRole('button', { name: 'Default proof', exact: true }).click();
 		await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('42');
 		await expect(page.getByLabel('Status', { exact: true })).toHaveValue('Dynamic');
 	});
 	await check('dynamic options load and unknown selections remain visible', async () => {
-		await page.getByRole('button', { name: 'Legacy record', exact: true }).click();
+		await openRecord('Legacy record');
 		const tags = page.getByLabel('Tags', { exact: true });
 		await expect(tags.locator('option')).toHaveCount(3);
 		await expect(tags.locator('option:checked')).toHaveText(['Dynamic', 'Legacy']);
 		// Native ctrl/cmd selection retains the existing selections.
 		await tags.evaluate((el: HTMLSelectElement) => { const option = [...el.options].find(o => o.value === 'Fixed')!; option.selected = true; el.dispatchEvent(new Event('change', { bubbles: true })); });
 		await expect(tags.locator('option:checked')).toHaveText(['Fixed', 'Dynamic', 'Legacy']);
-		await save.click();
-		await expect(page.getByRole('alert')).toContainText('Legacy');
+		// A choice commits on change; the refused value stays with its inline error.
+		await expect(page.locator('#field-tags-error')).toContainText('Legacy');
 		await expect(tags.locator('option:checked')).toHaveText(['Fixed', 'Dynamic', 'Legacy']);
 		await tags.selectOption(['Fixed', 'Dynamic']);
-		await save.click();
-		await expect(save).toBeEnabled();
-		await expect(page.getByRole('alert')).toHaveCount(0);
+		await saved();
+		await expect(page.locator('#field-tags-error')).toHaveCount(0);
 		await reopen();
 		await page.getByRole('button', { name: 'Legacy record', exact: true }).click();
 		await expect(tags.locator('option:checked')).toHaveText(['Fixed', 'Dynamic']);
@@ -271,8 +276,7 @@ try {
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Dynamic proof');
 		await page.getByLabel('Status', { exact: true }).selectOption('Dynamic');
 		await page.getByLabel('Tags', { exact: true }).selectOption(['Fixed', 'Dynamic']);
-		await save.click();
-		await expect(save).toBeEnabled();
+		await saved();
 		await expect(page.getByRole('alert')).toHaveCount(0);
 		await reopen();
 		await page.getByRole('button', { name: 'Dynamic proof', exact: true }).click();
@@ -298,8 +302,7 @@ try {
 		const before = Number(await pending.getAttribute('data-pending'));
 		await page.getByRole('button', { name: 'New record', exact: true }).click();
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Pending proof');
-		await save.click();
-		await expect(save).toBeEnabled();
+		await saved();
 		await expect(page.locator(`[data-pending="${before + 1}"]`)).toBeVisible();
 		await reopen();
 		await expect(page.locator(`[data-pending="${before + 1}"]`)).toBeVisible();

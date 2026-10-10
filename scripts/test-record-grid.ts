@@ -1,6 +1,6 @@
 import { chromium, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { disposableOrigin, workspacePage } from "./test-origin";
+import { disposableOrigin, recordReady, recordSaved, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 const url =
   process.env.IRIS_TEST_URL ??
@@ -552,7 +552,7 @@ try {
     },
   );
   await check(
-    "pending write blocks leaving and cancelled record draft stays",
+    "pending write blocks leaving and a cancelled refused record draft stays",
     async () => {
       await begin("title", "Title");
       await group("Title")
@@ -571,7 +571,10 @@ try {
       await saved("title", "Held save");
       await cell("title").press("Meta+Enter");
       await expect(editor).toBeVisible();
-      await editor.getByLabel("Title", { exact: true }).fill("Record draft");
+      await recordReady(owned);
+      // Valid edits save themselves; only a refused draft asks before it is left.
+      await editor.getByLabel("Title", { exact: true }).fill("");
+      await recordSaved(owned);
       accept = false;
       await show("Quantity");
       await cell("quantity").focus();
@@ -579,9 +582,7 @@ try {
       await expect(
         owned.getByText("Opening cell…", { exact: true }),
       ).toHaveCount(0);
-      await expect(editor.getByLabel("Title", { exact: true })).toHaveValue(
-        "Record draft",
-      );
+      await expect(editor.getByLabel("Title", { exact: true })).toHaveValue("");
       await expect(owned.locator("[data-cell-editor]")).toHaveCount(0);
       accept = true;
       await owned
@@ -627,7 +628,7 @@ try {
         .click();
     },
   );
-  await check("bottom new and duplicate open unsaved drafts", async () => {
+  await check("bottom new opens an unsaved draft and duplicate saves its copy", async () => {
     await owned.evaluate(async () => {
       const { WorkspaceDatabase } = await import("/src/lib/database.ts");
       const database = new WorkspaceDatabase();
@@ -649,9 +650,7 @@ try {
       editor.getByRole("heading", { name: "Untitled", exact: true }),
     ).toBeVisible();
     await editor.getByLabel("Title", { exact: true }).fill("Created at bottom");
-    await editor
-      .getByRole("button", { name: "Save record", exact: true })
-      .click();
+    await recordSaved(owned);
     await expect(
       editor.getByRole("heading", { name: "Created at bottom", exact: true }),
     ).toBeVisible();
@@ -670,13 +669,13 @@ try {
     await expect(editor.getByLabel("code", { exact: true })).toHaveValue(
       "Original code",
     );
+    // The copy is stored at once, so it is titled like its source.
     await expect(
-      editor.getByRole("heading", { name: "Untitled", exact: true }),
+      editor.getByRole("heading", { name: sourceTitle as string, exact: true }),
     ).toBeVisible();
+    await recordReady(owned);
     await editor.getByLabel("Title", { exact: true }).fill("Duplicate saved");
-    await editor
-      .getByRole("button", { name: "Save record", exact: true })
-      .click();
+    await recordSaved(owned);
     await expect(
       editor.getByRole("heading", { name: "Duplicate saved", exact: true }),
     ).toBeVisible();

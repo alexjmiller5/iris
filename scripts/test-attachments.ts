@@ -148,8 +148,10 @@ try {
     `${`(${editor}).querySelector('#field-quantity')`}.value`,
   );
 
-  await click(button("Save record", editor));
-  await until(`!(${button("Save record", editor)}).disabled`);
+  await evaluate("document.activeElement?.blur()");
+  await until(
+    `document.querySelector('[aria-label="Record save status"]')?.dataset.state === 'saved'`,
+  );
   const resyncSince = await evaluate("new Date().toISOString()");
   await until(
     `(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${js(resyncSince)}`,
@@ -213,7 +215,7 @@ try {
     `!['pending', 'saving'].includes(${editor}.querySelector('[aria-label="Body save status"]')?.dataset.state ?? '')`,
   );
   cdp.on("Page.javascriptDialogOpening", ({ message }: { message: string }) => {
-    if (message === "Discard unsaved changes to this record?")
+    if (message === "Some changes to this record could not be saved. Discard them?")
       void command("Page.handleJavaScriptDialog", { accept: true });
   });
   await evaluate(

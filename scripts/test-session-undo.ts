@@ -1,5 +1,5 @@
 import { chromium, expect } from "@playwright/test";
-import { disposableOrigin, workspacePage } from "./test-origin";
+import { disposableOrigin, recordReady, recordSaved, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 const url =
   process.env.IRIS_TEST_URL ??
@@ -50,23 +50,26 @@ await page.addInitScript(() => {
     }
   };
 });
+// Undo pauses autosave over a kept draft; Save draft stores it and resumes autosave.
 const save = () =>
-  page.getByRole("button", { name: "Save record", exact: true });
+  page.getByRole("button", { name: "Save draft", exact: true });
 const undo = () =>
   page.getByRole("button", { name: "Undo last saved change", exact: true });
 const quantity = () => page.getByLabel("Quantity", { exact: true });
 const title = () => page.getByRole("textbox", { name: "Title", exact: true });
+const editor = () =>
+  page.getByRole("complementary", { name: "Record editor", exact: true });
 const close = () =>
   page.getByRole("button", { name: "Close record", exact: true }).click();
 async function openFixture() {
   await page
     .getByRole("button", { name: "Fixture record", exact: true })
     .click();
+  await recordReady(page);
 }
 async function setQuantity(value: string) {
   await quantity().fill(value);
-  await save().click();
-  await expect(save()).toBeEnabled();
+  await recordSaved(page);
 }
 async function body() {
   if (!await page.locator('textarea[aria-label="Body"]').isVisible()) {
@@ -135,6 +138,10 @@ async function check(name: string, run: () => Promise<void>) {
     await page
       .getByRole("button", { name: "Connect", exact: true })
       .click();
+    await page
+      .getByRole("navigation", { name: "Tables", exact: true })
+      .getByRole("button", { name: "widgets", exact: true })
+      .click({ timeout: 30000 });
     await expect(
       page.getByRole("button", { name: "Fixture record", exact: true }),
     ).toBeVisible({ timeout: 30000 });
@@ -166,62 +173,65 @@ try {
     },
   );
   await check(
-    "a newer Markdown draft survives undo and waits for an explicit save",
+    "undo first saves pending field and Markdown edits as one step, then reverts that step",
     async () => {
       await openFixture();
       await setQuantity("43");
       const content = await body();
-      await page.clock.install();
+      const count = await page.evaluate(() => (window as any).writes.length);
       await title().fill("Newer title draft");
       await content.fill("Newer unsaved Markdown");
       await undo().click();
-      await expect(quantity()).toHaveValue("42");
-      await expect(title()).toHaveValue("Newer title draft");
-      await expect(content).toHaveValue("Newer unsaved Markdown");
-      await expect(
-        page.getByRole("status", { name: "Draft review", exact: true }),
-      ).toBeVisible();
-      const count = await page.evaluate(() => (window as any).writes.length);
-      await page.clock.runFor(2500);
-      expect(await page.evaluate(() => (window as any).writes.length)).toBe(
-        count,
-      );
-      expect((await rows()).find((r) => r.id === "fixture-record")!.body).toBe(
-        "Original body",
-      );
-      await save().click();
+      await expect(title()).toHaveValue("Fixture record");
+      await expect(content).toHaveValue("Original body");
+      await expect(quantity()).toHaveValue("43");
       await expect(
         page.getByRole("status", { name: "Draft review", exact: true }),
       ).toHaveCount(0);
-      expect((await rows()).find((r) => r.id === "fixture-record")!.body).toBe(
-        "Newer unsaved Markdown",
-      );
-      await page.clock.resume();
+      expect(
+        await page.evaluate((n) => (window as any).writes.slice(n), count),
+      ).toEqual([
+        expect.objectContaining({
+          patch: expect.objectContaining({
+            title: "Newer title draft",
+            body: "Newer unsaved Markdown",
+          }),
+        }),
+      ]);
+      const stored = (await rows()).find((r) => r.id === "fixture-record")!;
+      expect([stored.quantity, stored.title, stored.body]).toEqual([
+        43,
+        "Fixture record",
+        "Original body",
+      ]);
     },
   );
   await check(
-    "undoing creation keeps a newer draft for explicit restore before save",
+    "undoing creation keeps a refused draft for explicit restore before save",
     async () => {
       await page
         .getByRole("button", { name: "New record", exact: true })
         .click();
       await title().fill("Created record");
-      await save().click();
-      await expect(save()).toBeEnabled();
-      await title().fill("Retained draft after undo");
+      await recordSaved(page);
+      // A valid edit would save before Undo; a refused one stays the draft.
+      await title().fill("");
+      await recordSaved(page);
       await undo().click();
-      await expect(title()).toHaveValue("Retained draft after undo");
+      await expect(title()).toHaveValue("");
+      await expect(title()).toBeDisabled();
       await expect(save()).toBeDisabled();
-      const restore = page.getByRole("button", {
+      const restore = editor().getByRole("button", {
         name: "Restore record",
         exact: true,
       });
       await expect(restore).toBeEnabled();
       await restore.click();
-      await expect(title()).toHaveValue("Retained draft after undo");
+      await expect(title()).toHaveValue("");
       await expect(save()).toBeEnabled();
+      await title().fill("Retained draft after undo");
       await save().click();
-      await expect(save()).toBeEnabled();
+      await expect(save()).toHaveCount(0);
       expect(
         (await rows()).find((r) => r.title === "Retained draft after undo")!
           .deleted_at,
@@ -248,11 +258,13 @@ try {
     },
   );
   await check(
-    "a newer external revision blocks undo and preserves the draft and action",
+    "a newer external revision blocks undo and preserves the refused draft and action",
     async () => {
       await openFixture();
       await setQuantity("43");
-      await title().fill("Keep this draft");
+      // A valid edit would save before Undo; a refused one stays the draft.
+      await title().fill("");
+      await recordSaved(page);
       await page.evaluate(async () => {
         const { WorkspaceDatabase } = await import("/src/lib/database.ts");
         const other = new WorkspaceDatabase();
@@ -274,8 +286,10 @@ try {
         }
       });
       await undo().click();
-      await expect(page.getByRole("alert")).toContainText(/changed|revision/i);
-      await expect(title()).toHaveValue("Keep this draft");
+      await expect(
+        page.getByRole("alert").filter({ hasText: /changed|revision/i }),
+      ).toBeVisible();
+      await expect(title()).toHaveValue("");
       await expect(undo()).toBeEnabled();
       expect(
         (await rows()).find((r) => r.id === "fixture-record")!.quantity,
@@ -290,7 +304,6 @@ try {
       await page.evaluate(() => ((window as any).holdUndo = true));
       await undo().click();
       await page.waitForFunction(() => (window as any).heldUndo.length === 1);
-      await expect(save()).toBeDisabled();
       await expect(
         page.getByRole("button", { name: "Close record", exact: true }),
       ).toBeDisabled();
@@ -300,11 +313,11 @@ try {
       await expect(title()).toBeDisabled();
       await page.evaluate(() => (window as any).releaseUndo());
       await expect(quantity()).toHaveValue("42");
-      await expect(save()).toBeEnabled();
+      await expect(title()).toBeEnabled();
     },
   );
   await check(
-    "undoing another record preserves the open record draft",
+    "undoing another record preserves the open record's refused draft",
     async () => {
       await openFixture();
       await setQuantity("43");
@@ -312,9 +325,12 @@ try {
       await page
         .getByRole("button", { name: "Second record", exact: true })
         .click();
-      await title().fill("A different record draft");
+      await recordReady(page);
+      // A valid edit would save before Undo; a refused one stays the draft.
+      await title().fill("");
+      await recordSaved(page);
       await undo().click();
-      await expect(title()).toHaveValue("A different record draft");
+      await expect(title()).toHaveValue("");
       await expect(
         page.getByRole("status", { name: "Draft review", exact: true }),
       ).toBeVisible();
@@ -357,7 +373,7 @@ try {
     "trash and restore undo use new tombstones and preserve earlier values",
     async () => {
       await openFixture();
-      await page
+      await editor()
         .getByRole("button", { name: "Move to trash", exact: true })
         .click();
       await expect(
@@ -368,12 +384,12 @@ try {
         page.getByRole("button", { name: "Fixture record", exact: true }),
       ).toBeVisible();
       await openFixture();
-      await page
+      await editor()
         .getByRole("button", { name: "Move to trash", exact: true })
         .click();
       await page.getByRole("button", { name: "Trash", exact: true }).click();
       await openFixture();
-      await page
+      await editor()
         .getByRole("button", { name: "Restore record", exact: true })
         .click();
       await expect(

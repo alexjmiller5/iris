@@ -53,10 +53,10 @@ try {
  await expect.poll(()=>db.db.query('SELECT count(*) AS n FROM catalog_log').get()?.n).toBe(3);
  expect(JSON.parse(String(db.db.query("SELECT options FROM catalog_properties WHERE col='status'").get()?.options))[0]).toMatchObject({d:'Reviewed and ready',color:'blue'});
  expect(db.db.query('PRAGMA table_info(widgets)').all().some((r:any)=>r.name==='review_score')).toBe(true);
- await click('Fixture record');await cdp.fill(element('#field-quantity'),'-1');await click('Save record');await has('Quantity cannot be negative.');
+ await click('Fixture record');await cdp.fill(element('#field-quantity'),'-1');await cdp.evaluate('document.activeElement?.blur()');await has('Quantity cannot be negative.');
  expect(await cdp.evaluate(`(${element('#field-quantity')}).value`)).toBe('-1');
  expect(db.db.query("SELECT quantity FROM widgets WHERE id='fixture-record'").get()?.quantity).toBe(42);
- await cdp.fill(element('#field-quantity'),'43');await click('Save record');await cdp.until(`!(${button('Save record')}).disabled`);await click('Close record');await sync();
+ await cdp.fill(element('#field-quantity'),'43');await cdp.evaluate('document.activeElement?.blur()');await cdp.until(`document.querySelector('[aria-label="Record save status"]')?.dataset.state === 'saved'`);await click('Close record');await sync();
  await expect.poll(()=>db.db.query("SELECT quantity FROM widgets WHERE id='fixture-record'").get()?.quantity).toBe(43);
  console.log('PASS catalog property/options/option color/column/rule editing, failed-rule draft retention, catalog_log hub readback, coverage refresh, actual rule failure and corrected record save.');
 } catch(error) {if(page)console.error(await page.evaluate('document.body.innerText'));throw error;}

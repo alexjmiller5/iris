@@ -74,16 +74,16 @@ const mutations = [
     name: "palette ignores dirty cancel",
     file: page,
     before:
-      "if (!current() || busy || writing || bodySaving || !discard()) return false;",
-    after: "if (!current() || busy || writing || bodySaving) return false;",
-    browser: "cancelled dirty",
+      "if (!current() || busy || writing || !discard()) return false;",
+    after: "if (!current() || busy || writing) return false;",
+    browser: "cancelled discard of a refused draft",
   },
   {
     name: "closed destination still applies",
     file: page,
     before:
-      "if (!current() || busy || writing || bodySaving || !discard()) return false;",
-    after: "if (busy || writing || bodySaving || !discard()) return false;",
+      "if (!current() || busy || writing || !discard()) return false;",
+    after: "if (busy || writing || !discard()) return false;",
     browser: "closed destination",
   },
   {

@@ -805,7 +805,7 @@ Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
   save is in flight) and Undo on the sample workspace.
 - `test-auto-sync.ts`: background push/pull, offline pending, sync leader, sidebar toggle.
 - `test-notes-views.ts`: preferred and related-record views, flag quick filter, status search.
-- `test-workspace-regressions.ts`: write locks, SQL defaults, dynamic options, typed
+- `test-workspace-regressions.ts`: autosave in flight, write locks, SQL defaults, dynamic options, typed
   filters, columns, workspace switch, pending count; `test-workspace-mutations.ts` breaks each.
 - `test-workspace-navigation.ts`: URL destinations, history guards, held replies, graph
   groups, Copy link; `test-navigation-mutations.ts` breaks each.

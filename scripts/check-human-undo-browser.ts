@@ -103,7 +103,7 @@ async function change(title: string) {
   await evaluate(
     `(()=>{const input=document.querySelector('[aria-label="Title"]');input.value=${JSON.stringify(title)};input.dispatchEvent(new Event('input',{bubbles:true}));})()`,
   );
-  await click("Save record");
+  // The title autosaves after its typing pause.
   await savedTitle(title);
 }
 async function commandZ() {
@@ -187,12 +187,14 @@ try {
   await evaluate(
     `(()=>{const e=document.querySelector('[aria-label="View name"]');e.value='Human undo view';e.dispatchEvent(new Event('input',{bubbles:true}));})()`,
   );
-  await click("Save as");
+  await click("Save as new view");
   await wait(
     `!!${button("Undo last saved change")} && !${button("Undo last saved change")}.disabled`,
   );
   await click("Undo last saved change");
-  await wait(`document.querySelector('[aria-label="View"]').value===''`);
+  await wait(
+    `![...document.querySelectorAll('[aria-label="View"] option')].some(o=>o.textContent.trim()==='Human undo view')`,
+  );
   pass("saved-view creation can be undone through the same visible button");
   assert.equal(checks, 5);
   console.log(`${checks} browser checks passed`);

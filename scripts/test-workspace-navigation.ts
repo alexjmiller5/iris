@@ -2,7 +2,7 @@ import { chromium, expect as base } from "@playwright/test";
 import { resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { regressionHub } from "./workspace-regression-hub";
-import { disposableOrigin, workspacePage } from "./test-origin";
+import { disposableOrigin, recordReady, recordSaved, workspacePage } from "./test-origin";
 
 // Shared build hosts can be slow; waits are generous, never fixed sleeps.
 const expect = base.configure({ timeout: 15000 });
@@ -370,7 +370,7 @@ try {
       },
     ],
     [
-      "Back cancellation keeps the draft and current URL",
+      "Back cancellation keeps a refused draft and the current URL",
       async () => {
         await page
           .getByRole("button", { name: "Fixture record", exact: true })
@@ -380,9 +380,12 @@ try {
           .getByRole("button", { name: "Second record", exact: true })
           .click();
         await expect.poll(() => query().get("row")).toBe("second-record");
+        await recordReady(page);
+        // Valid edits save themselves; only a refused draft asks before it is left.
         await editor
           .getByRole("textbox", { name: "Title", exact: true })
-          .fill("Keep this draft");
+          .fill("");
+        await recordSaved(page);
         const address = page.url(),
           before = dialogs;
         accept = false;
@@ -391,7 +394,7 @@ try {
         await expect.poll(() => page.url()).toBe(address);
         await expect(
           editor.getByRole("textbox", { name: "Title", exact: true }),
-        ).toHaveValue("Keep this draft");
+        ).toHaveValue("");
         accept = true;
         await page.evaluate(() => history.back());
         await expect(
@@ -401,34 +404,30 @@ try {
       },
     ],
     [
-      "pending write blocks browser Back until receipt",
+      "pending autosave receipt does not block browser Back and still lands",
       async () => {
         await page
           .getByRole("button", { name: "Fixture record", exact: true })
           .click();
+        await recordReady(page);
         await expect.poll(() => query().get("row")).toBe("fixture-record");
-        await editor.getByLabel("Quantity", { exact: true }).fill("44");
         await page.evaluate(() => {
           (window as any).holdWrites = true;
         });
-        await editor
-          .getByRole("button", { name: "Save record", exact: true })
-          .click();
+        await editor.getByLabel("Quantity", { exact: true }).fill("44");
+        await page.evaluate(() =>
+          (document.activeElement as HTMLElement | null)?.blur(),
+        );
         await page.waitForFunction(() => (window as any).held.length > 0);
-        const address = page.url(),
-          pops = await page.evaluate(() => (window as any).pops);
+        const address = page.url();
         await page.evaluate(() => history.back());
-        await expect
-          .poll(() => page.evaluate(() => (window as any).pops))
-          .toBeGreaterThan(pops);
-        await expect.poll(() => page.url()).toBe(address);
+        await expect.poll(() => page.url()).not.toBe(address);
+        await page.evaluate(() => (window as any).release());
+        await follow(origin + "/workspace?table=widgets&row=fixture-record");
+        await recordReady(page);
         await expect(
           editor.getByLabel("Quantity", { exact: true }),
         ).toHaveValue("44");
-        await page.evaluate(() => (window as any).release());
-        await expect(
-          editor.getByRole("button", { name: "Save record", exact: true }),
-        ).toBeEnabled();
       },
     ],
     [
@@ -474,8 +473,17 @@ try {
         await expect(
           page.getByText("Opening link…", { exact: true }),
         ).not.toBeVisible();
-        await expect(editor).not.toBeVisible();
+        // The listed record paints at once and stays inert until its fresh row arrives.
+        await expect(
+          editor.getByRole("textbox", { name: "Title", exact: true }),
+        ).toHaveValue("Second record");
+        expect(
+          await page.evaluate(
+            () => document.querySelector(".record-panel form")?.inert,
+          ),
+        ).toBe(true);
         await page.evaluate(() => (window as any).release());
+        await recordReady(page);
         await expect(
           editor.getByRole("textbox", { name: "Title", exact: true }),
         ).toHaveValue("Second record");
@@ -581,8 +589,9 @@ try {
         await page
           .getByRole("button", { name: "Fixture record", exact: true })
           .click();
+        await recordReady(page);
         await expect(
-          editor.getByRole("button", { name: "Save record", exact: true }),
+          editor.getByRole("textbox", { name: "Title", exact: true }),
         ).toBeEnabled();
         await expect
           .poll(() => page.evaluate(() => (window as any).inflight))
@@ -593,7 +602,7 @@ try {
         await follow(origin + "/workspace?table=widgets&row=second-record");
         await page.waitForFunction(() => (window as any).held.length === 1);
         await expect(
-          editor.getByRole("button", { name: "Save record", exact: true }),
+          editor.getByRole("textbox", { name: "Title", exact: true }),
         ).toBeDisabled();
         await expect(
           editor.getByRole("button", { name: "Move to trash", exact: true }),

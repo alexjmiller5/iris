@@ -71,3 +71,14 @@ export async function recordSaved(
 		{ timeout }
 	);
 }
+
+/** A record opened from a list paints at once but stays inert until its fresh row
+ * arrives; wait for that before typing into it. */
+export async function recordReady(
+	page: { waitForFunction(fn: () => boolean, arg?: unknown, options?: { timeout: number }): Promise<unknown> },
+	timeout = 15000
+) {
+	await page.waitForFunction(() => document.querySelector('.record-panel form')?.inert === false, undefined, {
+		timeout
+	});
+}

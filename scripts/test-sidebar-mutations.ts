@@ -81,16 +81,16 @@ const mutations = [
     name: "recent choice discards despite Cancel",
     file: page,
     before:
-      "if (!current() || busy || writing || bodySaving || !discard()) return false;",
-    after: "if (!current() || busy || writing || bodySaving) return false;",
+      "if (!current() || busy || writing || !discard()) return false;",
+    after: "if (!current() || busy || writing) return false;",
     browser: "cancelled discard",
   },
   {
     name: "superseded recent lookup still applies",
     file: page,
     before:
-      "if (!current() || busy || writing || bodySaving || !discard()) return false;",
-    after: "if (busy || writing || bodySaving || !discard()) return false;",
+      "if (!current() || busy || writing || !discard()) return false;",
+    after: "if (busy || writing || !discard()) return false;",
     browser: "late recent lookup",
   },
 ];

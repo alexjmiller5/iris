@@ -277,7 +277,7 @@ try {
   );
   await expect(
     page.getByRole("status", { name: "Draft review", exact: true }),
-  ).toContainText("Body autosave is paused");
+  ).toContainText("Autosave is paused");
   await expect(
     page.getByRole("textbox", { name: "Title", exact: true }),
   ).toHaveValue(String(localRow.title));
@@ -295,7 +295,7 @@ try {
       })) as any[]
     )[0].body,
   ).toBe("Newer local body");
-  await page.getByRole("button", { name: "Save record", exact: true }).click();
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(
     page.getByRole("status", { name: "Draft review", exact: true }),
   ).toBeVisible();
@@ -305,7 +305,7 @@ try {
   await page
     .getByRole("textbox", { name: "Title", exact: true })
     .fill("Allowed");
-  await page.getByRole("button", { name: "Save record", exact: true }).click();
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(
     page.getByRole("status", { name: "Draft review", exact: true }),
   ).toHaveCount(0);
@@ -319,7 +319,7 @@ try {
   ).toBe("Rejected body");
   await expect(summary()).toHaveText("205 rejected edits need attention");
   console.log(
-    "PASS: review retains fresh revision, pauses autosave, keeps failed drafts and uses normal explicit Save",
+    "PASS: review retains fresh revision, pauses autosave, keeps failed drafts and stores them with Save draft",
   );
   await page.getByRole("button", { name: "Close record", exact: true }).click();
   const second = stored[1];
@@ -348,16 +348,17 @@ try {
     .getByRole("button", { name: "Review rejected edit", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Save record", exact: true }),
+    page.getByRole("button", { name: "Save draft", exact: true }),
   ).toBeDisabled();
   await expect(
     page.getByRole("textbox", { name: "Title", exact: true }),
   ).toHaveValue(String(otherRow.title));
   await page
+    .getByRole("complementary", { name: "Record editor", exact: true })
     .getByRole("button", { name: "Restore record", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Save record", exact: true }),
+    page.getByRole("button", { name: "Save draft", exact: true }),
   ).toBeEnabled();
   await expect(
     page.getByRole("textbox", { name: "Title", exact: true }),

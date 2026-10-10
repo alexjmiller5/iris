@@ -389,10 +389,14 @@ try {
         "Reopen retains the synced record",
       );
       await cdp.click(named("button", "Fixture record"));
-      await cdp.fill(element("#field-title"), "Persisted reopen marker");
-      await cdp.click(named("button", "Save record"));
+      // The opened record is inert until its fresh row arrives; then edits save themselves.
       await cdp.until(
-        `(${element("#field-title")})?.value==='Persisted reopen marker' && !!(${named("button", "Persisted reopen marker")})`,
+        `document.querySelector('.record-panel form')?.inert===false`,
+      );
+      await cdp.fill(element("#field-title"), "Persisted reopen marker");
+      await cdp.evaluate("document.activeElement?.blur()");
+      await cdp.until(
+        `document.querySelector('[aria-label="Record save status"]')?.dataset.state==='saved' && (${element("#field-title")})?.value==='Persisted reopen marker' && !!(${named("button", "Persisted reopen marker")})`,
       );
       await cdp.click(named("button", "Close record"));
       await cdp.navigate(address);

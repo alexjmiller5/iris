@@ -1,5 +1,5 @@
 import { chromium, expect } from "@playwright/test";
-import { disposableOrigin, workspacePage } from "./test-origin";
+import { disposableOrigin, recordSaved, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 const url =
   process.env.IRIS_TEST_URL ??
@@ -17,8 +17,15 @@ const page = workspacePage(
 page.setDefaultTimeout(10000);
 page.on("dialog", (d) => d.accept());
 page.on("pageerror", (error) => console.error("Page error:", error.message));
+// Undo pauses autosave over a kept draft; Save draft stores it and resumes autosave.
 const save = () =>
-  page.getByRole("button", { name: "Save record", exact: true });
+  page.getByRole("button", { name: "Save draft", exact: true });
+const saveStatus = () => page.locator('[aria-label="Record save status"]');
+async function saveDraft() {
+  await save().click();
+  await expect(save()).toHaveCount(0);
+  await expect(saveStatus()).toHaveAttribute("data-state", "saved");
+}
 const undo = () =>
   page.getByRole("button", { name: "Undo last saved change", exact: true });
 const title = () => page.getByRole("textbox", { name: "Title", exact: true });
@@ -92,6 +99,10 @@ async function check(name: string, run: () => Promise<void>) {
     await page
       .getByRole("button", { name: "Connect", exact: true })
       .click();
+    await page
+      .getByRole("navigation", { name: "Tables", exact: true })
+      .getByRole("button", { name: "widgets", exact: true })
+      .click({ timeout: 30000 });
     await expect(
       page.getByRole("button", { name: "Fixture record", exact: true }),
     ).toBeVisible({ timeout: 30000 });
@@ -134,7 +145,7 @@ try {
   await expect(page.locator('[data-cell-editor]')).toHaveCount(0);
   await assertPaused(); expect((await stored()).title).toBe('Fixture record');
   expect((await stored()).quantity).toBe(42);
-  await save().click(); await expect(save()).toBeEnabled();
+  await saveDraft();
   expect((await stored()).title).toBe('Retained grid draft'); expect((await stored()).quantity).toBe(42);
  });
  await check('dirty same-property cell preserves raw and saves from receipt revision',async()=>{
@@ -142,9 +153,9 @@ try {
   await gridGroup('Quantity').getByLabel('Quantity',{exact:true}).fill('44');
   await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible();await expect(panel().getByLabel('Quantity',{exact:true})).toHaveValue('44');
   await assertPaused(); expect((await stored()).quantity).toBe(42);
-  await save().click(); await expect(save()).toBeEnabled(); expect((await stored()).quantity).toBe(44);
+  await saveDraft(); expect((await stored()).quantity).toBe(44);
  });
- await check('Markdown cell waits for explicit Save after undo',async()=>{
+ await check('Markdown cell waits for Save draft after undo',async()=>{
   await saveGridQuantity();
   const columns=page.locator('details').filter({has:page.locator('summary').filter({hasText:/^\s*Columns\s*$/})}); await columns.locator('summary').click(); await columns.getByRole('checkbox',{name:'Show Body',exact:true}).check(); await columns.locator('summary').click();
   await beginCell('body','Body');
@@ -154,7 +165,7 @@ try {
   await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible();await expect(panel()).toBeVisible();
   await expect(await body()).toHaveValue('Unsaved **cell** body');
   await assertPaused(); expect((await stored()).body).toBe('Original body'); expect((await stored()).quantity).toBe(42);
-  await save().click(); await expect(save()).toBeEnabled(); expect((await stored()).body).toBe('Unsaved **cell** body');
+  await saveDraft(); expect((await stored()).body).toBe('Unsaved **cell** body');
  });
  await check('clean same-row cell clears without copying the undone value back',async()=>{
   await saveGridQuantity(); await beginCell('quantity','Quantity');
@@ -174,7 +185,7 @@ try {
  });
  await check('creation undo promotes a read-only tombstone and Restore keeps raw',async()=>{
   await page.getByRole('button',{name:'New record',exact:true}).click();
-  await title().fill('New grid record'); await save().click(); await expect(save()).toBeEnabled();
+  await title().fill('New grid record'); await recordSaved(page); await expect(saveStatus()).toHaveAttribute('data-state','saved');
   const created=(await rows()).find(r=>r.title==='New grid record')!; await close();
   await beginCell('title','Title',String(created.id)); await gridGroup('Title').getByLabel('Title',{exact:true}).fill('Retained creation draft');
   await undo().click(); await expect(page.getByText('Undid the last saved change in widgets',{exact:false})).toBeVisible();await expect(panel()).toBeVisible();
@@ -186,7 +197,7 @@ try {
   await expect(panel().getByLabel('Title',{exact:true})).toBeEnabled(); await expect(panel().getByLabel('Title',{exact:true})).toHaveValue('Retained creation draft');
   await assertPaused(); expect((await stored(String(created.id))).title).toBe('New grid record');
   expect((await stored(String(created.id))).deleted_at).toBeNull();
-  await save().click(); await expect(save()).toBeEnabled(); expect((await stored(String(created.id))).title).toBe('Retained creation draft');
+  await saveDraft(); expect((await stored(String(created.id))).title).toBe('Retained creation draft');
  });
  await check('failed undo retains cell and receipt without rebasing a stale draft',async()=>{
   await saveGridQuantity(); await beginCell('title','Title');

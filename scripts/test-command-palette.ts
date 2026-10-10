@@ -1,7 +1,7 @@
 import { chromium, expect, type Page } from "@playwright/test";
 import { resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { disposableOrigin, workspacePage } from "./test-origin";
+import { disposableOrigin, recordReady, recordSaved, workspacePage } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 
 const url =
@@ -167,6 +167,10 @@ try {
   await page.getByLabel("Hub address").fill(server.url.href.replace(/\/$/, ""));
   await page.getByLabel("Device token").fill("fixture");
   await page.getByRole("button",{name:"Connect",exact:true}).click();
+  await page
+    .getByRole("navigation", { name: "Tables", exact: true })
+    .getByRole("button", { name: "widgets", exact: true })
+    .click({ timeout: 30000 });
   await expect(
     page.getByRole("button", { name: "Fixture record", exact: true }),
   ).toBeVisible({ timeout: 30000 });
@@ -198,6 +202,7 @@ try {
       .getByRole("group", { name: "Records", exact: true })
       .getByRole("option")
       .filter({ hasText: label });
+  const saveStatus = owned.locator('[aria-label="Record save status"]');
   const query = () => new URL(owned.url()).searchParams;
   async function open() {
     await owned.keyboard.press("Meta+k");
@@ -370,14 +375,16 @@ try {
       },
     ],
     [
-      "cancelled dirty discard retains dialog draft and URL; accept prompts once",
+      "cancelled discard of a refused draft retains it and the URL; accept prompts once",
       async () => {
         await owned
           .getByRole("button", { name: "Fixture record", exact: true })
           .click();
-        await editor
-          .getByRole("textbox", { name: "Title", exact: true })
-          .fill("Keep draft");
+        await recordReady(owned);
+        // A valid edit saves itself; only a value the catalog refuses can be discarded.
+        await editor.getByRole("textbox", { name: "Title", exact: true }).fill("");
+        await recordSaved(owned);
+        await expect(saveStatus).toHaveAttribute("data-state", "failed");
         const address = owned.url(),
           before = dialogs;
         await open();
@@ -389,7 +396,7 @@ try {
         expect(dialogs).toBe(before + 1);
         await expect(
           editor.getByRole("textbox", { name: "Title", exact: true }),
-        ).toHaveValue("Keep draft");
+        ).toHaveValue("");
         accept = true;
         await viewOption("projects").click();
         await expect(dialog).not.toBeVisible();
@@ -418,33 +425,35 @@ try {
       },
     ],
     [
-      "pending write receipt blocks palette navigation",
+      "pending autosave receipt does not block palette navigation and still lands",
       async () => {
         await owned
           .getByRole("button", { name: "Fixture record", exact: true })
           .click();
+        await recordReady(owned);
+        await hold("write");
         await editor
           .getByRole("textbox", { name: "Title", exact: true })
           .fill("Receipt waiting");
-        await hold("write");
-        await owned
-          .getByRole("button", { name: "Save record", exact: true })
-          .click();
+        await owned.evaluate(() =>
+          (document.activeElement as HTMLElement | null)?.blur(),
+        );
         await held();
-        const address = owned.url();
-        await owned.keyboard.press("Meta+k");
+        await open();
+        await tableOption("projects").click();
         await expect(dialog).not.toBeVisible();
-        expect(owned.url()).toBe(address);
+        await expect.poll(() => query().get("table")).toBe("projects");
         await owned.evaluate(() => (window as any).release());
-        await expect(
-          owned.getByRole("button", { name: "Save record", exact: true }),
-        ).toBeEnabled();
+        await tables.getByRole("button", { name: "widgets", exact: true }).click();
+        await owned
+          .getByRole("button", { name: "Receipt waiting", exact: true })
+          .click();
+        await recordReady(owned);
         await editor
           .getByRole("textbox", { name: "Title", exact: true })
           .fill("Fixture record");
-        await owned
-          .getByRole("button", { name: "Save record", exact: true })
-          .click();
+        await recordSaved(owned);
+        await expect(saveStatus).toHaveAttribute("data-state", "saved");
       },
     ],
     [

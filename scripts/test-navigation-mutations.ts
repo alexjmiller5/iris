@@ -30,10 +30,8 @@ const mutations = [
   {
     name: "lookup permits a source write",
     file: page,
-    before:
-      "navigationLoading ||\n\t\t\t\t\t\t\t\t\treadOnly ||\n\t\t\t\t\t\t\t\t\tblocked ||\n\t\t\t\t\t\t\t\t\tselected?.deleted_at != null}><IconDeviceFloppy",
-    after:
-      "readOnly ||\n\t\t\t\t\t\t\t\t\tblocked ||\n\t\t\t\t\t\t\t\t\tselected?.deleted_at != null}><IconDeviceFloppy",
+    before: "const locked = (p: Property) =>\n\t\tnavigationLoading ||\n",
+    after: "const locked = (p: Property) =>\n",
     test: "pending linked lookup",
   },
   {
@@ -51,11 +49,11 @@ const mutations = [
     test: "Back cancellation",
   },
   {
-    name: "Back bypasses pending write receipt",
+    name: "Back waits for a pending autosave",
     file: page,
     before: "if ((opened && busy) || !discard()) {",
-    after: "if (!writing && !bodySaving && !discard()) {",
-    test: "pending write",
+    after: "if ((opened && busy) || autosaving || !discard()) {",
+    test: "pending autosave receipt",
   },
   {
     name: "reload ignores the linked destination",

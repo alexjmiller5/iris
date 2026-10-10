@@ -53,8 +53,8 @@ const mutations = [
     file: page,
     before: "undoPaused = reconciled.dirty;",
     after: "undoPaused = false;",
-    count: 3,
-    browser: "a newer Markdown",
+    count: 4,
+    browser: "a rejected edit",
   },
   {
     name: "restoring loses the kept draft",
