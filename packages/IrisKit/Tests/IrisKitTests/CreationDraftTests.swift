@@ -192,12 +192,14 @@ struct CreationDraftTests {
     }
     let session = MarkdownEditorSession(value: "", label: "Body")
     session.onChange = { editor.setValue($0, for: "body") }
-    session.snapshot = { _ in session.document }
+    session.snapshot = { [unowned session] _ in session.document }
     try await session.collectSnapshot(lock: true)
     #expect(editor.draft.patch.isEmpty && !editor.dirty)
     // An explicit source edit remains explicit after it is cleared again.
     session.editSource("Typed")
     session.editSource("")
     #expect(editor.draft.patch == ["body": .null])
+    // Leave no autosave scheduled for after this test.
+    try editor.keepDraft()
   }
 }
