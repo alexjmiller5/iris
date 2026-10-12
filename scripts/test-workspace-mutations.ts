@@ -13,7 +13,7 @@ const mutations: { name: string; file: string; test: string; edits: [string | Re
 		[/\n\t\twriting \|\|\n\t\tselected\?\.deleted_at/, '\n\t\tselected?.deleted_at']
 	] },
 	{ name: 'canonical draft reconciliation removed', file: route, test: 'canonical SQL', edits: [
-		['draft = rowDraft(stored);', '/* mutation: leave the draft unchanged */']
+		['selected = stored;\n\t\tdraft = merged.values;', 'selected = stored;\n\t\t/* mutation: leave the draft unchanged */']
 	] },
 	{ name: 'dynamic options excluded', file: worker, test: 'dynamic options are available', edits: [
 		['return local.options(args);', 'return (await readCatalog(db)).properties.find(p => p.tbl === args.table && p.col === args.column)?.options?.map(o => o.v) ?? [];']

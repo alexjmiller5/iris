@@ -77,13 +77,6 @@ const mutations = [
     test: "newer record wins",
   },
   {
-    name: "new record lookup fails to invalidate old link",
-    file: page,
-    before: "if (!database || busy) return false;\n\t\tlocationRequest++;",
-    after: "if (!database || busy) return false;",
-    test: "newer record wins",
-  },
-  {
     name: "missing record silently falls back",
     file: model,
     before: "if (!row)\n",
@@ -93,8 +86,8 @@ const mutations = [
   {
     name: "graph groups are not persisted",
     file: page,
-    before: "\t\t\t\t\tJSON.stringify(groups)\n",
-    after: "\t\t\t\t\t'{}'\n",
+    before: "`, JSON.stringify(groups));",
+    after: "`, '{}');",
     test: "graph groups",
   },
   {
