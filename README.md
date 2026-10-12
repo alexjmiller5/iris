@@ -15,8 +15,10 @@ record when a whole-record import mapping exists; the original link stays availa
 ## Pinned tables
 
 Pin a table to keep it immediately below Recents and ahead of the alphabetical
-list. Use Move up/down to change its order, or Unpin to return it to the ordinary
-list. The controls are available on web, iOS, and macOS. Pinning never changes a
+list. Drag a pin by its three-bar handle to change its order (on web, Alt+Up and
+Alt+Down move the focused handle too). Long press a pin, or right-click it, and
+choose Unpin to return it to the ordinary list (on web the Menu key or Shift+F10
+also opens that menu). This works on web, iOS, and macOS. Pinning never changes a
 table's access policy or dismisses an unsaved record.
 
 Pins are ordinary synced workspace rows, not device preferences. After a

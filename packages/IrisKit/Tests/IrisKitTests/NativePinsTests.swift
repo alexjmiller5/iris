@@ -55,9 +55,59 @@ struct NativePinsTests {
     #expect(model.active.count == 1)
     #expect(await model.pin("alpha"))
     #expect(pinned?.expectedUpdatedAt == snapshot.pins[1].updatedAt)
-    #expect(await model.move("pin:alpha", direction: "up"))
+    #expect(await model.reorder("pin:alpha", to: 0))
+    #expect(moved?.direction == "up")
     #expect(moved?.expected.map(\.id) == ["pin:zeta", "pin:alpha"])
     #expect(model.active.map(\.tbl) == ["alpha", "zeta"])
+  }
+
+  @Test func aDragAcrossSeveralPinsChainsGuardedStepsOnEachAcknowledgedList() async {
+    var order = ["a", "b", "c", "d"]
+    var revision = 0
+    var sent: [CoreMoveTablePinArgs] = []
+    func acknowledged() -> CoreSidebarPinList {
+      var receipt = list(order)
+      for index in receipt.pins.indices { receipt.pins[index].updatedAt = "2026-01-01T00:00:0\(revision).000Z" }
+      return receipt
+    }
+    var commits = 0
+    let model = NativePinsModel(
+      list: { acknowledged() }, pin: { _ in acknowledged() }, unpin: { _ in acknowledged() },
+      move: { args in
+        sent.append(args)
+        let from = order.firstIndex(of: String(args.id.dropFirst(4)))!
+        order.swapAt(from, from + (args.direction == "up" ? -1 : 1))
+        revision += 1
+        return acknowledged()
+      }, didCommit: { commits += 1 })
+    await model.refresh()
+    #expect(await model.reorder("pin:a", to: 2))
+    #expect(model.active.map(\.tbl) == ["b", "c", "a", "d"])
+    #expect(sent.map(\.direction) == ["down", "down"])
+    #expect(sent.map { $0.expected[0].updatedAt } == ["2026-01-01T00:00:00.000Z", "2026-01-01T00:00:01.000Z"])
+    #expect(commits == 1)
+    #expect(await model.reorder("pin:d", to: 0))
+    #expect(model.active.map(\.tbl) == ["d", "b", "c", "a"])
+    sent = []
+    #expect(await model.reorder("pin:b", to: 1) == false)
+    #expect(await model.reorder("pin:b", to: 9) == false)
+    #expect(await model.reorder("pin:missing", to: 0) == false)
+    #expect(sent.isEmpty)
+  }
+
+  @Test func aFailedStepKeepsTheLastAcknowledgedOrderAndReportsIt() async {
+    var steps = 0
+    let model = NativePinsModel(
+      list: { list(["a", "b", "c"]) }, pin: { _ in list([]) }, unpin: { _ in list([]) },
+      move: { _ in
+        steps += 1
+        if steps == 2 { throw CocoaError(.fileWriteUnknown) }
+        return list(["b", "a", "c"])
+      })
+    await model.refresh()
+    #expect(await model.reorder("pin:a", to: 2) == false)
+    #expect(model.active.map(\.tbl) == ["b", "a", "c"])
+    #expect(model.error != nil && !model.busy)
   }
 
   @Test func cancelledWorkspaceCannotPublishLateRead() async {
@@ -100,7 +150,7 @@ struct WorkspacePinsTests {
     #expect(model.rows == before)
     #expect(try await workspace.listSidebarPins() == pins.snapshot)
     let note = try #require(pins.active.last)
-    #expect(await pins.move(note.id, direction: "up"))
+    #expect(await pins.reorder(note.id, to: 0))
     #expect(pins.active.map(\.tbl) == ["notes", "topics"])
     #expect(await pins.unpin(note.id))
     #expect(pins.active.map(\.tbl) == ["topics"])

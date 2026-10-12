@@ -327,6 +327,24 @@ async function sampleWalk(page: Page, scheme: string) {
   await page.keyboard.press("Escape");
   await expectFocus([backup], "Backup");
 
+  // A pinned table: its reorder handle and the pin menu from Shift+F10. Escape
+  // returns focus to the handle; Unpin restores the sidebar for later views.
+  const pin = role("button", "Pin notes");
+  await tabTo(pin, true);
+  await page.keyboard.press("Enter");
+  const handle = role("button", "Reorder notes");
+  await handle.waitFor();
+  await tabTo(handle);
+  await audit("sidebar-pins");
+  await page.keyboard.press("Shift+F10");
+  await role("menuitem", "Unpin").waitFor();
+  await audit("pin-menu");
+  await page.keyboard.press("Escape");
+  await expectFocus([handle], "Reorder notes");
+  await page.keyboard.press("Shift+F10");
+  await page.keyboard.press("Enter");
+  await pin.waitFor();
+
   // Collapsed sidebar via Cmd+\.
   await page.locator("body").focus();
   await page.keyboard.press("ControlOrMeta+\\");

@@ -145,7 +145,9 @@
 			!!pinState.snapshot.unavailable
 	);
 	async function mutatePins(action: () => Promise<boolean>) {
-		if (await action()) await refresh();
+		const changed = await action();
+		if (changed) await refresh();
+		return changed;
 	}
 	import {
 		describeRecent,
@@ -2860,7 +2862,7 @@
 					error={pinState.error || pinState.snapshot?.unavailable || null}
 					onchoose={changeTable}
 					onunpin={(id) => mutatePins(() => pins.unpin(id))}
-					onmove={(id, direction) => mutatePins(() => pins.move(id, direction))}
+					onreorder={(id, to) => mutatePins(() => pins.reorder(id, to))}
 					onretry={() => pins.refresh()}
 				/>
 				<SidebarTables

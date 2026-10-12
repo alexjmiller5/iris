@@ -80,23 +80,86 @@ try {
   const focusReads=await cdp.evaluate("window.pinTrace.filter(e=>e.kind==='request'&&e.value==='listSidebarPins').length");
   await cdp.evaluate("new Promise(resolve=>{window.dispatchEvent(new Event('focus'));requestAnimationFrame(()=>requestAnimationFrame(resolve));})");
   expect(await cdp.evaluate("window.pinTrace.filter(e=>e.kind==='request'&&e.value==='listSidebarPins').length")).toBe(focusReads);
+  const artifacts=process.env.IRIS_TEST_ARTIFACT_DIR;
+  async function shot(name: string) {
+    if (!artifacts) return;
+    mkdirSync(artifacts,{recursive:true});
+    const image=await cdp.command('Page.captureScreenshot',{format:'png'});
+    await Bun.write(resolve(artifacts,name),Buffer.from(image.data,'base64'));
+  }
+  const centre = (selector: string) => cdp.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,h:r.height};})()`);
+  const mouse = (type: string, x: number, y: number, button = 'left', buttons = 1) =>
+    cdp.command('Input.dispatchMouseEvent', { type, x, y, button, buttons, clickCount: 1 });
+  const menuOpen = `!!document.querySelector('[role="menu"][aria-label^="Pin actions"]')?.matches(':popover-open')`;
   await cdp.click(named('button', 'Fixture record'));
   await cdp.fill(element('input[aria-label="Title"]'), 'Unsent pin fixture');
-  await cdp.click(element('[aria-label="Move projects up"]'));
+  // Drag the projects handle above widgets: the row follows the pointer, then the
+  // acknowledged order replaces it.
+  const handle = (table: string) => `[data-pin-table="${table}"] .handle`;
+  const from = await centre(handle('projects'));
+  await mouse('mouseMoved', from.x, from.y, 'none', 0);
+  await mouse('mousePressed', from.x, from.y);
+  for (const step of [8, 20, 34, 46]) await mouse('mouseMoved', from.x, from.y - step);
+  expect(await cdp.evaluate(`getComputedStyle(document.querySelector('[data-pin-table="projects"]')).transform`)).not.toBe('none');
+  await shot('sidebar-pins-drag.png');
+  await mouse('mouseReleased', from.x, from.y - 46, 'left', 0);
   await expect.poll(() => cdp.evaluate(pinned)).toEqual(['projects', 'widgets']);
   expect(await cdp.evaluate(`document.querySelector('input[aria-label="Title"]').value`)).toBe('Unsent pin fixture');
+  // Keyboard: Alt+Arrow moves the focused pin, announces it and keeps focus on its handle.
+  await cdp.evaluate(`document.querySelector(${JSON.stringify(handle('projects'))}).focus()`);
+  await cdp.key('ArrowDown', 1);
+  await expect.poll(() => cdp.evaluate(pinned)).toEqual(['widgets', 'projects']);
+  await cdp.until(`document.querySelector('[aria-live="polite"]')?.textContent === 'projects moved to position 2 of 2.'`);
+  await cdp.until(`document.activeElement?.getAttribute('aria-label') === 'Reorder projects'`);
+  await cdp.key('ArrowUp', 1);
+  await expect.poll(() => cdp.evaluate(pinned)).toEqual(['projects', 'widgets']);
+  await cdp.until(`document.activeElement?.getAttribute('aria-label') === 'Reorder projects'`);
+  // Shift+F10 opens the pin menu from the keyboard; Escape returns focus.
+  await cdp.key('F10', 8);
+  await cdp.until(menuOpen);
+  await cdp.until(`document.activeElement?.getAttribute('role') === 'menuitem'`);
+  await cdp.key('Escape');
+  await cdp.until(`!(${menuOpen})`);
+  await cdp.until(`document.activeElement?.getAttribute('aria-label') === 'Reorder projects'`);
+  // Autosave stores ordinary typing on leave; a refused value (the required title
+  // emptied) asks first, and Cancel keeps it while pins stay usable.
+  await cdp.fill(element('input[aria-label="Title"]'), '');
+  await cdp.evaluate('document.activeElement?.blur()');
+  await cdp.until(`document.querySelector('[aria-label="Record save status"]')?.dataset.state === 'failed'`);
   acceptDiscard=false;
   const beforeNavigationDialogs=dialogs;
   await cdp.click(element('[aria-label="Open pinned projects"]'));
   await expect.poll(()=>dialogs).toBe(beforeNavigationDialogs+1);
-  expect(await cdp.evaluate(`document.querySelector('input[aria-label="Title"]').value`)).toBe('Unsent pin fixture');
-  await cdp.click(element('[aria-label="Unpin widgets"]'));
+  expect(await cdp.evaluate(`document.querySelector('input[aria-label="Title"]').value`)).toBe('');
+  // Right-click opens the menu; its Unpin removes the pin.
+  const widgets = await centre('[aria-label="Open pinned widgets"]');
+  await mouse('mouseMoved', widgets.x, widgets.y, 'none', 0);
+  await mouse('mousePressed', widgets.x, widgets.y, 'right', 2);
+  await mouse('mouseReleased', widgets.x, widgets.y, 'right', 0);
+  await cdp.until(menuOpen);
+  await shot('sidebar-pins-menu.png');
+  await cdp.click(named('[role="menuitem"]', 'Unpin'));
   await expect.poll(() => cdp.evaluate(pinned)).toEqual(['projects']);
+  // The last pin write: a sync after it pushes the final order to the hub.
+  const pinsResync = await cdp.evaluate("new Date().toISOString()");
   await cdp.click(element('[aria-label="Pin widgets"]'));
   await expect.poll(() => cdp.evaluate(pinned)).toEqual(['projects', 'widgets']);
+  // A long press opens the same menu and stays open after release, without navigating.
+  const dialogsBeforePress = dialogs;
+  const press = await centre('[aria-label="Open pinned widgets"]');
+  await mouse('mouseMoved', press.x, press.y, 'none', 0);
+  await mouse('mousePressed', press.x, press.y);
+  await Bun.sleep(700);
+  await cdp.until(menuOpen);
+  await mouse('mouseReleased', press.x, press.y, 'left', 0);
+  await Bun.sleep(150);
+  expect(await cdp.evaluate(menuOpen)).toBe(true);
+  expect(dialogs).toBe(dialogsBeforePress);
+  expect(await cdp.evaluate(`document.querySelector('input[aria-label="Title"]').value`)).toBe('');
+  await cdp.key('Escape');
+  await cdp.until(`!(${menuOpen})`);
   acceptDiscard=true;
   await cdp.click(element('[aria-label="Open pinned projects"]'));
-  const pinsResync = await cdp.evaluate("new Date().toISOString()");
   await cdp.until(`(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${JSON.stringify(pinsResync)}`);
   await expect.poll(()=>hub.db.db.query('SELECT tbl FROM sidebar_pins WHERE deleted_at IS NULL ORDER BY position').all()).toEqual([{tbl:'projects'},{tbl:'widgets'}]);
   await cdp.navigate(address);
@@ -112,8 +175,7 @@ try {
   await connect();
   await expect.poll(() => cdp.evaluate(pinned)).toEqual(['projects','widgets']);
   await cdp.evaluate('window.scrollTo(0,0)');
-  const artifacts=process.env.IRIS_TEST_ARTIFACT_DIR;
-  if(artifacts){mkdirSync(artifacts,{recursive:true});const shot=await cdp.command('Page.captureScreenshot',{format:'png'});await Bun.write(resolve(artifacts,'sidebar-pins-pass.png'),Buffer.from(shot.data,'base64'));}
+  await shot('sidebar-pins-pass.png');
 } catch (error) {
   const artifacts = process.env.IRIS_TEST_ARTIFACT_DIR;
   if (page && artifacts) {
@@ -137,4 +199,4 @@ try {
   hub.auth.db.close();
 }
 
-console.log('PASS: pin/order/unpin/restore, dirty navigation cancellation, reopen, fresh replica sync and cleanup');
+console.log('PASS: pin, drag and keyboard reorder, menu by right-click, Shift+F10 and long press, unpin/restore, dirty navigation cancellation, reopen, fresh replica sync and cleanup');

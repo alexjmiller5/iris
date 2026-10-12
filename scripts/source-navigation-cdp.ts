@@ -124,6 +124,8 @@ export async function sourceNavigationCDP(address: string) {
       Enter: 13,
       Escape: 27,
       Tab: 9,
+      F10: 121,
+      ArrowUp: 38,
       ArrowDown: 40,
       ArrowRight: 39,
       a: 65,

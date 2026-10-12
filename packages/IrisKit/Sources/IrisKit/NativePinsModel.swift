@@ -60,17 +60,22 @@ final class NativePinsModel {
       self.error = error.localizedDescription
     }
   }
-  private func mutate(_ write: () async throws -> CoreSidebarPinList) async -> Bool {
+  private func mutate(
+    _ write: @MainActor (_ acknowledge: (CoreSidebarPinList) -> Bool) async throws -> CoreSidebarPinList
+  ) async -> Bool {
     guard !disabled else { return false }
     revision += 1
     let request = revision
+    let acknowledge = { (receipt: CoreSidebarPinList) -> Bool in
+      guard self.current, request == self.revision else { return false }
+      self.snapshot = receipt
+      self.error = nil
+      return true
+    }
     busy = true
     defer { if request == revision { busy = false } }
     do {
-      let receipt = try await write()
-      guard current, request == revision else { return false }
-      snapshot = receipt
-      error = nil
+      guard acknowledge(try await write(acknowledge)) else { return false }
       await didCommit()
       return true
     } catch {
@@ -82,17 +87,32 @@ final class NativePinsModel {
   @discardableResult func pin(_ table: String) async -> Bool {
     let args = CorePinTableArgs(
       table: table, expectedUpdatedAt: snapshot?.pins.first { $0.tbl == table }?.updatedAt)
-    return await mutate { try await writePin(args) }
+    return await mutate { _ in try await writePin(args) }
   }
   @discardableResult func unpin(_ id: String) async -> Bool {
     guard let selected = active.first(where: { $0.id == id }) else { return false }
     let args = CoreUnpinTableArgs(id: id, expectedUpdatedAt: selected.updatedAt)
-    return await mutate { try await writeUnpin(args) }
+    return await mutate { _ in try await writeUnpin(args) }
   }
-  @discardableResult func move(_ id: String, direction: String) async -> Bool {
-    let args = CoreMoveTablePinArgs(
-      id: id, direction: direction,
-      expected: active.map { CorePinRevision(id: $0.id, updatedAt: $0.updatedAt) })
-    return await mutate { try await writeMove(args) }
+  /// Moves a pin to index `to` of the active list in single guarded core steps,
+  /// each against the revisions the previous step acknowledged.
+  @discardableResult func reorder(_ id: String, to: Int) async -> Bool {
+    guard let from = active.firstIndex(where: { $0.id == id }), to != from,
+      active.indices.contains(to)
+    else { return false }
+    let direction = to < from ? "up" : "down"
+    // ponytail: one write per step, so a failure mid-drag keeps the acknowledged
+    // partial order; a core move-to-index operation would make it atomic.
+    return await mutate { acknowledge in
+      var step = abs(to - from)
+      while true {
+        let args = CoreMoveTablePinArgs(
+          id: id, direction: direction,
+          expected: active.map { CorePinRevision(id: $0.id, updatedAt: $0.updatedAt) })
+        let receipt = try await writeMove(args)
+        if step == 1 || !acknowledge(receipt) { return receipt }
+        step -= 1
+      }
+    }
   }
 }

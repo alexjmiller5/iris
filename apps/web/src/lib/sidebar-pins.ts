@@ -67,15 +67,22 @@ export class SidebarPins {
 			if (revision === this.revision) this.update({ loading: false });
 		}
 	}
-	private async mutate(write: (api: PinAPI) => Promise<SidebarPinList>): Promise<boolean> {
+	private async mutate(
+		write: (
+			api: PinAPI,
+			acknowledge: (snapshot: SidebarPinList) => boolean
+		) => Promise<SidebarPinList>
+	): Promise<boolean> {
 		if (!this.api || this.disabled) return false;
 		const revision = ++this.revision;
-		this.update({ busy: true });
-		try {
-			const snapshot = await write(this.api);
+		const acknowledge = (snapshot: SidebarPinList) => {
 			if (revision !== this.revision) return false;
 			this.update({ snapshot, error: null });
 			return true;
+		};
+		this.update({ busy: true });
+		try {
+			return acknowledge(await write(this.api, acknowledge));
 		} catch (error) {
 			if (revision === this.revision)
 				this.update({ error: error instanceof Error ? error.message : String(error) });
@@ -94,8 +101,25 @@ export class SidebarPins {
 		if (!pin) return Promise.resolve(false);
 		return this.mutate((api) => api.unpin({ id, expectedUpdatedAt: pin.updated_at }));
 	}
-	move(id: string, direction: 'up' | 'down') {
-		const expected = this.active.map(({ id, updated_at }) => ({ id, updated_at }));
-		return this.mutate((api) => api.move({ id, direction, expected }));
+	/** Moves a pin to index `to` of the active list in single guarded core steps,
+	 * each against the revisions the previous step acknowledged. */
+	reorder(id: string, to: number) {
+		const from = this.active.findIndex((pin) => pin.id === id);
+		if (from < 0 || to === from || to < 0 || to >= this.active.length)
+			return Promise.resolve(false);
+		const direction = to < from ? 'up' : 'down';
+		// ponytail: one write per step, so a failure mid-drag keeps the acknowledged
+		// partial order; a core move-to-index operation would make it atomic.
+		return this.mutate(async (api, acknowledge) => {
+			for (let step = Math.abs(to - from); ; step--) {
+				const expected = this.active.map(({ id, updated_at }) => ({ id, updated_at }));
+				const snapshot = await api.move({ id, direction, expected });
+				if (step === 1 || !acknowledge(snapshot)) return snapshot;
+			}
+		});
 	}
+}
+/** Index a dragged pin lands on: the other rows whose centre its centre passed. */
+export function dropIndex(centres: number[], from: number, y: number) {
+	return centres.filter((centre, i) => i !== from && centre < y).length;
 }

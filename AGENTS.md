@@ -87,6 +87,17 @@ schema from the operator. Ordinary table defaults are unaffected.
   revisions and existing guarded navigation. App-owned sample/local databases
   may install the packaged manifest; enrolled replicas receive logged schema
   through sync. Web refreshes pins on visibility return, not dialog focus.
+  Each pinned row has a three-bar drag handle: web IconMenu2 with pointer drag and
+  Alt+ArrowUp/Down, announced in a polite live region; native `line.3.horizontal`
+  with its own DragGesture, plus Move up/down accessibility actions. A dragged pin
+  lands after every other row whose centre it passed (web `dropIndex`). Native List
+  `.onMove` is not used: on iPhone it needs edit mode, and a SwiftUI List row's
+  context menu covers the whole cell, so a long press on the handle would open the
+  menu. `reorder(id, to)` chains core's one-step `moveTablePin`, each step against
+  the previous acknowledged revisions. Unpin lives only in the row's context menu:
+  long press, right-click, and on web the Menu key or Shift+F10. Web pin controls
+  use `aria-disabled` while pins reload, so a background refresh never drops focus
+  or closes the menu.
 - `scripts/native-core.ts`: native adapter over the generated shared core.
   It must not become a second validator, view compiler or sync implementation.
 - `apps/web/vite.graph.config.ts`: self-contained native graph HTML built from
