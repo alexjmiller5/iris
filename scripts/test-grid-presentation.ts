@@ -154,11 +154,14 @@ try {
   await expect(rows().first()).toBeVisible();
 
   await check("a table's rows show grid placeholders until they load", async () => {
-    await hold("rows");
-    await page
+    const views = page
       .getByRole("navigation", { name: "Tables", exact: true })
-      .getByRole("button", { name: "views", exact: true })
-      .click();
+      .getByRole("button", { name: "views", exact: true });
+    // The reopen first restores the reloaded URL with its own rows read; hold only the
+    // table click's, once the open has finished.
+    await expect(views).toBeEnabled();
+    await hold("rows");
+    await views.click();
     await held();
     await expect(page.locator(".grid-scroll [aria-busy='true']")).toContainText("Loading records");
     await expect(page.getByText("No records yet", { exact: false })).toHaveCount(0);
