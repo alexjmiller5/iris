@@ -511,30 +511,35 @@ struct ReferenceReadAdmissionTests {
 
   @Test func cancellationAfterPassivePermitHandoffReleasesItForNextWaiter() async throws {
     let fixture = try await ReadAdmissionFixture()
-    var cancelled: Task<[WorkspaceRow], Error>?
+    final class Waiter: @unchecked Sendable { var task: Task<[WorkspaceRow], Error>? }
+    let waiter = Waiter()
+    let workspace = fixture.workspace
     fixture.holdNext("rows")
-    let active = Task {
-      // passiveRead hands its permit to the next waiter before returning.
-      // Cancel that waiter in this same actor turn, before it can resume.
-      defer { cancelled?.cancel() }
-      return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
+    // On the core actor: passiveRead hands its permit to the next waiter before returning,
+    // and this cancels that waiter in the same core job, before it can resume.
+    let active = Task { @IrisCoreActor in
+      defer { waiter.task?.cancel() }
+      return try await workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     var submitted = 0
-    cancelled = Task {
+    waiter.task = Task {
       submitted += 1
       return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
     try await waitUntil { submitted == 1 }
+    // Its hop to the core is queued; one core turn behind it, it waits for the permit.
+    await Task { @IrisCoreActor in }.value
     let live = Task {
       submitted += 1
       return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "topics")))
     }
     try await waitUntil { submitted == 2 }
+    await Task { @IrisCoreActor in }.value
     await fixture.release()
     #expect(!(try await active.value).isEmpty)
-    let cancelledTask = try #require(cancelled)
+    let cancelledTask = try #require(waiter.task)
     await #expect(throws: CancellationError.self) { try await cancelledTask.value }
     #expect(!(try await live.value).isEmpty)
     #expect(fixture.admitted == ["rows", "rows"])

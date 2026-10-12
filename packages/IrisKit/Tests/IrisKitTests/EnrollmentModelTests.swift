@@ -125,10 +125,7 @@ struct EnrollmentModelTests {
         installed.append(credentials.token)
       })
     let pending = Task { await model.start(endpoint: "https://fixture.invalid", name: "First") }
-    for _ in 0..<1000 {
-      if held != nil { break }
-      await Task.yield()
-    }
+    await waitFor { held != nil }
     #expect(held != nil)
     await model.cancel()
     #expect(model.cleanupMessage == "Device credential revoked.")

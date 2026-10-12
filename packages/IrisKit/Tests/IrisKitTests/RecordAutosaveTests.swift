@@ -61,7 +61,7 @@ struct RecordAutosaveTests {
     editor.setValue("Ok", for: "title")
     try await Task.sleep(for: .milliseconds(10))
     #expect(writer.patches.isEmpty)
-    try await Task.sleep(for: .milliseconds(120))
+    await waitFor { !writer.patches.isEmpty }
     #expect(writer.patches == [["id": .string("fixture"), "title": .string("Ok")]])
     #expect(writer.revisions == ["revision-1"])
     #expect(editor.saved)

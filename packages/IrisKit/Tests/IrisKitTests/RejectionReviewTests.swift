@@ -202,7 +202,7 @@ struct RejectionReviewTests {
       return try await model.prepareRejectionReview(
         entry, workspace: workspace, generation: model.workspaceGeneration)
     }
-    for _ in 0..<50 where !preparationFinished { await Task.yield() }
+    await waitFor { preparationFinished }
     #expect(preparationFinished)
     await runtime.evaluateOnCore(
       "IrisNative.request = beforeBusyReview; beforeBusyReview(...busyReview);")

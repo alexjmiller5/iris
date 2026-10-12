@@ -9,9 +9,10 @@ extension NativeWorkspace {
   }
 }
 
-/// Waits up to `timeout` for `condition`, which a request on the core thread makes true.
-/// Counting main-actor yields does not bound work on another thread.
-@MainActor func waitForCore(timeout: Duration = .seconds(10), _ condition: () -> Bool) async {
+/// Waits up to `timeout` for `condition`. Work on the core thread, a URLSession thread or
+/// behind a timer runs at its own pace: neither a count of main-actor yields nor a fixed
+/// sleep bounds it on a loaded runner.
+@MainActor func waitFor(timeout: Duration = .seconds(10), _ condition: () -> Bool) async {
   let deadline = ContinuousClock.now.advanced(by: timeout)
   while !condition(), ContinuousClock.now < deadline { await Task.yield() }
 }

@@ -62,7 +62,7 @@ struct CreationDraftTests {
     }
     editor.setValue("Created", for: "title")
     let saving = Task { try await editor.saveAll() }
-    await waitForCore { pending != nil }
+    await waitFor { pending != nil }
     let release = try #require(pending)
     if clear { editor.setValue("", for: "body", explicit: true) }
     release.resume()
@@ -128,7 +128,7 @@ struct CreationDraftTests {
       defer { finished = true }
       try await editor.saveAll()
     }
-    await waitForCore { pending != nil || finished }
+    await waitFor { pending != nil || finished }
     let release = try #require(pending)
     editor.setValue("", for: "status", explicit: true)
     release.resume()

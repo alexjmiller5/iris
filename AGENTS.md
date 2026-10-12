@@ -913,8 +913,8 @@ the one core thread and otherwise starve each other’s admission watchdogs. Tes
 runtimes they hand to a workspace with `IrisCoreRuntime.onCore()` and run any script that
 reaches Swift (`IrisSql`, a held request, `__irisFinish`) with `evaluateOnCore`
 (`CoreTestSupport.swift`); reading plain JS globals works from the main actor. A test waiting
-for state that a core request sets uses `waitForCore` (a deadline), never a count of
-main-actor yields: the core thread runs at its own pace. Keep explicit
+for state set by the core thread, a URLSession request or a timer uses `waitFor` (a
+deadline), never a count of main-actor yields or a fixed sleep: CI runners are slow. Keep explicit
 concurrent tasks inside tests and their assertions unchanged.
 
 Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
