@@ -93,7 +93,7 @@
 								{value}
 								disabled={true}
 							/>
-						{:else}{value === null ? 'Empty' : String(value)}{/if}
+						{:else if value === null}<span class="sr-only">Empty</span>{:else}{String(value)}{/if}
 					</dd>
 				</div>
 			{/each}

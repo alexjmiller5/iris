@@ -278,7 +278,7 @@
 				)}
 		>
 			{#if rich && !multi}<button type="button"><selectedcontent></selectedcontent></button>{/if}
-			{#if !multi}<option value="">Choose an option</option>{/if}
+			{#if !multi}<option value="">None</option>{/if}
 			{#each choices as choice (choice)}
 				{@const description = property.options?.find((o) => o.v === choice)?.d}
 				<option value={choice} title={rich ? description : undefined}
@@ -302,7 +302,9 @@
 				checked={value === '1' || value === 'true'}
 				indeterminate={value === ''}
 				onchange={(event) => change(event.currentTarget.checked ? '1' : '0')}
-			/><span>{value === '' ? 'Empty' : value === '1' || value === 'true' ? 'Yes' : 'No'}</span>
+			/>{#if value === ''}<span class="sr-only">Empty</span>{:else}<span
+					>{value === '1' || value === 'true' ? 'Yes' : 'No'}</span
+				>{/if}
 		</div>
 	{:else if property.type === 'datetime'}
 		<input

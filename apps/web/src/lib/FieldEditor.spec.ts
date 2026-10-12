@@ -102,6 +102,21 @@ test('false stays an unchecked checkbox with an explicit clear control', () => {
 	expect(window.document.querySelector('[aria-label="Clear Active"]')).not.toBeNull();
 	window.close();
 });
+test('an empty flag shows no text, only an indeterminate box read as Empty', () => {
+	const window = field({ property: { col: 'active', type: 'bool', label: 'Active' }, value: '' });
+	const text = window.document.querySelector('.boolean span');
+	expect(text?.textContent).toBe('Empty');
+	expect(text?.classList.contains('sr-only')).toBe(true);
+	window.close();
+});
+test('a select offers None as its clear choice', () => {
+	const window = field({
+		property: { col: 'status', type: 'select', options: [{ v: 'Ready' }] },
+		value: ''
+	});
+	expect(window.document.querySelector('option[value=""]')?.textContent).toBe('None');
+	window.close();
+});
 test('an int whose only options are 0 and 1 edits as a checkbox', () => {
 	const window = field({
 		property: { col: 'notify', type: 'int', options: [{ v: '0' }, { v: '1' }] },
