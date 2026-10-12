@@ -23,6 +23,7 @@
 		IconLayoutList
 	} from '@tabler/icons-svelte';
 	import { irisHref } from 'iris-core/client';
+	import Skeleton from '../Skeleton.svelte';
 	import {
 		EDITOR_LINKS,
 		slashMatches,
@@ -68,7 +69,8 @@
 	let picker = $state<{ kind: 'row' | 'view'; table?: string; title: string; noun: string }>();
 	let pickerQuery = $state('');
 	let pickerResults = $state<LinkTarget[]>([]);
-	let pickerStatus = $state('');
+	let pickerStatus = $state(''),
+		pickerLoading = $state(false);
 	let pickerViews: LinkTarget[] | undefined;
 	let pickerSearch = 0;
 	const words = (text: string) => text.replace(/_/g, ' ');
@@ -88,7 +90,8 @@
 		pickerQuery = '';
 		pickerResults = [];
 		pickerViews = undefined;
-		pickerStatus = picker.kind === 'view' ? 'Loading views…' : `Type to search ${picker.noun}.`;
+		pickerLoading = picker.kind === 'view';
+		pickerStatus = picker.kind === 'view' ? '' : `Type to search ${picker.noun}.`;
 		popup = 'picker';
 		await tick();
 		menu?.querySelector<HTMLInputElement>('input')?.focus();
@@ -112,6 +115,7 @@
 				);
 			} else results = await links.search(current.table, pickerQuery);
 			if (request !== pickerSearch || popup !== 'picker') return;
+			pickerLoading = false;
 			pickerResults = results.slice(0, 20);
 			pickerStatus = results.length
 				? ''
@@ -119,8 +123,9 @@
 					? `Type to search ${current.noun}.`
 					: `No matching ${current.noun}.`;
 		} catch (reason) {
-			if (request === pickerSearch)
-				pickerStatus = reason instanceof Error ? reason.message : 'Search failed.';
+			if (request !== pickerSearch) return;
+			pickerLoading = false;
+			pickerStatus = reason instanceof Error ? reason.message : 'Search failed.';
 		}
 	}
 	function insertPicked(target: LinkTarget) {
@@ -663,6 +668,7 @@
 					></button
 				>
 			{/each}
+			{#if pickerLoading}<Skeleton shape="list" rows={3} label="Loading views" />{/if}
 			{#if pickerStatus}<p class="empty" role="status">{pickerStatus}</p>{/if}
 		</div>
 	{/if}

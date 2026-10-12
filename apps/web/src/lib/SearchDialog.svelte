@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { focusReturn } from './popover';
-	import { IconAlertTriangle, IconLoader2, IconSearch, IconX } from '@tabler/icons-svelte';
+	import { IconAlertTriangle, IconHourglass, IconSearch, IconX } from '@tabler/icons-svelte';
+	import Skeleton from './Skeleton.svelte';
 	import type { SearchHit } from 'iris-core/client';
 	import { createSearchModel, type Search } from './search-dialog';
 	import {
@@ -61,9 +62,7 @@
 		opening
 			? 'Opening…'
 			: $model.loading
-				? $model.hits.length
-					? 'Loading more results…'
-					: 'Searching…'
+				? 'Searching…'
 				: $model.error
 					? 'Could not search records.'
 					: entries.length
@@ -174,18 +173,13 @@
 	{/if}
 	{#if indexing}
 		<p class="incomplete" role="status">
-			<IconLoader2 size={17} aria-hidden="true" />
+			<IconHourglass size={17} aria-hidden="true" />
 			Indexing… {indexing.toLocaleString('en-US')}
 			{indexing === 1 ? 'record' : 'records'} left. Results may be incomplete until then.
 		</p>
 	{/if}
-	<p class="status" role="status">
-		{#if $model.loading || opening}<span class="spinner"
-				><IconLoader2 size={16} aria-hidden="true" /></span
-			>{/if}
-		{status}
-	</p>
-	{#if navigationLoading}<p class="status" role="status">Loading saved views…</p>{/if}
+	<!-- While results load, placeholder rows show it; the sentence stays for screen readers. -->
+	<p class="status" class:sr-only={$model.loading} role="status">{status}</p>
 	{#if navigationError}<p class="failure" role="alert">
 			Some saved views could not be loaded: {navigationError}
 		</p>{/if}
@@ -253,6 +247,12 @@
 			{/if}
 		{/each}
 	</div>
+	{#if $model.loading || (navigationLoading && !destinations.length)}<Skeleton
+			shape="list"
+			rows={$model.hits.length ? 2 : 4}
+			label={$model.loading ? 'Loading results' : 'Loading saved views'}
+			announce={!$model.loading}
+		/>{/if}
 	{#if $model.hasMore}
 		<button
 			class="more"
@@ -365,15 +365,6 @@
 		flex-shrink: 0;
 		margin-top: 0.1rem;
 	}
-	.spinner {
-		display: inline-flex;
-		animation: spin 1s linear infinite;
-	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
 	.results {
 		display: grid;
 		gap: 0.25rem;
@@ -455,11 +446,6 @@
 	@media (max-width: 540px) {
 		dialog {
 			padding: 1rem;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.spinner {
-			animation: none;
 		}
 	}
 </style>

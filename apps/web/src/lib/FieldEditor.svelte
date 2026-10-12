@@ -71,6 +71,10 @@
 	const selected = $derived(
 		property.type === 'multi_ref' ? [...new Set(list(value))] : [value].filter(Boolean)
 	);
+	// A stored reference whose label is still loading shows a placeholder, never its raw id.
+	const labelLoading = $derived(
+		referencesLoading && !!value && !references.some((row) => row.id === value)
+	);
 	let query = $state('');
 	const creation = $derived(oncreate && !disabled ? creationOffer(query, references) : null);
 	function change(raw: string) {
@@ -195,13 +199,15 @@
 				aria-describedby={invalid}
 				aria-label={label}
 				aria-required={!!property.required}
+				aria-busy={labelLoading || undefined}
+				class:skeleton-field={labelLoading}
 				{disabled}
 				{value}
 				onchange={(event) => change(event.currentTarget.value)}
 			>
 				<option value="">No related record</option>
 				{#if value && !references.some((row) => row.id === value)}<option {value}
-						>{referencesLoading ? 'Loading…' : `${value} (not available locally)`}</option
+						>{referencesLoading ? 'Loading' : `${value} (not available locally)`}</option
 					>{/if}
 				{#each references as row (row.id)}<option value={row.id}>{row.label}</option>{/each}
 			</select>

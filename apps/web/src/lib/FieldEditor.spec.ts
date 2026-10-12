@@ -134,7 +134,10 @@ test('a stored reference reads as loading, not unavailable, until labels arrive'
 		value: 'stored',
 		referencesLoading: true
 	});
-	expect(window.document.querySelector('option[value="stored"]')?.textContent).toBe('Loading…');
+	expect(window.document.querySelector('option[value="stored"]')?.textContent).toBe('Loading');
+	const select = window.document.querySelector('select');
+	expect(select?.getAttribute('aria-busy')).toBe('true');
+	expect(select?.classList.contains('skeleton-field')).toBe(true);
 	window.close();
 });
 test.each(['text', 'number', 'select', 'json', 'date'])(

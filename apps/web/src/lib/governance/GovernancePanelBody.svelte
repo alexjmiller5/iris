@@ -14,6 +14,7 @@
 	import { createReviewList } from './review-list';
 	import { displayCell } from './value';
 	import ChangeDiff from './ChangeDiff.svelte';
+	import Skeleton from '../Skeleton.svelte';
 	// The wrapper remounts this body whenever the bound authority or target changes.
 	let {
 		api,
@@ -156,7 +157,7 @@
 					onclick={() => history.more()}
 					>{$history.error ? 'Retry history' : 'Load more history'}</button
 				>{/if}
-			{#if $history.busy}<p role="status">Loading history…</p>{/if}
+			{#if $history.busy}<Skeleton shape="list" rows={2} label="Loading history" />{/if}
 			<button
 				disabled={!$selection.selected.length ||
 					$selection.loading ||
@@ -193,7 +194,7 @@
 			{#if $inbox.nextCursor !== null}<button disabled={$inbox.busy} onclick={() => inbox.more()}
 					>{$inbox.error ? 'Retry proposals' : 'Load more proposals'}</button
 				>{/if}
-			{#if $inbox.busy}<p role="status">Loading proposals…</p>{/if}
+			{#if $inbox.busy}<Skeleton shape="list" rows={2} label="Loading proposals" />{/if}
 			{#if $approval.preview}
 				<ChangeDiff changes={$approval.preview.changes} />
 				{#each $approval.preview.conflicts as conflict}<p role="alert">{conflict.message}</p>{/each}

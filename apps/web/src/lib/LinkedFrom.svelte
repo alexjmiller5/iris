@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { IconArrowUpRight } from '@tabler/icons-svelte';
+	import Skeleton from './Skeleton.svelte';
 	import type { WorkspaceDatabase } from './database';
 	import { createLinkedFrom } from './linked-from';
 	let {
@@ -47,7 +48,11 @@
 			disabled={$model.loading}
 			onclick={() => model.load($model.rows.length > 0)}>Retry</button
 		>{/if}
-	{#if $model.loading && !$model.rows.length}<p role="status">Loading links…</p>
+	{#if $model.loading && !$model.rows.length}<Skeleton
+			shape="list"
+			rows={2}
+			label="Loading links"
+		/>
 	{:else if $model.loaded && !$model.rows.length && !$model.error}<p>
 			{$model.indexing
 				? 'No links found yet. Search is still indexing this device.'

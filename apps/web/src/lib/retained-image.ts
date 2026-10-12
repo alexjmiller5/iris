@@ -5,6 +5,7 @@ import {
 	type RetainedFileResolver,
 	type RetainedFile
 } from './retained-files';
+import { skeletonElement } from './skeleton';
 
 /** A node view changes presentation only. No ProseMirror transactions or source rewrites. */
 export function retainedImage(node: Node, resolve?: RetainedFileResolver) {
@@ -20,7 +21,7 @@ export function retainedImage(node: Node, resolve?: RetainedFileResolver) {
 	const controller = new AbortController();
 	async function load() {
 		if (!key || !resolve || stopped) return;
-		dom.textContent = `Loading ${label}…`;
+		dom.replaceChildren(skeletonElement(document, { block: true, label: `Loading ${label}` }));
 		try {
 			const result = await resolve(key, controller.signal, true);
 			if (stopped) {

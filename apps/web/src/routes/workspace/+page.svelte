@@ -35,6 +35,7 @@
 	import RejectedEdits from '$lib/RejectedEdits.svelte';
 	import type { RejectionSnapshot } from '$lib/rejection-inbox';
 	import RecordGrid from '$lib/RecordGrid.svelte';
+	import Skeleton from '$lib/Skeleton.svelte';
 	import { dateText, flagValue, isFlag, jsonText, markdownPreview } from '$lib/cell-values';
 	import BulkActions from '$lib/BulkActions.svelte';
 	import { runBulkRecords, type BulkRecordResult } from '$lib/bulk-records';
@@ -326,6 +327,11 @@
 		online = navigator.onLine;
 	});
 	let opened = $state(false),
+		// The opened workspace's first catalog read has finished; until then the shell shows
+		// placeholders, never the empty-workspace guidance.
+		workspaceReady = $state(false),
+		// The current page's first rows read has finished; until then the grid shows placeholders.
+		rowsLoaded = $state(false),
 		demo = $state(false),
 		busy = $state(false),
 		error = $state('');
@@ -1417,13 +1423,18 @@
 		const capturedProperties = structuredClone(
 			$state.snapshot(catalog.properties.filter((p) => p.tbl === table))
 		);
-		const found: Row[] = await workspace.request('rows', {
-			view: {
-				...queryDefinition(table, viewDefinition()),
-				limit: 50,
-				offset
-			}
-		});
+		let found: Row[];
+		try {
+			found = await workspace.request('rows', {
+				view: {
+					...queryDefinition(table, viewDefinition()),
+					limit: 50,
+					offset
+				}
+			});
+		} finally {
+			if (database === workspace && request === rowsRequest) rowsLoaded = true;
+		}
 		if (database !== workspace || request !== rowsRequest) return;
 		rows = found;
 		exportContext = capturedContext;
@@ -1541,6 +1552,7 @@
 		filters = [];
 		error = '';
 		notice = '';
+		rowsLoaded = false;
 	}
 	async function openWorkspace(sample: boolean) {
 		if (busy) return;
@@ -1549,6 +1561,7 @@
 		connectedHub = null;
 		await viewAutosave.flush();
 		resetView();
+		workspaceReady = false;
 		try {
 			database?.close();
 			database = new WorkspaceDatabase();
@@ -1593,6 +1606,7 @@
 			opened = true;
 			editing = false;
 			await refresh();
+			workspaceReady = true;
 			database.addEventListener('change', () => {
 				dataRevision++;
 				void refresh().catch((e) => (error = message(e)));
@@ -2893,14 +2907,14 @@
 					onreorder={(id, to) => mutatePins(() => pins.reorder(id, to))}
 					onretry={() => pins.refresh()}
 				/>
-				<SidebarTables
-					tables={unpinnedTables(catalog.tables, activePins)}
-					current={table}
-					disabled={busy || writing}
-					pinDisabled={pinsDisabled}
-					onchoose={changeTable}
-					onpin={(table) => mutatePins(() => pins.pin(table))}
-				/>
+				{#if workspaceReady}<SidebarTables
+						tables={unpinnedTables(catalog.tables, activePins)}
+						current={table}
+						disabled={busy || writing}
+						pinDisabled={pinsDisabled}
+						onchoose={changeTable}
+						onpin={(table) => mutatePins(() => pins.pin(table))}
+					/>{:else}<Skeleton shape="list" rows={6} label="Loading tables" />{/if}
 				<button
 					class="secondary"
 					onclick={() => {
@@ -3046,13 +3060,15 @@
 							}}>Use automatic size rule</button
 						>{/if}
 					<header class="records-heading">
-						<div>
-							<p class="eyebrow">{demo ? 'Sample data' : 'Workspace'} / Table</p>
-							<h1>{table || 'Welcome'}</h1>
-							<p class="purpose">
-								{String(current?.purpose ?? 'Browse your records and keep their rules in view.')}
-							</p>
-						</div>
+						{#if table || workspaceReady}<div>
+								<p class="eyebrow">{demo ? 'Sample data' : 'Workspace'} / Table</p>
+								<h1>{table || 'Welcome'}</h1>
+								<p class="purpose">
+									{String(current?.purpose ?? 'Browse your records and keep their rules in view.')}
+								</p>
+							</div>{:else}<div class="heading-placeholder">
+								<Skeleton shape="lines" rows={3} label="Opening workspace" />
+							</div>{/if}
 						<button
 							class="secondary"
 							disabled={busy || writing || navigationLoading || !table || readOnly}
@@ -3066,9 +3082,14 @@
 							><IconPlus size={17} />New record</button
 						>
 					</header>
-					{#if !table}<div class="empty">
+					{#if !table && workspaceReady}<div class="empty">
 							Connect to your hub in the sidebar to bring your tables to this device.
-						</div>{/if}
+						</div>{:else if !table}<Skeleton
+							shape="grid"
+							rows={8}
+							columns={[280, 180, 180, 180]}
+							announce={false}
+						/>{/if}
 					{#if table}
 						<div class="view-toolbar">
 							{#key table}
@@ -3300,7 +3321,11 @@
 									onreview={reviewRejected}
 								/>{/if}
 						{/key}
-						{#if presentation.kind !== 'table'}
+						{#if presentation.kind !== 'table' && !rowsLoaded && !rows.length}<Skeleton
+								shape="list"
+								rows={6}
+								label="Loading records"
+							/>{:else if presentation.kind !== 'table'}
 							<RecordPresentations
 								{presentation}
 								{rows}
@@ -3346,6 +3371,7 @@
 										: undefined}
 									properties={gridColumns}
 									{widths}
+									loading={!rowsLoaded}
 									busy={busy || gridActionOpening !== null}
 									canCreate={!navigationLoading && !readOnly && !blocked && !trash}
 									canTrash={!navigationLoading && !readOnly && !blocked}
@@ -3377,7 +3403,7 @@
 							{/key}
 						{/if}
 						{#if gridActionOpening !== null}<p role="status">Opening record action…</p>{/if}
-						{#if rows.length === 0}<div class="empty">
+						{#if rows.length === 0 && rowsLoaded}<div class="empty">
 								{trash
 									? 'Nothing in the trash.'
 									: search
@@ -3385,7 +3411,10 @@
 										: 'No records yet. Create one to get started.'}
 							</div>{/if}
 						<footer class="pagination">
-							<span>{rows.length} {rows.length === 1 ? 'record' : 'records'} shown</span><button
+							<span
+								>{#if rowsLoaded || rows.length}{rows.length}
+									{rows.length === 1 ? 'record' : 'records'} shown{/if}</span
+							><button
 								class="secondary"
 								disabled={offset === 0}
 								onclick={() => {
@@ -3819,6 +3848,12 @@
 		color: var(--color-muted);
 		font-size: 12px;
 		margin: 0 0 10px;
+	}
+	/* Holds the heading's height so the grid does not jump when the catalog arrives. */
+	.heading-placeholder {
+		flex: 1;
+		max-width: 420px;
+		min-height: 88px;
 	}
 	h1 {
 		font-size: 32px;

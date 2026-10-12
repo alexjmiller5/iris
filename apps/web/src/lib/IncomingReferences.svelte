@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { IconArrowUpRight } from '@tabler/icons-svelte';
+	import Skeleton from './Skeleton.svelte';
 	import type { WorkspaceDatabase } from './database';
 	import { calendarContext } from './calendar-context';
 	import { createIncomingReferences } from './incoming-references';
@@ -55,7 +56,7 @@
 	<header>
 		<h3>Referenced by</h3>
 	</header>
-	{#if $model.loading}<p role="status">Loading relationships…</p>
+	{#if $model.loading}<Skeleton shape="list" rows={2} label="Loading relationships" />
 	{:else if $model.error}<p role="alert">{$model.error}</p>
 		<button type="button" onclick={() => model.refresh()}>Retry</button>
 	{:else if !$model.groups.length}<p>No incoming relationship fields.</p>{/if}
@@ -94,7 +95,7 @@
 					</li>
 				{/each}
 			</ul>
-			{#if group.loading}<p role="status">Loading records…</p>
+			{#if group.loading}<Skeleton shape="list" rows={3} label="Loading records" />
 			{:else if group.loaded && !group.rows.length}<p>
 					No local records reference this record.
 				</p>{/if}

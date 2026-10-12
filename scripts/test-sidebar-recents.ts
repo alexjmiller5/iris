@@ -232,7 +232,7 @@ try {
   const tuples = async () =>
     (await stored()).map(({ table, view, row }: any) => ({ table, view, row }));
   async function settled() {
-    await expect(recents.getByText("Loading…", { exact: true })).toHaveCount(0);
+    await expect(recents.locator('[aria-busy="true"]')).toHaveCount(0);
   }
   async function navigateTable(name: string) {
     await tables.getByRole("button", { name, exact: true }).click();

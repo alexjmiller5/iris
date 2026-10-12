@@ -4,6 +4,7 @@
 	import { IconX, IconArrowLeft, IconArrowUpRight } from '@tabler/icons-svelte';
 	import type { Property, RemoteRowsPage, RemoteRowResult } from 'iris-core/client';
 	import MarkdownEditor from './components/MarkdownEditor.svelte';
+	import Skeleton from './Skeleton.svelte';
 	import { createRemoteBrowser } from './remote-browser';
 	let {
 		table,
@@ -116,8 +117,8 @@
 				</div>
 			</form>
 		</div>
-		<p role="status">
-			{$model.loading ? 'Loading online records…' : `${$model.rows.length} records loaded`}
+		<p role="status" class:sr-only={$model.loading}>
+			{$model.loading ? 'Loading online records' : `${$model.rows.length} records loaded`}
 		</p>
 		<div class="rows" aria-label="Online records">
 			{#each $model.rows as row (String(row.record.id))}
@@ -135,6 +136,12 @@
 				</button>
 			{/each}
 		</div>
+		{#if $model.loading}<Skeleton
+				shape="list"
+				rows={$model.rows.length ? 2 : 5}
+				label="Loading online records"
+				announce={false}
+			/>{/if}
 		{#if $model.nextCursor !== null}<button
 				class="more"
 				disabled={$model.loading}

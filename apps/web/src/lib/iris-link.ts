@@ -2,6 +2,7 @@ import type { Node } from '@milkdown/kit/prose/model';
 import { $nodeSchema } from '@milkdown/kit/utils';
 import { parseIrisHref } from 'iris-core/client';
 import { cellText, type EditorLinks } from './editor-links';
+import { skeletonElement } from './skeleton';
 
 type MdastNode = {
 	type: string;
@@ -112,7 +113,8 @@ export function irisLinkView(
 		const title = element('span', 'iris-embed-title', stored);
 		const header = element('span', 'iris-embed-header');
 		header.replaceChildren(title, button('iris-embed-open', 'Open view'));
-		const body = element('span', 'iris-embed-body', links ? 'Loading view…' : '');
+		const body = element('span', 'iris-embed-body');
+		if (links) body.replaceChildren(skeletonElement(document, { lines: 3, label: 'Loading view' }));
 		dom.replaceChildren(header, body);
 		dom.setAttribute('aria-label', `Embedded view ${stored}`);
 		links?.embed(link.table, link.id).then(

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import Skeleton from './Skeleton.svelte';
 	import type { RejectedEdit } from 'iris-core/client';
 	import type { WorkspaceDatabase } from './database';
 	import { createRejectionInbox, type RejectionSnapshot } from './rejection-inbox';
@@ -55,7 +56,7 @@
 				>Load more rejected edits</button
 			>
 		{/if}
-		{#if $model.loading}<p role="status">Loading rejected edits…</p>{/if}
+		{#if $model.loading}<Skeleton shape="list" rows={2} label="Loading rejected edits" />{/if}
 	</details>
 {/if}
 

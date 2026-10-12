@@ -227,3 +227,28 @@ test('flag cells show a checkbox state and json lists show chips', () => {
 	expect(cell('raw')?.textContent?.trim()).toBe('text:{"k":1}');
 	window.close();
 });
+
+test('rows still loading show grid placeholders instead of an empty grid', () => {
+	const window = new Window();
+	window.document.body.innerHTML = render(RecordGrid, {
+		props: {
+			rows: [],
+			loading: true,
+			properties: [{ col: 'title', label: 'Title' }],
+			widths: {},
+			busy: false,
+			canCreate: false,
+			format: () => '',
+			canEdit: () => false,
+			onbegin: async () => false as const,
+			oncommit: async () => ({}),
+			onopen: async () => false,
+			onnew: async () => false,
+			onduplicate: async () => false
+		} as never
+	}).body;
+	const placeholder = window.document.querySelector('.grid-scroll [aria-busy="true"]');
+	expect(placeholder?.textContent?.trim()).toBe('Loading records');
+	expect(placeholder?.querySelectorAll('.row').length).toBeGreaterThan(0);
+	window.close();
+});

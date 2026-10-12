@@ -11,6 +11,7 @@
 		type CaptureKind
 	} from './page-capture';
 	import type { RetainedFileResolver } from './retained-files';
+	import Skeleton from './Skeleton.svelte';
 	let {
 		row,
 		resolveFile,
@@ -174,7 +175,7 @@
 			{#if image}<img src={image} alt="Captured page screenshot" />{/if}
 			{#if html}<iframe title="Archived page" sandbox="" referrerpolicy="no-referrer" srcdoc={html}
 				></iframe>{/if}
-			{#if loading}<p role="status">Preparing capture…</p>{/if}
+			{#if loading && !image && !html}<Skeleton shape="block" label="Preparing capture" />{/if}
 			<p class="hint">
 				Preview limit: 8 MiB. Archived links and network requests are disabled. Larger originals
 				remain available to save, up to 128 MiB.

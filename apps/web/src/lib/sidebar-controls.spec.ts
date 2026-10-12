@@ -109,7 +109,12 @@ test('unavailable/loading recent entries remain visible with a reason and indepe
 	expect(recent('Old title')?.hasAttribute('disabled')).toBe(false);
 	expect(recent('Old title')?.textContent).toContain('Trash');
 	expect(recent('Old title')?.getAttribute('aria-current')).toBe('page');
-	expect(recent('view')?.hasAttribute('disabled')).toBe(true);
+	// A destination still resolving shows a placeholder, never its raw identifier.
+	const loading = doc
+		.querySelector('.destination strong [aria-busy="true"]')
+		?.closest('.destination');
+	expect(loading?.hasAttribute('disabled')).toBe(true);
+	expect(recent('view')).toBeUndefined();
 	expect(doc.querySelector('[role="status"]')?.textContent).toContain('Recents could not be saved');
 	window.close();
 });

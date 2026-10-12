@@ -23,6 +23,9 @@
 	--color-option-purple: #e8deee;
 	--color-option-pink: #f5e0e9;
 	--color-option-red: #ffe2dd;
+	/* Loading placeholders: a quiet bar with a soft passing highlight. */
+	--color-skeleton: #e4e7e2;
+	--color-skeleton-shine: rgb(255 255 255 / 0.7);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -49,6 +52,8 @@
 		--color-option-purple: #492f64;
 		--color-option-pink: #69314c;
 		--color-option-red: #6e3630;
+		--color-skeleton: #2b3135;
+		--color-skeleton-shine: rgb(255 255 255 / 0.08);
 	}
 }
 
@@ -175,4 +180,64 @@ select.rich[multiple] {
 	max-height: 14rem;
 	overflow-y: auto;
 	padding: 4px;
+}
+
+/* Loading placeholders shaped like the content that replaces them (Skeleton.svelte,
+   skeleton.ts). The wrapper is aria-busy with a visually hidden label; bars are hidden
+   from assistive technology. The highlight stops under reduced motion. */
+.skeleton {
+	display: grid;
+	gap: 0.625rem;
+}
+.skeleton.inline {
+	display: inline-flex;
+}
+.skeleton-bar {
+	display: block;
+	height: 0.75rem;
+	border-radius: 0.25rem;
+}
+/* A form control whose value is still loading: its text hides behind the same shine. */
+.skeleton-bar,
+.skeleton-field {
+	background: var(--color-skeleton)
+		linear-gradient(90deg, transparent 25%, var(--color-skeleton-shine) 50%, transparent 75%)
+		no-repeat;
+	background-size: 200% 100%;
+	animation: skeleton-shine 1.6s ease-in-out infinite;
+}
+.skeleton-field {
+	color: transparent !important;
+}
+.skeleton-bar.pill {
+	display: inline-block;
+	width: 4.5rem;
+	height: 1rem;
+	vertical-align: middle;
+	border-radius: 999px;
+}
+.skeleton-label {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+@keyframes skeleton-shine {
+	from {
+		background-position: 150% 0;
+	}
+	to {
+		background-position: -50% 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.skeleton-bar,
+	.skeleton-field {
+		animation: none;
+	}
 }

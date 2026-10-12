@@ -220,7 +220,7 @@ try {
     await expect.poll(() => query().get("table")).toBe("widgets");
     await expect(
       owned.getByRole("region", { name: "Recents", exact: true })
-        .getByText("Loading…", { exact: true }),
+        .locator('[aria-busy="true"]'),
     ).toHaveCount(0);
   }
   async function hold(method: string) {

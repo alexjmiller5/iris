@@ -19,6 +19,7 @@
 	import type { Property, Row, RowAction, ViewLayoutItem } from 'iris-core/client';
 	import type { AttachmentOutbox } from './attachments';
 	import FieldEditor from './FieldEditor.svelte';
+	import Skeleton from './Skeleton.svelte';
 	import OptionChip from './OptionChip.svelte';
 	import { chipValues, flagValue, isFlag } from './cell-values';
 	import type { RetainedFileResolver } from './retained-files';
@@ -34,6 +35,7 @@
 		selectedIds = $bindable(),
 		properties,
 		widths,
+		loading = false,
 		busy,
 		canCreate,
 		canTrash = false,
@@ -68,6 +70,8 @@
 		onaction?: (actionId: string, row: Row) => Promise<void>;
 		properties: Property[];
 		widths: Record<string, number>;
+		/** The page's rows are still being read: empty rows show placeholders, not an empty grid. */
+		loading?: boolean;
 		busy: boolean;
 		canCreate: boolean;
 		canTrash?: boolean;
@@ -546,6 +550,14 @@
 				{/snippet}
 			</Virtualizer>
 		</table>
+		{#if loading && !rows.length}<div class="placeholder" style:width={`${totalWidth}px`}>
+				<Skeleton
+					shape="grid"
+					rows={6}
+					columns={[...(selectionEnabled ? [44] : []), ...gridItems.map(itemWidth)]}
+					label="Loading records"
+				/>
+			</div>{/if}
 	</div>
 	{#if detached && edit}
 		{@const property = properties.find((p) => p.col === edit?.cell.column)}

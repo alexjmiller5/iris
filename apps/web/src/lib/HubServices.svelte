@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import ChangesetReview from './governance/ChangesetReview.svelte';
+	import Skeleton from './Skeleton.svelte';
 	import { IconBell, IconSettings, IconX } from '@tabler/icons-svelte';
 	import {
 		createHttpHub,
@@ -178,11 +179,7 @@
 	{#if section === 'notifications'}
 		<div class="actions">
 			<p>
-				{feed
-					? `${unread} unread`
-					: refreshing
-						? 'Loading notifications…'
-						: 'Notifications unavailable'}
+				{feed ? `${unread} unread` : refreshing ? '' : 'Notifications unavailable'}
 			</p>
 			<button disabled={!unread || refreshing || marking} onclick={() => markRead()}
 				>Mark all read</button
@@ -196,6 +193,7 @@
 				Last checked {checkedAt.toLocaleString()}. Read state is shared across your devices.
 			</p>{/if}
 		{#if feed && !notifications.length}<p>No notifications yet.</p>{/if}
+		{#if !feed && refreshing}<Skeleton shape="list" rows={3} label="Loading notifications" />{/if}
 		<div class="notifications">
 			{#each notifications as notification (notification.id)}
 				<article class:unread={!notification.read_at}>
@@ -287,7 +285,7 @@
 					</tbody>
 				</table>
 			</div>
-		{:else if loadingUsage}<p>Loading usage…</p>{/if}
+		{:else if loadingUsage}<Skeleton shape="record" rows={4} label="Loading usage" />{/if}
 	{/if}
 </dialog>
 
