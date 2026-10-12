@@ -52,8 +52,8 @@ struct NavigationUIFixtureTests {
       _ = try recents.load()
       _ = try recents.update { _ in
         [
-          NativeDestination(table: "notes", rowID: "nav-missing"),
-          NativeDestination(table: "notes", rowID: "nav-trash"),
+          NativeRecentEntry(pending: NativeDestination(table: "notes", rowID: "nav-missing")),
+          NativeRecentEntry(pending: NativeDestination(table: "notes", rowID: "nav-trash")),
         ]
       }
     }

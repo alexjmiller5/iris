@@ -29,8 +29,9 @@ struct WorkspaceRecentsTests {
     #expect(recents.entries.isEmpty)
     await model.open(demo: true)
     #expect(model.recents?.destinations.isEmpty == true)
+    // A closed workspace's model is cancelled and records nothing more.
     await recents.navigationSucceeded(NativeDestination(table: "closed-workspace"))
-    #expect(recents.destinations == [NativeDestination(table: "notes")])
+    #expect(recents.destinations.isEmpty)
     #expect(model.recents?.destinations.isEmpty == true)
     await model.close()
   }
@@ -52,7 +53,7 @@ struct WorkspaceRecentsTests {
     await model.open(url: external)
     #expect(model.recents?.destinations.isEmpty == true)
     await recent.navigationSucceeded(NativeDestination(table: "wrong-workspace"))
-    #expect(recent.destinations == [destination])
+    #expect(recent.destinations.isEmpty)
     await model.recents?.navigationSucceeded(NativeDestination(table: "notes"))
     await model.open()
     #expect(model.recents?.destinations == [destination])
@@ -91,7 +92,6 @@ struct WorkspaceRecentsTests {
     let destination = NativeDestination(table: "notes", rowID: row.id)
     await recents.navigationSucceeded(destination)
     let store = NativeRecentsStore(root: directory, workspace: directory.appendingPathComponent("local.sqlite"))
-    let before = try Data(contentsOf: store.file)
     model.search = "keep query"
     model.sortColumn = "title"
     let query = model.queryKey
@@ -101,7 +101,8 @@ struct WorkspaceRecentsTests {
     #expect(recents.entries.first?.label == "Current title")
     #expect(recents.destinations == [destination])
     #expect(model.queryKey == query && model.rows == rows)
-    #expect(try Data(contentsOf: store.file) == before)
+    // The refreshed label is stored in place for the next launch.
+    #expect(try store.load() == recents.entries)
     await model.close()
   }
 
@@ -135,7 +136,7 @@ struct WorkspaceRecentsTests {
       expected.append(destination)
       let store = NativeRecentsStore(root: directory, workspace: path)
       _ = try store.load()
-      _ = try store.update { _ in [destination] }
+      _ = try store.update { _ in [NativeRecentEntry(pending: destination)] }
       try await workspace.close()
     }
     let model = WorkspaceModel(localURL: { directory.appendingPathComponent("local.sqlite") },

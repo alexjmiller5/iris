@@ -156,21 +156,20 @@
 		serializeRecents,
 		type RecentEntry
 	} from '$lib/sidebar-recents';
-	let recentDestinations = $state<Destination[]>([]);
 	let recentEntries = $state<RecentEntry[]>([]);
 	let recentStorageError = $state('');
 	let recentReadError = $state('');
 	let recentsRequest = 0;
 	const recentsStorageKey = () => `iris:recents:${demo ? 'demo' : 'workspace'}`;
+	/** Stored snapshots paint with the sidebar; labels refresh in the background. */
 	function readRecents() {
 		recentsRequest++;
-		recentEntries = [];
 		recentStorageError = '';
 		recentReadError = '';
 		try {
-			recentDestinations = parseRecents(localStorage.getItem(recentsStorageKey()));
+			recentEntries = parseRecents(localStorage.getItem(recentsStorageKey()));
 		} catch {
-			recentDestinations = [];
+			recentEntries = [];
 			recentReadError =
 				'Recents could not be read on this device. New recents remain available until this workspace closes.';
 		}
@@ -178,7 +177,7 @@
 	function persistRecents() {
 		if (recentReadError) return;
 		try {
-			localStorage.setItem(recentsStorageKey(), serializeRecents(recentDestinations));
+			localStorage.setItem(recentsStorageKey(), serializeRecents($state.snapshot(recentEntries)));
 			recentStorageError = '';
 		} catch {
 			recentStorageError =
@@ -191,11 +190,12 @@
 			request = ++recentsRequest;
 		if (!workspace) return;
 		void loadRecentEntries(
-			$state.snapshot(recentDestinations),
+			$state.snapshot(recentEntries),
 			async (destination) =>
 				describeRecent(destination, await resolveDestination(workspace, destination, '')),
 			(entries) => {
 				recentEntries = entries;
+				persistRecents();
 			},
 			() => database === workspace && demo === scope && request === recentsRequest
 		);
@@ -203,13 +203,22 @@
 	function recordRecent() {
 		const destination = currentDestination();
 		if (!destination.table) return;
-		recentDestinations = rememberRecent(recentDestinations, destination);
+		// The visit's snapshot is what this page shows right now.
+		recentEntries = rememberRecent(
+			recentEntries,
+			describeRecent(destination, {
+				catalog,
+				table: destination.table,
+				view: chosenView,
+				row: destination.row ? selected : null
+			})
+		);
 		persistRecents();
 		refreshRecentLabels();
 	}
 	function removeRecent(destination: Destination) {
-		recentDestinations = recentDestinations.filter(
-			(entry) => recentKey(entry) !== recentKey(destination)
+		recentEntries = recentEntries.filter(
+			(entry) => recentKey(entry.destination) !== recentKey(destination)
 		);
 		persistRecents();
 		refreshRecentLabels();
@@ -221,7 +230,7 @@
 			database === workspace &&
 			editorVersion === version &&
 			!findVisible &&
-			recentDestinations.some((entry) => recentKey(entry) === recentKey(destination));
+			recentEntries.some((entry) => recentKey(entry.destination) === recentKey(destination));
 		try {
 			await openDestination(destination, current);
 		} catch (e) {
@@ -2931,7 +2940,6 @@
 							database = null;
 							pins.setWorkspace(null);
 							recentsRequest++;
-							recentDestinations = [];
 							recentEntries = [];
 							opened = false;
 							showFind(false);

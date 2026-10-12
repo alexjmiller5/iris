@@ -299,17 +299,25 @@ open a target-table editor first (dialog on web, sheet on native) and Cancel wri
 nothing. Only the receipt's exact id enters the source draft (multi_ref appends);
 the source still needs its own Save. Writes are local, sync later and join Undo.
 
-Web recents store at most eight table/view/row identity tuples per workspace,
-with labels resolved from current local data. Record only completed navigation;
-preserve unavailable entries with a reason and an explicit Remove action.
-Preference read failures must not overwrite the unread stored history. System
-table grouping uses core catalog `readOnly`, never host naming conventions.
-Native destination resolution reads fresh catalog, saved-view metadata and full
-active or trashed rows through the same core. Keep exact UTF-8 identities after
-SQL lookup, including databases with case-insensitive ID collation. Native recents
-persist only destination tuples; their model records a visit only after the host
-commits navigation. A failed preference read keeps new visits in memory and must
-never replace unread history. The temporary sample uses memory-only recents.
+Recents store at most eight table/view/row identity tuples per workspace, each with
+a display snapshot (label, web context line, trash mark, unavailable reason) in
+format version 2 (web localStorage `iris:recents:*`, native `recents/<scope>.json`);
+version 1 tuple-only history still reads, as unresolved entries. Identity is only
+the tuple: the snapshot is a display cache, never used to navigate. The host writes
+it when it records a visit (the title, view or table it shows at that moment), so
+stored entries paint in the sidebar's first frame on launch or workspace open with
+no raw id or Loading. Labels then refresh from current local data in the background
+and the list updates, and the snapshot is stored again, only when one changed
+(rename, trash, unavailable). An entry never resolved on this device shows its raw
+id until it is. Record only completed navigation; preserve unavailable entries with
+a reason and an explicit Remove action. Preference read failures must not overwrite
+the unread stored history. System table grouping uses core catalog `readOnly`,
+never host naming conventions. Native destination resolution reads fresh catalog,
+saved-view metadata and full active or trashed rows through the same core. Keep
+exact UTF-8 identities after SQL lookup, including databases with case-insensitive
+ID collation. The native model records a visit only after the host commits
+navigation. A failed preference read keeps new visits in memory and must never
+replace unread history. The temporary sample uses memory-only recents.
 
 Native Quick Find combines table/view metadata with the existing record search.
 Discover metadata once per opening except for explicit retries, keeping paging
@@ -897,8 +905,8 @@ Cmd+\ (`WorkspaceCommands`, View > Toggle Sidebar) toggles the sidebar column wi
 a 0.2 s ease-out animation (none under Reduce Motion), persisted as
 `iris.sidebarHidden`; compact iPhone switches sidebar and detail with the system push.
 The Mac status item (`WorkspaceMenuBar`, opt-out in Settings) mirrors the most
-recently active window: Open, Quick Find, five recents and pinned tables by title
-only. Its commands reach that window through the guarded navigation paths.
+recently active window: Open, Quick Find, five recents (their stored snapshot
+labels, so they need no lookup) and pinned tables by title only. Its commands reach that window through the guarded navigation paths.
 MenuBarExtra writes `isInserted` back on every scene update; bind it through a
 setter that ignores unchanged values, and publish focused values that compare
 equal across renders, or the Mac main menu rebuilds forever at launch.

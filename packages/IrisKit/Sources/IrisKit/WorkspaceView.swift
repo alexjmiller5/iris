@@ -32,7 +32,7 @@ public struct WorkspaceView: View {
   @State private var rejectionError: String?
   @State private var pendingRejection: (review: PreparedRejectionReview, request: Int)?
   @State private var pendingSearchEditor:
-    (target: EditorTarget, generation: Int, destination: NativeDestination)?
+    (target: EditorTarget, generation: Int, resolved: NativeResolvedDestination)?
   @State private var pendingReferenceEditor:
     (destination: ReferenceDestination, source: WorkspaceEditingContext, generation: Int)?
   /// A Markdown view embed's Open view: the editor closes, then the view opens.
@@ -304,7 +304,7 @@ public struct WorkspaceView: View {
         writable: target.writable, isCurrent: target.isCurrent, prepare: target.prepare)
     }
     .sheet(isPresented: $savedViews) {
-      SavedViewsView(model: model, onChoose: recordNavigationSucceeded)
+      SavedViewsView(model: model) { recordNavigationSucceeded($0) }
     }
     .sheet(item: $quickFind, onDismiss: openSearchEditor) { find in
       QuickFindView(
@@ -317,9 +317,7 @@ public struct WorkspaceView: View {
         let context = try model.activateDestination(
           resolved, workspace: client, generation: generation)
         if let row = resolved.row {
-          pendingSearchEditor = (
-            EditorTarget(row: row.record, context: context), generation, resolved.destination
-          )
+          pendingSearchEditor = (EditorTarget(row: row.record, context: context), generation, resolved)
         }
         tableSearchPresented = false
         showingGraph = false
@@ -327,7 +325,7 @@ public struct WorkspaceView: View {
         model.error = nil
         navigationError = nil
         quickFind = nil
-        if resolved.row == nil { recordNavigationSucceeded(resolved.destination) }
+        if resolved.row == nil { recordNavigationSucceeded(resolved) }
       }
     }
     .sheet(item: $rejectionInbox, onDismiss: finishRejectionDismissal) { inbox in
@@ -511,13 +509,31 @@ public struct WorkspaceView: View {
       "select-loaded-rows")
   }
 
-  private func recordNavigationSucceeded(_ destination: NativeDestination) {
+  /// Records a committed visit with the label this window shows for it, so the
+  /// recent paints its title at once; a view or table names itself.
+  private func recordNavigationSucceeded(
+    _ destination: NativeDestination, label: String? = nil, record: WorkspaceRecord? = nil
+  ) {
     guard let recents = model.recents else { return }
     let generation = model.workspaceGeneration
+    var label = label
+    if label == nil, destination.rowID == nil {
+      if let viewID = destination.viewID {
+        if let view = model.appliedView, view.id.utf8.elementsEqual(viewID.utf8) { label = view.name }
+      } else {
+        label = destination.table
+      }
+    }
+    let shown = label
+    let isTrashed = NativeResolvedDestination.isTrashed(record)
     Task {
       guard generation == model.workspaceGeneration else { return }
-      await recents.navigationSucceeded(destination)
+      await recents.navigationSucceeded(destination, label: shown, isTrashed: isTrashed)
     }
+  }
+
+  private func recordNavigationSucceeded(_ resolved: NativeResolvedDestination) {
+    recordNavigationSucceeded(resolved.destination, label: resolved.label, record: resolved.row?.record)
   }
 
   private func openRecord(_ row: WorkspaceRow) {
@@ -556,7 +572,8 @@ public struct WorkspaceView: View {
       inlineField: editable ? inlineField : nil, inlineUndo: model.undoAction, provisional: true)
     model.error = nil
     recordNavigationSucceeded(
-      NativeDestination(table: context.table, viewID: model.appliedView?.id, rowID: row.id))
+      NativeDestination(table: context.table, viewID: model.appliedView?.id, rowID: row.id),
+      label: row.label, record: row.record)
   }
 
   private func openDestination(
@@ -594,7 +611,7 @@ public struct WorkspaceView: View {
           editor = EditorTarget(row: row.record, context: context)
         }
         model.error = nil
-        recordNavigationSucceeded(destination)
+        recordNavigationSucceeded(resolved)
         onOpened?()
       } catch is CancellationError {
         // A closed or superseded workspace owns the next UI state.
@@ -767,7 +784,7 @@ public struct WorkspaceView: View {
       preferredColumn = .detail
       model.error = nil
       navigationError = nil
-      recordNavigationSucceeded(pending.review.resolved.destination)
+      recordNavigationSucceeded(pending.review.resolved)
     } catch is CancellationError {
       model.refreshDrafts()
     } catch {
@@ -790,7 +807,7 @@ public struct WorkspaceView: View {
       pending.target.context?.table == model.table
     else { return }
     editor = pending.target
-    recordNavigationSucceeded(pending.destination)
+    recordNavigationSucceeded(pending.resolved)
   }
 
   private func finishEditorDismissal() {
@@ -826,7 +843,8 @@ public struct WorkspaceView: View {
       recordNavigationSucceeded(
         NativeDestination(
           table: pending.destination.table, viewID: model.appliedView?.id,
-          rowID: pending.destination.row.id))
+          rowID: pending.destination.row.id),
+        label: pending.destination.row.label, record: pending.destination.row.record)
     } catch { model.error = error.localizedDescription }
   }
 
@@ -922,7 +940,8 @@ public struct WorkspaceView: View {
             if let id = current?["id"]?.text {
               recordNavigationSucceeded(
                 NativeDestination(
-                  table: context.table, viewID: model.appliedView?.id, rowID: id))
+                  table: context.table, viewID: model.appliedView?.id, rowID: id),
+                label: model.recordTitle(current), record: current)
             }
           } catch { model.error = error.localizedDescription }
         }

@@ -157,6 +157,14 @@ const recent = (label: string) =>
       }),
     })
     .first();
+// A table opens on its default saved view, so its recent is that view, named
+// "Default view" in the table's context.
+const tableRecent = (table: string) =>
+  recents
+    .locator(".destination")
+    .filter({ has: page.locator("strong", { hasText: /^Default view$/ }) })
+    .filter({ has: page.locator("small", { hasText: new RegExp(`^View · ${table}$`) }) })
+    .first();
 async function closeFixture() {
   accept = true;
   await page!.evaluate(() => (window as any).release?.());
@@ -202,7 +210,7 @@ try {
     page.getByRole("button", { name: "Fixture record", exact: true }),
   ).toBeVisible({ timeout: 30000 });
   await expect(recents).toBeVisible();
-  await expect(recent("widgets")).toBeEnabled();
+  await expect(tableRecent("widgets")).toBeEnabled();
   console.log("PASS: successful table navigation records a destination");
   await expect(
     page.getByRole("button", { name: "Fixture record", exact: true }),
@@ -218,6 +226,9 @@ try {
           localStorage.getItem("iris:recents:workspace") ?? '{"entries":[]}',
         ).entries,
     );
+  // Recency is the identity order; labels are a display snapshot that refreshes.
+  const tuples = async () =>
+    (await stored()).map(({ table, view, row }: any) => ({ table, view, row }));
   async function settled() {
     await expect(recents.getByText("Loading…", { exact: true })).toHaveCount(0);
   }
@@ -225,8 +236,8 @@ try {
     await tables.getByRole("button", { name, exact: true }).click();
     await expect.poll(() => query().get("table")).toBe(name);
     await expect
-      .poll(async () => (await stored())[0])
-      .toEqual({ table: name, view: null, row: null });
+      .poll(async () => (await tuples())[0])
+      .toMatchObject({ table: name, view: expect.any(String), row: null });
     await settled();
   }
   async function home() {
@@ -300,11 +311,12 @@ try {
       await expect(
         editor.getByLabel("Quantity", { exact: true }),
       ).toHaveValue("42");
-      expect((await stored()).slice(0, 3)).toEqual([
+      expect((await tuples()).slice(0, 3)).toEqual([
         { table: "widgets", view: "widget-view", row: "fixture-record" },
         { table: "widgets", view: "widget-view", row: null },
-        { table: "widgets", view: null, row: null },
+        { table: "widgets", view: (await tuples())[2].view, row: null },
       ]);
+      expect((await tuples())[2].view).not.toBe("widget-view");
       await tables
         .getByRole("button", { name: "projects", exact: true })
         .click();
@@ -318,7 +330,7 @@ try {
     },
   );
   await run(
-    "cancelled discard retains draft URL and recency; accepted navigation completes",
+    "cancelled discard of an unsaveable draft retains draft URL and recency; accepted navigation completes",
     async () => {
       await navigateTable("projects");
       await home();
@@ -328,24 +340,30 @@ try {
           exact: true,
         })
         .click();
+      await recordReady(page);
       await settled();
-      await title().fill("Unsaved draft");
-      const before = await stored(),
+      // Autosave stores ordinary typing on leave; only a refused value (the
+      // required title emptied) asks before it is discarded.
+      await title().fill("");
+      await page.evaluate(() =>
+        (document.activeElement as HTMLElement | null)?.blur(),
+      );
+      await expect(saveStatus).toHaveAttribute("data-state", "failed");
+      const before = await tuples(),
         address = page.url(),
         confirmations = dialogs;
       accept = false;
-      await recent("projects").click();
+      await tableRecent("projects").click();
       await expect.poll(() => dialogs).toBe(confirmations + 1);
-      await expect(title()).toHaveValue("Unsaved draft");
+      await expect(title()).toHaveValue("");
       expect(page.url()).toBe(address);
-      expect(await stored()).toEqual(before);
+      expect(await tuples()).toEqual(before);
       accept = true;
-      await recent("projects").click();
+      await tableRecent("projects").click();
       await expect(editor).not.toBeVisible();
       await expect.poll(() => query().get("table")).toBe("projects");
-      expect((await stored())[0]).toEqual({
+      expect((await tuples())[0]).toMatchObject({
         table: "projects",
-        view: null,
         row: null,
       });
     },
@@ -355,6 +373,7 @@ try {
     async () => {
       await navigateTable("projects");
       await home();
+      const homeView = query().get("view");
       await page
         .getByRole("button", {
           name: /^(Fixture record|Current record label)$/,
@@ -372,7 +391,7 @@ try {
         .first()
         .click();
       await settled();
-      const before = await stored();
+      const before = await tuples();
       await page.evaluate(() => ((window as any).hold = "write"));
       await title().fill("Saved without bump");
       await page.evaluate(() =>
@@ -380,15 +399,15 @@ try {
       );
       await page.waitForFunction(() => (window as any).held.length === 1);
       // Leaving saves pending edits first and a held write still lands, so navigation stays open.
-      await expect(recent("projects")).toBeEnabled();
+      await expect(tableRecent("projects")).toBeEnabled();
       expect(query().get("row")).toBe("fixture-record");
       await page.evaluate(() => (window as any).release());
       await expect(saveStatus).toHaveAttribute("data-state", "saved");
       await settled();
-      expect(await stored()).toEqual(before);
+      expect(await tuples()).toEqual(before);
       expect(
         (await stored()).some(
-          (d: any) => d.row === "fixture-record" && d.view === null,
+          (d: any) => d.row === "fixture-record" && d.view === homeView,
         ),
       ).toBe(false);
     },
@@ -399,10 +418,10 @@ try {
       await navigateTable("projects");
       await home();
       await page.evaluate(() => ((window as any).hold = "snapshot"));
-      await recent("projects").click();
+      await tableRecent("projects").click();
       await page.waitForFunction(() => (window as any).held.length === 1);
       await navigateTable("widgets");
-      const before = await stored();
+      const before = await tuples();
       await page.evaluate(() => (window as any).release());
       await page.waitForFunction(() =>
         [...(window as any).activeWorkers].every(
@@ -414,7 +433,7 @@ try {
         page.getByRole("heading", { name: "widgets", exact: true }),
       ).toBeVisible();
       await expect.poll(() => query().get("table")).toBe("widgets");
-      expect(await stored()).toEqual(before);
+      expect(await tuples()).toEqual(before);
     },
   );
   await run(
@@ -455,9 +474,9 @@ try {
       await expect(
         page.getByRole("button", { name: "New record", exact: true }),
       ).toBeDisabled();
-      await expect(recent("catalog_tables")).toBeEnabled();
+      await expect(tableRecent("catalog_tables")).toBeEnabled();
       await navigateTable("widgets");
-      await recent("catalog_tables").click();
+      await tableRecent("catalog_tables").click();
       await expect(
         page.getByRole("heading", { name: "catalog_tables", exact: true }),
       ).toBeVisible();
@@ -465,7 +484,11 @@ try {
         .getByRole("main")
         .getByRole("button", { name: "widgets", exact: true })
         .click();
-      await expect(editor.locator("#field-display")).toBeDisabled();
+      // The fixture catalogs no catalog_tables properties; nothing is editable.
+      await expect(editor.getByText("Saved", { exact: true })).toBeVisible();
+      await expect(
+        editor.locator("input:not([disabled]), textarea:not([disabled]), select:not([disabled])"),
+      ).toHaveCount(0);
       await expect(
         editor.getByRole("button", { name: "Move to trash", exact: true }),
       ).toBeDisabled();
@@ -486,15 +509,16 @@ try {
       await expect(
         recents.getByText(/linked view is not available/),
       ).toBeVisible();
-      await expect(recent("delete-view")).toBeDisabled();
+      // The removed view keeps its last shown name beside the reason.
+      await expect(recent("Disposable view")).toBeDisabled();
       const before = page.url();
       await recents
         .getByRole("button", {
-          name: "Remove delete-view from recents",
+          name: "Remove Disposable view from recents",
           exact: true,
         })
         .click();
-      await expect(recent("delete-view")).toHaveCount(0);
+      await expect(recent("Disposable view")).toHaveCount(0);
       expect(page.url()).toBe(before);
     },
   );
@@ -514,7 +538,7 @@ try {
       await expect(
         editor.getByRole("button", { name: "Restore record", exact: true }),
       ).toBeEnabled();
-      expect(query().get("row")).toBe("fixture-record");
+      await expect.poll(() => query().get("row")).toBe("fixture-record");
     },
   );
   await run(
@@ -538,7 +562,7 @@ try {
             .getByRole("status")
             .filter({ hasText: "Recents could not be saved" }),
         ).toBeVisible();
-        await expect(recent("projects")).toBeEnabled();
+        await expect(tableRecent("projects")).toBeEnabled();
         expect(query().get("table")).toBe("projects");
       } finally {
         await page.evaluate(() => (window as any).restoreStorage());
@@ -572,7 +596,7 @@ try {
             .getByRole("status")
             .filter({ hasText: "Recents could not be read" }),
         ).toBeVisible();
-        await expect(recent("widgets")).toBeEnabled();
+        await expect(tableRecent("widgets")).toBeEnabled();
       } finally {
         await page.evaluate(() => (window as any).restoreRead());
       }
@@ -580,7 +604,7 @@ try {
     },
   );
   await run(
-    "reopen restores capped ID-only preferences and unavailable partial entries are removable",
+    "reopen restores capped version 1 ID-only preferences and unavailable partial entries are removable",
     async () => {
       await closeFixture();
       await page.goto(url);
@@ -616,8 +640,15 @@ try {
         })
         .click();
       await expect(recent("missing/0+?")).toHaveCount(0);
-      for (const item of await stored())
-        expect(Object.keys(item).sort()).toEqual(["row", "table", "view"]);
+      // Resolved once, the missing entries are stored with their snapshot and reason.
+      const missing = (await stored()).filter((item: any) => item.row?.startsWith("missing/"));
+      expect(missing.length).toBeGreaterThan(0);
+      for (const item of missing)
+        expect(item).toMatchObject({
+          table: "widgets",
+          label: item.row,
+          unavailable: expect.stringMatching(/outside this replica/),
+        });
     },
   );
   await run(
@@ -632,7 +663,7 @@ try {
       await ready();
       await settled();
       expect(await stored()).toEqual(account);
-      await expect(recent("widgets")).toHaveCount(0);
+      await expect(tableRecent("widgets")).toHaveCount(0);
       const demo = await page.evaluate(
         () =>
           JSON.parse(
@@ -647,12 +678,113 @@ try {
         .click();
       await ready();
       await settled();
-      await expect(recent("widgets")).toBeEnabled();
+      await expect(tableRecent("widgets")).toBeEnabled();
       expect(
         (await stored()).every((d: any) =>
           ["widgets", "projects"].includes(d.table),
         ),
       ).toBe(true);
+    },
+  );
+  await run(
+    "cold reopen paints stored labels with the sidebar; visits paint their title at once",
+    async () => {
+      // Every distinct state of the recents list, recorded before it can paint.
+      await page.evaluate(() => {
+        const state = window as any;
+        state.recentFrames = [];
+        const read = () => {
+          const nav = document.querySelector(
+            'nav[aria-label="Recent destinations"]',
+          );
+          const frame = nav
+            ? {
+                sidebar: !!document.querySelector("#workspace-sidebar"),
+                labels: [...nav.querySelectorAll(".destination strong")].map(
+                  (el) => el.textContent,
+                ),
+                contexts: [...nav.querySelectorAll(".destination small")].map(
+                  (el) => el.textContent,
+                ),
+                loading: nav.textContent!.includes("Loading…"),
+              }
+            : null;
+          const last = state.recentFrames.at(-1);
+          if (JSON.stringify(frame) !== JSON.stringify(last?.frame))
+            state.recentFrames.push({ at: performance.now(), frame });
+        };
+        state.recentObserver?.disconnect();
+        state.recentObserver = new MutationObserver(read);
+        state.recentObserver.observe(document.body, {
+          subtree: true,
+          childList: true,
+          characterData: true,
+        });
+      });
+      const frames = () =>
+        page.evaluate(() =>
+          (window as any).recentFrames.splice(0).map((f: any) => f.frame),
+        );
+      await frames();
+      // Earlier cases trashed the fixture record; this one opens a live record.
+      await page
+        .getByRole("main")
+        .getByRole("button", { name: "Second record", exact: true })
+        .click();
+      await recordReady(page);
+      await settled();
+      const title = await editor
+        .getByRole("textbox", { name: "Title", exact: true })
+        .inputValue();
+      // Every frame that shows the record visit on top shows its title.
+      const visitLabels = (await frames())
+        .filter((f: any) => f?.contexts[0]?.startsWith("Record ·"))
+        .map((f: any) => f.labels[0]);
+      expect(visitLabels.length).toBeGreaterThan(0);
+      expect(new Set(visitLabels)).toEqual(new Set([title]));
+      await page
+        .getByRole("button", { name: "Close record", exact: true })
+        .click();
+      await settled();
+      const before = await stored();
+      expect(before.length).toBeGreaterThan(1);
+      expect(before.every((e: any) => typeof e.label === "string")).toBe(true);
+      await closeFixture();
+      await page.evaluate(() => {
+        (window as any).recentFrames = [];
+        (window as any).openedAt = 0;
+      });
+      await page.evaluate(() =>
+        document.addEventListener(
+          "click",
+          () => ((window as any).openedAt = performance.now()),
+          { once: true, capture: true },
+        ),
+      );
+      await page
+        .getByRole("button", { name: "Open my workspace", exact: true })
+        .click();
+      await ready();
+      await settled();
+      const opened = await page.evaluate(() => ({
+        at: (window as any).openedAt,
+        frames: (window as any).recentFrames,
+      }));
+      const first = opened.frames.find((f: any) => f.frame);
+      // The first state with recents already holds every stored label, inside
+      // the newly mounted sidebar: no raw id and no Loading frame in between.
+      expect(first.frame).toMatchObject({
+        sidebar: true,
+        labels: before.map((e: any) => e.label),
+        loading: false,
+      });
+      expect(opened.frames.some((f: any) => f.frame?.loading)).toBe(false);
+      console.log(
+        "MEASURE: recents labels painted",
+        Math.round(first.at - opened.at),
+        "ms after Open my workspace, in the sidebar's first frame",
+      );
+      await page.evaluate(() => (window as any).recentObserver.disconnect());
     },
   );
   await run("sidebar fits desktop and 390px light/dark layouts", async () => {

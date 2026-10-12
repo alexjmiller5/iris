@@ -1,6 +1,9 @@
 import { displayName } from 'iris-core/client';
 import type { Destination, resolveDestination } from './workspace-navigation';
 
+/** A destination plus its display snapshot. Identity is only the destination;
+ * the label, context, trash mark and reason are a display cache that paints on
+ * open and is refreshed from local data afterwards, never used to navigate. */
 export type RecentEntry = {
 	destination: Destination;
 	label: string;
@@ -26,33 +29,48 @@ function canonical(value: unknown): Destination | null {
 export function recentKey(destination: Destination): string {
 	return JSON.stringify([destination.table, destination.view, destination.row]);
 }
-function bounded(values: unknown[]): Destination[] {
-	const entries: Destination[] = [];
+function bounded(values: RecentEntry[]): RecentEntry[] {
+	const entries: RecentEntry[] = [];
 	const seen = new Set<string>();
 	for (const value of values) {
-		const destination = canonical(value);
+		const destination = canonical(value.destination);
 		if (!destination || seen.has(recentKey(destination))) continue;
 		seen.add(recentKey(destination));
-		entries.push(destination);
+		entries.push({ ...value, destination });
 		if (entries.length === limit) break;
 	}
 	return entries;
 }
-export function parseRecents(raw: string | null): Destination[] {
+/** Version 2 entries carry a snapshot; version 1 held identity tuples only. */
+function stored(value: unknown, version: number): RecentEntry[] {
+	const destination = canonical(value);
+	if (!destination) return [];
+	const { label, context, trash, unavailable } = value as Record<string, unknown>;
+	return version === 2 &&
+		typeof label === 'string' &&
+		typeof context === 'string' &&
+		typeof trash === 'boolean' &&
+		(unavailable === null || typeof unavailable === 'string')
+		? [{ destination, label, context, trash, loading: false, unavailable }]
+		: [pending(destination)];
+}
+export function parseRecents(raw: string | null): RecentEntry[] {
 	if (raw === null) return [];
 	const value = JSON.parse(raw);
-	if (!value || value.version !== 1 || !Array.isArray(value.entries))
+	if (!value || ![1, 2].includes(value.version) || !Array.isArray(value.entries))
 		throw new Error('Recent destinations could not be read.');
-	return bounded(value.entries);
+	return bounded(value.entries.flatMap((entry: unknown) => stored(entry, value.version)));
 }
-export function serializeRecents(destinations: Destination[]): string {
-	return JSON.stringify({ version: 1, entries: bounded(destinations) });
+export function serializeRecents(entries: RecentEntry[]): string {
+	return JSON.stringify({
+		version: 2,
+		entries: bounded(entries).map(({ destination, label, context, trash, loading, unavailable }) =>
+			loading ? destination : { ...destination, label, context, trash, unavailable }
+		)
+	});
 }
-export function rememberRecent(
-	destinations: Destination[],
-	destination: Destination
-): Destination[] {
-	return canonical(destination) ? bounded([destination, ...destinations]) : destinations;
+export function rememberRecent(entries: RecentEntry[], entry: RecentEntry): RecentEntry[] {
+	return canonical(entry.destination) ? bounded([entry, ...entries]) : entries;
 }
 function pending(destination: Destination): RecentEntry {
 	return {
@@ -68,9 +86,13 @@ function pending(destination: Destination): RecentEntry {
 		unavailable: null
 	};
 }
+/** Also builds a visit's snapshot from what the host shows when it records it. */
 export function describeRecent(
 	destination: Destination,
-	resolved: Awaited<ReturnType<typeof resolveDestination>>
+	resolved: Pick<
+		Awaited<ReturnType<typeof resolveDestination>>,
+		'catalog' | 'table' | 'view' | 'row'
+	>
 ): RecentEntry {
 	const display = resolved.catalog.tables.find((t) => t.id === resolved.table)?.display;
 	const label = resolved.row
@@ -86,29 +108,35 @@ export function describeRecent(
 		loading: false
 	};
 }
+const same = (a: RecentEntry, b: RecentEntry) =>
+	a.label === b.label &&
+	a.context === b.context &&
+	a.trash === b.trash &&
+	a.loading === b.loading &&
+	a.unavailable === b.unavailable;
+/** Re-resolves the shown entries in order and publishes only when one changed. */
 export async function loadRecentEntries(
-	destinations: Destination[],
+	shown: RecentEntry[],
 	resolve: (destination: Destination) => Promise<RecentEntry>,
 	publish: (entries: RecentEntry[]) => void,
 	current: () => boolean
 ) {
-	if (!current()) return;
-	const entries = destinations.map(pending);
-	publish([...entries]);
+	const entries = [...shown];
 	for (let i = 0; i < entries.length; i++) {
 		if (!current()) return;
+		let next: RecentEntry;
 		try {
-			const resolved = await resolve(entries[i].destination);
-			if (!current()) return;
-			entries[i] = resolved;
+			next = await resolve(entries[i].destination);
 		} catch (error) {
-			if (!current()) return;
-			entries[i] = {
+			next = {
 				...entries[i],
 				loading: false,
 				unavailable: error instanceof Error ? error.message : String(error)
 			};
 		}
+		if (!current()) return;
+		if (same(next, entries[i])) continue;
+		entries[i] = next;
 		publish([...entries]);
 	}
 }

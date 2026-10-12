@@ -39,8 +39,10 @@ struct NativeResolvedDestination: Sendable {
   var label: String {
     row?.label ?? (destination.viewID == nil ? nil : view?.name) ?? destination.table
   }
-  var isTrashed: Bool {
-    guard let deleted = row?.record["deleted_at"] else { return false }
+  var isTrashed: Bool { Self.isTrashed(row?.record) }
+
+  static func isTrashed(_ record: WorkspaceRecord?) -> Bool {
+    guard let deleted = record?["deleted_at"] else { return false }
     return deleted != .null
   }
 }

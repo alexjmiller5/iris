@@ -17,7 +17,8 @@ the common `NativeDestinationResolver` and a current-workspace predicate, displa
    common resolver. Respect the host's pending-write and dirty-draft guards. Do
    not navigate using the label projection or a cached row.
 4. Only after the host installs the destination successfully, call
-   `await recents.navigationSucceeded(destination)`. Do not call it from the
+   `await recents.navigationSucceeded(destination, label:isTrashed:)` with the
+   title, view name or table it shows at that moment. Do not call it from the
    resolver, a property observer, autosave, sync, default selection or refresh.
 5. Call `remove(destination)` for explicit removal, and `cancel()` when closing or
    replacing the workspace. Create a new model for the replacement context.
@@ -29,9 +30,13 @@ only core catalog `readOnly`, independently of recent destination eligibility.
 
 ## Persistence
 
-Version 1 stores at most eight newest destination tuples using the common Codable
-keys `table`, `view`, `row` and optional bounded `state` query JSON. Identifiers are preserved byte for byte; labels,
-record fields, credentials and endpoints are not saved in the preference payload.
+Version 2 stores at most eight newest destination tuples using the common Codable
+keys `table`, `view`, `row` and optional bounded `state` query JSON, each with its
+display snapshot (`label`, `trashed`, `unavailable`) once resolved. Identifiers are
+preserved byte for byte; record fields, credentials and endpoints are not saved in
+the preference payload. Version 1 files (tuples only) still read, as unresolved
+entries. The model shows stored snapshots from its first frame, refreshes in the
+background, and updates and stores an entry only when it changed.
 The existing draft store derives the workspace key so app-owned paths survive
 container relocation and canonical external files remain isolated. Files and
 their directory are private, and writes are atomic.
@@ -50,7 +55,8 @@ database and cancels it when its client closes or changes. Preference errors do
 not prevent the workspace from opening. Foreground and completed sync refresh
 recent labels without replacing the editor, loaded rows or query.
 
-`WorkspaceView.recordNavigationSucceeded(_:)` is the single completion hook.
+`WorkspaceView.recordNavigationSucceeded(_:label:record:)` is the single completion
+hook; it passes the shown label (a view or table names itself).
 The table, graph, saved-view choose and related-record paths call it after
 installation. QuickFind integration must call the same hook after its guarded
 destination or pending record editor is installed. Resolving metadata or saving

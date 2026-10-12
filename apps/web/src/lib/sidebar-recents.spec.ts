@@ -45,56 +45,107 @@ test('exact opaque tuples distinguish table, view and row contexts without delim
 		).size
 	).toBe(6);
 });
-test('revisiting moves only that exact destination first and caps history at eight', () => {
-	let items: Destination[] = [];
-	for (let i = 0; i < 10; i++)
-		items = rememberRecent(items, { table: 'things', view: null, row: String(i) });
-	expect(items.map((d) => d.row)).toEqual(['9', '8', '7', '6', '5', '4', '3', '2']);
-	items = rememberRecent(items, { table: 'things', view: null, row: '5' });
-	expect(items.map((d) => d.row)).toEqual(['5', '9', '8', '7', '6', '4', '3', '2']);
-	expect(rememberRecent(items, { table: null, view: null, row: null })).toEqual(items);
+const pendingOf = (destination: Destination): RecentEntry => ({
+	destination,
+	label: destination.row ?? destination.view ?? destination.table ?? '',
+	context: destination.row
+		? `Record · ${destination.table}`
+		: destination.view
+			? `View · ${destination.table}`
+			: 'Table',
+	trash: false,
+	loading: true,
+	unavailable: null
 });
-test('table/view/record entries coexist and serialized preferences contain identifiers only', () => {
-	const items = rememberRecent(rememberRecent([table], view), row);
-	expect(items).toEqual([row, view, table]);
+test('revisiting moves only that exact destination first and caps history at eight', () => {
+	let items: RecentEntry[] = [];
+	for (let i = 0; i < 10; i++)
+		items = rememberRecent(items, entry({ table: 'things', view: null, row: String(i) }, `#${i}`));
+	expect(items.map((e) => e.destination.row)).toEqual(['9', '8', '7', '6', '5', '4', '3', '2']);
+	items = rememberRecent(items, entry({ table: 'things', view: null, row: '5' }, 'Renamed'));
+	expect(items.map((e) => e.destination.row)).toEqual(['5', '9', '8', '7', '6', '4', '3', '2']);
+	expect(items[0].label).toBe('Renamed');
+	expect(rememberRecent(items, pendingOf({ table: null, view: null, row: null }))).toEqual(items);
+});
+test('stored entries carry their display snapshot but never unrelated fields', () => {
+	const items = rememberRecent(
+		rememberRecent([entry(table, 'things')], entry(view, 'A view')),
+		entry(row, 'A title')
+	);
+	expect(items.map((e) => e.destination)).toEqual([row, view, table]);
 	const contaminated = {
-		...row,
-		label: 'Do not persist this title',
-		token: 'Do not persist this credential'
-	};
-	expect(JSON.parse(serializeRecents([contaminated, table]))).toEqual({
-		version: 1,
-		entries: [row, table]
+		...entry(row, 'A title'),
+		destination: { ...row, token: 'Do not persist this credential' },
+		token: 'Do not persist this credential either'
+	} as RecentEntry;
+	const stored = JSON.parse(serializeRecents([contaminated, entry(table, 'things')]));
+	expect(stored).toEqual({
+		version: 2,
+		entries: [
+			{ ...row, label: 'A title', context: 'Record · things', trash: false, unavailable: null },
+			{ ...table, label: 'things', context: 'Record · things', trash: false, unavailable: null }
+		]
 	});
 	expect(parseRecents(serializeRecents(items))).toEqual(items);
 });
+test('a never-resolved entry is stored as its identity only and reopens pending', () => {
+	const stored = JSON.parse(serializeRecents([pendingOf(row)]));
+	expect(stored.entries).toEqual([row]);
+	expect(parseRecents(JSON.stringify(stored))).toEqual([pendingOf(row)]);
+});
+test('unavailable entries keep their last label and reason across reopening', () => {
+	const gone = { ...entry(row, 'Last title'), unavailable: 'Not available in this replica' };
+	expect(parseRecents(serializeRecents([gone]))).toEqual([gone]);
+});
+test('version 1 tuple-only history reopens without losing entries', () => {
+	expect(
+		parseRecents(JSON.stringify({ version: 1, entries: [row, { ...table, label: 'Old label' }] }))
+	).toEqual([pendingOf(row), pendingOf(table)]);
+});
 test('parser rejects malformed/versioned roots but keeps valid entries from a partial preference', () => {
 	expect(parseRecents(null)).toEqual([]);
-	for (const raw of ['{', '[]', '{"version":2,"entries":[]}', '{"version":1,"entries":{}}'])
+	for (const raw of [
+		'{',
+		'[]',
+		'{"version":3,"entries":[]}',
+		'{"version":1,"entries":{}}',
+		'{"version":2,"entries":{}}'
+	])
 		expect(() => parseRecents(raw)).toThrow();
+	const snapshot = { label: 'Title', context: 'Record · things', trash: false, unavailable: null };
 	expect(
 		parseRecents(
 			JSON.stringify({
-				version: 1,
+				version: 2,
 				entries: [
-					row,
-					row,
-					{ ...table, label: 'Old label' },
-					{ table: '', view: null, row: null },
+					{ ...row, ...snapshot },
+					{ ...row, ...snapshot, label: 'Duplicate' },
+					{ ...table, ...snapshot, label: 3 },
+					{ ...view, ...snapshot, trash: 'yes' },
+					{ table: '', view: null, row: null, ...snapshot },
 					{ table: 'things', view: 3, row: null },
 					{ table: 'things', view: null },
 					{ table: null, view: null, row: 'id' }
 				]
 			})
 		)
-	).toEqual([row, table]);
+	).toEqual([{ destination: row, ...snapshot, loading: false }, pendingOf(table), pendingOf(view)]);
 });
 test('parser bounds oversized input while retaining newest order', () => {
 	const raw = JSON.stringify({
-		version: 1,
+		version: 2,
 		entries: Array.from({ length: 12 }, (_, i) => ({ table: 'things', view: null, row: String(i) }))
 	});
-	expect(parseRecents(raw).map((d) => d.row)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7']);
+	expect(parseRecents(raw).map((e) => e.destination.row)).toEqual([
+		'0',
+		'1',
+		'2',
+		'3',
+		'4',
+		'5',
+		'6',
+		'7'
+	]);
 });
 test('labels and trash state come from the freshly resolved catalog/view/full row', () => {
 	const resolved = {
@@ -118,10 +169,10 @@ test('labels and trash state come from the freshly resolved catalog/view/full ro
 		trash: false
 	});
 });
-test('unavailable local entries retain their position and identity instead of being pruned', async () => {
+test('unavailable local entries retain their position, identity and last label', async () => {
 	let visible: RecentEntry[] = [];
 	await loadRecentEntries(
-		[row, table],
+		[entry(row, 'Last title'), pendingOf(table)],
 		async (d) => {
 			if (d.row) throw Error('Not available in this replica');
 			return entry(d, 'things');
@@ -131,20 +182,42 @@ test('unavailable local entries retain their position and identity instead of be
 	);
 	expect(visible.map((e) => e.destination)).toEqual([row, table]);
 	expect(visible[0]).toMatchObject({
+		label: 'Last title',
 		loading: false,
 		unavailable: 'Not available in this replica'
 	});
 	expect(visible[1]).toMatchObject({ loading: false, unavailable: null, label: 'things' });
+});
+test('a refresh starts from the shown snapshots and publishes only real changes', async () => {
+	const published: RecentEntry[][] = [];
+	const shown = [entry(row, 'Same title'), entry(view, 'Old view name'), entry(table, 'things')];
+	await loadRecentEntries(
+		shown,
+		async (d) =>
+			d.view && !d.row ? entry(d, 'Renamed view') : entry(d, d.row ? 'Same title' : 'things'),
+		(next) => published.push(next),
+		() => true
+	);
+	expect(published.map((list) => list.map((e) => e.label))).toEqual([
+		['Same title', 'Renamed view', 'things']
+	]);
+	await loadRecentEntries(
+		shown.slice(0, 1),
+		async (d) => entry(d, 'Same title'),
+		(next) => published.push(next),
+		() => true
+	);
+	expect(published).toHaveLength(1);
 });
 test.each([false, true])(
 	'late label success/failure cannot replace a changed workspace or removed entry: %s',
 	async (fail) => {
 		const held = deferred<RecentEntry>();
 		let current = true;
-		let visible: RecentEntry[] = [];
+		let visible: RecentEntry[] = [entry(row, 'Shown title'), entry(table, 'things')];
 		let calls = 0;
 		const pending = loadRecentEntries(
-			[row, table],
+			visible,
 			() => {
 				calls++;
 				return held.promise;
@@ -152,7 +225,7 @@ test.each([false, true])(
 			(next) => (visible = next),
 			() => current
 		);
-		expect(visible[0]?.loading).toBe(true);
+		expect(visible[0]).toMatchObject({ label: 'Shown title', loading: false });
 		current = false;
 		visible = [entry(table, 'New workspace')];
 		if (fail) held.reject(Error('Old failure'));

@@ -1,9 +1,12 @@
 # Sidebar navigation
 
 Recent destinations are a device preference, separate for the sample database and
-account workspace. The version 1 preference contains at most eight exact
-`{ table, view, row }` identifier tuples in newest-first order. It contains no
-labels, credentials, endpoints, record bodies or query configuration.
+account workspace. The version 2 preference contains at most eight exact
+`{ table, view, row }` identifier tuples in newest-first order, each with its
+display snapshot `{ label, context, trash, unavailable }` once it has been shown
+resolved. It contains no credentials, endpoints, record bodies or query
+configuration. A version 1 preference (tuples only) still reads; its entries show
+their raw IDs until their first refresh, which stores their snapshots.
 
 Only completed navigation adds or moves an entry. Saves, sync, label refresh,
 failed navigation and cancelled discard leave the order unchanged. Reopening a
@@ -11,7 +14,12 @@ recent destination resolves its current catalog, saved-view definition and full
 record through the existing core requests before applying the normal draft and
 pending-write guards. Saved views are identified by their stable ID.
 
-Labels are resolved from current local data. A missing table, view or record stays
+A visit stores the title, view name or table the page shows when it is recorded,
+and stored snapshots paint with the sidebar when a workspace opens, so a recent
+never flashes its ID or a Loading line. Labels then refresh from current local
+data in the background; an entry updates, and its snapshot is stored again, only
+when something changed (a rename, trash, or availability). The snapshot is display
+only: opening a recent always resolves its tuple. A missing table, view or record stays
 in the list with its availability reason and a Remove action, because local
 absence can reflect a partial replica. Removal only changes this preference.
 Trashed records are marked and use the existing read-only editor and Restore

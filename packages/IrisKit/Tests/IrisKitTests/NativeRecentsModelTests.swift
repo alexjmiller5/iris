@@ -20,8 +20,7 @@ struct NativeRecentsModelTests {
     _ = try store.load()
     let a = NativeDestination(table: "notes", rowID: "a")
     let b = NativeDestination(table: "notes", rowID: "b")
-    _ = try store.update { _ in [b, a] }
-    let before = try Data(contentsOf: store.file)
+    _ = try store.update { _ in [b, a].map(NativeRecentEntry.init(pending:)) }
     var label = "First label"
     let model = NativeRecentsModel(store: store, resolve: { try resolved($0, label: label) })
     await model.refresh()
@@ -31,10 +30,60 @@ struct NativeRecentsModelTests {
     await model.refresh()
     #expect(model.destinations == [b, a])
     #expect(model.entries.map(\.label) == ["Renamed label", "Renamed label"])
+    // The refreshed snapshot is stored in place; refreshing never reorders history.
+    #expect(try store.load() == model.entries)
+    let before = try Data(contentsOf: store.file)
+    await model.refresh()
     #expect(try Data(contentsOf: store.file) == before)
     await model.navigationSucceeded(a)
     #expect(model.destinations == [a, b])
-    #expect(try store.load() == [a, b])
+    #expect(try store.load().map(\.destination) == [a, b])
+  }
+
+  @Test func coldLaunchPaintsStoredSnapshotsBeforeAnyResolution() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = NativeRecentsStore(root: root, workspace: root.appendingPathComponent("local.sqlite"))
+    _ = try store.load()
+    let shown = [
+      NativeRecentEntry(
+        destination: NativeDestination(table: "notes", rowID: "a"), label: "Stored title",
+        isTrashed: true, loading: false),
+      NativeRecentEntry(
+        destination: NativeDestination(table: "notes", viewID: "v"), label: "Stored view",
+        loading: false),
+      NativeRecentEntry(
+        destination: NativeDestination(table: "notes", rowID: "gone"), label: "Last title",
+        loading: false, unavailable: "Outside this replica"),
+    ]
+    _ = try store.update { _ in shown }
+    var resolutions = 0
+    let reopened = NativeRecentsStore(root: root, workspace: root.appendingPathComponent("local.sqlite"))
+    let model = NativeRecentsModel(store: reopened, resolve: { _ in
+      resolutions += 1
+      throw CancellationError()
+    })
+    // The first frame shows every stored label: no raw id, no Loading.
+    #expect(model.entries == shown)
+    #expect(!model.entries.contains { $0.loading || $0.label == $0.destination.rowID })
+    #expect(resolutions == 0)
+  }
+
+  @Test func aVisitPaintsTheHostLabelWhileItsRefreshIsStillPending() async throws {
+    var response: CheckedContinuation<NativeResolvedDestination, Error>?
+    let destination = NativeDestination(table: "notes", rowID: "fixture")
+    let model = NativeRecentsModel(resolve: { _ in
+      try await withCheckedThrowingContinuation { response = $0 }
+    })
+    let visit = Task { await model.navigationSucceeded(destination, label: "Open title", isTrashed: true) }
+    while response == nil { await Task.yield() }
+    #expect(model.entries == [
+      NativeRecentEntry(destination: destination, label: "Open title", isTrashed: true, loading: false),
+    ])
+    response?.resume(returning: try resolved(destination, label: "Open title"))
+    await visit.value
+    #expect(model.entries.first?.label == "Open title")
+    #expect(model.entries.first?.isTrashed == false)
   }
 
   @Test func sampleIsMemoryOnlyAndKeepsByteExactBoundedIdentities() async throws {

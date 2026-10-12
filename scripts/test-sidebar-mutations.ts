@@ -40,15 +40,27 @@ const mutations = [
   {
     name: "serialization leaks mutable extra fields",
     file: model,
-    before: "entries: bounded(destinations)",
-    after: "entries: destinations",
+    before: "entries.push({ ...value, destination });",
+    after: "entries.push(value);",
+  },
+  {
+    name: "reopen ignores stored display snapshots",
+    file: model,
+    before: "return version === 2 &&",
+    after: "return version === 0 &&",
+  },
+  {
+    name: "refresh republishes unchanged entries",
+    file: model,
+    before: "if (same(next, entries[i])) continue;",
+    after: "/* every reply published */",
   },
   {
     name: "late label responses overwrite context",
     file: model,
     before: "if (!current()) return;",
     after: "/* lifetime ignored */",
-    count: 4,
+    count: 2,
   },
   {
     name: "missing entries lose their reason",
@@ -56,6 +68,13 @@ const mutations = [
     before:
       "unavailable: error instanceof Error ? error.message : String(error)",
     after: "unavailable: null",
+  },
+  {
+    name: "a visit is recorded without its shown label",
+    file: page,
+    before: "row: destination.row ? selected : null",
+    after: "row: null",
+    browser: "cold reopen",
   },
   {
     name: "system partition ignores core boolean",
