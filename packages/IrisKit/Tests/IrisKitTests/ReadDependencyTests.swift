@@ -6,7 +6,7 @@ import Testing
 
 private final class DependencyFixture: NSObject {}
 
-@MainActor
+@IrisCoreActor
 struct ReadDependencyTests {
   @Test func canonicalCompilerDependencyFixtureRunsThroughRealJavaScriptCoreAndGRDB() throws {
     #if SWIFT_PACKAGE

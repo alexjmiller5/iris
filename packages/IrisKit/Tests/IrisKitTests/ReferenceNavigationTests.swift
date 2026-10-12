@@ -22,9 +22,10 @@ struct ReferenceNavigationTests {
           "title": .string("Navigation read-only fixture"), "topic": .string(topic.id),
         ])
       await model.close()
-      let runtime = try IrisCoreRuntime()
-      let fixture = try NativeWorkspace(path: WorkspaceModel.localURL().path, runtime: runtime)
-      runtime.context.evaluateScript(
+      let runtime = try await IrisCoreRuntime.onCore()
+      let fixture = try await NativeWorkspace(
+        path: WorkspaceModel.localURL().path, runtime: runtime)
+      await runtime.evaluateOnCore(
         #"""
         IrisSql.run("UPDATE notes SET related='[\"missing-fixture-reference\"]' WHERE title='Navigation read-only fixture'");
         IrisSql.run("UPDATE catalog_tables SET kind='system' WHERE id='notes'");
@@ -56,11 +57,11 @@ struct ReferenceNavigationTests {
   }
 
   @Test func realCoreOpensFreshFullLocalRowFromReadOnlySourceAndSkippedTable() async throws {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
     let target = try #require(try await client.rows(table: "notes").first)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "IrisSql.run(\"UPDATE catalog_tables SET kind='system' WHERE id='topics'\")")
     #expect(runtime.context.exception == nil)
     let workspace = WorkspaceModel()

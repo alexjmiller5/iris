@@ -10,7 +10,7 @@ struct LiveHubTests {
   func nativeHTTPOnlineReadsAreFreshAndNeverStageLocalRecords() async throws {
     let endpoint = try #require(ProcessInfo.processInfo.environment["IRIS_TEST_HUB"])
     let hub = try HubTransport(endpoint: endpoint, token: "fixture")
-    let writer = try NativeWorkspace(path: ":memory:")
+    let writer = try await NativeWorkspace(path: ":memory:")
     _ = try await writer.sync(using: hub)
     let created = try await writer.write(
       table: "widgets",
@@ -20,12 +20,12 @@ struct LiveHubTests {
       ])
     _ = try await writer.sync(using: hub)
     let id = try #require(created["id"]?.text)
-    let runtime = try IrisCoreRuntime()
-    let viewer = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let viewer = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     let sync = try await viewer.sync(using: hub, maxRows: 0)
     #expect(sync.skipped.contains("widgets"))
-    let before = runtime.context.evaluateScript("IrisSql.all('SELECT total_changes() AS n')[0].n")?
-      .toInt32()
+    let changes = "IrisSql.all('SELECT total_changes() AS n')[0].n"
+    let before = await runtime.evaluateOnCore(changes) { $0?.toInt32() }
     let page = try await viewer.remoteRows(using: hub, table: "widgets", limit: 1)
     #expect(page.rows.count == 1 && page.nextCursor != nil)
     let cursor = try #require(page.nextCursor)
@@ -49,12 +49,11 @@ struct LiveHubTests {
     #expect(
       try await viewer.remoteRow(using: hub, table: "widgets", id: "missing-\(UUID().uuidString)")
         .row == nil)
+    #expect(await runtime.evaluateOnCore(changes) { $0?.toInt32() } == before)
     #expect(
-      runtime.context.evaluateScript("IrisSql.all('SELECT total_changes() AS n')[0].n")?.toInt32()
-        == before)
-    #expect(
-      runtime.context.evaluateScript("IrisSql.all('SELECT count(*) AS n FROM widgets')[0].n")?
-        .toInt32() == 0)
+      await runtime.evaluateOnCore("IrisSql.all('SELECT count(*) AS n FROM widgets')[0].n") {
+        $0?.toInt32()
+      } == 0)
     #expect(runtime.context.exception == nil)
     try await viewer.close()
     try await writer.close()
@@ -64,7 +63,7 @@ struct LiveHubTests {
   func nativeHTTPUsageAndCompleteNotificationFeed() async throws {
     let endpoint = try #require(ProcessInfo.processInfo.environment["IRIS_TEST_SERVICES_HUB"])
     let hub = try HubTransport(endpoint: endpoint, token: "fixture")
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let usage = try await workspace.usage(using: hub)
     #expect(usage.metrics.count == 4)
     #expect(usage.metrics["d1_storage_bytes"]?.used == nil)
@@ -87,7 +86,7 @@ struct LiveHubTests {
     defer { try? FileManager.default.removeItem(at: directory) }
     let path = directory.appendingPathComponent("replica.sqlite").path
     let hub = try HubTransport(endpoint: endpoint, token: "fixture")
-    let first = try NativeWorkspace(path: path)
+    let first = try await NativeWorkspace(path: path)
     let pulled = try await first.sync(using: hub)
     #expect(pulled.pulled > 0)
     #expect(try await first.catalog().tables.contains { $0["id"] == .string("widgets") })
@@ -96,7 +95,7 @@ struct LiveHubTests {
       table: "widgets",
       patch: ["title": .string(title), "body": .string("# Offline source"), "quantity": .number(7)])
     try await first.close()
-    let reopened = try NativeWorkspace(path: path)
+    let reopened = try await NativeWorkspace(path: path)
     #expect(try await reopened.status().pendingUiEdits == 1)
     let restored = try #require(try await reopened.rows(table: "widgets", search: title).first)
     #expect(restored.record["body"] == .string("# Offline source"))

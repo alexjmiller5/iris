@@ -11,10 +11,10 @@ struct CatalogRecordAcceptanceTests {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    try Self.seed(runtime)
+    try await Self.seed(runtime)
     try await Self.establishCoverage(workspace, runtime: runtime)
     let writeability = try await workspace.writeability(table: "record_examples")
     try #require(
@@ -31,7 +31,7 @@ struct CatalogRecordAcceptanceTests {
       try await workspace.write(
         table: "record_examples", patch: patch, expectedUpdatedAt: baseline?["updated_at"]?.text)
     }
-    let history = try Self.history(runtime)
+    let history = try await Self.history(runtime)
     let pending = try await workspace.status().pendingUiEdits
     #expect(editor.draft.fields.contains { $0.id == "title" && $0.required })
     #expect(!editor.draft.fields.contains { ["locked", "computed"].contains($0.id) })
@@ -53,7 +53,7 @@ struct CatalogRecordAcceptanceTests {
     #expect(editor.draft.values["detail"] == "Retained second edit")
     #expect(editor.draft.original == original)
     #expect(try await workspace.rows(table: "record_examples").first?.record == original)
-    #expect(try Self.history(runtime) == history)
+    #expect(try await Self.history(runtime) == history)
     #expect(try await workspace.status().pendingUiEdits == pending)
     let retained = try #require(
       try journal.load(table: "record_examples", recordID: "catalog-record"))
@@ -81,7 +81,7 @@ struct CatalogRecordAcceptanceTests {
         || ProcessInfo.processInfo.environment["IRIS_TEST_CATALOG_SIMULATOR"] != nil))
   func prepareCatalogRecordUIFixture() async throws {
     let environment = ProcessInfo.processInfo.environment
-    let runtime = try IrisCoreRuntime()
+    let runtime = try await IrisCoreRuntime.onCore()
     let file: URL
     #if targetEnvironment(simulator)
       try #require(environment["IRIS_TEST_CATALOG_SIMULATOR"] == environment["SIMULATOR_UDID"])
@@ -98,12 +98,12 @@ struct CatalogRecordAcceptanceTests {
       return
     #endif
     let existed = FileManager.default.fileExists(atPath: file.path)
-    let workspace = try NativeWorkspace(path: file.path, runtime: runtime)
+    let workspace = try await NativeWorkspace(path: file.path, runtime: runtime)
     if !existed { try await workspace.createSample() }
     // Never modify existing records/fixtures when a preparation is accidentally repeated.
     try #require(
       !(try await workspace.catalog().tables.contains { $0["id"] == .string("record_examples") }))
-    try Self.seed(runtime)
+    try await Self.seed(runtime)
     try await Self.establishCoverage(workspace, runtime: runtime)
     let writeability = try await workspace.writeability(table: "record_examples")
     try #require(
@@ -116,7 +116,7 @@ struct CatalogRecordAcceptanceTests {
   private static func establishCoverage(_ workspace: NativeWorkspace, runtime: IrisCoreRuntime)
     async throws
   {
-    let snapshot = runtime.context.evaluateScript(
+    let snapshot = await runtime.evaluateOnCore(
       #"""
       JSON.stringify({
         schema: IrisSql.all('SELECT applied_at,ddl FROM _schema_log ORDER BY id'),
@@ -124,9 +124,10 @@ struct CatalogRecordAcceptanceTests {
           .filter(r => !r.name.startsWith('_') && !r.name.startsWith('sqlite_'))
           .map(r => [r.name, IrisSql.all('SELECT * FROM "'+r.name.replaceAll('"','""')+'" ORDER BY id')]))
       })
-      """#)
+      """#
+    ) { $0?.toString() }
     try #require(runtime.context.exception == nil)
-    let bytes = Data(try #require(snapshot?.toString()).utf8)
+    let bytes = Data(try #require(snapshot).utf8)
     let source = try JSONDecoder().decode(CatalogAcceptanceHub.Snapshot.self, from: bytes)
     CatalogAcceptanceHub.install(source)
     defer { CatalogAcceptanceHub.clear() }
@@ -139,16 +140,16 @@ struct CatalogRecordAcceptanceTests {
     try #require(result.skipped.isEmpty && result.rejected.isEmpty)
   }
 
-  private static func history(_ runtime: IrisCoreRuntime) throws -> String {
-    let value = runtime.context.evaluateScript(
+  private static func history(_ runtime: IrisCoreRuntime) async throws -> String {
+    let value = await runtime.evaluateOnCore(
       "JSON.stringify(IrisSql.all(\"SELECT * FROM history WHERE tbl='record_examples' ORDER BY id\"))"
-    )
+    ) { $0?.toString() }
     try #require(runtime.context.exception == nil)
-    return try #require(value?.toString())
+    return try #require(value)
   }
 
-  private static func seed(_ runtime: IrisCoreRuntime) throws {
-    runtime.context.evaluateScript(
+  private static func seed(_ runtime: IrisCoreRuntime) async throws {
+    await runtime.evaluateOnCore(
       #"""
       const ddl = `CREATE TABLE record_examples (
         id TEXT PRIMARY KEY, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT,

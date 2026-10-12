@@ -4,7 +4,7 @@ import GRDB
 import JavaScriptCore
 
 /// Trusted SQL primitives. NativeWorkspace serializes callers across async transactions.
-@MainActor
+@IrisCoreActor
 public final class SQLiteBridge {
   private let database: DatabaseQueue
   private var prepared = false
@@ -16,7 +16,7 @@ public final class SQLiteBridge {
   }
 
   /// NativeWorkspace keeps its normal file-gate turn until this backup ends.
-  /// SQLite performs the coherent copy off MainActor; the live file is never moved.
+  /// SQLite performs the coherent copy on a detached task; the live file is never moved.
   func exportWidgetSnapshot(
     to url: URL, budget: Int64? = 536_870_912, deadline: Duration? = .seconds(5)
   ) async throws {

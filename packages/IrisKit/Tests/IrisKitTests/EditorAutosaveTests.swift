@@ -385,7 +385,7 @@ struct EditorAutosaveTests {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let store = EditorDraftStore(root: root, workspace: root.appendingPathComponent("db.sqlite"))
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     try await workspace.indexSearch()
     let row = try await workspace.write(

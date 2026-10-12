@@ -178,7 +178,7 @@ struct WidgetPlanReaderTests {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let url = directory.appendingPathComponent("workspace.sqlite")
-    let workspace = try NativeWorkspace(path: url.path)
+    let workspace = try await NativeWorkspace(path: url.path)
     try await workspace.createSample()
     let plan = try await workspace.prepareReadPlan(
       CorePrepareReadPlanArgs(

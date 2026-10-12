@@ -8,7 +8,7 @@ import Testing
   @Test func publicationAndRevocationNotifyWidgetTimelines() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     var changes = 0
     let settings = NativeWidgetSettings(
@@ -26,7 +26,7 @@ import Testing
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let preferences = root.appendingPathComponent("widgets.json")
     let damaged = Data("unreadable settings".utf8)
@@ -48,7 +48,7 @@ import Testing
   @Test func enabledSourcesPersistAndCanBeReadAfterHostCloses() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let library = WidgetLibrary(root: root.appendingPathComponent("shared"))
     let preferences = root.appendingPathComponent("preferences/widgets.json")
@@ -78,7 +78,7 @@ import Testing
   @Test func restoredPreferencesCannotRestoreRevokedAccess() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let library = WidgetLibrary(root: root.appendingPathComponent("shared"))
     let preferences = root.appendingPathComponent("preferences/widgets.json")
@@ -106,7 +106,7 @@ import Testing
   {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let library = WidgetLibrary(root: root.appendingPathComponent("shared"))
     let preferences = root.appendingPathComponent("preferences/widgets.json")

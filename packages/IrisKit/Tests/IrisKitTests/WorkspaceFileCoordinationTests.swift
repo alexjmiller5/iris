@@ -11,20 +11,21 @@ struct WorkspaceFileCoordinationTests {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: folder) }
     let path = folder.appendingPathComponent("workspace.sqlite")
-    let runtime = try IrisCoreRuntime()
-    let first = try NativeWorkspace(path: path.path, runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let first = try await NativeWorkspace(path: path.path, runtime: runtime)
     try await first.createSample()
     let otherPath = folder.appendingPathComponent("alias.sqlite")
     if alias == "symlink" {
       try FileManager.default.createSymbolicLink(at: otherPath, withDestinationURL: path)
     }
-    let second = try NativeWorkspace(path: alias == "same" ? path.path : otherPath.path)
+    let second = try await NativeWorkspace(path: alias == "same" ? path.path : otherPath.path)
     _ = try await second.catalog()
-    let independent = try NativeWorkspace(path: folder.appendingPathComponent("other.sqlite").path)
+    let independent = try await NativeWorkspace(
+      path: folder.appendingPathComponent("other.sqlite").path)
     try await independent.createSample()
-    let memory = try NativeWorkspace(path: ":memory:")
+    let memory = try await NativeWorkspace(path: ":memory:")
     try await memory.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       const original = IrisNative.request;
       let held = false;
@@ -61,7 +62,7 @@ struct WorkspaceFileCoordinationTests {
     }
     await wait { independentFinished }
     #expect(!saved && !read, "Neither same-file operation may interleave the held transaction")
-    runtime.context.evaluateScript("releaseWindow()")
+    await runtime.evaluateOnCore("releaseWindow()")
     _ = try await holding.value
     let receipt = try await saving.value
     let rows = try await reading.value
@@ -81,11 +82,11 @@ struct WorkspaceFileCoordinationTests {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: folder) }
     let path = folder.appendingPathComponent("workspace.sqlite").path
-    let runtime = try IrisCoreRuntime()
-    let first = try NativeWorkspace(path: path, runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let first = try await NativeWorkspace(path: path, runtime: runtime)
     try await first.createSample()
-    let second = try NativeWorkspace(path: path)
-    runtime.context.evaluateScript(
+    let second = try await NativeWorkspace(path: path)
+    await runtime.evaluateOnCore(
       "IrisNative.request = () => { throw new Error('Synthetic failure'); }")
     await #expect(throws: Error.self) { _ = try await first.catalog() }
     #expect(!(try await second.rows(table: "notes")).isEmpty)
@@ -99,11 +100,11 @@ struct WorkspaceFileCoordinationTests {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: folder) }
     let path = folder.appendingPathComponent("workspace.sqlite").path
-    let runtime = try IrisCoreRuntime()
-    let first = try NativeWorkspace(path: path, runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let first = try await NativeWorkspace(path: path, runtime: runtime)
     try await first.createSample()
-    let second = try NativeWorkspace(path: path)
-    runtime.context.evaluateScript(
+    let second = try await NativeWorkspace(path: path)
+    await runtime.evaluateOnCore(
       #"""
       IrisNative.request = () => {
         IrisSql.begin();
@@ -114,7 +115,7 @@ struct WorkspaceFileCoordinationTests {
     await #expect(throws: Error.self) { _ = try await first.catalog() }
     let result = await Task { try await second.rows(table: "notes") }.result
     // Keep even a failing baseline from leaving an intentionally held transaction.
-    runtime.context.evaluateScript("try { IrisSql.rollback(); } catch {}")
+    await runtime.evaluateOnCore("try { IrisSql.rollback(); } catch {}")
     try await first.close()
     try await second.close()
     let rows = try result.get()
@@ -126,14 +127,16 @@ struct WorkspaceFileCoordinationTests {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: folder) }
     let path = folder.appendingPathComponent("workspace.sqlite")
-    let first = try NativeWorkspace(path: path.path)
+    let first = try await NativeWorkspace(path: path.path)
     try await first.createSample()
     try await first.close()
     let before = try Data(contentsOf: path)
     let alias = folder.appendingPathComponent("alias.sqlite")
     try FileManager.default.linkItem(at: path, to: alias)
     var unexpected: NativeWorkspace?
-    #expect(throws: WorkspaceError.self) { unexpected = try NativeWorkspace(path: alias.path) }
+    await #expect(throws: WorkspaceError.self) {
+      unexpected = try await NativeWorkspace(path: alias.path)
+    }
     try await unexpected?.close()
     #expect(try Data(contentsOf: path) == before)
   }

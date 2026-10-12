@@ -11,11 +11,11 @@ struct HubSyncTests {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let runtime = try IrisCoreRuntime()
+    let runtime = try await IrisCoreRuntime.onCore()
     let path = directory.appendingPathComponent("hub.sqlite").path
-    let seed = try NativeWorkspace(path: path, runtime: runtime)
+    let seed = try await NativeWorkspace(path: path, runtime: runtime)
     try await seed.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       const ddl = `CREATE TABLE collated (id TEXT PRIMARY KEY COLLATE NOCASE, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT, title TEXT)`;
       IrisSql.run(ddl);
@@ -25,13 +25,13 @@ struct HubSyncTests {
       """#)
     #expect(runtime.context.exception == nil)
     try await seed.close()
-    try HubFixture.state.load(path: path)
+    try await HubFixture.state.load(path: path)
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [HubFixture.self]
     let hub = try HubTransport(
       endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
       configuration: configuration)
-    let viewer = try NativeWorkspace(path: ":memory:")
+    let viewer = try await NativeWorkspace(path: ":memory:")
     _ = try await viewer.sync(using: hub, tables: ["collated": false])
     let result = try await viewer.remoteRow(using: hub, table: "collated", id: " case id ")
     #expect(result.row?.id == " Case ID " && result.row?.label == "Collated fixture")
@@ -44,10 +44,10 @@ struct HubSyncTests {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let seed = try NativeWorkspace(path: directory.appendingPathComponent("hub.sqlite").path)
+    let seed = try await NativeWorkspace(path: directory.appendingPathComponent("hub.sqlite").path)
     try await seed.createSample()
     try await seed.close()
-    try HubFixture.state.load(path: directory.appendingPathComponent("hub.sqlite").path)
+    try await HubFixture.state.load(path: directory.appendingPathComponent("hub.sqlite").path)
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [HubFixture.self]
     let hub = try HubTransport(
@@ -91,10 +91,10 @@ struct HubSyncTests {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let seed = try NativeWorkspace(path: directory.appendingPathComponent("hub.sqlite").path)
+    let seed = try await NativeWorkspace(path: directory.appendingPathComponent("hub.sqlite").path)
     try await seed.createSample()
     try await seed.close()
-    try HubFixture.state.load(path: directory.appendingPathComponent("hub.sqlite").path)
+    try await HubFixture.state.load(path: directory.appendingPathComponent("hub.sqlite").path)
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [HubFixture.self]
     let hub = try HubTransport(
@@ -129,10 +129,10 @@ struct HubSyncTests {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let seed = try NativeWorkspace(path: directory.appendingPathComponent("hub.sqlite").path)
+    let seed = try await NativeWorkspace(path: directory.appendingPathComponent("hub.sqlite").path)
     try await seed.createSample()
     try await seed.close()
-    try HubFixture.state.load(path: directory.appendingPathComponent("hub.sqlite").path)
+    try await HubFixture.state.load(path: directory.appendingPathComponent("hub.sqlite").path)
     func makeModel() -> WorkspaceModel {
       WorkspaceModel(
         localURL: { directory.appendingPathComponent("local.sqlite") },
@@ -191,11 +191,11 @@ struct HubSyncTests {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let runtime = try IrisCoreRuntime()
+    let runtime = try await IrisCoreRuntime.onCore()
     let hubPath = directory.appendingPathComponent("hub.sqlite").path
-    let seed = try NativeWorkspace(path: hubPath, runtime: runtime)
+    let seed = try await NativeWorkspace(path: hubPath, runtime: runtime)
     try await seed.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       const ddl = `CREATE TABLE provenance (id TEXT PRIMARY KEY, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT, detail TEXT)`;
       IrisSql.run(ddl);
@@ -207,14 +207,14 @@ struct HubSyncTests {
       """#)
     #expect(runtime.context.exception == nil)
     try await seed.close()
-    try HubFixture.state.load(path: hubPath)
+    try await HubFixture.state.load(path: hubPath)
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [HubFixture.self]
     let hub = try HubTransport(
       endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
       configuration: configuration)
-    let replicaRuntime = try IrisCoreRuntime()
-    let replica = try NativeWorkspace(
+    let replicaRuntime = try await IrisCoreRuntime.onCore()
+    let replica = try await NativeWorkspace(
       path: directory.appendingPathComponent("replica.sqlite").path, runtime: replicaRuntime)
     let partial = try await replica.sync(
       using: hub, tables: ["history": false, "provenance": false])
@@ -243,7 +243,7 @@ struct HubSyncTests {
     _ = try await replica.sync(using: hub, tables: ["history": true, "provenance": false])
     #expect(try await replica.writeability(table: "notes").writable)
     // Older hosts keep the conservative global gate when the optional capability is absent.
-    replicaRuntime.context.evaluateScript("delete IrisSql.readDependencies")
+    await replicaRuntime.evaluateOnCore("delete IrisSql.readDependencies")
     #expect(!((try await replica.writeability(table: "notes")).writable))
     try await replica.close()
   }
@@ -252,11 +252,11 @@ struct HubSyncTests {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let runtime = try IrisCoreRuntime()
+    let runtime = try await IrisCoreRuntime.onCore()
     let hubPath = directory.appendingPathComponent("hub.sqlite").path
-    let seed = try NativeWorkspace(path: hubPath, runtime: runtime)
+    let seed = try await NativeWorkspace(path: hubPath, runtime: runtime)
     try await seed.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       """
       IrisSql.run("INSERT INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
         ['fixture-title','notes','invariant',1,"SELECT id FROM changed WHERE title = 'Blocked' OR (SELECT count(*) FROM history)<0",'Fixture title is blocked.']);
@@ -265,7 +265,7 @@ struct HubSyncTests {
       """)
     #expect(runtime.context.exception == nil)
     try await seed.close()
-    try HubFixture.state.load(path: hubPath)
+    try await HubFixture.state.load(path: hubPath)
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [HubFixture.self]
     let transport = try HubTransport(
@@ -338,17 +338,17 @@ struct HubSyncTests {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let hubPath = directory.appendingPathComponent("hub.sqlite").path
-    let seed = try NativeWorkspace(path: hubPath)
+    let seed = try await NativeWorkspace(path: hubPath)
     try await seed.createSample()
     try await seed.close()
-    try HubFixture.state.load(path: hubPath)
+    try await HubFixture.state.load(path: hubPath)
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [HubFixture.self]
     let transport = try HubTransport(
       endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
       configuration: configuration)
     let path = directory.appendingPathComponent("replica.sqlite").path
-    let replica = try NativeWorkspace(path: path)
+    let replica = try await NativeWorkspace(path: path)
     HubFixture.state.failPull("notes")
     await #expect(throws: Error.self) { try await replica.sync(using: transport) }
     try await replica.close()
@@ -359,7 +359,7 @@ struct HubSyncTests {
     #expect(finished.contains("catalog_properties"))
     #expect(!finished.contains("notes"))
     HubFixture.state.failPull(nil)
-    let reopened = try NativeWorkspace(path: path)
+    let reopened = try await NativeWorkspace(path: path)
     _ = try await reopened.sync(using: transport)
     #expect(try await reopened.status().lastSuccessfulSync != nil)
     try await reopened.close()
@@ -370,17 +370,17 @@ struct HubSyncTests {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let fixturePath = directory.appendingPathComponent("hub.sqlite").path
-    let seed = try NativeWorkspace(path: fixturePath)
+    let seed = try await NativeWorkspace(path: fixturePath)
     try await seed.createSample()
     try await seed.close()
-    try HubFixture.state.load(path: fixturePath)
+    try await HubFixture.state.load(path: fixturePath)
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [HubFixture.self]
     let transport = try HubTransport(
       endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
       configuration: configuration)
     let path = directory.appendingPathComponent("replica.sqlite").path
-    let replica = try NativeWorkspace(path: path)
+    let replica = try await NativeWorkspace(path: path)
     let first = try await replica.sync(using: transport)
     #expect(first.pulled > 0)
     #expect(first.rejected.isEmpty)
@@ -450,7 +450,7 @@ struct HubSyncTests {
       endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
       configuration: configuration)
     let path = directory.appendingPathComponent("replica.sqlite").path
-    let replica = try NativeWorkspace(path: path)
+    let replica = try await NativeWorkspace(path: path)
     for status in [401, 302, 500] {
       HubFixture.state.setStatus(status)
       do {
@@ -517,7 +517,7 @@ private final class FixtureState: @unchecked Sendable {
         formatter.string(from: Date(timeIntervalSinceNow: 1)))
     }
   }
-  @MainActor func load(path: String) throws {
+  @IrisCoreActor func load(path: String) throws {
     try lock.withLock {
       let bridge = try SQLiteBridge(path: path)
       defer { try? bridge.close() }

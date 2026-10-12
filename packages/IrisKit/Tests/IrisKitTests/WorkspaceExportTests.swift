@@ -15,7 +15,7 @@ struct WorkspaceExportTests {
     let refresh = Task { await fixture.model.reload() }
     defer {
       refresh.cancel()
-      fixture.release()
+      fixture.releaseSoon()
     }
     if admittedFirst {
       try #require(await observed.wait(), "Actual JSC admission must precede the waiter")
@@ -26,7 +26,7 @@ struct WorkspaceExportTests {
     }
     try await fixture.waitUntilHeld()
     #expect(!fixture.model.canExportLoadedRows)
-    fixture.release()
+    await fixture.release()
     await refresh.value
     #expect(fixture.model.canExportLoadedRows)
     #expect(try fixture.model.captureLoadedRowsForExport(at: capturedAt).rows.count == 1)
@@ -39,12 +39,12 @@ struct WorkspaceExportTests {
     let observed = ExportAdmissionObserver()
     fixture.holdNext("rows")
     // Suppress only the notification, keeping the real JSC release closure intact.
-    let didHold: @convention(block) () -> Void = { observed.signal() }
+    let didHold: @convention(block) @Sendable () -> Void = { observed.signal() }
     fixture.runtime.context.setObject(didHold, forKeyedSubscript: "exportRequestHeld" as NSString)
     let refresh = Task { await fixture.model.reload() }
     defer {
       refresh.cancel()
-      fixture.release()
+      fixture.releaseSoon()
     }
     try #require(await observed.wait(), "Missing-signal fixture must actually hold the request")
     var threw = false
@@ -83,7 +83,7 @@ struct WorkspaceExportTests {
     var old: Task<Void, Never>?
     defer {
       old?.cancel()
-      fixture.release()
+      fixture.releaseSoon()
     }
     if whileReloading {
       fixture.holdNext("rows")
@@ -96,7 +96,7 @@ struct WorkspaceExportTests {
       await model.reload(more: true)
     }
     while !started { await Task.yield() }
-    fixture.release()
+    await fixture.release()
     await old?.value
     await more.value
     #expect(model.rows.isEmpty)
@@ -138,7 +138,7 @@ struct WorkspaceExportTests {
   func nextPageRetryRetainsSuccessfulPrefix(outcome: String) async throws {
     let fixture = try await ExportWorkspaceFixture()
     let model = fixture.model
-    try fixture.addPaginationRows()
+    try await fixture.addPaginationRows()
     await model.reload()
     #expect(model.rows.count == 100)
     await model.reload(more: true)
@@ -148,22 +148,22 @@ struct WorkspaceExportTests {
     let next = Task { await model.reload(more: true) }
     defer {
       next.cancel()
-      fixture.release()
+      fixture.releaseSoon()
     }
     try await fixture.waitUntilHeld()
     if outcome == "cancel" {
       next.cancel()
     } else {
-      fixture.runtime.context.evaluateScript(
+      await fixture.runtime.evaluateOnCore(
         "IrisSql.run('ALTER TABLE notes RENAME TO held_notes')")
       try #require(fixture.runtime.context.exception == nil)
     }
-    fixture.release()
+    await fixture.release()
     await next.value
     #expect(model.rows.map(\.byteExactID) == prefix)
     #expect(!model.canExportLoadedRows)
     if outcome == "failure" {
-      fixture.runtime.context.evaluateScript(
+      await fixture.runtime.evaluateOnCore(
         "IrisSql.run('ALTER TABLE held_notes RENAME TO notes')")
       try #require(fixture.runtime.context.exception == nil)
     }
@@ -179,7 +179,7 @@ struct WorkspaceExportTests {
   func fullRefreshInvalidatesPrefixEvenWhenItDoesNotFinish(afterWrite: Bool) async throws {
     let fixture = try await ExportWorkspaceFixture()
     let model = fixture.model
-    try fixture.addPaginationRows()
+    try await fixture.addPaginationRows()
     await model.reload()
     await model.reload(more: true)
     #expect(model.rows.count == 200)
@@ -196,22 +196,22 @@ struct WorkspaceExportTests {
     }
     defer {
       refresh.cancel()
-      fixture.release()
+      fixture.releaseSoon()
     }
     try await fixture.waitUntilHeld()
     if afterWrite {
-      fixture.runtime.context.evaluateScript(
+      await fixture.runtime.evaluateOnCore(
         "IrisSql.run('ALTER TABLE notes RENAME TO held_notes')")
       try #require(fixture.runtime.context.exception == nil)
     } else {
       refresh.cancel()
     }
-    fixture.release()
+    await fixture.release()
     try await refresh.value
     #expect(!model.canExportLoadedRows)
     #expect(throws: WorkspaceError.self) { try model.captureLoadedRowsForExport(at: capturedAt) }
     if afterWrite {
-      fixture.runtime.context.evaluateScript(
+      await fixture.runtime.evaluateOnCore(
         "IrisSql.run('ALTER TABLE held_notes RENAME TO notes')")
       try #require(fixture.runtime.context.exception == nil)
     }
@@ -318,7 +318,7 @@ struct WorkspaceExportTests {
     let refresh = Task { await model.reload() }
     defer {
       refresh.cancel()
-      fixture.release()
+      fixture.releaseSoon()
     }
     try await fixture.waitUntilHeld()
     #expect(!model.canExportLoadedRows)
@@ -329,11 +329,11 @@ struct WorkspaceExportTests {
       model.catalog = try changingLabel(try #require(model.catalog), to: "Changed synthetic label")
     case "query": model.search = "superseded"
     case "failure":
-      fixture.runtime.context.evaluateScript("IrisSql.run('DROP TABLE notes')")
+      await fixture.runtime.evaluateOnCore("IrisSql.run('DROP TABLE notes')")
       try #require(fixture.runtime.context.exception == nil)
     default: break
     }
-    fixture.release()
+    await fixture.release()
     await refresh.value
     #expect(model.canExportLoadedRows == (outcome == "success"))
     if outcome != "success" {
@@ -362,13 +362,13 @@ struct WorkspaceExportTests {
     }
     defer {
       write.cancel()
-      fixture.release()
+      fixture.releaseSoon()
     }
     try await fixture.waitUntilHeld()
     #expect(!model.canExportLoadedRows)
     #expect(throws: WorkspaceError.self) { try model.captureLoadedRowsForExport(at: capturedAt) }
     if cancel { write.cancel() }
-    fixture.release()
+    await fixture.release()
     _ = try await write.value
     #expect(model.canExportLoadedRows)
     #expect(
@@ -390,12 +390,12 @@ struct WorkspaceExportTests {
     let undo = Task { try await model.undo(action, context: model.editingContext) }
     defer {
       undo.cancel()
-      fixture.release()
+      fixture.releaseSoon()
     }
     try await fixture.waitUntilHeld()
     #expect(!model.canExportLoadedRows)
     #expect(throws: WorkspaceError.self) { try model.captureLoadedRowsForExport(at: capturedAt) }
-    fixture.release()
+    await fixture.release()
     _ = try await undo.value
     #expect(model.canExportLoadedRows)
     await model.close()
@@ -410,8 +410,8 @@ struct WorkspaceExportTests {
   private var heldMethod: String?
 
   init() async throws {
-    runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     model = WorkspaceModel()
     model.client = workspace
@@ -419,7 +419,7 @@ struct WorkspaceExportTests {
     model.table = "notes"
     await model.reload()
     try #require(!model.rows.isEmpty)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       globalThis.exportRequests = [];
       globalThis.exportHeldMethod = null;
@@ -439,8 +439,8 @@ struct WorkspaceExportTests {
     try #require(runtime.context.exception == nil)
   }
 
-  func addPaginationRows() throws {
-    runtime.context.evaluateScript(
+  func addPaginationRows() async throws {
+    await runtime.evaluateOnCore(
       "for (let i = 0; i < 224; i++) IrisSql.run('INSERT INTO notes (id, title) VALUES (?, ?)', ['page-' + i, 'Synthetic page ' + i])"
     )
     try #require(runtime.context.exception == nil)
@@ -456,7 +456,7 @@ struct WorkspaceExportTests {
     heldMethod = method
     // JSC emits only after the actual request has installed its release closure.
     // Buffer the event even if admission precedes waitUntilHeld's suspension.
-    let started: @convention(block) () -> Void = {
+    let started: @convention(block) @Sendable () -> Void = {
       continuation.yield(())
       continuation.finish()
       onHeld()
@@ -465,10 +465,19 @@ struct WorkspaceExportTests {
     runtime.context.setObject(method, forKeyedSubscript: "exportHeldMethod" as NSString)
   }
 
-  func release() {
-    // Disarm too: a failed admission wait must not trap a request arriving later.
-    runtime.context.evaluateScript("exportHeldMethod = null; releaseExportRequest?.()")
-    runtime.context.setObject(nil, forKeyedSubscript: "exportRequestHeld" as NSString)
+  // Disarm too: a failed admission wait must not trap a request arriving later.
+  private static let releaseScript =
+    "exportHeldMethod = null; releaseExportRequest?.(); exportRequestHeld = null"
+  func release() async {
+    await runtime.evaluateOnCore(Self.releaseScript)
+    forgetHeld()
+  }
+  /// For `defer`: queued on the core executor ahead of any later request.
+  func releaseSoon() {
+    runtime.evaluateOnCoreSoon(Self.releaseScript)
+    forgetHeld()
+  }
+  private func forgetHeld() {
     heldContinuation?.finish()
     heldContinuation = nil
     heldStart = nil
@@ -499,7 +508,7 @@ struct WorkspaceExportTests {
       try #require(
         runtime.context.evaluateScript("releaseExportRequest !== null")?.toBool() == true)
     } catch {
-      release()
+      await release()
       // Do not await close on the admission queue that may have stalled.
       // Rethrow promptly so the caller's cancellation defer can unwind too.
       throw error

@@ -7,14 +7,14 @@ import Testing
 @MainActor
 struct IncomingReferencesContextTests {
   @Test func panelContextUsesExactRecordIDBytes() async throws {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
     let host = WorkspaceModel()
     host.client = client
     let composed = "\u{00E9}", decomposed = "e\u{0301}"
     runtime.context.setObject([composed, decomposed], forKeyedSubscript: "incomingIDs" as NSString)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       incomingIDs.forEach((id, i) => {
         IrisSql.run("INSERT INTO topics(id,title) VALUES (?,?)", [id, "Target " + i]);
@@ -44,7 +44,7 @@ struct IncomingReferencesContextTests {
 
   @Test(arguments: ["tableRoundTrip", "editorClosed", "workspaceRoundTrip"])
   func replacedHostContextCannotReactivateAnOldPanel(_ transition: String) async throws {
-    let client = try NativeWorkspace(path: ":memory:")
+    let client = try await NativeWorkspace(path: ":memory:")
     try await client.createSample()
     let host = WorkspaceModel()
     host.client = client
@@ -73,7 +73,7 @@ struct IncomingReferencesContextTests {
   }
 
   @Test func onlyASavedRecordInTheCurrentContextGetsAnIncomingModel() async throws {
-    let client = try NativeWorkspace(path: ":memory:")
+    let client = try await NativeWorkspace(path: ":memory:")
     try await client.createSample()
     let host = WorkspaceModel()
     host.client = client
@@ -98,7 +98,7 @@ struct IncomingReferencesContextTests {
   }
 
   @Test func panelIdentityIgnoresSavedBodyRevisionsAndStatusCountsButTracksCoverage() async throws {
-    let client = try NativeWorkspace(path: ":memory:")
+    let client = try await NativeWorkspace(path: ":memory:")
     try await client.createSample()
     let host = WorkspaceModel()
     host.client = client
@@ -133,9 +133,11 @@ struct IncomingReferencesContextTests {
   }
 
   @Test(arguments: ["label", "delete", "target"])
-  func catalogChangesInvalidateOnlyTheIncomingContextWhileDraftValuesStayPinned(_ change: String) async throws {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+  func catalogChangesInvalidateOnlyTheIncomingContextWhileDraftValuesStayPinned(_ change: String)
+    async throws
+  {
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
     let host = WorkspaceModel()
     host.client = client
@@ -160,7 +162,7 @@ struct IncomingReferencesContextTests {
     default: "UPDATE catalog_properties SET ref_table='notes' WHERE id='notes.topic'"
     }
     runtime.context.setObject(sql, forKeyedSubscript: "incomingMetadataChange" as NSString)
-    runtime.context.evaluateScript("IrisSql.run(incomingMetadataChange)")
+    await runtime.evaluateOnCore("IrisSql.run(incomingMetadataChange)")
     #expect(runtime.context.exception == nil)
     host.catalog = try await client.catalog()
     #expect(host.incomingReferencesIdentity(context: context, row: row) != identity)
@@ -181,8 +183,9 @@ struct IncomingReferencesContextTests {
     await host.close()
   }
 
-  @Test func incomingSelectionUsesFreshReferenceNavigationAndPreservesACancelledDraft() async throws {
-    let client = try NativeWorkspace(path: ":memory:")
+  @Test func incomingSelectionUsesFreshReferenceNavigationAndPreservesACancelledDraft() async throws
+  {
+    let client = try await NativeWorkspace(path: ":memory:")
     try await client.createSample()
     let host = WorkspaceModel()
     host.client = client

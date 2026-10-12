@@ -20,10 +20,10 @@ struct DuplicateDraftTests {
   }
 
   @Test func realCoreCopyKeepsPresentRawValuesAndUsesDefaultsOnlyForAbsentColumns() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       const ddl = `CREATE TABLE copies (
         id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
@@ -56,7 +56,7 @@ struct DuplicateDraftTests {
       ], expectedUpdatedAt: "2000-01-02T00:00:00.000Z")
     #expect(proof["empty_text"] == .string(""))
     #expect(Data(proof["payload"]!.text.utf8) == Data(jsonSource.utf8))
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "IrisSql.run(\"UPDATE copies SET retired='Retired' WHERE id='source'\")")
     let source = try #require(try await workspace.rows(table: "copies").first?.record)
     var input = source
@@ -66,8 +66,8 @@ struct DuplicateDraftTests {
     }
     let (root, store) = try storeFixture()
     defer { try? FileManager.default.removeItem(at: root) }
-    let before = runtime.context.evaluateScript("IrisSql.all('SELECT total_changes() AS n')[0].n")!
-      .toInt32()
+    let changes = "IrisSql.all('SELECT total_changes() AS n')[0].n"
+    let before = await runtime.evaluateOnCore(changes) { $0!.toInt32() }
     let editor = RecordEditorModel(
       properties: properties, original: nil, table: "copies", store: store
     ) {
@@ -93,9 +93,7 @@ struct DuplicateDraftTests {
     #expect(savedDraft.draft.patch["empty_text"] == .string(""))
     #expect(Data(savedDraft.draft.patch["payload"]!.text.utf8) == Data(jsonSource.utf8))
     // Duplicate is creation intent: the copy is stored by its first autosave.
-    #expect(
-      runtime.context.evaluateScript("IrisSql.all('SELECT total_changes() AS n')[0].n")!.toInt32()
-        == before)
+    #expect(await runtime.evaluateOnCore(changes) { $0!.toInt32() } == before)
     try await editor.flushAutosave()
     let copy = try #require(editor.draft.original)
     #expect(copy["id"] != source["id"])

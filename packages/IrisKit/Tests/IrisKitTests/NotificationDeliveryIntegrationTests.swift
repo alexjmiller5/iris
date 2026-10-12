@@ -7,7 +7,7 @@ import Testing
 extension HubServicesTests {
   @Test func anotherWindowCanDisableAlertsDuringSystemPermissionLookup() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let center = SyntheticNotificationCenter()
@@ -47,7 +47,7 @@ extension HubServicesTests {
 
   @Test func registeredPushPollingReconcilesInboxAndReadStateWithoutLocalBanners() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let center = SyntheticNotificationCenter()
@@ -84,7 +84,7 @@ extension HubServicesTests {
 
   @Test func systemSchedulingRetryAndSharedReadRemainIndependentAcrossReconnect() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let center = SyntheticNotificationCenter()

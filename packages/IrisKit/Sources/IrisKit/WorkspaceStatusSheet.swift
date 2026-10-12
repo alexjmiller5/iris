@@ -22,17 +22,20 @@ struct WorkspaceStatusSheet: View {
           }
           Button {
             guard let workspace = model.client else { return }
-            do {
-              let report = try workspace.diagnosticReport(
-                version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-                  as? String ?? "",
-                build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")
-              CopyDraftButton.copy(report)
-              diagnosticsCopied = true
-              diagnosticCopyFailed = false
-            } catch {
-              diagnosticsCopied = false
-              diagnosticCopyFailed = true
+            Task {
+              do {
+                let report = try await workspace.diagnosticReport(
+                  version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+                    as? String ?? "",
+                  build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+                    ?? "")
+                CopyDraftButton.copy(report)
+                diagnosticsCopied = true
+                diagnosticCopyFailed = false
+              } catch {
+                diagnosticsCopied = false
+                diagnosticCopyFailed = true
+              }
             }
           } label: {
             Label(diagnosticsCopied ? "Copied" : "Copy diagnostics", systemImage: "doc.on.doc")

@@ -10,7 +10,7 @@ struct ReferencePickerTests {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let path = directory.appendingPathComponent("references.sqlite").path
-    let workspace = try NativeWorkspace(path: path)
+    let workspace = try await NativeWorkspace(path: path)
     try await workspace.createSample()
     try await workspace.indexSearch()
     let catalog = try await workspace.catalog()
@@ -36,7 +36,7 @@ struct ReferencePickerTests {
       ])
     #expect(record["topic"] == .string(topic.id))
     try await workspace.close()
-    let reopened = try NativeWorkspace(path: path)
+    let reopened = try await NativeWorkspace(path: path)
     let stored = try #require(
       try await reopened.rows(table: "notes", search: "Reference fixture").first)
     #expect(stored.record["topic"] == .string(topic.id))
@@ -131,7 +131,7 @@ struct ReferencePickerTests {
   }
 
   @Test func missingReferencesStayStoredAndOnlyCarriedOnesAreRejected() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     try await workspace.indexSearch()
     let topic = try #require(try await workspace.rows(table: "topics", search: "Ideas").first)

@@ -75,7 +75,7 @@ struct DumpFileTests {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: root.appendingPathComponent("live.sqlite").path)
+    let workspace = try await NativeWorkspace(path: root.appendingPathComponent("live.sqlite").path)
     try await workspace.createSample()
     let original = try await titles(workspace)
     let dump = root.appendingPathComponent("dump.sql")
@@ -109,7 +109,7 @@ struct DumpFileTests {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: root.appendingPathComponent("live.sqlite").path)
+    let workspace = try await NativeWorkspace(path: root.appendingPathComponent("live.sqlite").path)
     try await workspace.createSample()
     let dump = root.appendingPathComponent("dump.sql")
     _ = try await workspace.exportReplica(to: dump)
@@ -128,7 +128,7 @@ struct DumpFileTests {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: root.appendingPathComponent("live.sqlite").path)
+    let workspace = try await NativeWorkspace(path: root.appendingPathComponent("live.sqlite").path)
     try await workspace.createSample()
     let copy = root.appendingPathComponent("copy.sqlite")
     try await workspace.copyReplica(to: copy)

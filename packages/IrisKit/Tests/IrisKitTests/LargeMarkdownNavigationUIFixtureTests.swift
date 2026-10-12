@@ -18,14 +18,14 @@ struct LargeMarkdownNavigationUIFixtureTests {
       try #require(model.client != nil)
       await model.close()
       let local = try WorkspaceModel.localURL()
-      let runtime = try IrisCoreRuntime()
-      let workspace = try NativeWorkspace(path: local.path, runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(path: local.path, runtime: runtime)
       _ = try await workspace.status()
       runtime.context.setObject(
         env["IRIS_TEST_MARKDOWN_NAV_CATALOG"] == "1",
         forKeyedSubscript: "largeNavigationCatalog" as NSString)
       let seedStart = Date()
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         #"""
         const marker = 'Synthetic large Markdown navigation fixture';
         const owner = IrisSql.all("SELECT purpose FROM catalog_tables WHERE id='notes'")[0]?.purpose;
@@ -114,7 +114,7 @@ struct LargeMarkdownNavigationUIFixtureTests {
       print(
         "MARKDOWN_NAV seed_seconds=\(Date().timeIntervalSince(seedStart)) rows=454 sizes=4096,65536,524288"
       )
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         #"""
         globalThis.markdownNavigationTrace = [];
         const request = IrisNative.request;

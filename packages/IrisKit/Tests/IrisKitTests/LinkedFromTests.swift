@@ -6,7 +6,7 @@ import Testing
 @MainActor
 struct LinkedFromTests {
   @Test func realCoreListsNotesWhoseMarkdownMentionsTheRecord() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let topic = try #require(try await workspace.rows(table: "topics").first)
     let note = try await workspace.write(
@@ -31,7 +31,7 @@ struct LinkedFromTests {
   }
 
   @Test func editorReadsAllowOnlyReadOnlyLinkOperations() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let topic = try #require(try await workspace.rows(table: "topics").first)
     let labels = try await workspace.editorRead(

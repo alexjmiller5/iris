@@ -6,7 +6,7 @@ import Testing
 @Suite(.serialized) @MainActor
 struct WorkspaceDiagnosticIntegrationTests {
   @Test func heldHTTPIsSuspendedWhileCatalogCompletes() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [DiagnosticHTTP.self]
@@ -17,17 +17,17 @@ struct WorkspaceDiagnosticIntegrationTests {
     defer { DiagnosticHTTP.release() }
     try await waitUntil { DiagnosticHTTP.waiting }
     _ = try await workspace.catalog()
-    let snapshot = try report(workspace)
+    let snapshot = try await report(workspace)
     #expect(snapshot["suspendedCount"] as? Int == 1)
     #expect(snapshot["activeCount"] as? Int == 0)
     let inFlight = try #require(snapshot["inFlight"] as? [[String: Any]])
     #expect(inFlight.first?["method"] as? String == "serviceUsage")
     #expect(inFlight.first?["phase"] as? String == "suspended")
-    let json = try workspace.diagnosticReport(version: "1.0", build: "1")
+    let json = try await workspace.diagnosticReport(version: "1.0", build: "1")
     #expect(!json.contains("diagnostic-fixture.invalid") && !json.contains("private-fixture-token"))
     DiagnosticHTTP.release()
     _ = await service.result
-    let after = try report(workspace)
+    let after = try await report(workspace)
     #expect(after["suspendedCount"] as? Int == 0)
     let completed = try #require(after["completed"] as? [[String: Any]])
     let request = try #require(completed.last { $0["method"] as? String == "serviceUsage" })
@@ -35,12 +35,12 @@ struct WorkspaceDiagnosticIntegrationTests {
     try await workspace.close()
   }
   @Test func catalogReportsRealBridgeWorkWithoutRecordOrSQLData() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     _ = try await workspace.write(
       table: "notes", patch: ["title": .string("private-fixture-marker")])
     _ = try await workspace.catalog()
-    let document = try report(workspace)
+    let document = try await report(workspace)
     let completed = try #require(document["completed"] as? [[String: Any]])
     let catalog = try #require(completed.last { $0["method"] as? String == "catalog" })
     let metrics = try #require(catalog["metrics"] as? [String: Any])
@@ -49,7 +49,7 @@ struct WorkspaceDiagnosticIntegrationTests {
     #expect((metrics["decodeMilliseconds"] as? Double ?? 0) > 0)
     #expect((metrics["responseBytes"] as? Int ?? 0) > 0)
     #expect((metrics["yieldGapMilliseconds"] as? Double ?? 0) > 0)
-    let json = try workspace.diagnosticReport(version: "1.0", build: "1")
+    let json = try await workspace.diagnosticReport(version: "1.0", build: "1")
     for forbidden in [
       "private-fixture-marker", "SELECT", "catalog_properties", "notes", ":memory:",
     ] {
@@ -59,10 +59,10 @@ struct WorkspaceDiagnosticIntegrationTests {
   }
 
   @Test func snapshotDoesNotQueueBehindHeldDatabaseAndReportsPassivePressure() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       const originalDiagnosticRequest = IrisNative.request;
       globalThis.releaseDiagnosticRead = null;
@@ -76,7 +76,7 @@ struct WorkspaceDiagnosticIntegrationTests {
       };
       """#)
     let owner = Task { try await workspace.catalog() }
-    defer { runtime.context.evaluateScript("releaseDiagnosticRead?.()") }
+    defer { runtime.evaluateOnCoreSoon("releaseDiagnosticRead?.()") }
     try await waitUntil {
       runtime.context.evaluateScript("releaseDiagnosticRead !== null")?.toBool() == true
     }
@@ -88,21 +88,21 @@ struct WorkspaceDiagnosticIntegrationTests {
       }
     }
     try await waitUntil { submitted == labels.count }
-    let snapshot = try report(workspace)
+    let snapshot = try await report(workspace)
     #expect(snapshot["activeCount"] as? Int == 1)
     #expect(snapshot["queuedCount"] as? Int == 1)
     #expect(snapshot["passiveGateWaiterCount"] as? Int == 4)
     #expect(runtime.context.evaluateScript("releaseDiagnosticRead !== null")?.toBool() == true)
     labels.forEach { $0.cancel() }
-    runtime.context.evaluateScript("releaseDiagnosticRead()")
+    await runtime.evaluateOnCore("releaseDiagnosticRead()")
     _ = try await owner.value
     for label in labels { _ = await label.result }
-    #expect(try report(workspace)["passiveGateWaiterCount"] as? Int == 0)
+    #expect(try await report(workspace)["passiveGateWaiterCount"] as? Int == 0)
     try await workspace.close()
   }
 
-  private func report(_ workspace: NativeWorkspace) throws -> [String: Any] {
-    let json = try workspace.diagnosticReport(version: "1.0", build: "1")
+  private func report(_ workspace: NativeWorkspace) async throws -> [String: Any] {
+    let json = try await workspace.diagnosticReport(version: "1.0", build: "1")
     let document = try #require(
       JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
     return try #require(document["snapshot"] as? [String: Any])

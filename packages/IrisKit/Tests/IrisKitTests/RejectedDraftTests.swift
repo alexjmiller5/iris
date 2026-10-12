@@ -258,11 +258,11 @@ struct RejectedDraftTests {
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let path = root.appendingPathComponent("workspace.sqlite")
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: path.path, runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: path.path, runtime: runtime)
     try await workspace.createSample()
     _ = try await workspace.status()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       const row = IrisSql.all('SELECT * FROM notes ORDER BY id LIMIT 1', [])[0];
       row.body = 'Rejected body';
@@ -302,7 +302,7 @@ struct RejectedDraftTests {
     }
     #expect(try await workspace.status().rejected == 1)
     try await workspace.close()
-    let reopened = try NativeWorkspace(path: path.path)
+    let reopened = try await NativeWorkspace(path: path.path)
     #expect(try await reopened.status().rejected == 1)
     #expect(
       try await reopened.rejections().rejections.first?.submitted["body"]

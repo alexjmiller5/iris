@@ -1,7 +1,7 @@
 import Foundation
 
 /// In-memory, explicitly exported timing evidence. Never accepts request payloads or raw labels.
-@MainActor
+@IrisCoreActor
 final class NativeWorkspaceDiagnostics {
   typealias RequestID = UInt64
 

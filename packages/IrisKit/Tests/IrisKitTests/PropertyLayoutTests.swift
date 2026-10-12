@@ -63,10 +63,10 @@ struct PropertyLayoutTests {
   }
 
   @Test func titleOnlyViewWithUncatalogedDisplayColumnRemainsValid() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "IrisSql.run(\"DELETE FROM catalog_properties WHERE tbl='notes' AND col='title'\")")
     let model = WorkspaceModel()
     model.client = workspace

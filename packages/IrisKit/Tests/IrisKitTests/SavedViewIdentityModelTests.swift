@@ -10,8 +10,8 @@ struct SavedViewIdentityModelTests {
   private let second = Data([0x65, 0xcc, 0x81])
 
   private func workspace() async throws -> WorkspaceModel {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
     let definition = CoreSavedViewDefinition(
       version: 1, columns: ["title"], sort: [CoreSort(column: "title", direction: .desc)],
@@ -22,7 +22,7 @@ struct SavedViewIdentityModelTests {
       CoreSaveViewArgs(table: "notes", name: "Second", definition: definition))
     let params = String(
       decoding: try JSONEncoder().encode(["\u{00e9}", a.id, "e\u{0301}", b.id]), as: UTF8.self)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       """
       (() => {
         const p = \(params);

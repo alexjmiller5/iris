@@ -3,7 +3,7 @@ import Testing
 
 @testable import IrisKit
 
-@MainActor
+@IrisCoreActor
 struct NativeWorkspaceDiagnosticsTests {
   // Removing a phase transition or charging suspended time to active work fails this test.
   @Test func separatesQueueExecutionAndTransportAcrossResumption() throws {

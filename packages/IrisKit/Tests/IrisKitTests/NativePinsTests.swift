@@ -114,12 +114,12 @@ struct WorkspacePinsTests {
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let path = root.appendingPathComponent("pins.sqlite").path
-    let original = try NativeWorkspace(path: path)
+    let original = try await NativeWorkspace(path: path)
     try await original.createSample()
     let saved = try await original.pinTable(
       CorePinTableArgs(table: "notes", expectedUpdatedAt: nil))
     try await original.close()
-    let reopened = try NativeWorkspace(path: path)
+    let reopened = try await NativeWorkspace(path: path)
     #expect(try await reopened.listSidebarPins() == saved)
     try await reopened.close()
   }

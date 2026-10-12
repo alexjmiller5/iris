@@ -6,13 +6,13 @@ import Testing
 @MainActor
 struct BulkRecordTests {
   @Test func concurrentRevisionChangeIsRejectedByActualCoreWriter() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"IrisSql.run("INSERT INTO notes (id, title, updated_at) VALUES ('race', 'Before', '2000-01-01T00:00:00.000Z')", [])"#
     )
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       const bulkRequest = IrisNative.request;
       let raced = false;
@@ -35,14 +35,14 @@ struct BulkRecordTests {
   }
 
   @Test func actualWriterKeepsPartialSuccessAndExactUnicodeIDs() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     let ids = ["é", "missing", "e\u{301}"]
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"for (const id of ['\u00e9', 'e\u0301']) IrisSql.run('INSERT INTO notes (id, title) VALUES (?, ?)', [id, 'Before'])"#
     )
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"IrisSql.run("UPDATE catalog_properties SET required = 0 WHERE id = 'notes.title'", [])"#)
     try #require(runtime.context.exception == nil)
     let model = BulkRecordModel(workspace: workspace, table: "notes", ids: ids)

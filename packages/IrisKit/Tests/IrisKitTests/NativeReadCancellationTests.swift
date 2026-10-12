@@ -8,7 +8,7 @@ struct NativeReadCancellationTests {
   @Test(arguments: [0, 3, 6])
   func queuedCancellationSkipsOnlyCancelledReads(cancelledCount: Int) async throws {
     let fixture = try await ReadAdmissionFixture()
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
     try await fixture.waitUntilHeld()
@@ -27,7 +27,7 @@ struct NativeReadCancellationTests {
     try await waitUntil { submitted.count == reads.count }
     let leaving = Array(reads.prefix(cancelledCount))
     await Task.detached { for task in leaving { task.cancel() } }.value
-    fixture.release()
+    await fixture.release()
     _ = try await blocker.value
     for (index, read) in reads.enumerated() {
       if index < cancelledCount {
@@ -48,16 +48,18 @@ struct NativeReadCancellationTests {
 
   @Test func supersededQueuedSearchNeverRuns() async throws {
     let fixture = try await ReadAdmissionFixture()
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
     try await fixture.waitUntilHeld()
     fixture.clearTrace()
     let typed = Task { try await fixture.workspace.search(CoreSearchArgs(text: "s")) }
-    try await waitUntil { (try? inFlightMethods(fixture.workspace))?.contains("search") == true }
+    try await waitUntil {
+      (try? await inFlightMethods(fixture.workspace))?.contains("search") == true
+    }
     typed.cancel()
     let latest = Task { try await fixture.workspace.search(CoreSearchArgs(text: "sample")) }
-    fixture.release()
+    await fixture.release()
     _ = try await blocker.value
     await #expect(throws: CancellationError.self) { try await typed.value }
     _ = try await latest.value
@@ -94,9 +96,9 @@ struct NativeReadCancellationTests {
     let second = try await ReadAdmissionFixture(path: path, seed: false)
     let third = try await ReadAdmissionFixture(path: path, seed: false)
     defer {
-      first.release()
-      second.release()
-      third.release()
+      first.releaseSoon()
+      second.releaseSoon()
+      third.releaseSoon()
     }
     first.holdNext()
     let blocker = Task { try await first.workspace.catalog() }
@@ -119,7 +121,7 @@ struct NativeReadCancellationTests {
       defer { liveFinished += 1 }
       return try await first.workspace.rows(table: "notes")
     }
-    first.release()
+    await first.release()
     _ = try await blocker.value
     for read in cancelled {
       await #expect(throws: CancellationError.self) { try await read.value }
@@ -142,8 +144,8 @@ struct NativeReadCancellationTests {
     let first = try await ReadAdmissionFixture(path: path)
     let second = try await ReadAdmissionFixture(path: path, seed: false)
     defer {
-      first.release()
-      second.release()
+      first.releaseSoon()
+      second.releaseSoon()
     }
     first.holdNext()
     var finished = false
@@ -152,7 +154,7 @@ struct NativeReadCancellationTests {
       return try await first.workspace.rows(table: "notes")
     }
     try await first.waitUntilHeld()
-    first.runtime.context.evaluateScript(
+    await first.runtime.evaluateOnCore(
       "IrisSql.run(\"UPDATE notes SET title='Synthetic committed title'\")")
     try #require(first.runtime.context.exception == nil)
     admitted.cancel()
@@ -163,7 +165,7 @@ struct NativeReadCancellationTests {
     }
     try await waitUntil { waiting }
     #expect(!finished && second.admitted.isEmpty, "Cancellation must not release an admitted owner")
-    first.release()
+    await first.release()
     let result = try await admitted.value
     #expect(result.first?.label == "Synthetic committed title")
     #expect(try await follower.value.first?.label == "Synthetic committed title")
@@ -177,7 +179,7 @@ struct NativeReadCancellationTests {
     let original = try #require(try await fixture.workspace.rows(table: "notes").first?.record)
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var submitted = 0
@@ -195,7 +197,7 @@ struct NativeReadCancellationTests {
     try await waitUntil { submitted == 2 }
     write.cancel()
     close.cancel()
-    fixture.release()
+    await fixture.release()
     _ = try await blocker.value
     #expect(try await write.value["title"] == .string("Kept cancelled write"))
     try await close.value
@@ -204,14 +206,14 @@ struct NativeReadCancellationTests {
   }
 
   private func waitUntil(
-    sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool
+    sourceLocation: SourceLocation = #_sourceLocation, _ condition: () async -> Bool
   ) async throws {
     let deadline = ContinuousClock.now.advanced(by: .seconds(20))
-    while !condition(), ContinuousClock.now < deadline {
+    while !(await condition()), ContinuousClock.now < deadline {
       try await Task.sleep(for: .milliseconds(5))
     }
     try #require(
-      condition(), "Read admission barrier was not reached", sourceLocation: sourceLocation)
+      await condition(), "Read admission barrier was not reached", sourceLocation: sourceLocation)
   }
 }
 
@@ -259,25 +261,25 @@ struct WorkspaceReadCancellationTests {
         afterAdmission ? nil : fixture.track(Task { _ = try? await fixture.workspace.catalog() })
       if blocker != nil { try await fixture.waitUntilHeld() }
       let reload = fixture.track(Task { await model.reload() })
-      defer { fixture.release() }
+      defer { fixture.releaseSoon() }
       if afterAdmission {
         try await fixture.waitUntilHeld()
       } else {
         let deadline = ContinuousClock.now.advanced(by: .seconds(20))
-        while (try? inFlightMethods(fixture.workspace))?.contains("rows") != true,
+        while (try? await inFlightMethods(fixture.workspace))?.contains("rows") != true,
           ContinuousClock.now < deadline
         {
           try await Task.sleep(for: .milliseconds(5))
         }
-        try #require((try inFlightMethods(fixture.workspace)).contains("rows"))
+        try #require((try await inFlightMethods(fixture.workspace)).contains("rows"))
       }
-      fixture.runtime.context.evaluateScript(
+      await fixture.runtime.evaluateOnCore(
         fails
           ? "IrisSql.run(\"DROP TABLE notes\")"
           : "IrisSql.run(\"UPDATE notes SET title='Changed while refreshing'\")")
       try #require(fixture.runtime.context.exception == nil)
       reload.cancel()
-      fixture.release()
+      await fixture.release()
       await reload.value
       await blocker?.value
       #expect(model.rows == original)
@@ -299,10 +301,10 @@ struct WorkspaceReadCancellationTests {
             ["id": original["id"]!, "title": .string("Committed despite cancellation")],
             original: original, context: context)
         })
-      defer { fixture.release() }
+      defer { fixture.releaseSoon() }
       try await fixture.waitUntilHeld()
       save.cancel()
-      fixture.release()
+      await fixture.release()
       #expect(try await save.value["title"] == .string("Committed despite cancellation"))
       #expect(model.rows.first?.label == "Committed despite cancellation")
       #expect(model.error == nil && !model.loading)
@@ -311,7 +313,7 @@ struct WorkspaceReadCancellationTests {
       let undo = fixture.track(Task { try await model.undo(action, context: context) })
       try await fixture.waitUntilHeld()
       undo.cancel()
-      fixture.release()
+      await fixture.release()
       #expect(try await undo.value["title"] == original["title"])
       #expect(model.rows.first?.record["title"] == original["title"])
       #expect(model.error == nil && !model.loading)
@@ -333,7 +335,7 @@ struct WorkspaceReadCancellationTests {
             ["id": original["id"]!, "title": .string("Saved in original context")],
             original: original, context: context)
         })
-      defer { fixture.release() }
+      defer { fixture.releaseSoon() }
       try await fixture.waitUntilHeld()
       if change == "table" {
         model.table = "topics"
@@ -354,7 +356,7 @@ struct WorkspaceReadCancellationTests {
         })
       try #require(await replacementStarted.wait(), "Replacement reload task did not start")
       save.cancel()
-      fixture.release()
+      await fixture.release()
       _ = try await save.value
       await reload.value
       #expect(model.error == nil && !model.loading)
@@ -375,7 +377,7 @@ struct WorkspaceReadCancellationTests {
       let model = try await makeModel(fixture)
       fixture.holdNext("rows")
       let old = fixture.track(Task { await model.reload() })
-      defer { fixture.release() }
+      defer { fixture.releaseSoon() }
       try await fixture.waitUntilHeld()
       model.table = "topics"
       let replacementStarted = ReadAdmissionSignal()
@@ -386,7 +388,7 @@ struct WorkspaceReadCancellationTests {
         })
       try #require(await replacementStarted.wait(), "Replacement table reload task did not start")
       old.cancel()
-      fixture.release()
+      await fixture.release()
       await old.value
       await current.value
       #expect(model.table == "topics")
@@ -414,7 +416,7 @@ struct ReferenceReadAdmissionTests {
     let fixture = try await ReadAdmissionFixture()
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var submitted = 0
@@ -446,7 +448,7 @@ struct ReferenceReadAdmissionTests {
         NativeDestination(table: "topics"), isCurrent: { true })
     }
     try await waitUntil { navigationQueued }
-    fixture.release()
+    await fixture.release()
     _ = try await blocker.value
     #expect(try await navigation.value.destination.table == "topics")
     let openingIndex = try #require(fixture.admitted.firstIndex(of: "catalogRevision"))
@@ -465,7 +467,7 @@ struct ReferenceReadAdmissionTests {
     let active = Task {
       try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     var submitted = false
     var cancelledFinished = false
@@ -482,7 +484,7 @@ struct ReferenceReadAdmissionTests {
     let live = Task {
       try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "topics")))
     }
-    fixture.release()
+    await fixture.release()
     #expect(!(try await active.value).isEmpty)
     #expect(!(try await live.value).isEmpty)
     #expect(fixture.admitted == ["rows", "rows"])
@@ -496,12 +498,12 @@ struct ReferenceReadAdmissionTests {
       try await fixture.workspace.passiveRead(
         CoreRequests.Rows(CoreView(table: "missing_fixture_table")))
     }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     let live = Task {
       try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
-    fixture.release()
+    await fixture.release()
     await #expect(throws: WorkspaceError.self) { try await failed.value }
     #expect(!(try await live.value).isEmpty)
     try await fixture.workspace.close()
@@ -517,7 +519,7 @@ struct ReferenceReadAdmissionTests {
       defer { cancelled?.cancel() }
       return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     var submitted = 0
     cancelled = Task {
@@ -530,7 +532,7 @@ struct ReferenceReadAdmissionTests {
       return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "topics")))
     }
     try await waitUntil { submitted == 2 }
-    fixture.release()
+    await fixture.release()
     #expect(!(try await active.value).isEmpty)
     let cancelledTask = try #require(cancelled)
     await #expect(throws: CancellationError.self) { try await cancelledTask.value }
@@ -545,7 +547,7 @@ struct ReferenceReadAdmissionTests {
     let active = Task {
       try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     var submitted = 0
     let waiting = (0..<6).map { _ in
@@ -563,7 +565,7 @@ struct ReferenceReadAdmissionTests {
     try await waitUntil { closing }
     active.cancel()
     #expect(fixture.holding, "An admitted transaction must finish despite view cancellation")
-    fixture.release()
+    await fixture.release()
     #expect(!(try await active.value).isEmpty)
     try await close.value
     for label in waiting {
@@ -577,7 +579,7 @@ struct ReferenceReadAdmissionTests {
     let row = try #require(try await fixture.workspace.rows(table: "notes").first)
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     fixture.clearTrace()
     let labels = (0..<8).map { _ in
@@ -588,7 +590,7 @@ struct ReferenceReadAdmissionTests {
       }
     }
     try await waitUntil {
-      (try? inFlightMethods(fixture.workspace))?.contains("mentionLabels") == true
+      (try? await inFlightMethods(fixture.workspace))?.contains("mentionLabels") == true
     }
     var navigating = false
     let navigation = Task {
@@ -597,7 +599,7 @@ struct ReferenceReadAdmissionTests {
         NativeDestination(table: "topics"), isCurrent: { true })
     }
     try await waitUntil { navigating }
-    fixture.release()
+    await fixture.release()
     _ = try await blocker.value
     #expect(try await navigation.value.destination.table == "topics")
     #expect(
@@ -621,7 +623,7 @@ struct ReferenceReadAdmissionTests {
     let row = try #require(model.rows.first)
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var completedLabels: Set<Int> = []
@@ -635,7 +637,7 @@ struct ReferenceReadAdmissionTests {
       }
     }
     try await waitUntil {
-      (try? inFlightMethods(fixture.workspace))?.contains("mentionLabels") == true
+      (try? await inFlightMethods(fixture.workspace))?.contains("mentionLabels") == true
     }
     var navigating = false
     let navigation = Task {
@@ -644,7 +646,7 @@ struct ReferenceReadAdmissionTests {
         NativeDestination(table: "topics"), isCurrent: { true })
     }
     try await waitUntil { navigating }
-    fixture.release()
+    await fixture.release()
     _ = try await blocker.value
     let context = try model.activateDestination(
       try await navigation.value,
@@ -682,7 +684,7 @@ struct ReferenceReadAdmissionTests {
       queued += 1
       return try await fixture.workspace.passiveRead(CoreRequests.Rows(CoreView(table: "notes")))
     }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     let write = Task {
       queued += 1
@@ -709,7 +711,7 @@ struct ReferenceReadAdmissionTests {
       return try await fixture.workspace.rows(table: "notes")
     }
     try await waitUntil { queued == 5 }
-    fixture.release()
+    await fixture.release()
     #expect(try await before.value.first?.record["title"] == original["title"])
     _ = try await write.value
     #expect(try await secondWrite.value["title"] == .string("Second foreground write"))
@@ -729,7 +731,7 @@ struct ReferenceReadAdmissionTests {
     let fixture = try await ReadAdmissionFixture()
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     fixture.clearTrace()
     let configuration = URLSessionConfiguration.ephemeral
@@ -761,7 +763,7 @@ struct ReferenceReadAdmissionTests {
       return try await fixture.workspace.catalog()
     }
     try await waitUntil { queued == 4 }
-    fixture.release()
+    await fixture.release()
     _ = try await blocker.value
     #expect(!(try await before.value).isEmpty)
     _ = await remote.result
@@ -775,7 +777,7 @@ struct ReferenceReadAdmissionTests {
     let fixture = try await ReadAdmissionFixture()
     fixture.holdNext()
     let blocker = Task { try await fixture.workspace.catalog() }
-    defer { fixture.release() }
+    defer { fixture.releaseSoon() }
     try await fixture.waitUntilHeld()
     fixture.clearTrace()
     var queued = 0
@@ -799,7 +801,7 @@ struct ReferenceReadAdmissionTests {
       return try await fixture.workspace.catalog()
     }
     try await waitUntil { queued == 4 }
-    fixture.release()
+    await fixture.release()
     _ = try await blocker.value
     #expect(!(try await before.value).isEmpty)
     try await close.value
@@ -809,14 +811,15 @@ struct ReferenceReadAdmissionTests {
   }
 
   private func waitUntil(
-    sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool
+    sourceLocation: SourceLocation = #_sourceLocation, _ condition: () async -> Bool
   ) async throws {
     let deadline = ContinuousClock.now.advanced(by: .seconds(20))
-    while !condition(), ContinuousClock.now < deadline {
+    while !(await condition()), ContinuousClock.now < deadline {
       try await Task.sleep(for: .milliseconds(5))
     }
     try #require(
-      condition(), "Reference admission barrier was not reached", sourceLocation: sourceLocation)
+      await condition(), "Reference admission barrier was not reached",
+      sourceLocation: sourceLocation)
   }
 }
 
@@ -831,8 +834,8 @@ struct ReferenceReadAdmissionTests {
   private var extraCleanup: [() async throws -> Void] = []
 
   init(path: String = ":memory:", seed: Bool = true) async throws {
-    runtime = try IrisCoreRuntime()
-    workspace = try NativeWorkspace(path: path, runtime: runtime)
+    runtime = try await IrisCoreRuntime.onCore()
+    workspace = try await NativeWorkspace(path: path, runtime: runtime)
     if seed {
       try await workspace.createSample()
       // As open does for a small workspace: no index catch-up runs behind the test.
@@ -840,7 +843,7 @@ struct ReferenceReadAdmissionTests {
     }
     // A warm catalog makes each catalog() one cancellable catalogRevision read.
     _ = try await workspace.catalog()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       globalThis.readAdmissionTrace = [];
       globalThis.readAdmissionIDs = [];
@@ -875,7 +878,8 @@ struct ReferenceReadAdmissionTests {
     let signal = ReadAdmissionSignal()
     heldSignal = signal
     expectedMethod = method
-    let reached: @convention(block) () -> Void = { signal.signal() }
+    // JSC calls it on the core executor.
+    let reached: @convention(block) @Sendable () -> Void = { signal.signal() }
     runtime.context.setObject(reached, forKeyedSubscript: "readAdmissionReached" as NSString)
     runtime.context.setObject(
       method ?? NSNull() as Any, forKeyedSubscript: "heldReadMethod" as NSString)
@@ -897,10 +901,11 @@ struct ReferenceReadAdmissionTests {
       holding, "Admission signal must follow releaseRead installation",
       sourceLocation: sourceLocation)
   }
-  func release() {
-    // Disarm an admission that has not happened yet as well as releasing a held one.
-    runtime.context.evaluateScript("holdNextRead = false; releaseRead?.()")
-  }
+  // Disarm an admission that has not happened yet as well as releasing a held one.
+  private static let releaseScript = "holdNextRead = false; releaseRead?.()"
+  func release() async { await runtime.evaluateOnCore(Self.releaseScript) }
+  /// For `defer`: queued on the core executor ahead of any later request.
+  func releaseSoon() { runtime.evaluateOnCoreSoon(Self.releaseScript) }
 
   func track<T: Sendable, Failure: Error>(_ task: Task<T, Failure>) -> Task<T, Failure> {
     cancellations.append { task.cancel() }
@@ -915,7 +920,7 @@ struct ReferenceReadAdmissionTests {
     // fails before JSC admission. Never await a possibly stuck queue unboundedly.
     let supervisor = Task { @MainActor in
       for cancel in cancellations { cancel() }
-      release()
+      await release()
       let finished = ReadAdmissionSignal()
       let closing = Task { @MainActor in
         defer { finished.signal() }
@@ -986,8 +991,8 @@ private final class ReadAdmissionTransport: URLProtocol, @unchecked Sendable {
 }
 
 /// Methods of requests queued or running in the workspace's database queue.
-@MainActor private func inFlightMethods(_ workspace: NativeWorkspace) throws -> [String] {
-  let report = try workspace.diagnosticReport(version: "0", build: "0")
+@MainActor private func inFlightMethods(_ workspace: NativeWorkspace) async throws -> [String] {
+  let report = try await workspace.diagnosticReport(version: "0", build: "0")
   let snapshot =
     (try JSONSerialization.jsonObject(with: Data(report.utf8)) as? [String: Any])?["snapshot"]
     as? [String: Any]

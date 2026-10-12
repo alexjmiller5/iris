@@ -32,7 +32,7 @@ struct AutomaticSyncTests {
   }
 
   @Test func committedViewUndoStillUploadsWhenRefreshingViewsFails() async throws {
-    let runtime = try IrisCoreRuntime()
+    let runtime = try await IrisCoreRuntime.onCore()
     try await withFixture(runtime: runtime) { model, loops in
       let context = try #require(model.editingContext)
       try await model.saveCurrentView(name: "Undo sync fixture", update: false, context: context)
@@ -42,7 +42,7 @@ struct AutomaticSyncTests {
       try #require(action.table == "views")
       try await startForegroundLoop(model, &loops, debounce: .milliseconds(20))
       let started = AutoSyncHub.holdNextPush()
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         """
         const beforeRefreshFailure = IrisNative.request;
         IrisNative.request = (id, method, args) => {
@@ -423,7 +423,7 @@ struct AutomaticSyncTests {
         synchronizeAfter: false)
       if let runtime {
         try await #require(model.client).close()
-        model.client = try NativeWorkspace(
+        model.client = try await NativeWorkspace(
           path: directory.appendingPathComponent("local.sqlite").path, runtime: runtime)
       }
       try await #require(model.client).createSample()

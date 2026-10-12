@@ -9,7 +9,7 @@ import Testing
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: root.appendingPathComponent("live.sqlite").path)
+    let workspace = try await NativeWorkspace(path: root.appendingPathComponent("live.sqlite").path)
     try await workspace.createSample()
     let store = WidgetPublicationStore(root: root.appendingPathComponent("widgets"))
     let publisher = NativeWidgetPublisher(workspace: workspace, store: store)
@@ -38,7 +38,7 @@ import Testing
   @Test func canceledPreparationNeverPublishesOrLeavesSnapshot() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let store = WidgetPublicationStore(root: root)
     let publisher = NativeWidgetPublisher(workspace: workspace, store: store)
@@ -64,7 +64,7 @@ import Testing
   @Test func revocationDuringPlanPreparationCannotRestoreAccess() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let store = WidgetPublicationStore(root: root)
     let publisher = NativeWidgetPublisher(
@@ -72,7 +72,7 @@ import Testing
         let plan = try await workspace.prepareReadPlan(args)
         try store.revoke()
         return plan
-      }, snapshot: workspace.exportWidgetSnapshot, store: store)
+      }, snapshot: { try await workspace.exportWidgetSnapshot(to: $0) }, store: store)
     await #expect(throws: (any Error).self) {
       try await publisher.publish(
         [

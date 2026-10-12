@@ -35,12 +35,12 @@ struct WorkspaceLinkTests {
   }
 
   @Test func sourceLinkUsesPreservedMappingAndNativeDestinationGuards() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     let target = try #require(try await workspace.rows(table: "notes").first)
     runtime.context.setObject(target.id, forKeyedSubscript: "fixtureTarget" as NSString)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       IrisSql.run("CREATE TABLE provenance (id TEXT PRIMARY KEY,from_kind TEXT,from_ref TEXT,to_kind TEXT,to_ref TEXT,rel TEXT,field TEXT,deleted_at TEXT)");
       IrisSql.run("INSERT INTO provenance(id,from_kind,from_ref,to_kind,to_ref,rel) VALUES ('edge','notion','11111111222233334444555555555555','notes',?,'imported_from')", [fixtureTarget]);
@@ -58,7 +58,7 @@ struct WorkspaceLinkTests {
     try await workspace.close()
   }
   @Test func explicitRecordIdentityUsesCatalogAndFreshNativeNavigation() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let target = try #require(try await workspace.rows(table: "notes").first)
     let result = try await workspace.resolveSourceLink("notes/" + target.id)
@@ -200,7 +200,7 @@ struct WorkspaceLinkTests {
     defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("local.sqlite")
     let replacement = root.appendingPathComponent("replacement.sqlite")
-    let fresh = try NativeWorkspace(path: replacement.path)
+    let fresh = try await NativeWorkspace(path: replacement.path)
     try await fresh.createSample()
     try await fresh.close()
     let model = WorkspaceModel(localURL: { file })
@@ -227,7 +227,7 @@ struct WorkspaceLinkTests {
     let path = WorkspaceModel.replicaURL(root: root, endpoint: endpoint)
     try FileManager.default.createDirectory(
       at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-    let workspace = try NativeWorkspace(path: path.path)
+    let workspace = try await NativeWorkspace(path: path.path)
     try await workspace.createSample()
     try await workspace.close()
     let credentials = MemoryHubCredentials(

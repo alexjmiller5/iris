@@ -70,7 +70,7 @@ import Testing
           id: fixture.request, sourceID: fixture.source,
           text: "# Synthetic Quick Add\n\nExact retained body.", column: "body") == nil)
       #expect(try store.pendingQuickAdd() == nil)
-      let workspace = try NativeWorkspace(path: file.path)
+      let workspace = try await NativeWorkspace(path: file.path)
       do {
         let rows = try await workspace.rows(table: "notes")
         #expect(rows.count == before + 1)

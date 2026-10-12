@@ -19,7 +19,7 @@ struct SearchIndexLoopTests {
     let workspace = try #require(model.client)
     // A small workspace is indexed before open returns (read before the background loop
     // can run): searchable at once.
-    let report = try workspace.diagnosticReport(version: "0", build: "0")
+    let report = try await workspace.diagnosticReport(version: "0", build: "0")
     let snapshot =
       (try JSONSerialization.jsonObject(with: Data(report.utf8)) as? [String: Any])?["snapshot"]
       as? [String: Any]
@@ -43,10 +43,10 @@ struct SearchIndexLoopTests {
   }
 
   @Test func foregroundReadsRunBetweenShortIndexSteps() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       IrisSql.run("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<20000) INSERT INTO notes(id,title,updated_at) SELECT printf('bulk-%05d',i),'Bulk note '||i,'2026-01-01T00:00:00.000Z' FROM n");
       """#)
@@ -71,10 +71,10 @@ struct SearchIndexLoopTests {
   }
 
   @Test func aBurstOfForegroundReadsHoldsTheIndexLoopUntilItGoesQuiet() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       IrisSql.run("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<5000) INSERT INTO notes(id,title,updated_at) SELECT printf('quiet-%05d',i),'Quiet note '||i,'2026-01-01T00:00:00.000Z' FROM n");
       """#)

@@ -465,7 +465,7 @@ final class WorkspaceModel {
   static let searchIndexCatchUp = 1_000
 
   /// Only this loop builds the search index: after open, sync rounds and local or shared-file
-  /// changes, and while work remains. Core runs on the main actor, so each step is short,
+  /// changes, and while work remains. Each step is short (one request owns the database),
   /// queued as a passive request that foreground reads pass; during a large catch-up a step
   /// runs only once foreground work has been quiet for `searchIndexQuiet`.
   func scheduleSearchIndex() {
@@ -478,7 +478,7 @@ final class WorkspaceModel {
         guard let self, self.client === client, !Task.isCancelled else { break }
         // A large catch-up indexes while idle: foreground work arriving in a burst runs
         // first, though constant foreground work still lets a step through every second.
-        let quiet = client.lastForegroundActivity.duration(to: .now)
+        let quiet = await client.lastForegroundActivity.duration(to: .now)
         if catchingUp, quiet < Self.searchIndexQuiet, waiting.duration(to: .now) < .seconds(1) {
           try? await Task.sleep(for: Self.searchIndexQuiet - quiet)
           continue
@@ -1370,7 +1370,7 @@ final class WorkspaceModel {
     guard let client else { return nil }
     let generation = workspaceGeneration
     return RejectionInboxModel(
-      readStatus: client.status, readPage: client.rejections,
+      readStatus: { try await client.status() }, readPage: { try await client.rejections($0) },
       isCurrent: { [weak self] in
         self?.client === client && self?.workspaceGeneration == generation
       })
@@ -1476,7 +1476,7 @@ final class WorkspaceModel {
       }
     }
     return QuickFindModel(
-      search: client.search, read: client.rows,
+      search: { try await client.search($0) }, read: { try await client.rows(view: $0) },
       isCurrent: { [weak self] in
         self?.client === client && self?.workspaceGeneration == generation
       }, statusFields: statusFields)
@@ -1629,7 +1629,7 @@ final class WorkspaceModel {
         : NativeRecentsStore(
           root: try resolveLocalURL().deletingLastPathComponent(),
           workspace: URL(fileURLWithPath: path))
-      let workspace = try NativeWorkspace(path: path)
+      let workspace = try await NativeWorkspace(path: path)
       do {
         localObserver = demo ? nil : try LocalDatabaseObserver(path: path)
         if seed { try await workspace.createSample() }
@@ -2116,7 +2116,7 @@ final class WorkspaceModel {
     let preferences = try preferencesStore.load()
     try FileManager.default.createDirectory(
       at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-    let prepared = try NativeWorkspace(path: path.path)
+    let prepared = try await NativeWorkspace(path: path.path)
     let nextCatalog: WorkspaceCatalog
     let nextObserver: LocalDatabaseObserver
     let nextGroups: [String: String]
@@ -2211,9 +2211,10 @@ final class WorkspaceModel {
           using: transport, maxRows: downloadPreferences.maxRows,
           tables: downloadPreferences.tables,
           onProgress: { [weak self] progress in
-            guard let self, client === self.client, generation == self.workspaceGeneration else {
-              return
-            }
+            // Reports hop from the core; one arriving after the round ended is stale.
+            guard let self, client === self.client, generation == self.workspaceGeneration,
+              self.syncing
+            else { return }
             self.syncProgress = progress
           }))
     } catch {

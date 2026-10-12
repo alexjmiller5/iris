@@ -112,8 +112,8 @@ struct SavedViewsTests {
 
   @Test func receiptCannotReplaceLaterQueryChangesOrAReplacedWorkspace() async throws {
     for transition in ["query", "replace", "closing", "tableRoundTrip"] {
-      let runtime = try IrisCoreRuntime()
-      let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
       try await client.createSample()
       let model = WorkspaceModel()
       model.client = client
@@ -121,7 +121,7 @@ struct SavedViewsTests {
       model.table = "notes"
       let context = try #require(model.editingContext)
       model.search = "submitted"
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         """
         globalThis.originalFinish = __irisFinish;
         globalThis.heldReceipt = null;
@@ -148,7 +148,7 @@ struct SavedViewsTests {
       } else {
         model.search = "later typing"
       }
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         "__irisFinish = originalFinish; originalFinish(...heldReceipt);")
       if transition != "query" {
         await #expect(throws: WorkspaceError.self) { try await saving.value }
@@ -166,7 +166,7 @@ struct SavedViewsTests {
   }
 
   @Test func nativeSavedViewLifecyclePersistsThroughSharedCore() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let saved = try await workspace.saveView(
       CoreSaveViewArgs(
@@ -308,10 +308,10 @@ struct SavedViewsTests {
   }
 
   @Test func importedBooleanFilterCanChangeOperatorWithoutReselectingItsValue() async throws {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       """
       IrisSql.run('ALTER TABLE notes ADD COLUMN flag INTEGER');
       IrisSql.run("INSERT INTO catalog_properties(id,tbl,col,type) VALUES ('notes.flag','notes','flag','bool')");
@@ -348,8 +348,8 @@ struct SavedViewsTests {
 extension SavedViewsTests {
   @Test func relatedDefaultIsIndependentAndFiltersFullIncomingRecordsThroughRealCore() async throws
   {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
     let topic = try #require(try await client.rows(table: "topics").first)
     let included = try await client.write(
@@ -396,8 +396,8 @@ extension SavedViewsTests {
     await model.close()
   }
   @Test func preferredViewReceiptCannotReplaceTableRoundTripState() async throws {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
     let model = WorkspaceModel()
     model.client = client
@@ -408,7 +408,7 @@ extension SavedViewsTests {
     let saved = try await client.saveView(
       CoreSaveViewArgs(
         table: "notes", name: "Chosen", definition: CoreSavedViewDefinition(version: 1)))
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "globalThis.originalFinish = __irisFinish; globalThis.heldReceipt = null; __irisFinish = (id, reply) => { heldReceipt = [id, reply]; };"
     )
     let saving = Task { try await model.setDefaultView(saved, context: context) }
@@ -418,7 +418,7 @@ extension SavedViewsTests {
     #expect(model.savingView)
     model.table = "topics"
     model.table = "notes"
-    runtime.context.evaluateScript("__irisFinish = originalFinish; originalFinish(...heldReceipt);")
+    await runtime.evaluateOnCore("__irisFinish = originalFinish; originalFinish(...heldReceipt);")
     await #expect(throws: WorkspaceError.self) { try await saving.value }
     #expect(model.viewDefault == nil)
     #expect(!model.savingView)

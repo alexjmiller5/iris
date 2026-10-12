@@ -14,7 +14,7 @@ import Testing
     let alerts = NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery())
     // Disable persists before its server revoke finishes. A relaunched services
     // model has no in-memory registration object, but the server may still send.
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let device = ServicePushDevice()
     let original = HubServicesModel(
       alerts: alerts, pushDevice: device,
@@ -84,7 +84,7 @@ import Testing
 
   @Test func confirmedPushSuppressesPollingButKeepsInboxAndReadState() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let delivery = FixtureNotificationDelivery()
@@ -130,7 +130,7 @@ import Testing
 
   @Test func deliveryFailureRecomputesCoreProposalAfterRelaunch() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let delivery = FixtureNotificationDelivery()
@@ -158,7 +158,7 @@ import Testing
 
   @Test func switchingDeploymentDuringDeliveryStopsOldEvents() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let delivery = FixtureNotificationDelivery()
@@ -178,7 +178,7 @@ import Testing
 
   @Test func foregroundPollingCancelsAndExplicitEnableDeliversOnlyNewEvents() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let delivery = FixtureNotificationDelivery()
@@ -211,7 +211,7 @@ import Testing
 
   @Test func modelReadsServicesWithoutASyncAndReconcilesSharedReadState() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let delivery = FixtureNotificationDelivery()
@@ -238,7 +238,7 @@ import Testing
   @Test func incompleteNotificationRefreshKeepsUsageAndDoesNotPersistBaseline() async throws {
     let hub = try ServiceFixture.transport()
     ServiceFixture.state.failSecondPage = true
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let alerts = NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery())
@@ -255,7 +255,7 @@ import Testing
 
   @Test func disconnectDuringRefreshDiscardsOldDeploymentResults() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let alerts = NotificationAlerts(directory: directory, delivery: FixtureNotificationDelivery())
@@ -276,7 +276,7 @@ import Testing
 
   @Test func actualCoreReadsAllPagesSuppressesHistoryAndMarksDeploymentRead() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let feed = try await workspace.notifications(using: hub)
     #expect(feed.notifications.count == 205)
     #expect(feed.unreadCount == 205)
@@ -303,7 +303,7 @@ import Testing
 
   @Test func exactUsageFixturePreservesUnmeasuredAndDistinctLimits() async throws {
     let hub = try ServiceFixture.transport()
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let usage = try await workspace.usage(using: hub)
     #expect(usage.period.end == "2026-11-01T00:00:00.000Z")
     #expect(usage.metrics.count == 4)
@@ -319,7 +319,7 @@ import Testing
   @Test func incompleteFeedFailsWithoutReturningAPresentationCheckpoint() async throws {
     let hub = try ServiceFixture.transport()
     ServiceFixture.state.failSecondPage = true
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     await #expect(throws: Error.self) { try await workspace.notifications(using: hub) }
     ServiceFixture.state.failSecondPage = false
     #expect(try await workspace.notifications(using: hub).notifications.count == 205)

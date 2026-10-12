@@ -21,10 +21,11 @@ struct NotesViewsUIFixtureTests {
       await model.open()
       try #require(model.client != nil)
       await model.close()
-      let runtime = try IrisCoreRuntime()
-      let workspace = try NativeWorkspace(path: WorkspaceModel.localURL().path, runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(
+        path: WorkspaceModel.localURL().path, runtime: runtime)
       _ = try await workspace.status()
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         #"""
         const cols = IrisSql.all("PRAGMA table_info(notes)").map(r => r.name);
         if (!cols.includes('needs_review'))

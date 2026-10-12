@@ -72,7 +72,7 @@ struct CoreContractTests {
   }
 
   @Test @MainActor func generatedViewRunsThroughTheActualNativeBridge() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let rows = try await workspace.rows(
       view: CoreView(
@@ -88,11 +88,13 @@ struct CoreContractTests {
     try await workspace.close()
   }
 
-  @Test @MainActor func mismatchedBundleIsRejectedBeforeDatabaseOpen() throws {
+  @Test @MainActor func mismatchedBundleIsRejectedBeforeDatabaseOpen() async throws {
     let runtime = try IrisCoreRuntime(
       script:
         "globalThis.IrisCore = {validateRow: () => []}; globalThis.IrisNative = {contractHash: 'wrong'};"
     )
-    #expect(throws: Error.self) { try NativeWorkspace(path: ":memory:", runtime: runtime) }
+    await #expect(throws: Error.self) {
+      try await NativeWorkspace(path: ":memory:", runtime: runtime)
+    }
   }
 }

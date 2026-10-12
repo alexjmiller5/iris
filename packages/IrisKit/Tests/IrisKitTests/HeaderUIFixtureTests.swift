@@ -16,10 +16,11 @@ struct HeaderUIFixtureTests {
       await model.open()
       try #require(model.client != nil)
       await model.close()
-      let runtime = try IrisCoreRuntime()
-      let workspace = try NativeWorkspace(path: WorkspaceModel.localURL().path, runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(
+        path: WorkspaceModel.localURL().path, runtime: runtime)
       // Only this explicitly selected disposable simulator's synthetic local catalog.
-      runtime.context.evaluateScript("IrisSql.run('DELETE FROM catalog_tables')")
+      await runtime.evaluateOnCore("IrisSql.run('DELETE FROM catalog_tables')")
       try #require(runtime.context.exception == nil)
       try await workspace.close()
       await model.open()

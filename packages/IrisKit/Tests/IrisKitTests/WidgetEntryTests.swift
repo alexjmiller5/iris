@@ -9,7 +9,7 @@ import Testing
   @Test func publicationCannotSupplyAnExternalNavigationURL() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let library = WidgetLibrary(root: root)
     let id = WidgetLibrary.sourceID(workspaceID: "workspace", table: "notes", viewID: nil, kind: .list)
@@ -27,7 +27,7 @@ import Testing
   @Test func configuredTimelinesReadIndependentSourcesAndRefuseRevokedChoices() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let library = WidgetLibrary(root: root.appendingPathComponent("shared"))
     let binding = NativeWorkspaceBinding.local(UUID())
@@ -77,7 +77,7 @@ import Testing
   @Test func dailyConfigurationSchedulesBoundaryWithHostClosed() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let view = try await workspace.saveView(
       CoreSaveViewArgs(table: "notes", name: "Synthetic daily view",

@@ -189,8 +189,8 @@ struct NativeRecentsModelTests {
   }
 
   @Test func realCoreRefreshUsesFreshLabelsAndTrashWithoutWritingHistory() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     let row = try await workspace.write(table: "notes", patch: [
       "title": .string("Original recent"), "body": .string("Full hidden Markdown"),
@@ -225,7 +225,8 @@ struct NativeRecentsModelTests {
     await model.navigationSucceeded(NativeDestination(table: "notes", rowID: "absent"))
     #expect(model.entries.first?.unavailable != nil)
     #expect(model.destinations.count == 3)
-    runtime.context.evaluateScript("IrisSql.run(\"UPDATE catalog_tables SET kind='system' WHERE id='notes'\")")
+    await runtime.evaluateOnCore(
+      "IrisSql.run(\"UPDATE catalog_tables SET kind='system' WHERE id='notes'\")")
     #expect(runtime.context.exception == nil)
     let system = try await resolver.resolve(NativeDestination(table: "notes"), isCurrent: { true })
     #expect(system.catalog.tables.first { $0["id"] == .string("notes") }?["readOnly"] == .bool(true))

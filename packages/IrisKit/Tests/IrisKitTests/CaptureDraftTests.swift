@@ -16,7 +16,7 @@ import Testing
     defer { try? FileManager.default.removeItem(at: root) }
     let store = EditorDraftStore(
       root: root, workspace: root.appendingPathComponent("sample.sqlite"))
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let fields = try await workspace.catalog().properties.filter { $0["tbl"] == .string("notes") }
     let before = try await workspace.rows(table: "notes")

@@ -156,6 +156,8 @@ func recordExportCatalogsMatch(_ lhs: WorkspaceCatalog?, _ rhs: WorkspaceCatalog
   switch (lhs, rhs) {
   case (nil, nil): return true
   case (let lhs?, let rhs?):
+    // Navigation reinstalls the core's cached catalog: the same arrays need no megabyte walk.
+    if lhs.sharesStorage(with: rhs) { return true }
     return recordExportValuesMatch(
       .array(lhs.tables.map(CoreJSONValue.object)), .array(rhs.tables.map(CoreJSONValue.object)))
       && recordExportValuesMatch(
@@ -164,6 +166,20 @@ func recordExportCatalogsMatch(_ lhs: WorkspaceCatalog?, _ rhs: WorkspaceCatalog
       && recordExportValuesMatch(
         .array(lhs.rules.map(CoreJSONValue.object)), .array(rhs.rules.map(CoreJSONValue.object)))
   default: return false
+  }
+}
+
+extension WorkspaceCatalog {
+  /// True only when both hold the very same array buffers, so their bytes are identical.
+  fileprivate func sharesStorage(with other: WorkspaceCatalog) -> Bool {
+    func same(_ lhs: [WorkspaceRecord], _ rhs: [WorkspaceRecord]) -> Bool {
+      lhs.count == rhs.count
+        && lhs.withUnsafeBufferPointer { left in
+          rhs.withUnsafeBufferPointer { left.baseAddress == $0.baseAddress }
+        }
+    }
+    return same(tables, other.tables) && same(properties, other.properties)
+      && same(rules, other.rules)
   }
 }
 

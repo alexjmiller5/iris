@@ -9,7 +9,7 @@ import Testing
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    let workspace = try NativeWorkspace(path: root.appendingPathComponent("live.sqlite").path)
+    let workspace = try await NativeWorkspace(path: root.appendingPathComponent("live.sqlite").path)
     try await workspace.createSample()
     let plan = try await workspace.prepareReadPlan(
       CorePrepareReadPlanArgs(
@@ -38,7 +38,7 @@ import Testing
     defer { try? FileManager.default.removeItem(at: root) }
     let target = root.appendingPathComponent("existing")
     try Data("sentinel".utf8).write(to: target)
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     await #expect(throws: (any Error).self) { try await workspace.exportWidgetSnapshot(to: target) }
     #expect(try Data(contentsOf: target) == Data("sentinel".utf8))
     try await workspace.close()

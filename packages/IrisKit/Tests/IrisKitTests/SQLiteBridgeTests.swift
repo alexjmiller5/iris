@@ -5,7 +5,7 @@ import Testing
 
 @testable import IrisKit
 
-@MainActor
+@IrisCoreActor
 struct SQLiteBridgeTests {
 
   @Test(arguments: ["no-log", "custom-body", "source-exists", "source-view-exists"])

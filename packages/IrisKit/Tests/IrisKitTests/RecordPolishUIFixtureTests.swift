@@ -21,9 +21,10 @@ struct RecordPolishUIFixtureTests {
         }
       }
       await model.close()
-      let runtime = try IrisCoreRuntime()
-      let workspace = try NativeWorkspace(path: WorkspaceModel.localURL().path, runtime: runtime)
-      runtime.context.evaluateScript(
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(
+        path: WorkspaceModel.localURL().path, runtime: runtime)
+      await runtime.evaluateOnCore(
         #"""
         IrisSql.run("INSERT OR REPLACE INTO catalog_rules(id,tbl,kind,enforce,sql,text) VALUES (?,?,?,?,?,?)",
           ['fixture-record-polish','notes','guideline',0,null,

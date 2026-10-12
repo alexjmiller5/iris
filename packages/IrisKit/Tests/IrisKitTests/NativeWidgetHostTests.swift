@@ -18,7 +18,7 @@ import Testing
     #expect(await settings.setSelections([NativeWidgetSelection(table: "notes", viewID: nil)], partial: false))
     await model.close()
     try FileManager.default.moveItem(at: file, to: root.appendingPathComponent("previous.sqlite"))
-    let replacement = try NativeWorkspace(path: file.path)
+    let replacement = try await NativeWorkspace(path: file.path)
     try await replacement.createSample()
     try await replacement.close()
     await model.open()

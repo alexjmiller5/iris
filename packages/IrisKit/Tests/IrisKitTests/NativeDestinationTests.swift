@@ -17,7 +17,7 @@ struct NativeDestinationTests {
   }
 
   @Test func transientDefinitionUsesRealCoreWithoutChangingSavedRowsOrHistory() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let saved = try await workspace.saveView(CoreSaveViewArgs(table: "notes", name: "Stored",
       definition: CoreSavedViewDefinition(version: 1, columns: ["title"])))
@@ -55,7 +55,7 @@ struct NativeDestinationTests {
   }
 
   @Test func realCoreResolutionUsesFreshViewsAndFullRowsWithoutApplyingTheirQuery() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let note = try await workspace.write(table: "notes", patch: [
       "title": .string("Original title"), "body": .string("Hidden body"), "status": .string("Draft")])
@@ -88,7 +88,7 @@ struct NativeDestinationTests {
 
   @Test(arguments: [false, true], [false, true])
   func realCoreResolutionFindsBothLiveAndTrashedRows(trashed: Bool, viewTrash: Bool) async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let note = try await workspace.write(table: "notes", patch: [
       "title": .string("Explicit destination"), "body": .string("Full hidden body")])
@@ -107,10 +107,10 @@ struct NativeDestinationTests {
   }
 
   @Test func realCoreResolutionSeparatesCanonicalEquivalentViewAndRowIDs() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       ["\u00e9", "e\u0301"].forEach((id, i) => {
         IrisSql.run("INSERT INTO notes(id,title,body) VALUES (?,?,?)", [id, "Row " + i, "Body " + i]);
@@ -132,15 +132,16 @@ struct NativeDestinationTests {
 
   @Test(arguments: ["table", "view", "row", "deletedView", "unsupportedView"])
   func realCoreRejectsUnavailableDestinations(_ missing: String) async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     let view = try await workspace.saveView(CoreSaveViewArgs(table: "notes", name: "Saved view",
       definition: CoreSavedViewDefinition(version: 1)))
     if missing == "deletedView" {
       _ = try await workspace.deleteView(CoreDeleteViewArgs(id: view.id, expectedUpdatedAt: view.updatedAt!))
     } else if missing == "unsupportedView" {
-      runtime.context.evaluateScript(#"IrisSql.run("UPDATE views SET definition='{\"version\":999}'")"#)
+      await runtime.evaluateOnCore(
+        #"IrisSql.run("UPDATE views SET definition='{\"version\":999}'")"#)
       #expect(runtime.context.exception == nil)
     }
     let destination = NativeDestination(table: missing == "table" ? "missing" : "notes",
@@ -154,17 +155,19 @@ struct NativeDestinationTests {
 
   @Test(arguments: [false, true])
   func realCoreCollatedRowAliasesDoNotResolveAnotherOpaqueID(_ trashed: Bool) async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       IrisSql.run(`CREATE TABLE collated (id TEXT PRIMARY KEY COLLATE NOCASE,
         created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT, title TEXT)`);
       IrisSql.run("INSERT INTO catalog_tables(id,kind,display) VALUES ('collated','table','title')");
       IrisSql.run("INSERT INTO collated(id,title) VALUES ('A','Exact stored identity')");
       """#)
-    if trashed { runtime.context.evaluateScript(#"IrisSql.run("UPDATE collated SET deleted_at='deleted'")"#) }
+    if trashed {
+      await runtime.evaluateOnCore(#"IrisSql.run("UPDATE collated SET deleted_at='deleted'")"#)
+    }
     #expect(runtime.context.exception == nil)
     let aliased = try await workspace.rows(view: CoreView(table: "collated",
       filters: [CoreFilter(column: "id", op: .eq, value: .string("a"))], limit: 1, trash: trashed))
@@ -265,7 +268,7 @@ struct NativeDestinationTests {
 
 extension NativeDestinationTests {
   @Test func preferredViewUsesIdentityAndExplicitDestinationsWin() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let note = try #require(try await workspace.rows(view: CoreView(table: "notes")).first)
     let saved = try await workspace.saveView(

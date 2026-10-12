@@ -15,8 +15,8 @@ struct RejectionReviewTests {
     let model = WorkspaceModel(localURL: { path })
     await model.open()
     try await model.client?.close()
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: path.path, runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: path.path, runtime: runtime)
     model.client = workspace
     model.catalog = try await workspace.catalog()
     model.table = "topics"
@@ -32,7 +32,7 @@ struct RejectionReviewTests {
     runtime.context.setObject(
       String(decoding: try JSONEncoder().encode(submitted), as: UTF8.self),
       forKeyedSubscript: "reviewSubmission" as NSString)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"IrisSql.run('INSERT INTO _core_rejected(tbl,row_id,row,errors) VALUES (?,?,?,?)', ['notes',JSON.parse(reviewSubmission).id,reviewSubmission,JSON.stringify([{id:JSON.parse(reviewSubmission).id,message:'Synthetic rejection'}])]);"#
     )
     #expect(runtime.context.exception == nil)
@@ -49,7 +49,7 @@ struct RejectionReviewTests {
         "id": .string(entry.rowID), "title": .string("Current title"),
         "body": .string("Current body"), "deleted_at": trashed ? .bool(true) : .null,
       ], expectedUpdatedAt: entry.submitted["updated_at"]?.text)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "IrisSql.run(\"UPDATE catalog_properties SET immutable=1 WHERE tbl='notes' AND col='title'\");"
     )
     #expect(runtime.context.exception == nil)
@@ -88,9 +88,9 @@ struct RejectionReviewTests {
     let (root, model, workspace, runtime, entry) = try await fixture()
     defer { try? FileManager.default.removeItem(at: root) }
     let store = try #require(model.editingContext?.draftStore)
-    if failure == "missing" { runtime.context.evaluateScript("IrisSql.run('DELETE FROM notes');") }
+    if failure == "missing" { await runtime.evaluateOnCore("IrisSql.run('DELETE FROM notes');") }
     if failure == "readonly" {
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         "IrisSql.run(\"UPDATE catalog_tables SET kind='system' WHERE id='notes'\");")
     }
     if failure == "journal" {
@@ -122,7 +122,7 @@ struct RejectionReviewTests {
     defer { try? FileManager.default.removeItem(at: root) }
     let store = try #require(model.editingContext?.draftStore)
     runtime.context.setObject(method, forKeyedSubscript: "heldMethod" as NSString)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "var beforeReview = IrisNative.request; var heldReview = null; IrisNative.request = (id,method,args) => { if(method === heldMethod) heldReview = [id,method,args]; else beforeReview(id,method,args); };"
     )
     var finished = false
@@ -137,7 +137,7 @@ struct RejectionReviewTests {
     #expect(!finished)
     model.search = "New source query"
     let query = model.queryKey
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       fail
         ? "IrisNative.request = beforeReview; __irisFinish(heldReview[0], JSON.stringify({error:'Obsolete fixture failure',violations:[]}));"
         : "IrisNative.request = beforeReview; beforeReview(...heldReview);")
@@ -186,7 +186,7 @@ struct RejectionReviewTests {
       entry, workspace: workspace,
       generation: model.workspaceGeneration)
     let context = try #require(model.editingContext)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "var beforeBusyReview = IrisNative.request; var busyReview = null; IrisNative.request = (id,method,args) => { if(method === 'write') busyReview=[id,method,args]; else beforeBusyReview(id,method,args); };"
     )
     let writing = Task {
@@ -204,7 +204,7 @@ struct RejectionReviewTests {
     }
     for _ in 0..<50 where !preparationFinished { await Task.yield() }
     #expect(preparationFinished)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "IrisNative.request = beforeBusyReview; beforeBusyReview(...busyReview);")
     _ = try await writing.value
     await #expect(throws: WorkspaceError.self) { _ = try await preparing.value }
@@ -216,7 +216,7 @@ struct RejectionReviewTests {
   func opaqueIdentitiesCannotSelectOrPrepareAnotherRecord(_ mismatch: Bool) async throws {
     let (root, model, workspace, runtime, _) = try await fixture()
     defer { try? FileManager.default.removeItem(at: root) }
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       IrisSql.run('INSERT INTO notes(id,title,body) VALUES (?,?,?)', ['\u00e9','First spelling','Keep first']);
       IrisSql.run('INSERT INTO notes(id,title,body) VALUES (?,?,?)', ['e\u0301','Second spelling','Keep second']);
@@ -260,7 +260,7 @@ struct RejectionReviewTests {
     #expect(inbox.total == 1 && inbox.entries.count == 1)
     inbox.dispose()
     let reopened = try #require(model.makeRejectionInbox())
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "var beforeInbox = IrisNative.request; var heldInbox = null; IrisNative.request = (id,method,args) => { if(method === 'rejections') heldInbox=[id,method,args]; else beforeInbox(id,method,args); };"
     )
     let refreshing = Task { await reopened.refresh() }
@@ -268,7 +268,7 @@ struct RejectionReviewTests {
       await Task.yield()
     }
     model.client = nil
-    runtime.context.evaluateScript("IrisNative.request = beforeInbox; beforeInbox(...heldInbox);")
+    await runtime.evaluateOnCore("IrisNative.request = beforeInbox; beforeInbox(...heldInbox);")
     await refreshing.value
     #expect(reopened.entries.isEmpty)
     #expect(model.makeRejectionInbox() == nil)

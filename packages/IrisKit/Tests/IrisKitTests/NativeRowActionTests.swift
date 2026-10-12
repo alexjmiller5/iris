@@ -8,8 +8,8 @@ import Testing
 struct NativeRowActionTests {
   @Test(arguments: [false, true])
   func rowActionFailureCannotReplaceANewWorkspaceError(replaceWorkspace: Bool) async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     let model = WorkspaceModel(credentialStore: MemoryHubCredentials(nil))
     model.client = workspace
@@ -29,7 +29,7 @@ struct NativeRowActionTests {
     await model.reload()
     let row = try #require(model.rows.first)
     try #require(model.canRunRowAction)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       """
       globalThis.originalFinish = __irisFinish;
       globalThis.heldReceipt = null;
@@ -47,7 +47,7 @@ struct NativeRowActionTests {
     } else {
       model.error = nil
     }
-    runtime.context.evaluateScript("__irisFinish = originalFinish; originalFinish(...heldReceipt);")
+    await runtime.evaluateOnCore("__irisFinish = originalFinish; originalFinish(...heldReceipt);")
     await operation.value
     if replaceWorkspace {
       #expect(model.error == "Replacement workspace error")

@@ -17,7 +17,7 @@ struct EnrollmentConnectionTests {
       }
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       let file = directory.appendingPathComponent("selected.sqlite")
-      let seed = try NativeWorkspace(path: file.path)
+      let seed = try await NativeWorkspace(path: file.path)
       try await seed.createSample()
       try await seed.close()
       let old = HubCredentials(endpoint: "https://saved.invalid", token: "saved-fixture")
@@ -86,7 +86,7 @@ struct EnrollmentConnectionTests {
     let path = WorkspaceModel.replicaURL(root: directory, endpoint: stored.endpoint)
     try FileManager.default.createDirectory(
       at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-    let workspace = try NativeWorkspace(path: path.path)
+    let workspace = try await NativeWorkspace(path: path.path)
     try await workspace.createSample()
     try await workspace.close()
     let model = makeModel(directory, store: store)
@@ -151,7 +151,7 @@ struct EnrollmentConnectionTests {
     let path = WorkspaceModel.replicaURL(root: directory, endpoint: credentials.endpoint)
     try FileManager.default.createDirectory(
       at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-    let seed = try NativeWorkspace(path: path.path)
+    let seed = try await NativeWorkspace(path: path.path)
     try await seed.createSample()
     try await seed.close()
     let model = makeModel(directory, store: store)
@@ -165,7 +165,7 @@ struct EnrollmentConnectionTests {
       !model.rows.isEmpty,
       "Cached records must be usable while the offline request is still pending")
     let old = model.client
-    let replacement = try NativeWorkspace(path: ":memory:")
+    let replacement = try await NativeWorkspace(path: ":memory:")
     try await replacement.createSample()
     model.client = replacement
     model.catalog = try await replacement.catalog()

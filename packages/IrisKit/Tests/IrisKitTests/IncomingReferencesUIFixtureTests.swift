@@ -28,14 +28,15 @@ struct IncomingReferencesUIFixtureTests {
         try store.remove(table: saved.table, recordID: saved.recordID, draftID: saved.id)
       }
       await model.close()
-      let runtime = try IrisCoreRuntime()
-      let workspace = try NativeWorkspace(path: WorkspaceModel.localURL().path, runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(
+        path: WorkspaceModel.localURL().path, runtime: runtime)
       _ = try await workspace.status()
       runtime.context.setObject(
         environment["IRIS_TEST_INCOMING_READ_ONLY"] == "1",
         forKeyedSubscript: "incomingReadOnly" as NSString)
       // Only the explicitly selected private simulator's synthetic local database is changed.
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         #"""
         IrisSql.run("UPDATE catalog_tables SET kind='table' WHERE id='notes'");
         IrisSql.run("UPDATE catalog_properties SET ref_table='notes' WHERE id IN ('notes.topic','notes.related')");

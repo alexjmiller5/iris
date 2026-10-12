@@ -7,7 +7,7 @@ import Testing
   @Test func distinctOpaqueEventIDsAreDeliveredAndRememberedAcrossRelaunch() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let endpoint = "https://notifications.invalid"
     let delivery = FixtureNotificationDelivery()
     let alerts = NotificationAlerts(directory: directory, delivery: delivery)

@@ -32,10 +32,10 @@ struct OpaqueIdentityBehaviorTests {
     defer { try? FileManager.default.removeItem(at: root) }
     let store = EditorDraftStore(
       root: root.appendingPathComponent("drafts"), workspace: root.appendingPathComponent("db"))
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       IrisSql.run("INSERT INTO notes (id,title) VALUES (?,?),(?,?)",
         ['\u00e9','First stored','e\u0301','Second stored']);

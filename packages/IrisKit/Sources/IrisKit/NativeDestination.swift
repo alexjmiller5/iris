@@ -55,8 +55,11 @@ struct NativeDestinationResolver {
 
   init(workspace: NativeWorkspace) {
     self.init(
-      catalog: workspace.catalog, listViews: workspace.listViews, rows: workspace.rows,
-      preferred: workspace.ensureDefaultView, resolveDefinition: workspace.resolveViewDefinition)
+      catalog: { try await workspace.catalog() },
+      listViews: { try await workspace.listViews(table: $0) },
+      rows: { try await workspace.rows(view: $0) },
+      preferred: { try await workspace.ensureDefaultView(table: $0) },
+      resolveDefinition: { try await workspace.resolveViewDefinition(table: $0, definition: $1) })
   }
 
   init(

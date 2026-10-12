@@ -6,7 +6,7 @@ import Testing
 @MainActor
 struct NativeWorkspaceTests {
   @Test func sharedFullTextSearchIndexesWritesAndExcludesTrash() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let created = try await workspace.write(
       table: "notes",
@@ -48,7 +48,7 @@ struct NativeWorkspaceTests {
   }
 
   @Test func catalogAndRecordLifecycleUsesSharedCore() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     // The model runs the index step after open; reads then follow local edits.
     try await workspace.indexSearch()
@@ -81,7 +81,7 @@ struct NativeWorkspaceTests {
   }
 
   @Test func invalidWriteRollsBackAndQueueRecovers() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     // The model runs the index step after open; reads then follow local edits.
     try await workspace.indexSearch()
@@ -104,7 +104,7 @@ struct NativeWorkspaceTests {
   }
 
   @Test func staleEditorCannotOverwriteNewerRevision() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     // The model runs the index step after open; reads then follow local edits.
     try await workspace.indexSearch()
@@ -126,7 +126,7 @@ struct NativeWorkspaceTests {
   }
 
   @Test func concurrentCallsCannotEnterAnAwaitingTransaction() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     // The model runs the index step after open; reads then follow local edits.
     try await workspace.indexSearch()
@@ -150,14 +150,14 @@ struct NativeWorkspaceTests {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let path = directory.appendingPathComponent("workspace.sqlite").path
-    let workspace = try NativeWorkspace(path: path)
+    let workspace = try await NativeWorkspace(path: path)
     try await workspace.createSample()
     // The model runs the index step after open; reads then follow local edits.
     try await workspace.indexSearch()
     _ = try await workspace.write(table: "notes", patch: ["title": .string("Persistent fixture")])
     await #expect(throws: Error.self) { try await workspace.createSample() }
     try await workspace.close()
-    let reopened = try NativeWorkspace(path: path)
+    let reopened = try await NativeWorkspace(path: path)
     #expect(try await reopened.rows(table: "notes", search: "Persistent fixture").count == 1)
     try await reopened.close()
     await #expect(throws: Error.self) { try await reopened.catalog() }

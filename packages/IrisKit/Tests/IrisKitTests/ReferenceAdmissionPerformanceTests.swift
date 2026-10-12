@@ -8,11 +8,11 @@ import Testing
 struct ReferenceAdmissionPerformanceTests {
   @Test(.enabled(if: ProcessInfo.processInfo.environment["IRIS_REFERENCE_BARRIER"] == "1"))
   func measureNavigationWithQueuedServiceBarrier() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    try seed(runtime)
-    runtime.context.evaluateScript(
+    try await seed(runtime)
+    await runtime.evaluateOnCore(
       #"""
       globalThis.barrierTrace = [];
       globalThis.releaseBarrierOwner = null;
@@ -35,7 +35,7 @@ struct ReferenceAdmissionPerformanceTests {
       };
       """#)
     let owner = Task { try await workspace.catalog() }
-    defer { runtime.context.evaluateScript("releaseBarrierOwner?.()") }
+    defer { runtime.evaluateOnCoreSoon("releaseBarrierOwner?.()") }
     try await waitUntil {
       runtime.context.evaluateScript("releaseBarrierOwner !== null")?.toBool() == true
     }
@@ -68,7 +68,7 @@ struct ReferenceAdmissionPerformanceTests {
         NativeDestination(table: "topics"), isCurrent: { true })
     }
     await Task.yield()
-    runtime.context.evaluateScript("releaseBarrierOwner(); releaseBarrierOwner = null")
+    await runtime.evaluateOnCore("releaseBarrierOwner(); releaseBarrierOwner = null")
     _ = try await owner.value
     _ = try await navigation.value
     let elapsed = milliseconds(start.duration(to: .now))
@@ -87,11 +87,11 @@ struct ReferenceAdmissionPerformanceTests {
 
   @Test(.enabled(if: ProcessInfo.processInfo.environment["IRIS_REFERENCE_ADMISSION"] == "1"))
   func measureNavigationBehindCancelledReferenceLabels() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    try seed(runtime)
-    runtime.context.evaluateScript(
+    try await seed(runtime)
+    await runtime.evaluateOnCore(
       #"""
       globalThis.referenceTrace = [];
       globalThis.holdReferenceOwner = false;
@@ -132,9 +132,9 @@ struct ReferenceAdmissionPerformanceTests {
         model.table = "notes"
         await model.reload()
         try #require(model.rows.count == 100)
-        runtime.context.evaluateScript("referenceTrace = []; holdReferenceOwner = true")
+        await runtime.evaluateOnCore("referenceTrace = []; holdReferenceOwner = true")
         let blocker = Task { try await workspace.catalog() }
-        defer { runtime.context.evaluateScript("releaseReferenceOwner?.()") }
+        defer { runtime.evaluateOnCoreSoon("releaseReferenceOwner?.()") }
         try await waitUntil {
           runtime.context.evaluateScript("releaseReferenceOwner !== null")?.toBool() == true
         }
@@ -171,7 +171,7 @@ struct ReferenceAdmissionPerformanceTests {
           }
         }
         defer { heartbeat.cancel() }
-        runtime.context.evaluateScript(
+        await runtime.evaluateOnCore(
           "globalThis.referenceReleasedAt = Date.now(); releaseReferenceOwner()")
         _ = try await blocker.value
         let resolved = try await navigation.value
@@ -231,8 +231,8 @@ struct ReferenceAdmissionPerformanceTests {
   }
 
   /// Generic synthetic catalog with wide records and one larger Markdown body.
-  private func seed(_ runtime: IrisCoreRuntime) throws {
-    runtime.context.evaluateScript(
+  private func seed(_ runtime: IrisCoreRuntime) async throws {
+    await runtime.evaluateOnCore(
       #"""
       IrisSql.begin();
       try {

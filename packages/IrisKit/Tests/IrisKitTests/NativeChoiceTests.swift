@@ -51,7 +51,7 @@ struct NativeChoiceTests {
   }
 
   @Test func choiceLoadingUsesTheRealCoreOptionsResult() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let model = NativeChoiceModel {
       try await workspace.options(table: "notes", column: "status")

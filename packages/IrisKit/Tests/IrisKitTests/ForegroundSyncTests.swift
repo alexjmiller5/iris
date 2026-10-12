@@ -6,7 +6,7 @@ import Testing
 @Suite(.serialized) @MainActor
 struct ForegroundSyncTests {
   @Test func backgroundGETDoesNotBlockLocalWorkOrBorrowSyncTransport() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let syncHub = try transport()
     let syncStarted = HeldSyncTransport.nextStart()
@@ -49,9 +49,9 @@ struct ForegroundSyncTests {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: folder) }
     let path = folder.appendingPathComponent("workspace.sqlite").path
-    let first = try NativeWorkspace(path: path)
+    let first = try await NativeWorkspace(path: path)
     try await first.createSample()
-    let second = try NativeWorkspace(path: path)
+    let second = try await NativeWorkspace(path: path)
     let started = HeldSyncTransport.nextStart()
     let hub = try transport()
     let sync = Task { try await first.sync(using: hub) }
@@ -87,13 +87,13 @@ struct ForegroundSyncTests {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: folder) }
     let path = folder.appendingPathComponent("workspace.sqlite").path
-    let runtime = try IrisCoreRuntime()
-    let first = try NativeWorkspace(path: path, runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let first = try await NativeWorkspace(path: path, runtime: runtime)
     try await first.createSample()
-    let second = try NativeWorkspace(path: path)
+    let second = try await NativeWorkspace(path: path)
     let registration =
       boundary == "http" ? "__irisPost('/schema/pull', '{}', callback)" : "__irisYield(callback)"
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       """
       IrisNative.request = function(id, method, args) {
         globalThis.callbackRequestID = id;
@@ -124,7 +124,7 @@ struct ForegroundSyncTests {
     #expect(finished, "A synchronous callback failure must reject its request")
     if !finished {
       runtime.context.exception = nil
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         #"try { IrisSql.rollback(); } catch {} __irisFinish(callbackRequestID, '{"error":"Test cleanup"}');"#
       )
     }
@@ -195,7 +195,7 @@ struct ForegroundSyncTests {
     #expect(model.client == nil && model.catalog == nil && model.rows.isEmpty)
     #expect(!model.syncing && model.syncProgress == nil)
     #expect(model.error == nil)
-    let reopened = try NativeWorkspace(
+    let reopened = try await NativeWorkspace(
       path: WorkspaceModel.replicaURL(
         root: directory, endpoint: hub.endpoint
       ).path)
@@ -235,7 +235,7 @@ struct ForegroundSyncTests {
     await close.value
     await usage.value
     #expect(model.client == nil && model.error == nil)
-    let reopened = try NativeWorkspace(
+    let reopened = try await NativeWorkspace(
       path: WorkspaceModel.replicaURL(root: directory, endpoint: hub.endpoint).path)
     #expect(try await reopened.rows(table: "notes") == before)
     #expect(try await reopened.status().pendingUiEdits == status.pendingUiEdits)
@@ -243,7 +243,7 @@ struct ForegroundSyncTests {
   }
 
   @Test func closeCancelsAHeldServiceRequestInsteadOfDroppingIt() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let hub = try transport()
     let started = HeldSyncTransport.nextStart()
@@ -260,7 +260,7 @@ struct ForegroundSyncTests {
     if case .success = await service.result { Issue.record("A cancelled request succeeded") }
   }
   @Test func closeDropsAnOwnerStillSuspendedAfterItsGrace() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let hub = try transport()
     let started = HeldSyncTransport.nextStart()
@@ -272,7 +272,7 @@ struct ForegroundSyncTests {
   }
 
   @Test func cancellationUnwindsHeldTransportAndKeepsLocalData() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let before = try await workspace.rows(table: "notes")
     let hub = try transport()
@@ -290,7 +290,7 @@ struct ForegroundSyncTests {
   }
 
   @Test func totalDeadlineCancelsHeldTransport() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let hub = try transport()
     let result = await Task { try await workspace.sync(using: hub, timeout: .milliseconds(30)) }
       .result
@@ -315,8 +315,8 @@ struct ForegroundSyncTests {
   }
 
   @Test func responseCannotResumeSyncInsideAWholeForegroundTransaction() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     var syncFinished = false
     let hub = try transport()
@@ -325,7 +325,7 @@ struct ForegroundSyncTests {
       return try await workspace.sync(using: hub)
     }
     try await waitUntil { HeldSyncTransport.isWaiting }
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       const originalRequest = IrisNative.request;
       let holdingForeground = false;
@@ -349,7 +349,7 @@ struct ForegroundSyncTests {
     try await Task.sleep(for: .milliseconds(50))
     #expect(!syncFinished)
     #expect(runtime.context.evaluateScript("holdingForeground")?.toBool() == true)
-    runtime.context.evaluateScript("releaseForeground()")
+    await runtime.evaluateOnCore("releaseForeground()")
     _ = try await foreground.value
     _ = await sync.result
     #expect(syncFinished)
@@ -358,7 +358,7 @@ struct ForegroundSyncTests {
   }
 
   @Test func closeCancelsTheSuspendedOwnerAndRefusesQueuedHTTP() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let hub = try transport()
     let first = Task { try await workspace.sync(using: hub) }
@@ -396,9 +396,9 @@ struct ForegroundSyncTests {
   @Test func syncHTTPInsideATransactionFailsWithoutReleasingOwnership() async throws {
     defer { HeldSyncTransport.release() }
     let requestsBefore = HeldSyncTransport.startCount
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
-    runtime.context.evaluateScript(
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
+    await runtime.evaluateOnCore(
       #"""
       IrisNative.request = function(id, method, args) {
         IrisSql.begin();
@@ -423,7 +423,7 @@ struct ForegroundSyncTests {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let path = directory.appendingPathComponent("replica.sqlite").path
-    let workspace = try NativeWorkspace(path: path)
+    let workspace = try await NativeWorkspace(path: path)
     try await workspace.createSample()
     let before = try #require(try await workspace.rows(table: "notes").first)
     let configuration = URLSessionConfiguration.ephemeral

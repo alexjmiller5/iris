@@ -21,10 +21,11 @@ struct RejectionInboxUIFixtureTests {
       try #require(model.client != nil)
       let store = try #require(model.editingContext?.draftStore)
       await model.close()
-      let runtime = try IrisCoreRuntime()
-      let workspace = try NativeWorkspace(path: WorkspaceModel.localURL().path, runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(
+        path: WorkspaceModel.localURL().path, runtime: runtime)
       _ = try await workspace.status()
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         #"""
         const marker = 'Synthetic Issues UI fixture';
         const existing = IrisSql.all("SELECT name FROM main.sqlite_master WHERE name='ui_rejections'");
@@ -84,7 +85,7 @@ struct RejectionInboxUIFixtureTests {
         runtime.context.setObject(
           String(decoding: try JSONEncoder().encode(entry), as: UTF8.self),
           forKeyedSubscript: "rejectionFixtureEntry" as NSString)
-        runtime.context.evaluateScript(
+        await runtime.evaluateOnCore(
           #"""
           {
             const entry = JSON.parse(rejectionFixtureEntry);
@@ -124,7 +125,7 @@ struct RejectionInboxUIFixtureTests {
     func verifyRejectionInboxUIResults() async throws {
       try requirePrivateSimulator()
       let path = try WorkspaceModel.localURL()
-      let workspace = try NativeWorkspace(path: path.path)
+      let workspace = try await NativeWorkspace(path: path.path)
       let rows = try await workspace.rows(table: "ui_rejections")
       let saved = try #require(rows.first { $0.id == "issues-save" }?.record)
       let stale = try #require(rows.first { $0.id == "issues-stale" }?.record)

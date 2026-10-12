@@ -7,8 +7,8 @@ import Testing
 struct WriteabilityTests {
   @Test func oldAdvisoryCannotEnableEditingAfterTableOrWorkspaceChanges() async throws {
     for transition in ["table", "tableRoundTrip", "workspace"] {
-      let runtime = try IrisCoreRuntime()
-      let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
       try await client.createSample()
       let model = WorkspaceModel()
       model.client = client
@@ -16,7 +16,7 @@ struct WriteabilityTests {
       model.table = "notes"
       await model.reload()
       #expect(model.canWrite)
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         """
         globalThis.originalFinish = __irisFinish;
         globalThis.heldReceipt = null;
@@ -33,7 +33,7 @@ struct WriteabilityTests {
         if transition == "tableRoundTrip" { model.table = "notes" }
       }
       #expect(!model.canWrite)
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         "__irisFinish = originalFinish; originalFinish(...heldReceipt);")
       await checking.value
       #expect(!model.canWrite)

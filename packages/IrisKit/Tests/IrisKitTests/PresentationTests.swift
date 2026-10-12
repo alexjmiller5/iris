@@ -12,8 +12,8 @@ import Testing
       ProcessInfo.processInfo.environment["IRIS_TEST_PRESENTATION_DATABASE"])
     try #require(URL(fileURLWithPath: path).lastPathComponent == "presentation-acceptance.sqlite")
     try #require(!FileManager.default.fileExists(atPath: path))
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: path, runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: path, runtime: runtime)
     try await workspace.createSample()
     let month = try calendarContext(timeZone: TimeZone.current.identifier).today.prefix(7)
     let statements = [
@@ -21,12 +21,12 @@ import Testing
     ]
     for ddl in statements {
       let encoded = String(data: try JSONEncoder().encode(ddl), encoding: .utf8)!
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         "IrisSql.run(\(encoded)); IrisSql.run('INSERT INTO _schema_log(ddl) VALUES (?)',[\(encoded)])"
       )
       try #require(runtime.context.exception == nil)
     }
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       """
       IrisSql.run("INSERT INTO catalog_properties(id,tbl,col,label,sort,type) VALUES ('notes.starts','notes','starts','Starts',10,'date'),('notes.ends','notes','ends','Ends',11,'date')");
       IrisSql.run("UPDATE notes SET starts='\(month)-10',ends='\(month)-12'");
@@ -69,7 +69,7 @@ import Testing
     await model.close()
   }
   @Test func nativeExecutesSharedCalendarAndBoardPresentation() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     let rows: [WorkspaceRecord] = [
       [
         "id": .string("range"), "start": .string("2026-03-07"), "end": .string("2026-03-09"),

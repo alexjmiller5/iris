@@ -8,10 +8,10 @@ import Testing
 struct SyncPerformanceTests {
   @Test(.enabled(if: ProcessInfo.processInfo.environment["IRIS_SYNC_PERFORMANCE"] == "1"))
   func largeCandidateSnapshotKeepsTheMainActorResponsive() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       const ddl = "CREATE TABLE provenance (id TEXT PRIMARY KEY, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT, tbl TEXT, row_id TEXT, col TEXT, source TEXT)";
       IrisSql.run(ddl);

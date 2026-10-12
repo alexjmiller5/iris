@@ -46,7 +46,7 @@ struct WorkspaceRecentsTests {
     let id = try #require(model.rows.first?.id)
     let destination = NativeDestination(table: "notes", rowID: id)
     await recent.navigationSucceeded(destination)
-    let externalWorkspace = try NativeWorkspace(path: external.path)
+    let externalWorkspace = try await NativeWorkspace(path: external.path)
     try await externalWorkspace.createSample()
     try await externalWorkspace.close()
     await model.open(url: external)
@@ -126,8 +126,9 @@ struct WorkspaceRecentsTests {
     var expected: [NativeDestination] = []
     for endpoint in ["https://first.invalid", "https://second.invalid"] {
       let path = WorkspaceModel.replicaURL(root: directory, endpoint: endpoint)
-      try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-      let workspace = try NativeWorkspace(path: path.path)
+      try FileManager.default.createDirectory(
+        at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+      let workspace = try await NativeWorkspace(path: path.path)
       try await workspace.createSample()
       let row = try await workspace.write(table: "notes", patch: ["title": .string("Cached " + endpoint)])
       let destination = NativeDestination(table: "notes", rowID: try #require(row["id"]?.text))

@@ -18,9 +18,10 @@ struct OpaqueSavedViewIdentityTests {
       await model.open()
       try #require(model.client != nil)
       await model.close()
-      let runtime = try IrisCoreRuntime()
-      let workspace = try NativeWorkspace(path: WorkspaceModel.localURL().path, runtime: runtime)
-      runtime.context.evaluateScript(
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(
+        path: WorkspaceModel.localURL().path, runtime: runtime)
+      await runtime.evaluateOnCore(
         #"""
         IrisSql.run("DELETE FROM views WHERE id IN (?,?)", ['\u00e9','e\u0301']);
         """#)
@@ -36,7 +37,7 @@ struct OpaqueSavedViewIdentityTests {
       let parameters = String(
         decoding: try JSONEncoder().encode(["\u{00e9}", a.id, "e\u{0301}", b.id]), as: UTF8.self)
       // Imported view IDs are legal opaque TEXT. Only this explicitly owned simulator is modified.
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         """
         (() => {
           const p = \(parameters);

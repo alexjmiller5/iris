@@ -12,10 +12,10 @@
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
       defer { try? FileManager.default.removeItem(at: root) }
       let path = root.appendingPathComponent("workspace.sqlite")
-      let runtime = try IrisCoreRuntime()
-      let first = try NativeWorkspace(path: path.path, runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let first = try await NativeWorkspace(path: path.path, runtime: runtime)
       try await first.createSample()
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         #"""
         const original = IrisNative.request;
         let held = false;
@@ -56,7 +56,7 @@
       try await Task.sleep(for: .milliseconds(100))
       #expect(!finished, "Opening another window must wait cooperatively for the transaction")
       #expect(model.error == nil, "Opening must not expose SQLite BUSY")
-      runtime.context.evaluateScript("releaseWindow()")
+      await runtime.evaluateOnCore("releaseWindow()")
       _ = try await transaction.value
       await opening.value
       #expect(model.error == nil)

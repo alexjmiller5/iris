@@ -11,10 +11,10 @@ struct RecordOpenPerformanceTests {
   /// `items` has 10 reference columns (5 single, 5 multi with 6 ids each), a 200 KB
   /// Markdown body, and 200 `links` rows reference the opened item.
   private func fixture() async throws -> (NativeWorkspace, IrisCoreRuntime) {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       const system = `id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
         created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT`;

@@ -22,7 +22,9 @@ final class NativePaletteModel {
   private let current: () -> Bool
 
   convenience init(workspace: NativeWorkspace, isCurrent: @escaping () -> Bool = { true }) {
-    self.init(catalog: workspace.catalog, listViews: workspace.listViews, isCurrent: isCurrent)
+    self.init(
+      catalog: { try await workspace.catalog() },
+      listViews: { try await workspace.listViews(table: $0) }, isCurrent: isCurrent)
   }
 
   init(catalog: @escaping () async throws -> WorkspaceCatalog,

@@ -277,12 +277,12 @@ struct UndoTests {
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let path = root.appendingPathComponent("fixture.sqlite").path
-    let first = try NativeWorkspace(path: path)
+    let first = try await NativeWorkspace(path: path)
     try await first.createSample()
     try await first.indexSearch()
     let row = try await first.write(table: "notes", patch: ["title": .string("Initial")])
     let action = try #require(try await first.undoStatus().action)
-    let other = try NativeWorkspace(path: path)
+    let other = try await NativeWorkspace(path: path)
     _ = try await other.write(
       table: "notes", patch: ["id": row["id"]!, "title": .string("New external revision")])
     await #expect(throws: WorkspaceError.self) { try await first.undo(receiptID: action.receiptId) }
@@ -290,7 +290,7 @@ struct UndoTests {
     #expect(try await first.rows(table: "notes", search: "external").count == 1)
     try await other.close()
     try await first.close()
-    let reopened = try NativeWorkspace(path: path)
+    let reopened = try await NativeWorkspace(path: path)
     #expect(try await reopened.undoStatus().action == nil)
     #expect(try await reopened.rows(table: "notes", search: "external").count == 1)
     try await reopened.close()
@@ -298,7 +298,7 @@ struct UndoTests {
 
   @Test(arguments: [CoreUndoKind.create, .edit, .trash, .restore])
   func realCoreUndoUsesDisplayedReceiptAndFreshValidatedWrites(kind: CoreUndoKind) async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let created = try await workspace.write(
       table: "notes", patch: ["title": .string("Undo fixture"), "body": .string("Before")])
@@ -352,8 +352,8 @@ struct WorkspaceUndoTests {
   }
 
   @Test func rejectedInverseKeepsCoreActionAndSavedViewsJoinTheUndoStack() async throws {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
     let model = WorkspaceModel()
     model.client = client
@@ -364,7 +364,7 @@ struct WorkspaceUndoTests {
     _ = try await model.save(
       ["id": row["id"]!, "title": .string("After")], original: row, context: context)
     let shown = try #require(model.undoAction)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "IrisSql.run(\"UPDATE catalog_properties SET pattern='^After$' WHERE tbl='notes' AND col='title'\")"
     )
     #expect(runtime.context.exception == nil)
@@ -385,8 +385,8 @@ struct WorkspaceUndoTests {
   func pendingUndoBlocksWritesAndLateReceiptCannotUpdateReplacementWorkspace(phase: String)
     async throws
   {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
     let model = WorkspaceModel()
     model.client = client
@@ -395,7 +395,7 @@ struct WorkspaceUndoTests {
     let context = try #require(model.editingContext)
     _ = try await model.save(["title": .string("Old workspace")], original: nil, context: context)
     let shown = try #require(model.undoAction)
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "var originalRequest = IrisNative.request; var heldUndo = null; IrisNative.request = (id,method,args) => { if(method === '\(phase)') heldUndo = [id,method,args]; else originalRequest(id,method,args); };"
     )
     let task = Task { try await model.undo(shown, context: context) }
@@ -409,12 +409,12 @@ struct WorkspaceUndoTests {
     await #expect(throws: WorkspaceError.self) {
       try await model.saveCurrentView(name: "Blocked", update: false, context: context)
     }
-    let replacement = try NativeWorkspace(path: ":memory:")
+    let replacement = try await NativeWorkspace(path: ":memory:")
     try await replacement.createSample()
     model.client = replacement
     await model.reload()
     let replacementRows = model.rows
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "IrisNative.request = originalRequest; originalRequest(...heldUndo);")
     await #expect(throws: WorkspaceError.self) { try await task.value }
     #expect(model.client === replacement && model.undoAction == nil && !model.undoing)

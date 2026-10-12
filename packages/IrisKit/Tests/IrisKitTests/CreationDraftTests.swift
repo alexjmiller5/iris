@@ -14,14 +14,14 @@ struct CreationDraftTests {
 
   @Test(arguments: ["untouched", "same empty", "type then clear"])
   func realCoreDefaultsApplyOnlyToUntouchedNewFields(_ edit: String) async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     let properties = try await workspace.catalog().properties.filter {
       $0["tbl"] == .string("notes")
     }
-    let before = runtime.context.evaluateScript("IrisSql.all('SELECT total_changes() AS n')[0].n")!
-      .toInt32()
+    let changes = "IrisSql.all('SELECT total_changes() AS n')[0].n"
+    let before = await runtime.evaluateOnCore(changes) { $0!.toInt32() }
     let editor = RecordEditorModel(
       properties: properties, original: nil, table: "notes", store: nil
     ) {
@@ -33,9 +33,7 @@ struct CreationDraftTests {
     if edit == "type then clear" { editor.setValue("Ready", for: "status") }
     if edit != "untouched" { editor.setValue("", for: "status", explicit: true) }
     #expect(editor.draft.patch["status"] == (edit == "untouched" ? nil : .null))
-    #expect(
-      runtime.context.evaluateScript("IrisSql.all('SELECT total_changes() AS n')[0].n")!.toInt32()
-        == before)
+    #expect(await runtime.evaluateOnCore(changes) { $0!.toInt32() } == before)
     // The first autosave creates the row; untouched fields still take core defaults.
     try await editor.flushAutosave()
     let saved = try #require(editor.draft.original)
@@ -48,10 +46,10 @@ struct CreationDraftTests {
 
   @Test(arguments: [false, true])
   func emptyCoreDefaultStaysCleanUnlessClearedWhileSaveWasPending(_ clear: Bool) async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "IrisSql.run(\"UPDATE catalog_properties SET default_value='' WHERE tbl='notes' AND col='body'\")"
     )
     try #require(runtime.context.exception == nil)
@@ -112,7 +110,7 @@ struct CreationDraftTests {
   }
 
   @Test func creationReceiptKeepsAnExplicitClearMadeWhileTheWriteWasPending() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     var pending: CheckedContinuation<Void, Never>?
     var calls: [WorkspaceRecord] = []

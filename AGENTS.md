@@ -61,6 +61,17 @@ schema from the operator. Ordinary table defaults are unaffected.
   files stay intact and must not block ordinary workspace use.
 - `packages/IrisKit`: serialized JavaScriptCore facade, GRDB adapter, native
   workspace, URLSession transport, Keychain storage and bundled graph island.
+  `NativeWorkspace`, its JSContext, SQLite bridge, file gate and diagnostics live on
+  `IrisCoreActor`: one dedicated thread with a run loop, shared by every open workspace.
+  `NativeWorkspace(path:)` creates its JSContext there, so JavaScriptCore's heap timers
+  (garbage collection) fire on that thread, never on the main thread waiting for the JSC
+  lock a request holds. The main actor holds UI state only and awaits core requests,
+  whose results are decoded off it; calling bridge code from another actor trips Swift's
+  isolation check. Progress callbacks hop to the main actor and are ignored once their
+  action ended. Catalog comparison short-circuits on shared storage, since navigation
+  reinstalls the core's cached catalog. `MainActorStallTests` keeps a megabyte catalog
+  read, a 10,000-row table open and a search index catch-up under one frame (16 ms) of
+  main-actor stall.
 - `packages/core`: generated TypeScript declarations and JS artifacts. Core
   implementation belongs to soma. Regenerate with
   `bun run bundle:core <path-to-soma-core/src/validate.ts>`. Never patch generated
@@ -261,8 +272,7 @@ database worker queues a step right behind open and every data-changing request 
 sync only when it moved data), then catch-up steps (50 ms) one task apart so
 requests run between them; `WorkspaceModel.scheduleSearchIndex` does the same
 natively after open, sync rounds that moved data, local commits and observed
-shared-file changes, as passive 25 ms requests that foreground reads pass (core runs
-on the main actor). Open indexes a workspace with at most 1,000 records left before
+shared-file changes, as passive 25 ms requests that foreground reads pass. Open indexes a workspace with at most 1,000 records left before
 returning (the sample, small local files); while more are left, a step waits for 150
 ms without foreground requests (at most a second), so a table open never queues
 behind one. The shared-file observer ignores version changes while that loop runs.
@@ -830,8 +840,11 @@ property and the existing separate retained/public image credential paths.
 and `just build` cover web and Apple targets. `just fmt` formats owned source.
 The README documents browser smoke commands and a real Worker synthetic hub.
 Fixtures are synthetic only; never copy live personal data into tests or docs.
-Run the package suite with `swift test --no-parallel`: independent MainActor/JSC
-fixtures otherwise starve each other’s admission watchdogs. Keep explicit
+Run the package suite with `swift test --no-parallel`: independent JSC fixtures share
+the one core thread and otherwise starve each other’s admission watchdogs. Tests create
+runtimes they hand to a workspace with `IrisCoreRuntime.onCore()` and run any script that
+reaches Swift (`IrisSql`, a held request, `__irisFinish`) with `evaluateOnCore`
+(`CoreTestSupport.swift`); reading plain JS globals works from the main actor. Keep explicit
 concurrent tasks inside tests and their assertions unchanged.
 
 Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a

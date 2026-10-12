@@ -16,7 +16,8 @@ struct NativeWidgetSourceRequest: Sendable {
 
   init(workspace: NativeWorkspace, store: WidgetPublicationStore) {
     self.init(
-      prepare: workspace.prepareReadPlan, snapshot: workspace.exportWidgetSnapshot, store: store)
+      prepare: { try await workspace.prepareReadPlan($0) },
+      snapshot: { try await workspace.exportWidgetSnapshot(to: $0) }, store: store)
   }
 
   init(

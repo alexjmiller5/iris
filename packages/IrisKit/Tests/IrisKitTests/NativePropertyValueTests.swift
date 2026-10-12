@@ -143,11 +143,11 @@ struct NativePropertyValueTests {
     try await workspace.close()
   }
   @Test @MainActor func cellsRenderedTogetherShareOneLabelRead() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     let notes = try await workspace.rows(table: "notes")
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       globalThis.labelTrace = [];
       const traced = IrisNative.request;
@@ -168,7 +168,7 @@ struct NativePropertyValueTests {
     try await workspace.close()
   }
   @MainActor private func sampleWorkspace() async throws -> NativeWorkspace {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     return workspace
   }

@@ -22,11 +22,11 @@ struct NavigationUIFixtureTests {
       }
       await model.close()
       let path = try WorkspaceModel.localURL()
-      let runtime = try IrisCoreRuntime()
-      let workspace = try NativeWorkspace(path: path.path, runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(path: path.path, runtime: runtime)
       _ = try await workspace.status()
       // This fixture is restricted to the explicitly selected disposable simulator.
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         #"""
         IrisSql.run("UPDATE catalog_tables SET kind='table',purpose='Synthetic notes for navigation' WHERE id='notes'");
         IrisSql.run("UPDATE catalog_properties SET ref_table='topics' WHERE id='notes.topic'");

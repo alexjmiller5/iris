@@ -16,7 +16,7 @@ struct NativePaletteTests {
   }
 
   @Test func realCoreMetadataUsesCurrentNamesAndExplicitRefresh() async throws {
-    let workspace = try NativeWorkspace(path: ":memory:")
+    let workspace = try await NativeWorkspace(path: ":memory:")
     try await workspace.createSample()
     let saved = try await workspace.saveView(CoreSaveViewArgs(table: "notes", name: "First selection",
       definition: CoreSavedViewDefinition(version: 1, columns: ["title"], search: "absent")))
@@ -42,10 +42,10 @@ struct NativePaletteTests {
   }
 
   @Test func realCorePreservesDistinctViewIDsAndUnavailableReasons() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       ["\u00e9", "e\u0301"].forEach((id, i) => {
         IrisSql.run("INSERT INTO views(id,name,tbl,definition) VALUES (?,?,'notes',?)",

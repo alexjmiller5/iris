@@ -6,7 +6,7 @@ import Testing
 
 @MainActor
 struct LocalViewsTests {
-  private func fixtureSQL(_ file: URL, _ script: String) throws -> String? {
+  @IrisCoreActor private func fixtureSQL(_ file: URL, _ script: String) throws -> String? {
     let context = try #require(JSContext())
     let database = try SQLiteBridge(path: file.path)
     defer { try? database.close() }
@@ -18,11 +18,11 @@ struct LocalViewsTests {
   }
 
   private func legacyDatabase(_ file: URL) async throws {
-    let workspace = try NativeWorkspace(path: file.path)
+    let workspace = try await NativeWorkspace(path: file.path)
     try await workspace.createSample()
     _ = try await workspace.write(table: "notes", patch: ["title": .string("Preserved local note")])
     try await workspace.close()
-    _ = try fixtureSQL(
+    _ = try await fixtureSQL(
       file,
       """
       IrisSql.run('DROP TRIGGER IF EXISTS views_updated_at');
@@ -38,7 +38,7 @@ struct LocalViewsTests {
     defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("local.sqlite")
     try await legacyDatabase(file)
-    let workspace = try NativeWorkspace(path: file.path)
+    let workspace = try await NativeWorkspace(path: file.path)
     let before = try await workspace.rows(table: "notes")
     #expect(try await workspace.prepareLocalViews())
     #expect(try await workspace.catalog().tables.contains { $0["id"] == .string("views") })
@@ -73,7 +73,7 @@ struct LocalViewsTests {
     defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("local.sqlite")
     try await legacyDatabase(file)
-    _ = try fixtureSQL(
+    _ = try await fixtureSQL(
       file,
       """
       IrisSql.run('CREATE TABLE views (id TEXT, payload TEXT)');
@@ -85,7 +85,8 @@ struct LocalViewsTests {
     #expect(!model.tables.contains { $0["id"] == .string("views") })
     await model.close()
     #expect(
-      try fixtureSQL(file, "IrisSql.all('SELECT payload FROM views')[0].payload") == "Preserve this"
+      try await fixtureSQL(file, "IrisSql.all('SELECT payload FROM views')[0].payload")
+        == "Preserve this"
     )
   }
 }

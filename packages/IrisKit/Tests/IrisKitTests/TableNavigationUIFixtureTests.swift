@@ -16,9 +16,10 @@ struct TableNavigationUIFixtureTests {
       await model.open()
       try #require(model.client != nil)
       await model.close()
-      let runtime = try IrisCoreRuntime()
-      let workspace = try NativeWorkspace(path: WorkspaceModel.localURL().path, runtime: runtime)
-      runtime.context.evaluateScript(
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(
+        path: WorkspaceModel.localURL().path, runtime: runtime)
+      await runtime.evaluateOnCore(
         #"""
         IrisSql.run("CREATE TABLE IF NOT EXISTS provenance (id TEXT PRIMARY KEY, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT, tbl TEXT, row_id TEXT, col TEXT, source TEXT)");
         IrisSql.run("INSERT OR REPLACE INTO catalog_tables(id,kind,display,purpose) VALUES ('provenance','system','source','Synthetic provenance navigation fixture')");

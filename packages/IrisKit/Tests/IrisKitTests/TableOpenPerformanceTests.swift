@@ -10,10 +10,10 @@ import Testing
 struct TableOpenPerformanceTests {
   /// 10,000 rows of wide text with five reference columns, beside a large catalog.
   @Test func wideTableOpensWithoutCatalogRereadOrPerCellLabelReads() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       IrisSql.begin();
       IrisSql.run("CREATE TABLE targets (id TEXT PRIMARY KEY, title TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT)");
@@ -38,7 +38,7 @@ struct TableOpenPerformanceTests {
     model.catalog = try await workspace.catalog()
     model.table = "notes"
     await model.reload()
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       globalThis.openTrace = [];
       const traced = IrisNative.request;
@@ -132,7 +132,7 @@ struct TableOpenPerformanceTests {
       let hits = try await workspace.search(CoreSearchArgs(text: String(prefix), limit: 50))
       report("search \(prefix) hits=\(hits.count)", started)
     }
-    try printRequests(workspace)
+    try await printRequests(workspace)
     for table in tables {
       heartbeat.reset()
       started = clock.now
@@ -146,7 +146,7 @@ struct TableOpenPerformanceTests {
       try #require(model.error == nil, "\(model.error ?? "")")
       report("\(table) activate+reload rows=\(model.rows.count)", activated)
       report("\(table) first rows (total)", started)
-      try printRequests(workspace)
+      try await printRequests(workspace)
       let labels = clock.now
       let fields = model.properties.map(CatalogField.init(property:)).filter {
         ["ref", "multi_ref"].contains($0.type)
@@ -178,8 +178,8 @@ struct TableOpenPerformanceTests {
 
   private var printed: UInt64 = 0
   /// Per-request queue, core, SQL and decode milliseconds since the last call.
-  private mutating func printRequests(_ workspace: NativeWorkspace) throws {
-    let report = try workspace.diagnosticReport(version: "0", build: "0")
+  private mutating func printRequests(_ workspace: NativeWorkspace) async throws {
+    let report = try await workspace.diagnosticReport(version: "0", build: "0")
     let snapshot = try #require(
       (try JSONSerialization.jsonObject(with: Data(report.utf8)) as? [String: Any])?["snapshot"]
         as? [String: Any])

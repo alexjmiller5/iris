@@ -12,7 +12,7 @@
       let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
       let file = root.appendingPathComponent("soma.db")
-      let seed = try NativeWorkspace(path: file.path)
+      let seed = try await NativeWorkspace(path: file.path)
       try await seed.createSample()
       try await seed.close()
       // The CLI establishes WAL before the UI opens its shared database.
@@ -78,22 +78,17 @@
       let (root, file, model) = try await fixture()
       defer { try? FileManager.default.removeItem(at: root) }
       #expect(try await sql(file, "PRAGMA journal_mode") == "wal")
-      let transaction = try SQLiteBridge(path: file.path)
-      let context = try #require(JSContext())
-      try transaction.install(in: context)
-      context.evaluateScript("IrisSql.begin()")
-      try #require(context.exception == nil)
+      let transaction = try await HeldTransaction(path: file.path)
       // The app must be able to finish an admitted transaction while the real
       // external process waits for SQLite's writer lock.
-      let release = Task { @MainActor in
+      let release = Task {
         try await Task.sleep(for: .milliseconds(100))
-        context.evaluateScript("IrisSql.commit()")
-        try #require(context.exception == nil)
+        try await transaction.commit()
       }
       _ = try await sql(file, "UPDATE notes SET title='Concurrent CLI commit'")
       try await release.value
       #expect(try await sql(file, "SELECT title FROM notes LIMIT 1") == "Concurrent CLI commit")
-      try transaction.close()
+      try await transaction.close()
       await model.close()
     }
 
@@ -230,5 +225,22 @@
       await model.close()
     }
 
+  }
+  /// A transaction begun through the core's SQL bridge, on the core's executor.
+  @IrisCoreActor private final class HeldTransaction {
+    private let bridge: SQLiteBridge
+    private let context: JSContext
+    init(path: String) throws {
+      bridge = try SQLiteBridge(path: path)
+      context = try #require(JSContext())
+      try bridge.install(in: context)
+      context.evaluateScript("IrisSql.begin()")
+      try #require(context.exception == nil)
+    }
+    func commit() throws {
+      context.evaluateScript("IrisSql.commit()")
+      try #require(context.exception == nil)
+    }
+    func close() throws { try bridge.close() }
   }
 #endif

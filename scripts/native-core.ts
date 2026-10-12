@@ -27,7 +27,7 @@ declare function __irisDumpClose(id: number): void;
 
 // The Swift facade owns whole database operations. HTTP awaits yield ownership
 // only outside transactions; their callbacks resume after foreground work.
-// JSC has no browser event loop: the host schedules a real main-actor turn.
+// JSC has no browser event loop: the host schedules a real turn of its core executor.
 const turn = () => new Promise<void>((resolve) => __irisYield(resolve));
 const db: SqlDriver = {
   // The Swift bridge is installed after this bundle evaluates. Discover the

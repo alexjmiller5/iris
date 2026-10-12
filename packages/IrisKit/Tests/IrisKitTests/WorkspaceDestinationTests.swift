@@ -39,14 +39,14 @@ struct WorkspaceDestinationTests {
   }
 
   @Test func freshCatalogAndFullTombstoneCanBeInstalledWithoutCachedTableMetadata() async throws {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
     let model = WorkspaceModel()
     model.client = client
     model.catalog = try await client.catalog()
     model.table = "notes"
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       #"""
       IrisSql.run(`CREATE TABLE added (id TEXT PRIMARY KEY, title TEXT, body TEXT, deleted_at TEXT)`);
       IrisSql.run("INSERT INTO catalog_tables(id,kind,display) VALUES ('added','table','title')");
@@ -77,7 +77,7 @@ struct WorkspaceDestinationTests {
       try model.activateDestination(resolved, workspace: client, generation: generation - 1)
     }
     #expect(model.queryKey == originalQuery)
-    let other = try NativeWorkspace(path: ":memory:")
+    let other = try await NativeWorkspace(path: ":memory:")
     try await other.createSample()
     #expect(throws: WorkspaceError.self) {
       try model.activateDestination(resolved, workspace: other, generation: generation)
@@ -101,8 +101,8 @@ struct WorkspaceDestinationTests {
 
   @Test(arguments: ["write", "undo", "saveView"])
   func busyOperationsRejectNavigationBeforeMutatingWorkspace(_ operation: String) async throws {
-    let runtime = try IrisCoreRuntime()
-    let client = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let client = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await client.createSample()
     let model = WorkspaceModel()
     model.client = client
@@ -116,7 +116,7 @@ struct WorkspaceDestinationTests {
       NativeDestination(table: "topics"), isCurrent: { true })
     let before = model.queryKey
     let beforeCatalog = model.catalog?.tables
-    runtime.context.evaluateScript(
+    await runtime.evaluateOnCore(
       "var originalRequest = IrisNative.request; var heldNavigation = null; IrisNative.request = (id,method,args) => { if(method === '\(operation)') heldNavigation = [id,method,args]; else originalRequest(id,method,args); };"
     )
     var finished = false
@@ -135,9 +135,11 @@ struct WorkspaceDestinationTests {
     #expect(throws: WorkspaceError.self) {
       try model.activateDestination(destination, workspace: client, generation: model.workspaceGeneration)
     }
-    #expect(model.table == "notes" && model.queryKey == before && model.catalog?.tables == beforeCatalog)
-    runtime.context.evaluateScript(
-      "IrisNative.request = originalRequest; if (heldNavigation) originalRequest(...heldNavigation);")
+    #expect(
+      model.table == "notes" && model.queryKey == before && model.catalog?.tables == beforeCatalog)
+    await runtime.evaluateOnCore(
+      "IrisNative.request = originalRequest; if (heldNavigation) originalRequest(...heldNavigation);"
+    )
     try await pending.value
     _ = try model.activateDestination(destination, workspace: client, generation: model.workspaceGeneration)
     #expect(model.table == "topics")

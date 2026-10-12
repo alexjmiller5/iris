@@ -145,21 +145,24 @@ struct RecoveryCopy: Identifiable, Equatable {
     message = nil
     failure = nil
     workspace.backupActivity = label
-    client.onBackupProgress = { [weak self] phase, done, total in
-      guard let self else { return }
+    // Reports hop from the core; one arriving after this action ended is stale.
+    await client.setBackupProgress { [weak self] phase, done, total in
+      guard let self, self.busy == label else { return }
       self.progress = (phase, done, total)
       self.workspace.backupActivity = self.progressText
     }
     defer {
-      client.onBackupProgress = nil
       busy = nil
       progress = nil
       workspace.backupActivity = nil
     }
-    do { return try await work() } catch {
+    let result: T?
+    do { result = try await work() } catch {
       failure = Self.describe(error)
-      return nil
+      result = nil
     }
+    await client.setBackupProgress(nil)
+    return result
   }
 
   static func describe(_ error: Error) -> String {

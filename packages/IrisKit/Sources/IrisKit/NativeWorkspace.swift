@@ -88,8 +88,9 @@ private struct CoreSyncProgress: Decodable {
 }
 
 /// One request owns the database until its promise settles or awaits HTTP outside a transaction.
-/// MainActor alone is insufficient: it is reentrant at each awaited SQL call.
-@MainActor
+/// The core runs on IrisCoreActor, never the main actor. The actor alone is insufficient:
+/// it is reentrant at each awaited SQL call.
+@IrisCoreActor
 public final class NativeWorkspace {
   private let runtime: IrisCoreRuntime
   private let database: SQLiteBridge
@@ -118,7 +119,10 @@ public final class NativeWorkspace {
   private var nextDump = 0
   private var backupOpens = 0
   /// Phase, bytes done and bytes total (0 when unknown) of a long backup action.
-  var onBackupProgress: ((String, Int64, Int64) -> Void)?
+  private var onBackupProgress: (@MainActor @Sendable (String, Int64, Int64) -> Void)?
+  func setBackupProgress(_ handler: (@MainActor @Sendable (String, Int64, Int64) -> Void)?) {
+    onBackupProgress = handler
+  }
   private var progressReported = ContinuousClock.now
   private var referenceReadPending = false
   private var referenceWaiters: [(UUID, CheckedContinuation<Void, Error>)] = [] {
@@ -136,7 +140,7 @@ public final class NativeWorkspace {
     let referenceRead: Bool
     let diagnosticID: NativeWorkspaceDiagnostics.RequestID?
   }
-  /// onCancel can run off the main actor. Admission and cancellation share one
+  /// onCancel can run off the core actor. Admission and cancellation share one
   /// decision; cancellation never changes an operation already admitted.
   private final class ReadAdmission: @unchecked Sendable {
     private let lock = NSLock()
@@ -153,9 +157,9 @@ public final class NativeWorkspace {
       }
     }
   }
-  @MainActor private final class SyncControl {
+  @IrisCoreActor private final class SyncControl {
     let timeout: Duration
-    let onProgress: ((WorkspaceSyncProgress) -> Void)?
+    let onProgress: (@MainActor @Sendable (WorkspaceSyncProgress) -> Void)?
     var startedAt = Date()
     var cancelled = false
     var network: Task<Void, Never>?
@@ -165,18 +169,19 @@ public final class NativeWorkspace {
     var table: String?
     var phase = "Connecting"
     var core: CoreSyncProgress?
-    init(timeout: Duration, onProgress: ((WorkspaceSyncProgress) -> Void)?) {
+    init(timeout: Duration, onProgress: (@MainActor @Sendable (WorkspaceSyncProgress) -> Void)?) {
       self.timeout = timeout
       self.onProgress = onProgress
     }
     func report(_ phase: String) {
       self.phase = phase
-      onProgress?(
-        WorkspaceSyncProgress(
-          phase: phase, table: table, page: page,
-          processedRows: processedRows, startedAt: startedAt,
-          tablesDone: core?.tablesDone ?? 0, tablesTotal: core?.tablesTotal ?? 0,
-          rowsReceived: core?.rowsReceived ?? 0, rowsExpected: core?.rowsExpected))
+      guard let onProgress else { return }
+      let progress = WorkspaceSyncProgress(
+        phase: phase, table: table, page: page,
+        processedRows: processedRows, startedAt: startedAt,
+        tablesDone: core?.tablesDone ?? 0, tablesTotal: core?.tablesTotal ?? 0,
+        rowsReceived: core?.rowsReceived ?? 0, rowsExpected: core?.rowsExpected)
+      Task { @MainActor in onProgress(progress) }
     }
   }
   private struct Reply: Decodable {
@@ -214,7 +219,7 @@ public final class NativeWorkspace {
     let yield: @convention(block) (JSValue) -> Void = { [weak self] callback in
       guard let request = self?.active else { return }
       let started = ContinuousClock.now
-      Task { @MainActor [weak self] in
+      Task { @IrisCoreActor [weak self] in
         await Task.yield()
         self?.diagnostics.addMetrics(
           .init(yieldGapMilliseconds: Self.elapsedMilliseconds(since: started)),
@@ -242,7 +247,7 @@ public final class NativeWorkspace {
         ])
         return
       }
-      let network = Task { @MainActor in
+      let network = Task { @IrisCoreActor in
         let response: String
         do {
           let body = try JSONDecoder().decode(WorkspaceRecord.self, from: Data(json.utf8))
@@ -312,7 +317,7 @@ public final class NativeWorkspace {
         ])
         return
       }
-      self.networks[owner.id] = Task { @MainActor in
+      self.networks[owner.id] = Task { @IrisCoreActor in
         let response: String
         do {
           let reply = try await transport.get(route: route)
@@ -417,7 +422,7 @@ public final class NativeWorkspace {
       return
     }
     progressReported = .now
-    onBackupProgress(phase, done, total)
+    Task { @MainActor in onBackupProgress(phase, done, total) }
   }
 
   /// The whole catalog is about a megabyte on a large estate; its revision is one short read.
@@ -463,11 +468,15 @@ public final class NativeWorkspace {
     let targets: [CoreRecordTarget]
     let continuation: CheckedContinuation<[CoreMentionLabel], Error>
   }
-  private var labelWaiters: [LabelWaiter] = []
-  private var labelFlushScheduled = false
+  // Batching follows the UI: cells render in one main-actor pass, while the core runs
+  // each arriving request at once.
+  @MainActor private var labelWaiters: [LabelWaiter] = []
+  @MainActor private var labelFlushScheduled = false
   /// Display labels for reference cells. Cells rendered together share one passive
   /// read of at most 200 targets instead of one row read each.
-  func referenceLabels(_ targets: [CoreRecordTarget]) async throws -> [CoreMentionLabel] {
+  @MainActor func referenceLabels(_ targets: [CoreRecordTarget]) async throws
+    -> [CoreMentionLabel]
+  {
     try Task.checkCancellation()
     let id = UUID()
     return try await withTaskCancellationHandler {
@@ -487,7 +496,7 @@ public final class NativeWorkspace {
       }
     }
   }
-  private func flushReferenceLabels() async {
+  @MainActor private func flushReferenceLabels() async {
     labelFlushScheduled = false
     let waiters = labelWaiters
     labelWaiters = []
@@ -531,7 +540,7 @@ public final class NativeWorkspace {
         referenceWaiters.append((id, continuation))
       }
     } onCancel: {
-      Task { @MainActor [weak self] in
+      Task { @IrisCoreActor [weak self] in
         guard let self, let index = self.referenceWaiters.firstIndex(where: { $0.0 == id }) else {
           return
         }
@@ -813,7 +822,8 @@ public final class NativeWorkspace {
 
   func sync(
     using transport: HubTransport, maxRows: Int? = nil, tables: [String: Bool]? = nil,
-    timeout: Duration = .seconds(900), onProgress: ((WorkspaceSyncProgress) -> Void)? = nil
+    timeout: Duration = .seconds(900),
+    onProgress: (@MainActor @Sendable (WorkspaceSyncProgress) -> Void)? = nil
   )
     async throws
     -> WorkspaceSyncResult
@@ -823,7 +833,11 @@ public final class NativeWorkspace {
         CoreSyncArgs(endpoint: transport.endpoint, maxRows: maxRows, tables: tables)),
       transport: transport, control: SyncControl(timeout: timeout, onProgress: onProgress))
   }
-  func cancelSync() {
+  /// Callable from the UI without waiting for the core: cancellation is cooperative anyway.
+  nonisolated func cancelSync() {
+    Task { @IrisCoreActor in self.cancelActiveSync() }
+  }
+  private func cancelActiveSync() {
     let control =
       suspended.values.first(where: { $0.method == "sync" })?.control
       ?? (active?.method == "sync" ? active?.control : nil)
@@ -847,7 +861,7 @@ public final class NativeWorkspace {
   public func close(grace: Duration = .seconds(5)) async throws -> [String] {
     closing = true
     for network in networks.values { network.cancel() }
-    let deadline = Task { @MainActor [weak self] in
+    let deadline = Task { @IrisCoreActor [weak self] in
       do { try await Task.sleep(for: grace) } catch { return }
       self?.dropSuspended()
     }
@@ -968,7 +982,7 @@ public final class NativeWorkspace {
       requests.remove(at: index)
       guard let owner = suspended.removeValue(forKey: id) else {
         fileGate.release(self)
-        Task { @MainActor [self] in startNext() }
+        Task { @IrisCoreActor [self] in startNext() }
         return
       }
       active = owner
@@ -1026,10 +1040,10 @@ public final class NativeWorkspace {
     if let control = request.control {
       control.startedAt = Date()
       control.report("Connecting")
-      control.deadline = Task { @MainActor [weak self] in
+      control.deadline = Task { @IrisCoreActor [weak self] in
         do { try await Task.sleep(for: control.timeout) } catch { return }
         guard self?.active?.id == request.id || self?.suspended[request.id] != nil else { return }
-        self?.cancelSync()
+        self?.cancelActiveSync()
       }
     }
     runtime.context.exception = nil
@@ -1087,7 +1101,7 @@ public final class NativeWorkspace {
     fileGate.release(self)
     continuation?.resume(with: outcome)
     // Do not reenter JSC from inside its completion callback.
-    Task { @MainActor [self] in startNext() }
+    Task { @IrisCoreActor [self] in startNext() }
   }
 
   private func suspendForTransport(_ owner: Request) throws {
@@ -1100,7 +1114,7 @@ public final class NativeWorkspace {
     active = nil
     fileGate.release(self)
     // Leave the current JSC callback before starting another JS operation.
-    Task { @MainActor [self] in startNext() }
+    Task { @IrisCoreActor [self] in startNext() }
   }
 
   private func receiveTransport(owner: Int, callback: JSValue, response: String) {
@@ -1118,7 +1132,7 @@ public final class NativeWorkspace {
           return false
         } ?? requests.endIndex
       requests.insert(.resumeTransport(owner, callback, response), at: barrier)
-      Task { @MainActor [self] in startNext() }
+      Task { @IrisCoreActor [self] in startNext() }
     } else if active?.id == owner {
       invokeCallback(callback, owner: owner, arguments: [response])
     }
@@ -1139,9 +1153,9 @@ public final class NativeWorkspace {
   }
 }
 
-/// SQLite transactions can span MainActor turns. All windows opening one physical
+/// SQLite transactions can span IrisCoreActor turns. All windows opening one physical
 /// file share admission, while independent files and in-memory samples stay separate.
-@MainActor
+@IrisCoreActor
 private final class WorkspaceFileGate {
   private struct Identity: Hashable {
     let device: UInt64
@@ -1215,7 +1229,7 @@ private final class WorkspaceFileGate {
     // Reserve the next owner now, so a just-completed instance cannot jump ahead.
     owner = waiting.isEmpty ? nil : waiting.removeFirst()
     if let next = owner {
-      Task { @MainActor in next.startNext() }
+      Task { @IrisCoreActor in next.startNext() }
     }
   }
 }

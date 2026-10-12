@@ -19,10 +19,11 @@ struct TypedFieldsUIFixtureTests {
         try store.remove(table: saved.table, recordID: saved.recordID, draftID: saved.id)
       }
       await model.close()
-      let runtime = try IrisCoreRuntime()
-      let workspace = try NativeWorkspace(path: WorkspaceModel.localURL().path, runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(
+        path: WorkspaceModel.localURL().path, runtime: runtime)
       // This opt-in fixture only changes the explicitly selected private simulator.
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         #"""
         const ddl = `CREATE TABLE IF NOT EXISTS field_examples (
           id TEXT PRIMARY KEY NOT NULL,

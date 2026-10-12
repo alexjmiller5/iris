@@ -3,8 +3,10 @@ import JavaScriptCore
 
 public typealias Violation = CoreViolation
 
-@MainActor
-public final class IrisCoreRuntime {
+/// One JavaScriptCore context. A NativeWorkspace uses its runtime only on IrisCoreActor;
+/// other owners (enrollment, previews) keep theirs on one actor. JavaScriptCore serializes
+/// every call into a virtual machine, so handing a runtime to the core is safe.
+public final class IrisCoreRuntime: @unchecked Sendable {
   let context: JSContext
   private let validator: JSValue
 
