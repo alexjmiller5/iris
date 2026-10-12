@@ -21,6 +21,8 @@ describe('search table settings', () => {
 		expect(searchTableDetail(row('one', { rows: 1, textBytes: 12 }), 50_000)).toBe(
 			'1 record · about 12 bytes of text'
 		);
+		// An empty table has no text to estimate.
+		expect(searchTableDetail(row('empty', { rows: 0, textBytes: 0 }), 50_000)).toBe('0 records');
 		expect(
 			searchTableDetail(
 				row('provenance', { indexed: false, defaultExclusion: 'provenance' }),

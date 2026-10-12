@@ -17,10 +17,12 @@ extension WorkspaceModel {
 enum SearchTableText {
   /// One line under a table's switch: what indexing it costs and why its default is off.
   static func detail(_ table: CoreSearchTable, sizeLimit: Int) -> String {
-    var parts = [
-      "\(table.rows.formatted()) \(table.rows == 1 ? "record" : "records")",
-      "about \(ByteCountFormatter.string(fromByteCount: Int64(table.textBytes), countStyle: .file)) of text",
-    ]
+    var parts = ["\(table.rows.formatted()) \(table.rows == 1 ? "record" : "records")"]
+    if table.textBytes > 0 {
+      let size = ByteCountFormatter()
+      size.countStyle = .file
+      parts.append("about \(size.string(fromByteCount: Int64(table.textBytes))) of text")
+    }
     switch table.defaultExclusion {
     case .provenance: parts.append("Off by default: provenance links")
     case .size: parts.append("Off by default: over \(sizeLimit.formatted()) records")

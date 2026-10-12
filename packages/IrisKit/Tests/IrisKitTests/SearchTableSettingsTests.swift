@@ -53,6 +53,12 @@ struct SearchTableSettingsTests {
     #expect(
       SearchTableText.detail(provenance, sizeLimit: 50_000)
         == "1 record · about 12 bytes of text · Off by default: provenance links")
+    var empty = provenance
+    empty.defaultExclusion = nil
+    empty.rows = 0
+    empty.textBytes = 0
+    // An empty table has no text to estimate.
+    #expect(SearchTableText.detail(empty, sizeLimit: 50_000) == "0 records")
     #expect(SearchTableText.choice(table, indexed: true) == true)
     #expect(SearchTableText.choice(table, indexed: false) == nil)
     var included = table
