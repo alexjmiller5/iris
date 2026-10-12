@@ -1,6 +1,6 @@
 # wa-sqlite with FTS5
 
-Life UI's browser Worker uses this synchronous JS/WASM pair with the pinned
+Iris's browser Worker uses this synchronous JS/WASM pair with the pinned
 `wa-sqlite` JavaScript API and `OPFSCoopSyncVFS` from `apps/web/package.json`.
 The build keeps upstream's exports, authorizer, VFS, optimization and compile
 options, adding only `SQLITE_ENABLE_FTS5` through `WASQLITE_EXTRA_DEFINES`.
@@ -40,15 +40,15 @@ adds SQL probes only to the test bundle. Open a dedicated test tab at
 `http://iris-fts.localhost:5209/fts-fixture`, then run:
 
 ```sh
-LIFE_UI_TEST_CDP=http://127.0.0.1:9222 bun scripts/test-wa-sqlite.ts
+IRIS_TEST_CDP=http://127.0.0.1:9222 bun scripts/test-wa-sqlite.ts
 ```
 
 If Chrome initially shows its connection error page because the temporary
 server is not running yet, pass that tab's CDP target ID as
-`LIFE_UI_TEST_TARGET`. The script starts/stops its own server and clears only
+`IRIS_TEST_TARGET`. The script starts/stops its own server and clears only
 this reserved fixture origin. It retains the supplied tab for the caller to
-close. `LIFE_UI_TEST_URL` can change the port but not the reserved host/path.
-`LIFE_UI_TEST_WASM_DIR` selects another JS/WASM pair for regression comparison;
+close. `IRIS_TEST_URL` can change the port but not the reserved host/path.
+`IRIS_TEST_WASM_DIR` selects another JS/WASM pair for regression comparison;
 select `apps/web/node_modules/wa-sqlite/dist` to reproduce the missing-FTS5 RED.
 
 The fixture covers OPFS, accent folding, prefix matching, snippets in Markdown,
