@@ -469,8 +469,8 @@ by their first valid edit; Duplicate and a non-empty capture create when present
 A row opened from the list paints in the same frame from the listed row (web form
 `inert`, native hit testing off) while the editor reads the fresh full row and, native,
 its recovery journals off the main actor; nothing awaits the database before first
-paint. Reference labels read in one any-of request per field and show "Loading…", never
-"Unavailable", until read. Undo and rejected-edit review stay paused until their explicit
+paint. Reference labels read in one any-of request per field and show a placeholder pill,
+never "Unavailable", until read. Undo and rejected-edit review stay paused until their explicit
 Save draft; Done with unsaveable changes offers Keep draft and close or Discard.
 
 The web view toolbar holds the view switcher (its menu renames, copies, deletes and
@@ -485,6 +485,24 @@ flush it first, so Cmd-Z reverts the latest view edit. Search and Trash are brow
 state and are not saved. Below 700 px the chip row wraps (phones hide scrollbars);
 wider, it scrolls in its own row.
 
+Loading content shows skeleton placeholders shaped like it, never "Loading…" text or a
+spinner: web `Skeleton.svelte` (DOM node views use `skeleton.ts`) with the
+`--color-skeleton*` tokens and `.skeleton-bar`/`.skeleton-field` classes in `theme.css`,
+native `.skeleton()` and `SkeletonRows` (`Skeleton.swift`, redacted text with a passing
+highlight). The highlight stops under reduced motion; a web placeholder is `aria-busy` with
+a visually hidden label (`announce={false}` beside an existing status line), a native one is
+a single accessibility element with its label. Operation progress (saving, exports, file
+staging) and the sync pill are not content loading. A launching native window stays on the
+workspace shell's placeholders while `WorkspaceModel.restoring` (until `restoreAtLaunch`
+resolves) or an open is running; the welcome screen appears only when nothing is
+remembered or the restore failed, with its error. The web shell shows placeholders until the
+opened workspace's first catalog read (`workspaceReady`) and a page's first rows read
+(`rowsLoaded`); the empty-workspace guidance and empty-table messages wait for those reads.
+
+Empty values render blank in rows, cells and record property rows; assistive technology
+hears "Empty". A picker's or select's clear choice reads "None". A select with catalog
+choices offers no typed-value row unless its choices fail to load.
+
 Cell values are presentation only (`cell-values.ts`, `NativePropertyValue`): a
 `bool`, or an `int` whose only catalog options are 0 and 1, is a flag shown as a
 checkbox (and edited as one on web); `json` lists of plain values are chips,
@@ -492,9 +510,9 @@ objects read `key: value` and lists of records as a count; Markdown previews dro
 Notion-flavored tags (callout, details, mention-*, file, empty-block) and link
 targets; dates and UTC timestamps use the native format. Whole JSON numbers read
 as JavaScript writes them (`1`, never `1.0`). Unparseable source shows as stored.
-Chips wrap onto new lines (native `ChipFlow`) or clip at the cell edge (web) rather
-than all shrinking; web grid chips keep a word break between them so a cell's
-`aria-label` contains its visible text (axe label-in-name). Snake_case table names break after underscores (`BreakName`,
+Chips wrap onto new lines (native `ChipFlow`) or clip at the cell edge (web, unless the
+column wraps) rather than all shrinking; web grid chips keep a word break between them so a
+cell's `aria-label` contains its visible text (axe label-in-name). Snake_case table names break after underscores (`BreakName`,
 `wrappingAtUnderscores`, display only), never mid-word or by hyphenation. Table
 lists carry no sync details: rejections and skipped tables live in the pill and its
 status sheet; a skipped current table shows its own notice.
@@ -526,6 +544,12 @@ dictionary) show that status with its catalog option description as help
 
 Saved view version 2 supports bounded all/any groups, host-resolved Today,
 ordered option/value sorts, literal row actions and interleaved action columns.
+Its optional `wrap` lists the columns whose cells wrap their whole value (absent: none):
+the web column header menu's Wrap text and Columns > Wrap all columns, the Mac column
+header menu, and the native Views sheet's Layout > Wrap all columns. Web rows grow (virtua
+measures them), Mac rows take the measured height of their wrapped cells and iPhone list
+rows show wrapped properties in full. It saves through the ordinary view autosave (Undo)
+and never re-reads rows.
 Preserve every clause and source order when editing or reopening. Browser Intl
 and native Foundation resolve the saved timezone's configured local day boundary,
 defaulting to midnight, and refresh there and on foreground entry. A definition
@@ -654,7 +678,8 @@ Resolve, online reads). SQLite closes only after suspended owners unwind; any
 still suspended after a 5-second grace is failed and reported as dropped, so close
 never waits on the hub. Queued duplicate syncs do not block eligible foreground
 requests before close. Keep the sync file lock while suspended.
-Native destination waits stay visible outside scrolling content and offer Cancel.
+Native destination waits stay visible outside scrolling content as a placeholder card
+and offer Cancel.
 Cancellation invalidates only the navigation request and immediately releases its
 controls; late results and old defers must not affect a newer request. It never
 cancels sync or removes a core continuation. Canceled reloads preserve displayed
@@ -750,7 +775,7 @@ persisted layout comes from the saved-view definition. The AppKit grid supports
 macOS 14 onward. Double-click edits the clicked property in the shared inline
 editor; Return edits the selected row's title. The explicit open action and row
 menu retain the full editor. Column header menus sort (saved like the Sort popover)
-or add a property's filter chip and open its editor.
+or add a property's filter chip and open its editor, or toggle Wrap text.
 Keep active drafts and their action controls mounted through catalog/row refreshes;
 measure editor height before retiling the row. Disable workspace replacement and
 new-record actions while an inline editor is active. Close workspace is always
@@ -893,6 +918,8 @@ Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
 - `test-view-defaults.ts`: preferred view, explicit view links, deleted-preference notice.
 - `test-view-options.ts`: Today boundary/timezone, group rule types, row actions guard.
 - `test-view-presentations.ts`: Calendar, Gallery and Board layouts with synced moves.
+- `test-grid-presentation.ts`: placeholders while a workspace and its rows load (never the
+  empty-workspace guidance), blank empty cells, Wrap text and Wrap all columns with Undo.
 - `test-workflow-views.ts`: any-of groups, Today across midnight, row actions through
   sync, Save as new view preserving actions, groups and timezone.
 - `test-editor-links.ts`: /person mention and /view embed through the slash menu,

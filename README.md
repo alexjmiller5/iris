@@ -79,6 +79,8 @@ back in (instantly with reduced motion); the choice is remembered on this device
   views in one keyboard list. Unavailable views explain why they cannot open.
 - **Columns** chooses, reorders and sizes the displayed properties. Record stays
   visible first, and hidden properties remain available when editing the record.
+  **Wrap all columns** there, or **Wrap text** in a column header's menu, shows a
+  column's whole value; its rows grow to fit and the view keeps the setting.
 - Create/edit typed fields, search related records by their display names,
   write Markdown with rich formatting or source editing, and move records to trash or restore them.
 - Website, email and phone fields offer explicit open actions. Websites open in
@@ -229,7 +231,8 @@ See [page captures](docs/page-captures.md) for preview limits and the file-acces
 Dates use a native picker. **Date source** holds the original text and **Clear
 date** for an explicit unset value. Datetimes display in UTC; untouched milliseconds remain
 intact. An invalid date stays visible until edited or explicitly replaced.
-Boolean fields distinguish **Not set**, **True** and **False**. Website, email
+Boolean fields distinguish **None**, **True** and **False**; a select's clear choice is
+also **None**. Empty values elsewhere stay blank (VoiceOver reads "Empty"). Website, email
 and phone fields offer explicit system open actions for supported addresses.
 Editing controls use core's current table advisory and show why editing is
 unavailable. The advisory refreshes after successful or failed sync; incomplete
@@ -256,6 +259,11 @@ sort while retaining later sort rules. Editors always read complete records,
 including fields hidden by a view. Updating or deleting an applied view uses the
 revision opened by the user; refreshing the list cannot silently adopt another
 client's changes. Reopen a changed view before updating it.
+
+On iPhone and Mac, **Views > Layout > Wrap all columns** shows every listed property
+in full (the Mac column header menu also has **Wrap text** per column). While content
+loads, rows, labels and panels show soft placeholder shapes instead of spinners, and a
+launch that reopens a remembered workspace never flashes the welcome screen.
 
 In **Views > Properties**, choose which properties appear and drag to reorder
 them. **Title only** keeps the record's title prominent. Apply the layout, then
