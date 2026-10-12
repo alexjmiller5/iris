@@ -166,6 +166,11 @@ private struct QuickFindResults: View {
           .accessibilityIdentifier(accessibilityID(entry.id))
           .id(entry.id)
         }
+        if model.search.loading || model.metadata.loading {
+          SkeletonRows(
+            count: model.entries.isEmpty ? 5 : 2,
+            label: model.search.loading ? "Searching" : "Loading destinations")
+        }
         if textSize.isAccessibilitySize {
           Section { QuickFindNotes(incomplete: incomplete, indexing: indexing) }
         }
@@ -237,7 +242,7 @@ private struct QuickFindEntryRow: View {
         }
       }
       Spacer()
-      if opening { ProgressView() }
+      if opening { Text("Open").skeleton("Opening") }
     }
     .frame(maxWidth: .infinity, alignment: .leading).contentShape(.rect)
   }
@@ -271,9 +276,6 @@ private struct QuickFindFooter: View {
       Text(count == 1 ? "1 result" : "\(count) results")
         .font(.caption).foregroundStyle(.secondary)
       Spacer()
-      if searching || discovering {
-        ProgressView().accessibilityLabel(searching ? "Searching" : "Loading destinations")
-      }
       if canLoadMore {
         Button("Load more", action: loadMore)
           .disabled(searching || opening)

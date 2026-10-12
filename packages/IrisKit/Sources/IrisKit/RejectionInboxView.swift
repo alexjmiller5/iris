@@ -44,7 +44,7 @@ struct RejectionInboxView: View {
           .disabled(model.loading || isBusy)
           .accessibilityIdentifier("load-more-rejected-edits")
       }
-      if model.loading { ProgressView("Loading rejected edits…") }
+      if model.loading { SkeletonRows(count: 2, label: "Loading rejected edits") }
     }
   }
 }

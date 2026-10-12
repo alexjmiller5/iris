@@ -237,7 +237,10 @@ struct PageCaptureView: View {
                 .accessibilityLabel("Captured page screenshot")
                 .accessibilityAddTraits(.isImage).accessibilityIdentifier("capture-preview")
             }
-            if model.isLoading { ProgressView("Preparing capture…") }
+            if model.isLoading && model.previewData == nil {
+              Rectangle().fill(.quaternary).frame(maxWidth: .infinity).frame(height: 240)
+                .skeleton("Preparing capture")
+            }
             if let reason = model.unavailableReason {
               Text(reason).foregroundStyle(.secondary).accessibilityIdentifier(
                 "capture-unavailable")

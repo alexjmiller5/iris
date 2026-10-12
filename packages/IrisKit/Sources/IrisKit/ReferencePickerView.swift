@@ -39,10 +39,14 @@ struct ReferenceField: View {
             ReferencePickerView(field: field, model: picker, value: $value)
               .onAppear(perform: onOpen)
           } label: {
-            Text(
-              picker.selection.ids.isEmpty
-                ? "Choose \(field.type == "multi_ref" ? "records" : "a record")"
-                : picker.selection.ids.map { picker.label(for: $0) }.joined(separator: ", "))
+            if picker.selection.ids.contains(where: picker.labelLoading) {
+              Text("Selected record").skeleton()
+            } else {
+              Text(
+                picker.selection.ids.isEmpty
+                  ? "Choose \(field.type == "multi_ref" ? "records" : "a record")"
+                  : picker.selection.ids.map { picker.label(for: $0) }.joined(separator: ", "))
+            }
           }
           .accessibilityIdentifier("field-\(field.id)")
         }
@@ -54,7 +58,11 @@ struct ReferenceField: View {
               onOpen()
               onOpenRecord(picker.table, id)
             } label: {
-              Label(picker.label(for: id), systemImage: "arrow.up.right")
+              if picker.labelLoading(for: id) {
+                Text("Related record").skeleton()
+              } else {
+                Label(picker.label(for: id), systemImage: "arrow.up.right")
+              }
             }
             .buttonStyle(.borderless)
             .disabled(!canOpen)
@@ -91,7 +99,11 @@ private struct ReferencePickerView: View {
         Section("Selected") {
           ForEach(Array(model.selection.ids.enumerated()), id: \.offset) { _, id in
             HStack {
-              Text(model.label(for: id))
+              if model.labelLoading(for: id) {
+                Text("Selected record").skeleton()
+              } else {
+                Text(model.label(for: id))
+              }
               Spacer()
               Button {
                 model.remove(id)
@@ -143,7 +155,9 @@ private struct ReferencePickerView: View {
         if model.canLoadMore {
           Button("Load more") { Task { await model.reload(more: true) } }.disabled(model.loading)
         }
-        if model.loading { ProgressView() }
+        if model.loading {
+          SkeletonRows(count: model.rows.isEmpty ? 5 : 2, label: "Loading records")
+        }
         if let error = model.error { Text(error).foregroundStyle(.red) }
       }
     }

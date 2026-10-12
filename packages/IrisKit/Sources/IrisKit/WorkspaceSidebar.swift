@@ -122,7 +122,11 @@ private struct RecentDestinationRow: View {
       VStack(alignment: .leading, spacing: 3) {
         Button(action: onOpen) {
           VStack(alignment: .leading, spacing: 3) {
-            Text(entry.label).foregroundStyle(.primary).lineLimit(2)
+            if entry.loading {
+              Text("Recent destination").skeleton("Loading recent")
+            } else {
+              Text(entry.label).foregroundStyle(.primary).lineLimit(2)
+            }
             if entry.destination.rowID != nil {
               Text("Record · \(entry.destination.table)").font(.caption).foregroundStyle(.secondary)
             } else if entry.destination.viewID != nil {
@@ -141,7 +145,6 @@ private struct RecentDestinationRow: View {
           Text(reason).font(.caption).foregroundStyle(.secondary)
         }
       }
-      if entry.loading { ProgressView().controlSize(.small).accessibilityLabel("Loading recent") }
       Button(action: onRemove) {
         Image(systemName: "xmark").frame(minWidth: 28, minHeight: 28)
       }

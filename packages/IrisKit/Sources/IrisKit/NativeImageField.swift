@@ -89,7 +89,7 @@ struct NativeImagePreview: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       } else {
-        ProgressView().accessibilityLabel("Loading image")
+        Rectangle().fill(.quaternary).skeleton("Loading image")
       }
     }
     .frame(width: size, height: size)

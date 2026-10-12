@@ -872,7 +872,6 @@ public struct WorkspaceView: View {
         #endif
         Text("A new local workspace includes a sample note. The sample preview is temporary.")
           .font(.caption).foregroundStyle(.secondary)
-        if model.loading { ProgressView() }
         if let error = model.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
       }
       .disabled(model.loading)
@@ -1049,7 +1048,7 @@ public struct WorkspaceView: View {
           Button("Load more") { Task { await model.reload(more: true) } }
             .disabled(model.loading)
         }
-        if model.loading { ProgressView().frame(maxWidth: .infinity) }
+        if model.loading && displayedRows.isEmpty { SkeletonRows(count: 6) }
       }
       #if os(iOS)
         .contentMargins(.top, 0, for: .scrollContent)
@@ -1217,14 +1216,20 @@ public struct WorkspaceView: View {
               ContentUnavailableView(
                 model.trash ? "Trash is empty" : "No records", systemImage: "tray",
                 description: Text("Create a record or try a different search or filter."))
+            } else if displayedRows.isEmpty {
+              SkeletonRows(count: 8).padding(.horizontal).padding(.top, 36)
+                .frame(maxHeight: .infinity, alignment: .top)
             }
           }
           HStack {
-            Text(
-              model.rows.count == 1 ? "1 record loaded" : "\(model.rows.count) records loaded"
-            ).font(.caption).foregroundStyle(.secondary)
+            if model.loading && model.rows.isEmpty {
+              Text("Records loaded").font(.caption).skeleton("Loading records")
+            } else {
+              Text(
+                model.rows.count == 1 ? "1 record loaded" : "\(model.rows.count) records loaded"
+              ).font(.caption).foregroundStyle(.secondary)
+            }
             Spacer()
-            if model.loading { ProgressView().controlSize(.small) }
             if model.canLoadMore {
               Button("Load more") { Task { await model.reload(more: true) } }
                 .disabled(model.loading)

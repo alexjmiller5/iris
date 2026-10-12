@@ -46,7 +46,7 @@ struct OnlineBrowseView: View {
                 }
                 Spacer()
                 if model.opening.map({ Data($0.utf8) }) == row.byteExactID {
-                  ProgressView()
+                  Text("Open").skeleton("Opening record")
                 } else {
                   Image(systemName: "chevron.right").foregroundStyle(.tertiary).accessibilityHidden(true)
                 }
@@ -54,6 +54,9 @@ struct OnlineBrowseView: View {
             }
             .buttonStyle(.plain).disabled(model.loading || model.opening != nil)
             .accessibilityIdentifier("online-record-\(row.id)")
+          }
+          if model.loading {
+            SkeletonRows(count: model.rows.isEmpty ? 6 : 2, label: "Loading online records")
           }
         }
         HStack {
@@ -63,9 +66,6 @@ struct OnlineBrowseView: View {
             if let error = model.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
           }
           Spacer()
-          if model.loading || model.opening != nil {
-            ProgressView().accessibilityLabel("Loading online records")
-          }
           if model.nextCursor != nil || model.error != nil {
             Button(model.error == nil ? "Load more" : "Try again") {
               Task { await model.reload(more: model.nextCursor != nil) }

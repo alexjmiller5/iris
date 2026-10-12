@@ -119,8 +119,10 @@ struct InlineMarkdownField: View {
           .accessibilityLabel("\(session.document.label) Markdown source")
           .accessibilityIdentifier("inline-markdown-source")
         } else if !session.ready {
-          VStack(spacing: 8) {
-            ProgressView("Loading editor…")
+          VStack(alignment: .leading, spacing: 8) {
+            Text("A paragraph of the document placeholder text that fills the editor line")
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .skeleton("Loading editor")
             Button("Use source editor") { editor.usingSource = true }
           }
         }

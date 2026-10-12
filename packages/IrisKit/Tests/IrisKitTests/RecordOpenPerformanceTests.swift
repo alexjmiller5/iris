@@ -111,7 +111,7 @@ struct RecordOpenPerformanceTests {
           reads += 1
           return try await workspace.rows(view: $0)
         }
-        #expect(picker.label(for: picker.selection.ids[0]) == "Loading…")
+        #expect(picker.label(for: picker.selection.ids[0]) == "Loading")
         await picker.resolveSelected()
         for id in picker.selection.ids { #expect(picker.label(for: id).hasPrefix("Target ")) }
       }

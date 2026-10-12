@@ -113,9 +113,14 @@ final class ReferencePickerModel {
 
   func cancelCreation() { creation = nil }
 
-  /// "Loading…" until the selection's labels are read, so nothing reads as unavailable early.
+  /// "Loading" (shown as a placeholder) until the selection's labels are read, so nothing
+  /// reads as unavailable early.
   func label(for id: String) -> String {
-    labels[Data(id.utf8)] ?? (resolved ? "Unavailable" : "Loading…")
+    labels[Data(id.utf8)] ?? (resolved ? "Unavailable" : "Loading")
+  }
+
+  func labelLoading(for id: String) -> Bool {
+    labels[Data(id.utf8)] == nil && !resolved
   }
 
   func choose(_ row: WorkspaceRow) {

@@ -73,7 +73,8 @@ struct ReferencePickerTests {
     #expect(model.rows.map(\.label) == ["Chosen name"])
     #expect(model.selection.ids == ["missing-id", "chosen-id"])
     // Unread selections read as loading, never as unavailable, until resolved.
-    #expect(model.label(for: "missing-id") == "Loading…")
+    #expect(model.label(for: "missing-id") == "Loading")
+    #expect(model.labelLoading(for: "missing-id"))
     #expect(model.label(for: "chosen-id") == "Chosen name")
   }
 
@@ -122,10 +123,11 @@ struct ReferencePickerTests {
       return ids.contains("existing")
         ? [WorkspaceRow(record: ["id": .string("existing")], label: "Named record")] : []
     }
-    #expect(model.label(for: "existing") == "Loading…")
+    #expect(model.label(for: "existing") == "Loading")
     await model.resolveSelected()
     #expect(lookedUp == ["missing", "existing"])
     #expect(model.label(for: "existing") == "Named record")
+    #expect(!model.labelLoading(for: "existing") && !model.labelLoading(for: "missing"))
     #expect(model.label(for: "missing") == "Unavailable")
     #expect(model.selection.value == #"["missing","existing"]"#)
   }

@@ -93,7 +93,7 @@ struct LinkedFromView: View {
           .disabled(!canOpen)
         }
         if model.loading {
-          ProgressView("Loading links")
+          SkeletonRows(count: 2, label: "Loading links")
         } else if let error = model.error {
           Text(error).foregroundStyle(.red)
           Button("Retry links") { Task { await model.load(more: !model.rows.isEmpty) } }
@@ -107,7 +107,7 @@ struct LinkedFromView: View {
           Button("Load more links") { Task { await model.load(more: true) } }
         }
       } else {
-        ProgressView("Loading links")
+        SkeletonRows(count: 2, label: "Loading links")
       }
     } header: {
       if model?.indexing == true {

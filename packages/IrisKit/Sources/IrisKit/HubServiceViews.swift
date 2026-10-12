@@ -80,7 +80,7 @@ struct HubUsageView: View {
           )
         }
       } else if services.usageRefreshing {
-        ProgressView("Loading usage…")
+        SkeletonRows(count: 3, label: "Loading usage")
       }
       if let error = services.usageError {
         Text(error).foregroundStyle(.red)

@@ -84,7 +84,7 @@ struct NativeChoiceField: View {
       }
       .task(id: field.property["options_sql"]?.text) { await model.refresh() }
       .onDisappear { model.cancel() }
-      if model.loading { ProgressView("Loading choices") }
+      if model.loading { Text("Choices placeholder").skeleton("Loading choices") }
       if let error = model.error {
         Text(error).font(.caption).foregroundStyle(.red)
         Button("Retry choices") { Task { await model.refresh() } }

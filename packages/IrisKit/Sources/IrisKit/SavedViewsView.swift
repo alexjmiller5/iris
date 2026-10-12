@@ -79,7 +79,7 @@ struct SavedViewsView: View {
               }
             }.buttonStyle(.borderless)
           }
-          if loading { ProgressView().accessibilityLabel("Loading saved views") }
+          if loading { SkeletonRows(count: 3, label: "Loading saved views", compact: true) }
           Button("Refresh views") { Task { await refresh() } }.disabled(loading)
         } header: {
           Text("\(context?.table ?? "Workspace") views")

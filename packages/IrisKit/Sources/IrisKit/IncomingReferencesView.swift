@@ -11,7 +11,7 @@ struct IncomingReferencesView: View {
     Section {
       if let model {
         if model.loading {
-          ProgressView("Loading incoming references")
+          SkeletonRows(count: 2, label: "Loading incoming references")
         } else if let error = model.error {
           Text(error).foregroundStyle(.red)
           Button("Retry incoming references") { Task { await model.refresh() } }
@@ -24,7 +24,7 @@ struct IncomingReferencesView: View {
           }
         }
       } else {
-        ProgressView("Loading incoming references")
+        SkeletonRows(count: 2, label: "Loading incoming references")
       }
     } header: {
       Text("Incoming references")
@@ -67,7 +67,7 @@ private struct IncomingReferenceGroupView: View {
         Text(reason).font(.caption).foregroundStyle(.secondary)
       }
       if group.loading {
-        ProgressView("Loading records")
+        SkeletonRows(count: 2, label: "Loading records")
       } else if let error = group.error {
         Text(error).foregroundStyle(.red)
         Button("Retry records") { Task { await model.load(group.id, more: group.loaded) } }

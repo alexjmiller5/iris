@@ -9,8 +9,10 @@ struct DestinationProgress<Content: View>: View {
     content.overlay(alignment: .bottom) {
       if isOpening {
         HStack(spacing: 12) {
-          ProgressView().accessibilityLabel("Opening destination")
-          Text("Opening…")
+          VStack(alignment: .leading, spacing: 6) {
+            Text("Opening destination placeholder").font(.subheadline)
+            Text("Opening placeholder").font(.caption)
+          }.skeleton("Opening destination")
           Spacer()
           Button("Cancel", action: cancel)
             .accessibilityIdentifier("cancel-destination")
