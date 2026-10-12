@@ -13,7 +13,9 @@
 		properties,
 		columns,
 		widths,
-		onChange
+		onChange,
+		wrapAll = false,
+		onWrapAll
 	}: {
 		/** Supply configurable properties only; the parent keeps Record visible and first. */
 		properties: Property[];
@@ -22,6 +24,10 @@
 		widths: Record<string, number>;
 		/** Emitted only after user edits. Hidden columns retain their remembered widths. */
 		onChange: (columns: string[], widths: Record<string, number>) => void;
+		/** Every shown column, Record included, wraps its text. */
+		wrapAll?: boolean;
+		/** Absent when the view cannot save layout changes. */
+		onWrapAll?: (wrap: boolean) => void;
 	} = $props();
 
 	const id = $props.id();
@@ -70,6 +76,15 @@
 	</summary>
 	<div class="panel">
 		<p class="hint">Record stays visible and first.</p>
+		{#if onWrapAll}<label class="choice wrap-all">
+				<input
+					type="checkbox"
+					aria-label="Wrap all columns"
+					checked={wrapAll}
+					onchange={(event) => onWrapAll?.(event.currentTarget.checked)}
+				/>
+				<span>Wrap all columns</span>
+			</label>{/if}
 		<fieldset class="choices">
 			<legend>Show properties</legend>
 			{#each [...available.values()] as property (property.col)}

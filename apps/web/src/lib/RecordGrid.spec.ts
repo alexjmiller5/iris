@@ -228,6 +228,44 @@ test('flag cells show a checkbox state and json lists show chips', () => {
 	window.close();
 });
 
+test('wrapped columns let their cells wrap and the header menu toggles Wrap text', () => {
+	const window = new Window();
+	const long = 'A long note that keeps going well past the width of its column';
+	window.document.body.innerHTML = render(RecordGrid, {
+		props: {
+			rows: [{ id: 'a', title: 'Alpha', note: long, tags: '["one","two","three"]' }],
+			properties: [
+				{ col: 'title', label: 'Title' },
+				{ col: 'note', label: 'Note', type: 'text' },
+				{ col: 'tags', label: 'Tags', type: 'multi_select' }
+			],
+			widths: {},
+			wrapped: ['note', 'tags'],
+			busy: false,
+			canCreate: false,
+			format: (_p: unknown, value: unknown) => String(value ?? ''),
+			canEdit: () => false,
+			onbegin: async () => false as const,
+			oncommit: async () => ({}),
+			onopen: async () => false,
+			onnew: async () => false,
+			onduplicate: async () => false,
+			onwrap: () => {}
+		} as never
+	}).body;
+	const cell = (column: string) =>
+		window.document.querySelector(`[role="gridcell"][data-column="${column}"]`);
+	expect(cell('note')?.classList.contains('wrap')).toBe(true);
+	expect(cell('tags')?.classList.contains('wrap')).toBe(true);
+	expect(cell('title')?.classList.contains('wrap')).toBe(false);
+	const item = window.document.querySelector('[role="menuitemcheckbox"]');
+	expect(item?.textContent?.trim()).toBe('Wrap text');
+	// Without a sort handler the header still opens the menu for wrapping.
+	expect(window.document.querySelector('[aria-label="Note column options"]')).not.toBeNull();
+	expect(window.document.querySelector('[role="menuitem"]')).toBeNull();
+	window.close();
+});
+
 test('rows still loading show grid placeholders instead of an empty grid', () => {
 	const window = new Window();
 	window.document.body.innerHTML = render(RecordGrid, {

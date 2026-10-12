@@ -545,7 +545,9 @@
 		included = $state<Record<string, boolean>>({});
 	let offset = $state(0);
 	let columns = $state<string[] | null>(null),
-		widths = $state<Record<string, number>>({});
+		widths = $state<Record<string, number>>({}),
+		// Columns whose cells wrap their full text (saved view `wrap`).
+		wrap = $state<string[]>([]);
 	let savedViews = $state<SavedViewRecord[]>([]),
 		viewsUnavailable = $state<string | null>(null),
 		chosenView = $state<SavedViewRecord | null>(null),
@@ -616,6 +618,12 @@
 			.map(({ reason }) => reason)
 	);
 	const gridColumns = $derived([recordProperty, ...flagReasons, ...gridProperties]);
+	const allWrapped = $derived(gridColumns.every((p) => wrap.includes(p.col)));
+	/** Wrapping is layout only: it saves with the view and never re-reads rows. */
+	function changeWrap(next: string[]) {
+		wrap = next;
+		viewAutosave.change();
+	}
 	const canEditCell = (p: Property) =>
 		!system.has(p.col) &&
 		!p.derived_by &&
@@ -1530,6 +1538,7 @@
 		offset = 0;
 		columns = null;
 		widths = {};
+		wrap = [];
 		sorts = [];
 		filterGroups = [];
 		actions = [];
@@ -1647,7 +1656,8 @@
 			sort: sorts,
 			search,
 			trash,
-			widths
+			widths,
+			...(wrap.length ? { wrap } : {})
 		});
 	}
 	/** What autosave writes: search and trash are browsing state, so the stored
@@ -1792,6 +1802,7 @@
 		const definition = view?.definition;
 		columns = definition?.columns?.filter((col) => col !== (display ?? 'id')) ?? null;
 		widths = { ...definition?.widths };
+		wrap = [...(definition?.wrap ?? [])];
 		filters = definition?.filters?.map((filter) => ({ ...filter })) ?? [];
 		filterGroups = $state.snapshot(definition?.groups ?? []);
 		actions = $state.snapshot(definition?.actions ?? []);
@@ -3308,6 +3319,11 @@
 							columns={visibleColumns}
 							{widths}
 							onChange={changeColumns}
+							wrapAll={allWrapped}
+							onWrapAll={chosenView
+								? (on) =>
+										changeWrap(on ? [...new Set([...wrap, ...gridColumns.map((p) => p.col)])] : [])
+								: undefined}
 						/>
 						{#if blocked}<p role="status" aria-label="Editing availability" class="notice">
 								{writePermission?.reason?.message ?? 'Checking editing rules…'}
@@ -3371,6 +3387,11 @@
 										: undefined}
 									properties={gridColumns}
 									{widths}
+									wrapped={wrap}
+									onwrap={chosenView && !busy && !navigationLoading
+										? (column, on) =>
+												changeWrap(on ? [...wrap, column] : wrap.filter((c) => c !== column))
+										: undefined}
 									loading={!rowsLoaded}
 									busy={busy || gridActionOpening !== null}
 									canCreate={!navigationLoading && !readOnly && !blocked && !trash}

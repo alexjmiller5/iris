@@ -13,7 +13,8 @@
 		IconSortAscending,
 		IconSortDescending,
 		IconSquare,
-		IconSquareCheckFilled
+		IconSquareCheckFilled,
+		IconTextWrap
 	} from '@tabler/icons-svelte';
 	import { anchored } from './popover';
 	import type { Property, Row, RowAction, ViewLayoutItem } from 'iris-core/client';
@@ -60,7 +61,9 @@
 		canRunAction = false,
 		onaction = async () => {},
 		sortOf = () => null,
-		onsort
+		onsort,
+		wrapped = [],
+		onwrap
 	}: {
 		rows: Row[];
 		selectedIds?: string[];
@@ -95,7 +98,12 @@
 		sortOf?: (column: string) => 'asc' | 'desc' | null;
 		/** Column header menu: sort the view by this column. */
 		onsort?: (column: string, direction: 'asc' | 'desc') => void;
+		/** Columns whose cells wrap their full text; rows grow to fit. */
+		wrapped?: string[];
+		/** Column header menu: turn Wrap text on or off for this column. */
+		onwrap?: (column: string, wrap: boolean) => void;
 	} = $props();
+	const columnMenu = $derived(!!onsort || !!onwrap);
 	const gridId = $props.id();
 	let headerMenu = $state<HTMLElement>(),
 		headerAnchor = $state<HTMLElement>(),
@@ -103,6 +111,10 @@
 	function sortBy(direction: 'asc' | 'desc') {
 		headerMenu?.hidePopover();
 		onsort?.(headerColumn, direction);
+	}
+	function toggleWrap() {
+		headerMenu?.hidePopover();
+		onwrap?.(headerColumn, !wrapped.includes(headerColumn));
 	}
 	let root: HTMLDivElement, virtualizer: Virtualizer<Row>;
 	let scrollRef: HTMLDivElement | undefined = $state();
@@ -364,7 +376,7 @@
 	</div>
 {/snippet}
 <div bind:this={root} class="record-grid">
-	{#if onsort}<div
+	{#if columnMenu}<div
 			id={`${gridId}-header-menu`}
 			popover="auto"
 			role="menu"
@@ -373,12 +385,18 @@
 			bind:this={headerMenu}
 			use:anchored={{ anchor: () => headerAnchor }}
 		>
-			<button type="button" role="menuitem" onclick={() => sortBy('asc')}
-				><IconSortAscending size={16} aria-hidden="true" />Sort ascending</button
-			>
-			<button type="button" role="menuitem" onclick={() => sortBy('desc')}
-				><IconSortDescending size={16} aria-hidden="true" />Sort descending</button
-			>
+			{#if onsort}<button type="button" role="menuitem" onclick={() => sortBy('asc')}
+					><IconSortAscending size={16} aria-hidden="true" />Sort ascending</button
+				>
+				<button type="button" role="menuitem" onclick={() => sortBy('desc')}
+					><IconSortDescending size={16} aria-hidden="true" />Sort descending</button
+				>{/if}
+			{#if onwrap}<button
+					type="button"
+					role="menuitemcheckbox"
+					aria-checked={wrapped.includes(headerColumn)}
+					onclick={toggleWrap}><IconTextWrap size={16} aria-hidden="true" />Wrap text</button
+				>{/if}
 		</div>{/if}
 	<div bind:this={scrollRef} class="grid-scroll">
 		<table
@@ -416,7 +434,7 @@
 								: sorted === 'desc'
 									? 'descending'
 									: undefined}
-							>{#if onsort && item.kind === 'column'}<button
+							>{#if columnMenu && item.kind === 'column'}<button
 									type="button"
 									class="column-menu"
 									aria-haspopup="menu"
@@ -499,6 +517,7 @@
 										? 0
 										: -1}
 								class:pinned={columnIndex === 0}
+								class:wrap={wrapped.includes(property.col)}
 								class:active
 								class:cursor={cursor?.rowId === cell.rowId && cursor.column === cell.column}
 								onclick={(event) => {
@@ -718,6 +737,12 @@
 	.header-menu :global(svg) {
 		color: var(--color-muted);
 	}
+	.header-menu [aria-checked='true'] {
+		color: var(--color-accent);
+	}
+	.header-menu [aria-checked='true'] :global(svg) {
+		color: var(--color-accent);
+	}
 	.cursor {
 		box-shadow: inset 0 0 0 2px var(--color-accent);
 	}
@@ -737,6 +762,15 @@
 	.cell-chips {
 		display: flex;
 		gap: 4px;
+	}
+	/* Wrap text: the whole value shows and the row grows to the tallest cell. */
+	.wrap .cell-value,
+	.wrap .record-link {
+		white-space: normal;
+		overflow-wrap: anywhere;
+	}
+	.wrap .cell-chips {
+		flex-wrap: wrap;
 	}
 	.cell-flag {
 		display: flex;
