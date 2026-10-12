@@ -154,6 +154,40 @@ test('select and multi-select cells show option chips tinted by catalog color', 
 	window.close();
 });
 
+test('a multi-chip cell is named by text that contains its visible chip words', () => {
+	const window = new Window();
+	window.document.body.innerHTML = render(RecordGrid, {
+		props: {
+			rows: [{ id: 'a', title: 'Alpha', tags: '["Legacy","Dynamic"]' }],
+			properties: [
+				{ col: 'title', label: 'Record' },
+				{ col: 'tags', label: 'Tags', type: 'multi_select' }
+			],
+			widths: {},
+			busy: false,
+			canCreate: false,
+			format: (p, value) =>
+				p.col === 'tags' ? JSON.parse(String(value)).join(', ') : String(value ?? ''),
+			canEdit: () => true,
+			onbegin: async () => false as const,
+			oncommit: async () => ({}),
+			onopen: async () => false,
+			onnew: async () => false,
+			onduplicate: async () => false
+		}
+	}).body;
+	const cell = window.document.querySelector('[data-column="tags"]')!;
+	// axe's label-in-name rule: the visible text, words apart, inside the name.
+	const words = (text: string) =>
+		text
+			.toLowerCase()
+			.replace(/[^\p{L}\p{N}]+/gu, ' ')
+			.trim();
+	expect(words(cell.textContent ?? '')).toBe('legacy dynamic');
+	expect(words(cell.getAttribute('aria-label') ?? '')).toContain(words(cell.textContent ?? ''));
+	window.close();
+});
+
 test('flag cells show a checkbox state and json lists show chips', () => {
 	const window = new Window();
 	window.document.body.innerHTML = render(RecordGrid, {

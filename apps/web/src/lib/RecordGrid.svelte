@@ -533,7 +533,9 @@
 									>
 								{:else if chipValues(property, row[property.col])}<span
 										class="cell-value cell-chips"
-										>{#each chipValues(property, row[property.col]) ?? [] as value, index (index)}<OptionChip
+										>{#each chipValues(property, row[property.col]) ?? [] as value, index (index)}{#if index}
+												<!-- A word break between chips (the flex gap spaces them): the cell's
+												     name then contains its visible text. -->{' '}{/if}<OptionChip
 												{property}
 												{value}
 											/>{/each}</span
