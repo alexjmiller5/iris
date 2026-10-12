@@ -35,7 +35,7 @@ keys `table`, `view`, `row` and optional bounded `state` query JSON, each with i
 display snapshot (`label`, `trashed`, `unavailable`) once resolved. Identifiers are
 preserved byte for byte; record fields, credentials and endpoints are not saved in
 the preference payload. Version 1 files (tuples only) still read, as unresolved
-entries. The model shows stored snapshots from its first frame, refreshes in the
+entries that show a placeholder until their first refresh. The model shows stored snapshots from its first frame, refreshes in the
 background, and updates and stores an entry only when it changed.
 The existing draft store derives the workspace key so app-owned paths survive
 container relocation and canonical external files remain isolated. Files and

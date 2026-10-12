@@ -317,10 +317,10 @@ version 1 tuple-only history still reads, as unresolved entries. Identity is onl
 the tuple: the snapshot is a display cache, never used to navigate. The host writes
 it when it records a visit (the title, view or table it shows at that moment), so
 stored entries paint in the sidebar's first frame on launch or workspace open with
-no raw id or Loading. Labels then refresh from current local data in the background
+no raw id or placeholder. Labels then refresh from current local data in the background
 and the list updates, and the snapshot is stored again, only when one changed
-(rename, trash, unavailable). An entry never resolved on this device shows its raw
-id until it is. A plain table link (sidebar table, pinned table, Find's table entry,
+(rename, trash, unavailable). An entry never resolved on this device shows a placeholder
+pill until it is. A plain table link (sidebar table, pinned table, Find's table entry,
 a table recent) records a table visit (view null, labelled by the table, context
 "Table") even though core's `ensureDefaultView` opens it on the default view; only a
 chosen view (view switcher, view link, Find's view entry, Save as new view) records

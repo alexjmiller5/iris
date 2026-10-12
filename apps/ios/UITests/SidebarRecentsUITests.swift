@@ -40,7 +40,9 @@ final class SidebarRecentsUITests: XCTestCase {
     showSidebar(app)
     // The first sidebar frame already holds every stored title.
     XCTAssertEqual(recents.allElementsBoundByIndex.map(\.label), labels)
-    XCTAssertFalse(app.activityIndicators["Loading recent"].exists)
+    XCTAssertFalse(
+      app.descendants(matching: .any)
+        .matching(NSPredicate(format: "label CONTAINS %@", "Loading recent")).firstMatch.exists)
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "native-recents-cold-launch"
     shot.lifetime = .keepAlways

@@ -5,8 +5,8 @@ account workspace. The version 2 preference contains at most eight exact
 `{ table, view, row }` identifier tuples in newest-first order, each with its
 display snapshot `{ label, context, trash, unavailable }` once it has been shown
 resolved. It contains no credentials, endpoints, record bodies or query
-configuration. A version 1 preference (tuples only) still reads; its entries show
-their raw IDs until their first refresh, which stores their snapshots.
+configuration. A version 1 preference (tuples only) still reads; its entries show a
+placeholder until their first refresh, which stores their snapshots.
 
 Only completed navigation adds or moves an entry. Saves, sync, label refresh,
 failed navigation and cancelled discard leave the order unchanged. Reopening a
@@ -24,7 +24,7 @@ table visit.
 
 A visit stores the title, view name or table the page shows when it is recorded,
 and stored snapshots paint with the sidebar when a workspace opens, so a recent
-never flashes its ID or a Loading line. Labels then refresh from current local
+never flashes its ID or a placeholder. Labels then refresh from current local
 data in the background; an entry updates, and its snapshot is stored again, only
 when something changed (a rename, trash, or availability). The snapshot is display
 only: opening a recent always resolves its tuple. A missing table, view or record stays

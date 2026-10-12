@@ -797,7 +797,7 @@ try {
                 contexts: [...nav.querySelectorAll(".destination small")].map(
                   (el) => el.textContent,
                 ),
-                loading: nav.textContent!.includes("Loading…"),
+                loading: !!nav.querySelector('[aria-busy="true"]'),
               }
             : null;
           const last = state.recentFrames.at(-1);
