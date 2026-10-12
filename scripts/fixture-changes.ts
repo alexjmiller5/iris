@@ -16,6 +16,10 @@ export async function fixtureChanges(source: string) {
 		getWebSockets: () => [...sockets]
 	});
 	return {
+		/** Signal a change as the Worker does after a commit, for edits a fixture makes
+		 * directly in the hub database: connected clients pull at once. */
+		signal: (tables: string[] = []) =>
+			signal.fetch(new Request('https://change-signal/', { method: 'POST', body: JSON.stringify({ tables }) })),
 		CHANGES: {
 			idFromName: (name: string) => name,
 			get: () => ({ fetch: (url: string | Request, init?: RequestInit) => signal.fetch(url instanceof Request ? url : new Request(url, init)) })

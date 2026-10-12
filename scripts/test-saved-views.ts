@@ -1,6 +1,6 @@
 import { chromium, expect as base } from '@playwright/test';
 import { installCoreSchemas, regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, workspacePage, synced } from './test-origin';
+import { disposableOrigin, workspacePage, synced, recordReady, recordSaved } from './test-origin';
 
 // Synced saved views on a synthetic hub: projection with full edit rows, unsupported
 // definitions, Save as new view under a held write, discard cancellation, stale
@@ -12,7 +12,7 @@ const url=process.env.IRIS_TEST_URL??'http://iris-markdown.localhost:5198/worksp
 const origin=disposableOrigin(url);
 const source=process.argv[2];
 if(!source)throw Error('Provide the soma checkout');
-const {server,db,auth}=await regressionHub(source,origin);
+const {server,db,auth,changed}=await regressionHub(source,origin);
 await installCoreSchemas(db,source,['saved-views','view-defaults']);
 db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('agent-view','Only the second record','widgets',JSON.stringify({version:1,columns:['title','body'],filters:[{column:'title',op:'eq',value:'Second record'}],sort:[{column:'title',direction:'desc'},{column:'quantity',direction:'asc'}],widths:{body:430}}));
 db.db.query('INSERT INTO views(id,name,tbl,definition) VALUES (?,?,?,?)').run('future-view','A newer definition','widgets',JSON.stringify({version:99}));
@@ -102,11 +102,14 @@ try{
  await expect(headers).toHaveText(['Record','Body']);
  await expect(page.getByRole('button',{name:'Second record',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Second record',exact:true}).click();
- await page.getByRole('textbox',{name:'Title',exact:true}).fill('Unsaved title');
+ await recordReady(page);
+ // A valid edit saves itself; only a value the catalog refuses is left to discard.
+ await page.getByRole('textbox',{name:'Title',exact:true}).fill('');
+ await recordSaved(page);
  acceptDialog=false;
  await views.selectOption('agent-view');
  await expect(views).toHaveValue(copyId);
- await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Unsaved title');
+ await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('');
  acceptDialog=true;
  await page.getByRole('button',{name:'Close record',exact:true}).click();
  console.log('PASS: reopen keeps saved views and canceling discard preserves the current view and record draft');
@@ -115,6 +118,7 @@ try{
  await menu.getByLabel('View name',{exact:true}).fill('My unsaved rename');
  const remoteRevision=new Date(Date.now()+1000).toISOString();
  db.db.query('UPDATE views SET name=?,updated_at=?,hub_at=? WHERE id=?').run('Renamed elsewhere',remoteRevision,remoteRevision,copyId);
+ await changed(['views']);
  await expect(views).toContainText('Renamed elsewhere',{timeout:15000});
  await expect(menu.getByLabel('View name',{exact:true})).toHaveValue('My unsaved rename');
  await menu.getByRole('button',{name:'Rename',exact:true}).click();

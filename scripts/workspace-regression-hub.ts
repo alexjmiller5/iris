@@ -44,7 +44,7 @@ export async function regressionHub(source: string, origin: string, port = 0, op
 		const response = await handler.fetch(request, { DB: db, HUB_TOKEN: 'fixture-root', AUTH_DB: auth, CHANGES: changes.CHANGES, CORS_ORIGINS: origin, ...options.env }, { ...options.context, waitUntil(p: Promise<unknown>) { void p.catch(() => {}); } });
 		return changes.upgrade(request, response, bun);
 	}, websocket: changes.websocket });
-	return { server, db, auth };
+	return { server, db, auth, changed: changes.signal };
 }
 
 /** Apply DDL to the hub and its schema log, as an operator migration would. */

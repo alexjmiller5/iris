@@ -13,7 +13,7 @@ const url = process.env.IRIS_TEST_URL ?? "http://iris-markdown.localhost:5391/wo
 const shots = process.env.IRIS_TEST_SHOTS;
 if (shots) mkdirSync(shots, { recursive: true });
 const origin = disposableOrigin(url);
-const { server, db, auth } = await regressionHub(source, origin);
+const { server, db, auth, changed } = await regressionHub(source, origin);
 const hubBody = () =>
   String((db.db.query("SELECT body FROM widgets WHERE id='fixture-record'").get() as { body: string }).body);
 let page: Awaited<ReturnType<typeof sourceNavigationCDP>> | undefined;
@@ -116,6 +116,7 @@ try {
   db.db.exec(
     "UPDATE people SET full_name='Ada King',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),hub_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id='p-ada'",
   );
+  await changed(["people"]);
   await open("/workspace?table=people&row=p-ada");
   await cdp.until(`document.body.innerText.includes('Ada King')`);
   await open("/workspace?table=widgets&row=fixture-record");

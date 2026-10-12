@@ -16,7 +16,7 @@ const source = process.argv[2];
 if (!source) throw Error("Provide the Soma source checkout");
 const mode = process.argv[3] ?? "all";
 const shots = process.env.IRIS_TEST_SHOTS;
-const { server, db, auth } = await regressionHub(source, origin);
+const { server, db, auth, changed } = await regressionHub(source, origin);
 await installCoreSchemas(db, source, ["saved-views", "view-defaults"]);
 for (const ddl of [
   "ALTER TABLE widgets ADD COLUMN due TEXT",
@@ -105,7 +105,7 @@ try {
   if (mode === "all" || mode === "options") {
     await views.selectOption(catalogDefault);
     const editor = page.getByRole("dialog", { name: "Edit filter", exact: true });
-    await page.getByRole("button", { name: /^Filter(, \d+ active)?$/ }).click();
+    await page.getByRole("button", { name: /^Filter( \d+ active)?$/ }).click();
     await page.getByRole("button", { name: "Add filter group", exact: true }).click();
     await editor.getByLabel("Property", { exact: true }).selectOption("quantity");
     await editor.getByLabel("Condition", { exact: true }).selectOption("eq");
@@ -156,6 +156,7 @@ try {
         remote,
         actionView,
       );
+    await changed(["views"]);
     await expect(views.locator("option", { hasText: "Changed elsewhere" })).toHaveCount(1, { timeout: 20000 });
     await page
       .getByRole("grid", { name: "Records" })

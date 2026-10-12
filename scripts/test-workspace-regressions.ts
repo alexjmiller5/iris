@@ -122,7 +122,7 @@ try {
 		const search = page.getByLabel('Filter by property');
 		// A sync refresh can land on the opening click; open until the list shows.
 		await expect(async () => {
-			if (!(await search.isVisible())) await page.getByRole('button', { name: /^Filter(, \d+ active)?$/ }).click();
+			if (!(await search.isVisible())) await page.getByRole('button', { name: /^Filter( \d+ active)?$/ }).click();
 			await expect(search).toBeVisible({ timeout: 1000 });
 		}).toPass({ timeout: 15000 });
 		await search.fill(property);
