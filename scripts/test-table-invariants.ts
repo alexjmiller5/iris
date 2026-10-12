@@ -277,13 +277,14 @@ try {
       "PASS: self-contained rules allow writes while unrelated tables stay skipped",
     );
 
+    // The hub stamps hub_at on arrival; replicas pull rows whose stamp passed their cursor.
+    const ruleEdit = new Date().toISOString();
     db.db
-      .query(
-        "UPDATE catalog_rules SET sql=?,updated_at=?,hub_at=NULL WHERE id=?",
-      )
+      .query("UPDATE catalog_rules SET sql=?,updated_at=?,hub_at=? WHERE id=?")
       .run(
         "SELECT id FROM changed WHERE quantity < (SELECT count(*) FROM history)",
-        new Date().toISOString(),
+        ruleEdit,
+        ruleEdit,
         "quantity-positive",
       );
     await sync();
@@ -304,6 +305,11 @@ try {
     // Completed coverage remains valid when an incremental pull fails before
     // changing schema or metadata. A transport failure alone is not revocation.
     const certified = await stored();
+    // Another device's edit gives the round a table to pull; quiet tables are skipped.
+    const arrival = new Date().toISOString();
+    db.db
+      .query("UPDATE widgets SET updated_at=?,hub_at=? WHERE id='second-record'")
+      .run(arrival, arrival);
     failPull = true;
     await sync();
     await bodyHas("hub HTTP 503");
