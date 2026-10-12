@@ -268,10 +268,11 @@ shared with the Mac Developer ID profile, so a capability change requires replac
 `MACOS_PROVISIONING_PROFILE_ID` as well.
 An IPA embeds a profile containing enrolled device IDs, so plaintext IPA artifacts
 are forbidden on this public repository. Each workflow run stamps and verifies
-the exported build number as run.attempt after project generation. OTA manifests
-use that build number, with distinct install-page, manifest and IPA URLs; the
-status sheet reads the installed app's version from Bundle.main. Installation
-and OTA remain separate.
+the exported build number as run.attempt after project generation. OTA uses the
+machine's shared install page (`scripts/ota-install.py`, from the ios-app
+template): a newer build replaces the app's entry and its manifest URL carries a
+fresh version; the status sheet reads the installed app's version from
+Bundle.main. Installation and OTA remain separate.
 
 The web grid labels a page's reference cells with one core `mentionLabels` read per
 200 targets (`reference-labels.ts`); missing and trashed targets show the stored id.

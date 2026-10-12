@@ -898,9 +898,10 @@ The IPA must embed its provisioning profile, including registered device IDs, so
 never upload plaintext IPA/profile files or signing keys. Keep the temporary age
 identity locally, then delete it after successful decryption and verification.
 After verifying the downloaded app signature, profile and checksum, install the
-IPA on its enrolled phone or use `scripts/ota-install.sh <private-ipa-path>` through
-the separately authorized installer. Each CI dispatch and retry gets a distinct
-build number and versioned OTA page. **Workspace status > App version** shows the
+IPA on its enrolled phone or add it to the machine's shared tailnet install page
+with `scripts/ota-install.py <private-ipa-path>` (listed for 48 hours at
+`https://<tailnet name>/install/`). Each CI dispatch and retry gets a distinct
+build number, and a newer build replaces the app's entry on that page. **Workspace status > App version** shows the
 installed version and build for acceptance checks. Install over the existing app
 to retain its local workspace and pending edits. An archive/export success is not
 proof of phone installation.

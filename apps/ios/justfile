@@ -135,10 +135,10 @@ deploy: gen
     echo "wrote build/{{app}}.ipa"
     just _install "build/{{app}}.ipa"
 
-# Serve build/<App>.ipa as an install page on this machine's tailnet name
-# (blocks while serving; OTA_TTL seconds, default 900).
+# Add build/<App>.ipa to this machine's shared tailnet install page
+# (https://<tailnet name>/install/; listed OTA_TTL_HOURS, default 48).
 ota:
-    ../../scripts/ota-install.sh "build/{{app}}.ipa"
+    ../../scripts/ota-install.py "build/{{app}}.ipa"
 
 # Collect five minutes of logs from an enrolled device.
 logs:
