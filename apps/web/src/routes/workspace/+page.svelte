@@ -2385,13 +2385,22 @@
 			/* The sidebar opens by default. */
 		}
 	});
-	function toggleSidebar() {
+	async function toggleSidebar() {
+		const toggleFocused = !!document.activeElement?.closest('.sidebar-toggle');
 		sidebarCollapsed = !sidebarCollapsed;
 		try {
 			localStorage.setItem('iris:sidebar', sidebarCollapsed ? 'collapsed' : 'open');
 		} catch {
 			/* The choice lasts for this page only. */
 		}
+		if (!toggleFocused) return;
+		// The pressed toggle leaves with its container; focus moves to the other one.
+		await tick();
+		document
+			.querySelector<HTMLElement>(
+				sidebarCollapsed ? '.link-toolbar > .sidebar-toggle' : '.sidebar-head > .sidebar-toggle'
+			)
+			?.focus();
 	}
 	async function find() {
 		offset = 0;
@@ -2807,7 +2816,7 @@
 	     not a group, so the sidebar and records stay top-level landmarks. -->
 	<fieldset class="workspace-controls" disabled={writing} role="none">
 		<div class="data-shell" class:collapsed={sidebarCollapsed}>
-			<aside class="tables" id="workspace-sidebar" hidden={sidebarCollapsed}>
+			<aside class="tables" id="workspace-sidebar" inert={sidebarCollapsed}>
 				<div class="sidebar-head">
 					<a
 						class="wordmark"
@@ -3656,12 +3665,17 @@
 	.hint {
 		font-size: 12px;
 	}
+	/* The sidebar slides: its column narrows while it keeps its own width, so the
+	   records reflow smoothly and the sidebar's content never rewraps. */
 	.data-shell {
 		display: grid;
 		grid-template-columns: 224px minmax(0, 1fr);
 		min-height: 100svh;
+		transition: grid-template-columns 200ms ease-out;
 	}
 	.tables {
+		width: 224px;
+		justify-self: end;
 		min-width: 0;
 		box-sizing: border-box;
 		position: sticky;
@@ -3695,10 +3709,18 @@
 		margin-top: 5px;
 	}
 	.data-shell.collapsed {
-		grid-template-columns: minmax(0, 1fr);
+		grid-template-columns: 0 minmax(0, 1fr);
 	}
-	.tables[hidden] {
-		display: none;
+	/* Inert at once; invisible (and out of find-in-page) once it has slid out. */
+	.data-shell.collapsed .tables {
+		visibility: hidden;
+		transition: visibility 0s 200ms;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.data-shell,
+		.data-shell.collapsed .tables {
+			transition: none;
+		}
 	}
 	.sidebar-head {
 		display: flex;
@@ -4003,7 +4025,15 @@
 			grid-template-columns: 1fr;
 			grid-template-rows: auto 1fr;
 		}
+		.data-shell.collapsed {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.data-shell.collapsed .tables {
+			display: none;
+		}
 		.tables {
+			width: auto;
+			justify-self: stretch;
 			position: static;
 			height: auto;
 			overflow: visible;

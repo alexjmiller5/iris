@@ -7,6 +7,7 @@ public struct WorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
   #endif
   @AppStorage("iris.sidebarHidden") private var sidebarHidden = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var model = WorkspaceModel()
   @State private var importing = false
   @State private var settings = false
@@ -1250,7 +1251,8 @@ public struct WorkspaceView: View {
         return
       }
     #endif
-    sidebarHidden.toggle()
+    // The column slides; Reduce Motion switches it at once.
+    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { sidebarHidden.toggle() }
   }
 
   #if os(macOS)

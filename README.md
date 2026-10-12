@@ -68,8 +68,8 @@ cap pauses until it resets. Drafts in an open cell or editor are never replaced.
 The pill at the bottom of the sidebar is the only sync status: **Synced** (hover
 for the last sync time), **Syncing**, **Offline · N pending**, **Paused · usage
 cap**, **Sync error** or **N rejected**, which opens the rejected edits.
-**Cmd+\\** (Ctrl+\\ elsewhere) or the sidebar button hides and shows the sidebar;
-the choice is remembered on this device.
+**Cmd+\\** (Ctrl+\\ elsewhere) or the sidebar button slides the sidebar out and
+back in (instantly with reduced motion); the choice is remembered on this device.
 
 - Browse catalog tables, search and sort records. Added filters combine with AND;
   remove individual filter chips or clear them together.

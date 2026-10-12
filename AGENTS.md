@@ -797,7 +797,10 @@ real `ChangeSignal` through `scripts/fixture-changes.ts`. The
 worker broadcasts a sync only when it pulled, pushed or rejected rows, so idle polls
 never refresh views. `SyncStatus.svelte` in the sidebar is the only sync/save status;
 add no sync or refresh buttons, progress bars or save notices. Cmd/Ctrl+\ toggles
-the sidebar, persisted per device in localStorage.
+the sidebar, persisted per device in localStorage. It slides in 200 ms (ease-out):
+its grid column narrows while the sidebar keeps its width, so the records reflow
+and the sidebar never rewraps; it is inert at once and `visibility: hidden` once
+out. Reduced motion switches instantly; below 700 px it is simply hidden.
 
 Credentials cross the supported client seam as a hub URL and app-issued token.
 Browser tokens are session-only; native tokens use Keychain.
@@ -890,8 +893,9 @@ Issues), Paused: cap reached (hub 429), Sync issue, Shared with CLI or Local onl
 Sync failures reach the pill and status sheet, never `model.error`. Ordinary saves
 show no progress text. `SyncStatusUITests` drives `navigation-hub.py`'s
 accept/reject/offline modes through those states and retains screenshots.
-Cmd+\ (`WorkspaceCommands`, View > Toggle Sidebar) toggles the sidebar column,
-persisted as `iris.sidebarHidden`; compact iPhone switches sidebar and detail.
+Cmd+\ (`WorkspaceCommands`, View > Toggle Sidebar) toggles the sidebar column with
+a 0.2 s ease-out animation (none under Reduce Motion), persisted as
+`iris.sidebarHidden`; compact iPhone switches sidebar and detail with the system push.
 The Mac status item (`WorkspaceMenuBar`, opt-out in Settings) mirrors the most
 recently active window: Open, Quick Find, five recents and pinned tables by title
 only. Its commands reach that window through the guarded navigation paths.
