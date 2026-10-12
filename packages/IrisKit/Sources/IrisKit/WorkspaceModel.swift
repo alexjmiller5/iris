@@ -376,6 +376,8 @@ final class WorkspaceModel {
   private var writeabilityError: String?
   private var writeabilityRequest = 0
   var loading = false
+  /// True from launch until `restoreAtLaunch` resolves.
+  var restoring = true
   var error: String?
   var location = ""
   var canLoadMore = false
@@ -2031,6 +2033,13 @@ final class WorkspaceModel {
       }
       do { try await Task.sleep(for: interval) } catch { return }
     }
+  }
+
+  /// The launch restore: the remembered workspace, or the sample for demo launches. Until it
+  /// resolves the window shows the workspace shell on placeholders, never the welcome screen.
+  func restoreAtLaunch(demo: Bool) async {
+    defer { restoring = false }
+    if demo { await open(demo: true) } else { await resumeConnection() }
   }
 
   func resumeConnection() async {

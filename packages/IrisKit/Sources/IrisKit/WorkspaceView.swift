@@ -110,7 +110,11 @@ public struct WorkspaceView: View {
   private var content: some View {
     Group {
       if model.client == nil {
-        welcome
+        if Self.showsWelcome(restoring: model.restoring, opening: model.loading) {
+          welcome
+        } else {
+          openingShell
+        }
       } else {
         NavigationSplitView(
           columnVisibility: Binding(
@@ -185,7 +189,7 @@ public struct WorkspaceView: View {
         .focusedSceneValue(\.toggleSidebar, sidebarToggle)
       }
     }
-    .task { if demo { await model.open(demo: true) } else { await model.resumeConnection() } }
+    .task { await model.restoreAtLaunch(demo: demo) }
     .task(id: "\(model.services.generation)|\(scenePhase == .active)") {
       guard scenePhase == .active else { return }
       await model.services.poll()
@@ -846,6 +850,25 @@ public struct WorkspaceView: View {
           rowID: pending.destination.row.id),
         label: pending.destination.row.label, record: pending.destination.row.record)
     } catch { model.error = error.localizedDescription }
+  }
+
+  /// The welcome screen appears only once nothing is restoring or opening: a remembered
+  /// workspace never flashes it at launch.
+  nonisolated static func showsWelcome(restoring: Bool, opening: Bool) -> Bool {
+    !restoring && !opening
+  }
+
+  /// The workspace shell on placeholders while the launch restore or a chosen open runs.
+  private var openingShell: some View {
+    NavigationSplitView(preferredCompactColumn: .constant(.detail)) {
+      List { SkeletonRows(count: 6, label: "Loading tables", compact: true) }
+        .navigationTitle("Iris")
+    } detail: {
+      List { SkeletonRows(count: 8, label: "Opening workspace") }
+        #if os(iOS)
+          .contentMargins(.top, 0, for: .scrollContent)
+        #endif
+    }
   }
 
   private var welcome: some View {

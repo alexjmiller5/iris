@@ -66,5 +66,64 @@
       await model.close()
       try await first.close()
     }
+
+    @Test func launchShowsPlaceholdersUntilTheRememberedWorkspaceOpens() async throws {
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let path = root.appendingPathComponent("workspace.sqlite")
+      let local = root.appendingPathComponent("local.sqlite")
+      let chosen = WorkspaceModel(
+        localURL: { local }, credentialStore: MemoryHubCredentials(nil))
+      let runtime = try IrisCoreRuntime()
+      let first = try NativeWorkspace(path: path.path, runtime: runtime)
+      try await first.createSample()
+      await chosen.open(url: path)
+      #expect(chosen.client != nil)
+      await chosen.close()
+      // Another window holds a transaction, so the relaunch's restore waits mid-open.
+      runtime.context.evaluateScript(
+        #"""
+        const original = IrisNative.request;
+        IrisNative.request = function(id, method, args) {
+          if (method !== 'catalog') return original(id, method, args);
+          IrisSql.begin();
+          globalThis.held = true;
+          globalThis.releaseWindow = () => { IrisSql.commit(); original(id, method, args); };
+        };
+        """#)
+      let transaction = Task { try await first.catalog() }
+      for _ in 0..<100 where runtime.context.evaluateScript("globalThis.held")?.toBool() != true {
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      let relaunched = WorkspaceModel(
+        localURL: { local }, credentialStore: MemoryHubCredentials(nil))
+      #expect(relaunched.restoring, "A new window starts restoring")
+      #expect(!WorkspaceView.showsWelcome(restoring: relaunched.restoring, opening: false))
+      let restore = Task { await relaunched.restoreAtLaunch(demo: false) }
+      try await Task.sleep(for: .milliseconds(150))
+      #expect(relaunched.client == nil && relaunched.restoring)
+      #expect(
+        !WorkspaceView.showsWelcome(restoring: relaunched.restoring, opening: relaunched.loading),
+        "The welcome screen must not flash while the remembered workspace opens")
+      runtime.context.evaluateScript("releaseWindow()")
+      _ = try await transaction.value
+      await restore.value
+      #expect(!relaunched.restoring)
+      #expect(relaunched.client != nil && relaunched.error == nil)
+      await relaunched.close()
+      try await first.close()
+    }
+
+    @Test func launchWithNothingRememberedShowsTheWelcomeScreen() async throws {
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let model = WorkspaceModel(
+        localURL: { root.appendingPathComponent("local.sqlite") },
+        credentialStore: MemoryHubCredentials(nil))
+      await model.restoreAtLaunch(demo: false)
+      #expect(!model.restoring && model.client == nil && model.error == nil)
+      #expect(WorkspaceView.showsWelcome(restoring: model.restoring, opening: model.loading))
+    }
   }
 #endif
