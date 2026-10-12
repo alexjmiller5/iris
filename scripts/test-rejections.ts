@@ -31,6 +31,8 @@ try{
   await page.getByRole('button',{name:'Review rejected edit',exact:true}).first().click();
   await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Rejected draft');
   await page.getByRole('textbox',{name:'Title',exact:true}).fill('Allowed');
+  // A rejection review pauses autosave until its explicit Save draft.
+  await page.getByRole('button',{name:'Save draft',exact:true}).click();
   await recordSaved(page);
   await page.getByRole('button',{name:'Close record',exact:true}).click();
   await synced(page);
