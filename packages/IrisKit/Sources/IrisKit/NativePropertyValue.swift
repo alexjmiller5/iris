@@ -38,8 +38,14 @@ struct NativePropertyValue: View {
     }
   }
 
+  /// Empty values show nothing; the row carrying the value says "Empty" to VoiceOver
+  /// (`emptyValueAccessibility`).
+  nonisolated static func isEmpty(_ value: String) -> Bool {
+    value.trimmingCharacters(in: .whitespaces).isEmpty || value == "[]"
+  }
+
   nonisolated static func text(type: String, value: String, locale: Locale = .current) -> String {
-    guard !value.isEmpty else { return "Not set" }
+    guard !value.isEmpty else { return "" }
     if type == "markdown" { return String(NativeMarkdownPreview.render(value).characters) }
     if ["ref", "multi_ref"].contains(type) { return "Unavailable" }
     if let kind = NativeDateKind(rawValue: type),
@@ -55,7 +61,7 @@ struct NativePropertyValue: View {
     if type == "multi_select",
       let values = try? JSONDecoder().decode([String].self, from: Data(value.utf8))
     {
-      return values.isEmpty ? "Not set" : values.joined(separator: ", ")
+      return values.joined(separator: ", ")
     }
     return value
   }
@@ -90,7 +96,7 @@ struct NativePropertyValue: View {
       return value
     }
     switch json {
-    case .array(let items) where items.isEmpty: return "Not set"
+    case .array(let items) where items.isEmpty: return ""
     case .array(let items) where items.allSatisfy(\.isScalar):
       return items.map(\.text).joined(separator: ", ")
     case .array(let items): return "\(items.count) \(items.count == 1 ? "item" : "items")"
@@ -120,11 +126,11 @@ struct NativePropertyValue: View {
   @MainActor static func referenceLabels(
     field: CatalogField, value: String, workspace: NativeWorkspace
   ) async -> String {
-    guard !value.isEmpty else { return "Not set" }
+    guard !value.isEmpty else { return "" }
     guard let table = field.property["ref_table"]?.text.nonempty,
       let selection = try? ReferenceSelection(value: value, multiple: field.type == "multi_ref")
     else { return "Unavailable" }
-    guard !selection.ids.isEmpty else { return "Not set" }
+    guard !selection.ids.isEmpty else { return "" }
     let labels =
       (try? await workspace.referenceLabels(
         selection.ids.map { CoreRecordTarget(table: table, id: $0) })) ?? []
@@ -143,23 +149,36 @@ struct NativePropertyValue: View {
     @State private var request: UUID?
 
     var body: some View {
-      Text(resolved ?? (value.isEmpty ? "Not set" : workspace == nil ? "Unavailable" : "Loading…"))
-        .task {
-          let ticket = UUID()
-          request = ticket
-          guard let workspace else {
-            resolved = value.isEmpty ? "Not set" : "Unavailable"
-            return
-          }
-          let label = await NativePropertyValue.referenceLabels(
-            field: field, value: value, workspace: workspace)
-          guard request == ticket, !Task.isCancelled else { return }
-          resolved = label
+      Group {
+        if resolved == nil && !value.isEmpty && workspace != nil {
+          Text("Related record").skeleton()
+        } else {
+          Text(resolved ?? (value.isEmpty ? "" : "Unavailable"))
         }
-        .onDisappear {
-          request = nil
-          resolved = nil
+      }
+      .task {
+        let ticket = UUID()
+        request = ticket
+        guard let workspace else {
+          resolved = value.isEmpty ? "" : "Unavailable"
+          return
         }
+        let label = await NativePropertyValue.referenceLabels(
+          field: field, value: value, workspace: workspace)
+        guard request == ticket, !Task.isCancelled else { return }
+        resolved = label
+      }
+      .onDisappear {
+        request = nil
+        resolved = nil
+      }
     }
+  }
+}
+
+extension View {
+  /// A blank value is still announced: the element carrying it reads "Empty" to VoiceOver.
+  @ViewBuilder func emptyValueAccessibility(_ empty: Bool) -> some View {
+    if empty { accessibilityValue(Text("Empty")) } else { self }
   }
 }

@@ -20,7 +20,7 @@ final class NativeControlsUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 5))
   }
 
-  func testChoiceCustomValueLabelIsVisibleAndOpens() throws {
+  func testSelectPickerOffersNoneAndNoTypedValueRow() throws {
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launchArguments = ["--demo"]
@@ -29,16 +29,22 @@ final class NativeControlsUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 15))
     app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
       .firstMatch.tap()
-    let label = app.staticTexts["Enter a value"]
-    XCTAssertTrue(label.waitForExistence(timeout: 5))
-    XCTAssertGreaterThanOrEqual(label.frame.minX + 1, app.textFields["field-title"].frame.minX)
-    capture(app, "native-choice-label")
-    label.tap()
-    XCTAssertTrue(app.textFields["field-status-source"].waitForExistence(timeout: 5))
-    app.buttons["field-status"].tap()
+    let status = app.buttons["field-status"]
+    XCTAssertTrue(status.waitForExistence(timeout: 5))
+    XCTAssertFalse(app.staticTexts["Enter a value"].exists, "Loaded choices need no typed value")
+    XCTAssertFalse(app.textFields["field-status-source"].exists)
+    capture(app, "native-choice-picker")
+    status.tap()
+    XCTAssertTrue(app.buttons["None"].waitForExistence(timeout: 5), "The clear choice is visible")
     app.buttons["Ready"].tap()
-    XCTAssertEqual(app.textFields["field-status-source"].value as? String, "Ready")
-    capture(app, "native-choice-custom-input")
+    XCTAssertTrue(
+      app.buttons.matching(
+        NSPredicate(
+          format: "identifier == %@ AND (label CONTAINS %@ OR value CONTAINS %@)", "field-status",
+          "Ready", "Ready")
+      )
+      .firstMatch.waitForExistence(timeout: 5))
+    capture(app, "native-choice-chosen")
   }
 
   func testCompactControlsStatusAndGraphNavigation() throws {
@@ -64,7 +70,8 @@ final class NativeControlsUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["Schema graph"].waitForExistence(timeout: 3))
     // Graph nodes are named by their visible text: "<table> <n> columns".
     let node = { (name: String) in
-      app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name + " ")).firstMatch
+      app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name + " "))
+        .firstMatch
     }
     let table = node("topics")
     XCTAssertTrue(table.waitForExistence(timeout: 10), app.debugDescription)

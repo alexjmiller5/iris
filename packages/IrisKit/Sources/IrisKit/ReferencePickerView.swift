@@ -75,9 +75,6 @@ struct ReferenceField: View {
               .font(.caption).foregroundStyle(.secondary)
           }
         }
-        if !canEdit && picker.selection.ids.isEmpty {
-          Text("No related records").foregroundStyle(.secondary)
-        }
       }
       .task { await picker.resolveSelected() }
     } else {

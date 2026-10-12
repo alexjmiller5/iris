@@ -66,7 +66,7 @@ struct NativeChoiceField: View {
               Text(
                 isNew
                   ? field.property["default_value"]?.text.nonempty.map { "Default: \($0)" }
-                    ?? "Not set" : "Not set"
+                    ?? "None" : "None"
               )
               .tag(Data())
               ForEach(projected.choices.filter { !$0.value.isEmpty }) { option in
@@ -98,7 +98,8 @@ struct NativeChoiceField: View {
             .accessibilityLabel(field.label + " JSON source")
             .accessibilityIdentifier("field-\(field.id)-source")
         }
-      } else if !freeValues {
+      } else if !freeValues && model.error != nil {
+        // Only when the choices cannot load does a typed value stand in for the picker.
         DisclosureGroup("Enter a value") {
           TextField(field.label, text: $value, axis: .vertical)
             .fixedSize(horizontal: false, vertical: true)

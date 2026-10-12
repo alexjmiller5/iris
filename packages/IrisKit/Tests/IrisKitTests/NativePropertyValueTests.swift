@@ -18,6 +18,16 @@ struct NativePropertyValueTests {
     #expect(NativePropertyValue.text(type: "date", value: "2024-02-30") == "2024-02-30")
     #expect(NativePropertyValue.text(type: "ref", value: "Named target") == "Unavailable")
   }
+  @Test func emptyValuesAreBlankButAnnouncedAsEmpty() {
+    for (type, value) in [
+      ("text", ""), ("select", ""), ("multi_select", "[]"), ("json", "[]"), ("date", ""),
+      ("ref", ""), ("markdown", ""),
+    ] {
+      #expect(NativePropertyValue.text(type: type, value: value) == "", "\(type)")
+    }
+    for empty in ["", " ", "[]"] { #expect(NativePropertyValue.isEmpty(empty)) }
+    for value in ["0", "false", "[\"a\"]", "Ready"] { #expect(!NativePropertyValue.isEmpty(value)) }
+  }
   @Test func wholeNumbersReadLikeJavaScript() {
     #expect(JSONValue.number(1).text == "1")
     #expect(JSONValue.number(-3).text == "-3")
@@ -59,7 +69,7 @@ struct NativePropertyValueTests {
         == "kind: list")
     #expect(NativePropertyValue.text(type: "json", value: #"[{"a":1},{"b":2}]"#) == "2 items")
     #expect(NativePropertyValue.text(type: "json", value: #"[{"a":1}]"#) == "1 item")
-    #expect(NativePropertyValue.text(type: "json", value: "[]") == "Not set")
+    #expect(NativePropertyValue.text(type: "json", value: "[]") == "")
     #expect(NativePropertyValue.text(type: "json", value: "not json {") == "not json {")
   }
   @Test @MainActor func emptyListsOnlyInviteCreationWhenAllowed() {
@@ -139,7 +149,7 @@ struct NativePropertyValueTests {
         == "\(live.label), Unavailable, Unavailable")
     #expect(
       await NativePropertyValue.referenceLabels(field: field, value: "[]", workspace: workspace)
-        == "Not set")
+        == "")
     try await workspace.close()
   }
   @Test @MainActor func cellsRenderedTogetherShareOneLabelRead() async throws {

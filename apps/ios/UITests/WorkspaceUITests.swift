@@ -320,21 +320,28 @@ final class WorkspaceUITests: XCTestCase {
     app.launch()
     let name = "Leave empty " + UUID().uuidString.prefix(8)
     tapWhenReady(app.navigationBars["notes"].buttons["new-record"])
-    let title = app.textFields["field-title"]
-    tapWhenReady(title)
-    title.typeText(name)
+    // Leave the default out before the title's first valid edit creates the record.
     let leaveEmpty = app.buttons["leave-empty-status"]
     for _ in 0..<10 where !leaveEmpty.isHittable { scrollRecordFormUp(app) }
     tapWhenReady(leaveEmpty)
     XCTAssertTrue(app.staticTexts["empty-instead-of-default-status"].waitForExistence(timeout: 5))
     XCTAssertFalse(leaveEmpty.exists)
-    tapWhenReady(app.navigationBars["New record"].buttons["done-record"])
-    XCTAssertTrue(app.navigationBars["New record"].waitForNonExistence(timeout: 10))
+    let title = app.textFields["field-title"]
+    tapWhenReady(title)
+    title.typeText(name)
+    // Autosave creates the record, so the editor may already carry its title.
+    let done = app.buttons["done-record"].firstMatch
+    tapWhenReady(done)
+    XCTAssertTrue(done.waitForNonExistence(timeout: 10))
     openRecord(app, title: name)
+    // A saved record keeps its empty status under Empty properties.
+    let empty = app.collectionViews["record-form"].buttons["Empty properties"]
+    for _ in 0..<10 where !empty.isHittable { scrollRecordFormUp(app) }
+    tapWhenReady(empty)
     let status = app.buttons["field-status"]
     for _ in 0..<10 where !status.isHittable { scrollRecordFormUp(app) }
     let shown = status.label + " " + ((status.value as? String) ?? "")
-    XCTAssertTrue(shown.contains("Not set"), shown)
+    XCTAssertTrue(shown.contains("None"), shown)
     XCTAssertFalse(shown.contains("Draft"), "The catalog default must not be applied: \(shown)")
     XCTAssertFalse(app.buttons["leave-empty-status"].exists, "Saved records have no defaults")
   }

@@ -1144,6 +1144,7 @@ public struct WorkspaceView: View {
           }.font(.subheadline).foregroundStyle(.secondary)
             .frame(minHeight: 44).contentShape(.rect)
         }
+        .emptyValueAccessibility(NativePropertyValue.isEmpty(row.record[field.id]?.text ?? ""))
       }
     }
     .buttonStyle(.plain)
@@ -2220,6 +2221,8 @@ private struct RecordEditor: View {
           .textSelection(.enabled)
         }
       }
+      .emptyValueAccessibility(
+        NativePropertyValue.isEmpty(editor.draft.original?[field.id]?.text ?? ""))
       if field.property["derived_by"]?.text.hasPrefix("http:") == true,
         field.property["deprecated"]?.isTrue != true
       {
@@ -2668,7 +2671,7 @@ struct FieldInput: View {
         }
       } else if field.type == "bool" {
         Picker(field.label, selection: $value) {
-          Text("Not set").tag("")
+          Text("None").tag("")
           Text("True").tag("true")
           Text("False").tag("false")
         }.accessibilityIdentifier("field-\(field.id)")
