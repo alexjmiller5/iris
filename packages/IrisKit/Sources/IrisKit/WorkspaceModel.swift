@@ -755,6 +755,7 @@ final class WorkspaceModel {
     savedViews = []
     appliedView = nil
     visibleRecordColumns = nil
+    wrapColumns = []
     savedViewsUnavailable = nil
     viewDefault = nil
     relatedViewDefault = nil
@@ -911,6 +912,34 @@ final class WorkspaceModel {
   }
 
   private(set) var visibleRecordColumns: [String]?
+  /// Columns whose values wrap their full text (saved view `wrap`); layout only.
+  private(set) var wrapColumns: [String] = []
+
+  func wraps(_ column: String) -> Bool { wrapColumns.contains(column) }
+  /// The columns a table layout shows: the title, then the saved selection (or every
+  /// non-system property).
+  var shownColumns: [String] {
+    let system: Set<String> = ["id", "created_at", "updated_at", "deleted_at", "hub_at"]
+    let title = titleProperty?.id ?? "id"
+    let rest =
+      visibleRecordColumns ?? properties.compactMap { $0["col"]?.text }.filter {
+        !system.contains($0)
+      }
+    return [title] + rest.filter { $0 != title }
+  }
+  func wrapsAll(_ columns: [String]) -> Bool { columns.allSatisfy(wraps) }
+  /// Column header menus and list rows: Wrap text for one column. Callers schedule the save.
+  func setWrap(column: String, _ wrap: Bool) {
+    if wrap {
+      if !wraps(column) { wrapColumns.append(column) }
+    } else {
+      wrapColumns.removeAll { $0 == column }
+    }
+  }
+  /// The view's layout options: Wrap all columns on or off.
+  func setWrapAll(_ wrap: Bool, columns: [String]) {
+    if wrap { columns.forEach { setWrap(column: $0, true) } } else { wrapColumns = [] }
+  }
 
   private var titleColumn: String? {
     tables.first(where: { $0["id"]?.text == table })?["display"]?.text.nonempty
@@ -1000,6 +1029,10 @@ final class WorkspaceModel {
     if sortRules.contains(where: { $0.mode != nil }) { definition.version = 2 }
     if search != (definition.search ?? "") { definition.search = search }
     if trash != (definition.trash ?? false) { definition.trash = trash }
+    if wrapColumns != (definition.wrap ?? []) {
+      definition.wrap = wrapColumns.isEmpty ? nil : wrapColumns
+      definition.version = 2
+    }
     // Core requires a nonempty projection. The title remains visible even when
     // the user hides every secondary property; edit queries still fetch full rows.
     definition.columns =
@@ -1133,6 +1166,7 @@ final class WorkspaceModel {
     if let definition = transient ?? saved?.definition {
       appliedView = saved
       visibleRecordColumns = definition.columns
+      wrapColumns = definition.wrap ?? []
       search = definition.search ?? ""
       trash = definition.trash ?? false
       sortRules = definition.sort ?? []
@@ -1149,6 +1183,7 @@ final class WorkspaceModel {
     } else {
       appliedView = nil
       visibleRecordColumns = nil
+      wrapColumns = []
       search = ""
       trash = false
       sortRules = []

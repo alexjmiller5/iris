@@ -47,6 +47,53 @@ final class NativeControlsUITests: XCTestCase {
     capture(app, "native-choice-chosen")
   }
 
+  func testEmptyValuesReadEmptyAndWrapAllColumnsShowsWholeValues() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo"]
+    app.launch()
+    defer { app.terminate() }
+    XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 15))
+    let long =
+      "A synthetic note whose title keeps going well past the width of one list row and then some more words after that"
+    app.navigationBars["notes"].buttons["new-record"].tap()
+    let title = app.textFields["field-title"]
+    XCTAssertTrue(title.waitForExistence(timeout: 10))
+    title.tap()
+    title.typeText(long)
+    app.buttons["done-record"].firstMatch.tap()
+    let row = app.buttons.matching(NSPredicate(format: "label == %@", "Edit Title")).matching(
+      NSPredicate(format: "value == %@", long)
+    ).firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 10), app.debugDescription)
+    let clipped = row.frame.height
+    app.buttons["Empty properties"].firstMatch.tap()
+    let related = app.buttons["inline-property-related"].firstMatch
+    XCTAssertTrue(related.waitForExistence(timeout: 5))
+    // Blank on screen; VoiceOver hears the label and "Empty".
+    let spoken = related.label + " " + ((related.value as? String) ?? "")
+    XCTAssertTrue(spoken.contains("Empty"), spoken)
+    XCTAssertFalse(spoken.contains("Not set"), spoken)
+    capture(app, "native-empty-property")
+    app.buttons["saved-views"].tap()
+    let wrapAll = app.switches["wrap-all-columns"]
+    XCTAssertTrue(wrapAll.waitForExistence(timeout: 5))
+    XCTAssertEqual(wrapAll.value as? String, "0")
+    wrapAll.switches.firstMatch.tap()
+    XCTAssertEqual(wrapAll.value as? String, "1")
+    capture(app, "native-wrap-all-toggle")
+    app.navigationBars.buttons["Done"].tap()
+    XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 5))
+    let wrapped = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated { row.exists && row.frame.height > clipped }
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [wrapped], timeout: 10), .completed)
+    capture(app, "native-wrapped-row")
+    app.buttons["saved-views"].tap()
+    XCTAssertEqual(app.switches["wrap-all-columns"].value as? String, "1", "The view saved it")
+  }
+
   func testCompactControlsStatusAndGraphNavigation() throws {
     continueAfterFailure = false
     let app = XCUIApplication()

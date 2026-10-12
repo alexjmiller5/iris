@@ -22,6 +22,9 @@
     var layout: [CoreViewLayoutItem]?
     var canRunAction = false
     var onAction: (String, WorkspaceRow) -> Void = { _, _ in }
+    /// Property IDs whose cells wrap their whole value; their rows grow to fit.
+    var wrapped: Set<String> = []
+    var onWrap: (String, Bool) -> Void = { _, _ in }
     @ViewBuilder let editor: () -> Editor
 
     private var gridItems: [NativeGridItem] {
@@ -107,6 +110,8 @@
         || previous.columns.map { $0.field.property } != columns.map { $0.field.property }
         || previous.titleField?.property != titleField?.property
         || previous.actions != actions || previous.canRunAction != canRunAction
+        || previous.wrapped != wrapped
+      if previous.wrapped != wrapped || columnsChanged { coordinator.wrapHeights = [:] }
       guard columnsChanged || rowsChanged || contentChanged else { return }
       let selected =
         previous.rows.indices.contains(table.selectedRow)
@@ -161,6 +166,8 @@
       var parent: MacRecordTable
       weak var table: NSTableView?
       var editorHeight: CGFloat = 28
+      /// Measured heights of wrapped cells by row and property.
+      var wrapHeights: [Data: [String: CGFloat]] = [:]
       var items: [NativeGridItem]
       init(_ parent: MacRecordTable) {
         self.parent = parent
@@ -168,8 +175,23 @@
       }
       func numberOfRows(in tableView: NSTableView) -> Int { parent.rows.count }
       func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        parent.rows.indices.contains(row) && parent.rows[row].byteExactID == parent.editingRow
-          ? editorHeight : 28
+        guard parent.rows.indices.contains(row) else { return 28 }
+        let id = parent.rows[row].byteExactID
+        if id == parent.editingRow { return editorHeight }
+        let wrapped = wrapHeights[id]?.filter { parent.wrapped.contains($0.key) }.values.max() ?? 0
+        // Cells start 6 points down; keep the same space below the tallest wrapped value.
+        return max(28, ceil(wrapped) + 12)
+      }
+      func resizeWrapped(_ height: CGFloat, row: Data, column: String) {
+        // Measured after the representable update, like the editor height.
+        Task { @MainActor [weak self] in
+          guard let self, parent.wrapped.contains(column),
+            let index = parent.rows.firstIndex(where: { $0.byteExactID == row }),
+            abs((wrapHeights[row]?[column] ?? 0) - height) > 0.5
+          else { return }
+          wrapHeights[row, default: [:]][column] = height
+          table?.noteHeightOfRows(withIndexesChanged: IndexSet(integer: index))
+        }
       }
       func resizeEditor(_ height: CGFloat, id: UUID?) {
         // SwiftUI measures its content after the representable update. Apply the
@@ -212,8 +234,12 @@
         let title = parent.isTitle(columnItem)
         let field = title ? parent.titleField : columnItem.column?.field
         let item = parent.rows[row]
+        let wraps = field.map { parent.wrapped.contains($0.id) } ?? false
         return MacRecordCell(
-          row: item, field: field, isTitle: title,
+          row: item, field: field, isTitle: title, wraps: wraps,
+          onWrapHeight: { [weak self, id = item.byteExactID, column = field?.id ?? ""] height in
+            self?.resizeWrapped(height, row: id, column: column)
+          },
           action: columnItem.action, canRunAction: parent.canRunAction, onAction: parent.onAction,
           editing: item.byteExactID == parent.editingRow && field?.id == parent.editingColumn,
           editorID: parent.editorID, actionsEnabled: parent.actionsEnabled,
@@ -254,21 +280,29 @@
         guard let field else { return nil }
         let menu = NSMenu()
         menu.autoenablesItems = false
-        for (tag, title) in ["Sort ascending", "Sort descending", "Filter…"].enumerated() {
+        for (tag, title) in ["Sort ascending", "Sort descending", "Filter…", "Wrap text"]
+          .enumerated()
+        {
+          if tag == 3 { menu.addItem(.separator()) }
           let item = NSMenuItem(
             title: title, action: #selector(columnAction(_:)), keyEquivalent: "")
           item.target = self
           item.representedObject = field.id
           item.tag = tag
           item.isEnabled = parent.actionsEnabled
+          if tag == 3 { item.state = parent.wrapped.contains(field.id) ? .on : .off }
           menu.addItem(item)
         }
         return menu
       }
 
-      @objc private func columnAction(_ item: NSMenuItem) {
+      @objc func columnAction(_ item: NSMenuItem) {
         guard parent.actionsEnabled, let id = item.representedObject as? String else { return }
-        if item.tag == 2 { parent.onFilter(id) } else { parent.onSort(id, item.tag == 0) }
+        switch item.tag {
+        case 2: parent.onFilter(id)
+        case 3: parent.onWrap(id, !parent.wrapped.contains(id))
+        default: parent.onSort(id, item.tag == 0)
+        }
       }
     }
   }
@@ -277,6 +311,8 @@
     let row: WorkspaceRow
     let field: CatalogField?
     let isTitle: Bool
+    let wraps: Bool
+    let onWrapHeight: (CGFloat) -> Void
     let action: CoreRowAction?
     let canRunAction: Bool
     let onAction: (String, WorkspaceRow) -> Void
@@ -310,11 +346,23 @@
               if isTitle {
                 Text(row.label)
               } else if let field {
+                let value = field.formValue(row.record[field.id])
                 NativePropertyValue(
-                  field: field, value: field.formValue(row.record[field.id]),
-                  workspace: workspace, transport: transport, imageSize: 20)
+                  field: field, value: value, workspace: workspace, transport: transport,
+                  imageSize: 20
+                )
+                .accessibilityElement(children: .combine)
+                .emptyValueAccessibility(NativePropertyValue.isEmpty(value))
               }
-            }.lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .lineLimit(wraps ? nil : 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: wraps)
+            .onGeometryChange(for: CGFloat.self) {
+              $0.size.height
+            } action: {
+              if wraps { onWrapHeight($0) }
+            }
             if isTitle {
               Button {
                 onOpen(row)

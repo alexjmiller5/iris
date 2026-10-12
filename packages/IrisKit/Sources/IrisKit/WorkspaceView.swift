@@ -1091,7 +1091,7 @@ public struct WorkspaceView: View {
       if let title, model.canWrite && !model.trash {
         propertyButton(title, row: row, title: true)
       } else {
-        Text(row.label).font(.headline).lineLimit(2)
+        Text(row.label).font(.headline).lineLimit(model.wraps(title?.id ?? "id") ? nil : 2)
       }
       Spacer(minLength: 4)
       Button {
@@ -1130,7 +1130,8 @@ public struct WorkspaceView: View {
     Group {
       if title {
         Button(action: open) {
-          Text(row.label).foregroundStyle(.primary).font(.headline).lineLimit(2)
+          Text(row.label).foregroundStyle(.primary).font(.headline)
+            .lineLimit(model.wraps(field.id) ? nil : 2)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(.rect)
         }.accessibilityLabel("Edit \(field.label)").accessibilityValue(row.label)
       } else {
@@ -1140,7 +1141,7 @@ public struct WorkspaceView: View {
               field: field, value: row.record[field.id]?.text ?? "",
               workspace: model.client, transport: model.imageTransport
             )
-            .lineLimit(2)
+            .lineLimit(model.wraps(field.id) ? nil : 2)
           }.font(.subheadline).foregroundStyle(.secondary)
             .frame(minHeight: 44).contentShape(.rect)
         }
@@ -1228,7 +1229,13 @@ public struct WorkspaceView: View {
               filterEditing = .filter(model.addFilter(column: column))
             }, workspace: model.client, transport: model.imageTransport,
             actions: model.viewActions, layout: model.viewLayout,
-            canRunAction: model.canRunRowAction, onAction: runRowAction
+            canRunAction: model.canRunRowAction, onAction: runRowAction,
+            wrapped: Set(model.wrapColumns),
+            onWrap: { column, wrap in
+              guard canFind else { return }
+              model.setWrap(column: column, wrap)
+              model.scheduleViewSave()
+            }
           ) {
             if let target = editor, target.inlineField != nil {
               recordEditor(target)

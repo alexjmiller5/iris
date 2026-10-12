@@ -3,6 +3,8 @@ import SwiftUI
 struct NativePresentationControls: View {
   @Binding var value: CoreViewPresentation
   let fields: [CatalogField]
+  /// Table layouts: every shown column wraps its text.
+  var wrapAll: Binding<Bool>? = nil
   private var dates: [CatalogField] {
     fields.filter {
       $0.property["deprecated"]?.isTrue != true
@@ -35,6 +37,9 @@ struct NativePresentationControls: View {
         Text("Gallery").tag("gallery")
         Text("Board").tag("board").disabled(groups.isEmpty)
       }.accessibilityIdentifier("view-layout")
+      if value.kind == "table", let wrapAll {
+        Toggle("Wrap all columns", isOn: wrapAll).accessibilityIdentifier("wrap-all-columns")
+      }
       if value.kind == "calendar" {
         property("Date", selection: $value.dateColumn, choices: dates, empty: nil)
         property("End date", selection: $value.endDateColumn, choices: dates, empty: "Single date")

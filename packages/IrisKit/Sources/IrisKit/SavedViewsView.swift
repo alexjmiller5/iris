@@ -35,7 +35,12 @@ struct SavedViewsView: View {
       Form {
         NativePresentationControls(
           value: Binding(get: { model.viewPresentation }, set: { model.viewPresentation = $0 }),
-          fields: model.properties.map(CatalogField.init))
+          fields: model.properties.map(CatalogField.init),
+          wrapAll: model.appliedView == nil
+            ? nil
+            : Binding(
+              get: { model.wrapsAll(model.shownColumns) },
+              set: { model.setWrapAll($0, columns: model.shownColumns) }))
         Section {
           NavigationLink {
             PropertyLayoutView(model: model)
