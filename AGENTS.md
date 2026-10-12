@@ -291,9 +291,15 @@ behind one. The shared-file observer ignores version changes while that loop run
 Until a step reports `done`, the sync pill reads "Indexing search…" (below sync,
 connection and error states), Quick Find and Cmd+K note how many records are left,
 and Linked from shows "(indexing)"; catching up refreshes backlinks and searched
-rows once. Provenance and size-rule tables stay unindexed unless core's
-`search_tables` setting opts them in. No client scan fallback or parallel search
-implementation. Cross-table results carry table/id identities; opening one must
+rows once. Provenance and size-rule tables stay unindexed unless this device opts
+them in: core `searchTables` lists every indexable table (indexed, default exclusion,
+choice, records, estimated text) and `setSearchTable` stores one choice (a switch
+back to the default clears it). Web shows them in the sidebar's Search index dialog
+and the worker queues a step after a change; native shows a Search section in
+Widgets and Search (iOS) and Hub connection > Search index (Mac), and
+`WorkspaceModel.setSearchTable` schedules the loop. Hosts never write `_core_state`.
+Index-only schema changes (a query index the operator adds with `soma sql`) re-index
+nothing. No client scan fallback or parallel search implementation. Cross-table results carry table/id identities; opening one must
 re-read it, respect unsaved drafts and ignore a cancelled dialog. Search covers
 locally replicated rows and identifies skipped-table incompleteness.
 The web command palette also lists tables and saved views. Read saved views once

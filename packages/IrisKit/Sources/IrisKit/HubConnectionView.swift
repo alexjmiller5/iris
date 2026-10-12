@@ -49,6 +49,13 @@ struct HubConnectionView: View {
             } label: {
               Label("Backup", systemImage: "externaldrive")
             }.accessibilityIdentifier("backup-settings")
+            #if os(macOS)
+              NavigationLink {
+                SearchTablesView(model: model)
+              } label: {
+                Label("Search index", systemImage: "text.magnifyingglass")
+              }.accessibilityIdentifier("search-settings")
+            #endif
           }
         }
         if model.services.connected {

@@ -73,6 +73,7 @@ struct WidgetSettingsView: View {
             IntegrationSettingsSections(model: model, widgets: settings, settings: integrations)
           }
         #endif
+        SearchTablesSection(model: model)
         if settings.busy { ProgressView("Preparing widget data") }
         if let message = failure ?? settings.error {
           Section { Text(message).foregroundStyle(.red).accessibilityIdentifier("widget-settings-error") }

@@ -611,6 +611,14 @@ public final class NativeWorkspace {
       CoreRequests.SearchIndexStep(CoreSearchIndexStepArgs(budgetMs: budgetMs)),
       referenceRead: background)
   }
+  /// Every table the search index can hold: whether it is indexed and why, records and text.
+  public func searchTables() async throws -> CoreSearchTableList {
+    try await decode(CoreRequests.SearchTables(CoreEmptyArgs()))
+  }
+  /// Stores this device's choice for one table; the next index step applies it.
+  public func setSearchTable(_ args: CoreSetSearchTableArgs) async throws -> CoreSearchTableList {
+    try await decode(CoreRequests.SetSearchTable(args))
+  }
   public func listSidebarPins() async throws -> CoreSidebarPinList {
     try await decode(CoreRequests.ListSidebarPins(CoreEmptyArgs()))
   }
