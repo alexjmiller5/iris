@@ -1,5 +1,5 @@
 import { chromium, expect } from '@playwright/test';
-import { disposableOrigin, workspacePage, recordSaved } from './test-origin';
+import { disposableOrigin, workspacePage, recordReady, recordSaved } from './test-origin';
 const url=process.env.IRIS_TEST_URL??'http://iris-markdown.localhost:5198/workspace?review';
 const origin=disposableOrigin(url);
 const browser=await chromium.connectOverCDP(process.env.IRIS_TEST_CDP??'http://127.0.0.1:9222');
@@ -42,14 +42,17 @@ try {
  await page.keyboard.press('Escape');
  await expect(search).not.toBeVisible();
  await page.getByRole('button',{name:'A place to start',exact:true}).click();
- await page.getByRole('textbox',{name:'Title',exact:true}).fill('Keep my unsaved title');
+ await recordReady(page);
+ // A valid edit saves itself; only a value the catalog refuses is left to discard.
+ await page.getByRole('textbox',{name:'Title',exact:true}).fill('');
+ await recordSaved(page);
  await page.keyboard.press('Meta+k');
  await search.getByRole('combobox',{name:'Search records',exact:true}).fill('nebul');
  acceptDiscard=false;
  await search.getByRole('option').filter({hasText:'Space journal'}).click();
  await expect(search).toBeVisible();
  await page.keyboard.press('Escape');
- await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Keep my unsaved title');
+ await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('');
  acceptDiscard=true;
  await page.getByRole('button',{name:'Close record',exact:true}).click();
  // Hold a real row-read receipt so Escape can race with opening its result.
@@ -65,10 +68,12 @@ try {
    }
    return result;
   };
-  state.holdSearchOpen=true;
  });
  await page.keyboard.press('Meta+k');
  await search.getByRole('combobox',{name:'Search records',exact:true}).fill('nebul');
+ // Search reads each hit's row for its status label; hold only the open's read.
+ await expect(search.getByRole('option').filter({hasText:'Space journal'})).toBeVisible();
+ await page.evaluate(()=>{(window as any).holdSearchOpen=true;});
  await search.getByRole('option').filter({hasText:'Space journal'}).click();
  await page.waitForFunction(()=>!!(window as any).releaseSearchOpen);
  await page.keyboard.press('Escape');
