@@ -8,6 +8,7 @@ final class TableNavigationUITests: XCTestCase {
       env["IRIS_TEST_TABLE_NAV_SIMULATOR"] == env["SIMULATOR_UDID"]
         && env["IRIS_TEST_TABLE_NAV_SIMULATOR"] != nil,
       "Use only the explicitly selected disposable simulator.")
+    try XCTSkipIf(env["IRIS_TEST_TABLE_NAV_HUB"] == nil, "Requires the loopback hub fixture")
     let endpoint = try XCTUnwrap(env["IRIS_TEST_TABLE_NAV_HUB"])
     @Sendable func gate(_ action: String) async throws -> Bool {
       let (data, _) = try await URLSession.shared.data(
@@ -84,10 +85,7 @@ final class TableNavigationUITests: XCTestCase {
     for _ in 0..<3 {
       tap(app.navigationBars.buttons["BackButton"].firstMatch, app)
       let provenance = app.buttons["sidebar-table-provenance"]
-      if !provenance.exists {
-        revealSidebar(app.buttons["System tables"], app)
-        tap(app.buttons["System tables"], app)
-      }
+      if !provenance.exists { expandSystemTables(app) }
       revealSidebar(provenance, app)
       tap(provenance, app)
       XCTAssertTrue(
@@ -101,6 +99,19 @@ final class TableNavigationUITests: XCTestCase {
       revealSidebar(notes, app)
       tap(notes, app)
       XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 10), app.debugDescription)
+    }
+  }
+
+  /// The group stays expanded across navigation, and its offscreen rows are absent from the
+  /// tree, so tapping the header then would collapse it. Expand only when no table row
+  /// follows the header.
+  private func expandSystemTables(_ app: XCUIApplication) {
+    let header = app.buttons["System tables"]
+    revealSidebar(header, app)
+    let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'sidebar-table-'"))
+    let headerBottom = header.frame.maxY
+    if !rows.allElementsBoundByIndex.contains(where: { $0.frame.minY >= headerBottom }) {
+      tap(header, app)
     }
   }
 

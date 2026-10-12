@@ -81,7 +81,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
-        if self.path == "/v1/schema/pull":
+        # Every core sync round opens with /v1/cursor; hold it there.
+        if self.path == "/v1/cursor":
             waiting.set()
             released.wait(60)
         if mode == "offline":
