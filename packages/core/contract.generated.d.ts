@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "a86ff4d015a77f8ad4570468c59370feed648f1a60e326ce877befd419bdfd55";
+export declare const CORE_CONTRACT_HASH = "2cf5f2af5dca5b8f59a715f0c532cfb018ef1b2581930fd22318bd87a02f087f";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -221,6 +221,7 @@ export type SavedViewDefinition = {
     actions?: RowAction[];
     layout?: ViewLayoutItem[];
     presentation?: ViewPresentation;
+    wrap?: string[];
 };
 export type SavedViewRecord = {
     id: string;
