@@ -179,9 +179,20 @@ try {
       await setQuantity("43");
       const content = await body();
       const count = await page.evaluate(() => (window as any).writes.length);
-      await title().fill("Newer title draft");
-      await content.fill("Newer unsaved Markdown");
-      await undo().click();
+      // Both edits must still be pending when Undo runs, but a title left idle for
+      // 500 ms saves on its own: type both and press Undo in one page task.
+      await page.evaluate(() => {
+        const type = (selector: string, value: string) => {
+          const field = document.querySelector<HTMLInputElement>(selector)!;
+          field.value = value;
+          field.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+        type("#field-title", "Newer title draft");
+        type('textarea[aria-label="Body"]', "Newer unsaved Markdown");
+        [...document.querySelectorAll("button")]
+          .find((button) => button.textContent?.trim() === "Undo last saved change")!
+          .click();
+      });
       await expect(title()).toHaveValue("Fixture record");
       await expect(content).toHaveValue("Original body");
       await expect(quantity()).toHaveValue("43");
