@@ -1,6 +1,6 @@
 import { chromium, expect, type Page } from '@playwright/test';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, workspacePage } from './test-origin';
+import { disposableOrigin, recordSaved, workspacePage } from './test-origin';
 
 const source = process.argv[2];
 if (!source) throw Error('Provide the soma checkout');
@@ -56,7 +56,8 @@ try {
   await page.getByLabel('Automatic sync row limit').fill('0');
   const sync = page.getByRole('button',{name:'Connect',exact:true});
   await sync.click(); await expect(sync).toBeEnabled({timeout:30000});
-  await expect(page.getByRole('alert')).toContainText('503');
+  // The connect panel and the workspace both report the failed first sync.
+  await expect(page.getByRole('alert').filter({hasText:'503'}).first()).toBeVisible();
   firstSchemaFailure=false;
   await sync.click(); await expect(sync).toBeEnabled({timeout:30000});
   await expect(page.getByRole('alert')).toHaveCount(0);
@@ -65,6 +66,9 @@ try {
   expect(pulls).toHaveLength(0);
   await page.getByRole('button',{name:'New record',exact:true}).click();
   await page.getByRole('textbox',{name:'Title',exact:true}).fill('Keep this local draft');
+  // The draft creates its record locally; the table is skipped, so it stays pending.
+  await recordSaved(page);
+  const pending = await page.locator('[data-pending]').getAttribute('data-pending');
   await page.getByRole('button',{name:'Browse online',exact:true}).click();
   const dialog = page.getByRole('dialog',{name:'Online widgets',exact:true});
   await expect(dialog).toBeVisible();
@@ -140,7 +144,7 @@ try {
   await dialog.getByRole('button',{name:'Close online browsing',exact:true}).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Keep this local draft');
-  await expect(page.locator('[data-pending="0"]')).toBeVisible();
+  await expect(page.locator('[data-pending]')).toHaveAttribute('data-pending', pending!);
   await expect(page.getByText('This table is excluded from sync. Its local records may be incomplete.',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Fresh online title',exact:true})).toHaveCount(0);
   await page.reload();

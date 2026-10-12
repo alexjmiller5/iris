@@ -60,7 +60,8 @@ try {
  await expect(search.getByRole('option')).toHaveCount(0);
  await page.keyboard.press('Escape');
  await page.getByRole('button', {name:'Field guide', exact:true}).click();
- await page.getByRole('button', {name:'Move to trash', exact:true}).click();
+ // The grid's selection toolbar has its own Move to trash.
+ await page.getByRole('complementary', {name:'Record editor', exact:true}).getByRole('button', {name:'Move to trash', exact:true}).click();
  await expect(sync).toBeEnabled();
  await page.keyboard.press('Meta+k');
  await input.fill('ocean');
