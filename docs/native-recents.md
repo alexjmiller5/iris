@@ -56,7 +56,10 @@ not prevent the workspace from opening. Foreground and completed sync refresh
 recent labels without replacing the editor, loaded rows or query.
 
 `WorkspaceView.recordNavigationSucceeded(_:label:record:)` is the single completion
-hook; it passes the shown label (a view or table names itself).
+hook; it passes the shown label (a view or table names itself). It records the
+requested destination: a plain table (sidebar, pin, Quick Find table) stays a table
+visit named by the table even though it opens on its default saved view; only a
+chosen view (Saved views, a view link, Quick Find view) is a view visit.
 The table, graph, saved-view choose and related-record paths call it after
 installation. QuickFind integration must call the same hook after its guarded
 destination or pending record editor is installed. Resolving metadata or saving

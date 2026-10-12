@@ -169,6 +169,28 @@ test('labels and trash state come from the freshly resolved catalog/view/full ro
 		trash: false
 	});
 });
+test('a plain table link is a table visit even though it opens the default view', () => {
+	// Core resolves a table without a view to its default saved view.
+	const opened = {
+		table: 'things',
+		catalog: { tables: [{ id: 'things', display: 'heading' }], properties: [], rules: [] },
+		view: { id: 'default-view', name: 'Default view' },
+		row: null
+	};
+	expect(describeRecent(table, opened as never)).toMatchObject({
+		label: 'things',
+		context: 'Table'
+	});
+	// Only a chosen view names itself, and only a chosen view joins a record's context.
+	expect(describeRecent({ ...table, view: 'default-view' }, opened as never)).toMatchObject({
+		label: 'Default view',
+		context: 'View · things'
+	});
+	const record = { ...table, row: 'r' };
+	expect(
+		describeRecent(record, { ...opened, row: { id: 'r', heading: 'Title' } } as never)
+	).toMatchObject({ label: 'Title', context: 'Record · things' });
+});
 test('unavailable local entries retain their position, identity and last label', async () => {
 	let visible: RecentEntry[] = [];
 	await loadRecentEntries(

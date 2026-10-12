@@ -237,6 +237,26 @@ struct NativeRecentsModelTests {
     #expect(model.destinations == [destination])
   }
 
+  @Test func aPlainTableVisitIsLabelledByTheTableNotItsDefaultView() async throws {
+    let runtime = try IrisCoreRuntime()
+    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await workspace.createSample()
+    let resolver = NativeDestinationResolver(workspace: workspace)
+    let table = NativeDestination(table: "notes")
+    // Core opens a plain table on its default saved view.
+    let opened = try await resolver.resolve(table, isCurrent: { true })
+    let defaultView = try #require(opened.view)
+    let model = NativeRecentsModel(resolve: { try await resolver.resolve($0, isCurrent: { true }) })
+    await model.navigationSucceeded(table)
+    #expect(model.entries.first?.destination == table)
+    #expect(model.entries.first?.label == "notes")
+    // Choosing that view is a view visit, named by the view.
+    let chosen = NativeDestination(table: "notes", viewID: defaultView.id)
+    await model.navigationSucceeded(chosen)
+    #expect(model.entries.first?.label == defaultView.name)
+    try await workspace.close()
+  }
+
   @Test func realCoreRefreshUsesFreshLabelsAndTrashWithoutWritingHistory() async throws {
     let runtime = try await IrisCoreRuntime.onCore()
     let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)

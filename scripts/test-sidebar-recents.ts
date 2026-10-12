@@ -10,9 +10,7 @@ const url =
 const origin = disposableOrigin(url);
 const source = process.argv[2];
 if (!source)
-  throw Error(
-    "Usage: bun scripts/test-sidebar-recents.ts <soma-checkout>",
-  );
+  throw Error("Usage: bun scripts/test-sidebar-recents.ts <soma-checkout>");
 const { server, db, auth } = await regressionHub(source, origin);
 const schema = await Bun.file(
   resolve(import.meta.dir, "../packages/core/schema/saved-views.json"),
@@ -153,17 +151,21 @@ const recent = (label: string) =>
     .locator(".destination")
     .filter({
       has: page.locator("strong", {
-        hasText: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
+        hasText: new RegExp(
+          `^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+        ),
       }),
     })
     .first();
-// A table opens on its default saved view, so its recent is that view, named
-// "Default view" in the table's context.
+// A plain table link opens the table's default view but is remembered as the
+// table: named by the table, in the "Table" context.
 const tableRecent = (table: string) =>
   recents
     .locator(".destination")
-    .filter({ has: page.locator("strong", { hasText: /^Default view$/ }) })
-    .filter({ has: page.locator("small", { hasText: new RegExp(`^View · ${table}$`) }) })
+    .filter({
+      has: page.locator("strong", { hasText: new RegExp(`^${table}$`) }),
+    })
+    .filter({ has: page.locator("small", { hasText: /^Table$/ }) })
     .first();
 async function closeFixture() {
   accept = true;
@@ -202,7 +204,7 @@ try {
   await page.getByLabel("Hub address").fill(server.url.href.replace(/\/$/, ""));
   await page.getByText("Use a device token", { exact: true }).click();
   await page.getByLabel("Device token").fill("fixture");
-  await page.getByRole("button",{name:"Connect",exact:true}).click();
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
   await tables
     .getByRole("button", { name: "widgets", exact: true })
     .click({ timeout: 30000 });
@@ -237,7 +239,7 @@ try {
     await expect.poll(() => query().get("table")).toBe(name);
     await expect
       .poll(async () => (await tuples())[0])
-      .toMatchObject({ table: name, view: expect.any(String), row: null });
+      .toEqual({ table: name, view: null, row: null });
     await settled();
   }
   async function home() {
@@ -308,15 +310,14 @@ try {
         .getByRole("button", { name: "Fixture record", exact: true })
         .click();
       await expect(recent("Fixture record")).toBeEnabled();
-      await expect(
-        editor.getByLabel("Quantity", { exact: true }),
-      ).toHaveValue("42");
+      await expect(editor.getByLabel("Quantity", { exact: true })).toHaveValue(
+        "42",
+      );
       expect((await tuples()).slice(0, 3)).toEqual([
         { table: "widgets", view: "widget-view", row: "fixture-record" },
         { table: "widgets", view: "widget-view", row: null },
-        { table: "widgets", view: (await tuples())[2].view, row: null },
+        { table: "widgets", view: null, row: null },
       ]);
-      expect((await tuples())[2].view).not.toBe("widget-view");
       await tables
         .getByRole("button", { name: "projects", exact: true })
         .click();
@@ -327,6 +328,73 @@ try {
       await expect(title()).toHaveValue("Current record label");
       await expect.poll(() => query().get("view")).toBe("widget-view");
       await expect.poll(() => query().get("row")).toBe("fixture-record");
+    },
+  );
+  await run(
+    "a plain table link records the table; only a chosen view records the view",
+    async () => {
+      await navigateTable("projects");
+      // The table opened on its default view, yet the recent is the table.
+      expect(query().get("view")).toBeTruthy();
+      await expect(tableRecent("projects")).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      await expect(recent("Default view")).toHaveCount(0);
+      // A record opened there carries no view in its identity or context.
+      await page
+        .getByRole("main")
+        .getByRole("button", { name: "Project signal", exact: true })
+        .click();
+      await recordReady(page);
+      await expect
+        .poll(async () => (await stored())[0])
+        .toMatchObject({
+          table: "projects",
+          view: null,
+          row: "project-record",
+          label: "Project signal",
+          context: "Record · projects",
+        });
+      await page
+        .getByRole("button", { name: "Close record", exact: true })
+        .click();
+      // The view switcher is an explicit choice: a view visit named by the view.
+      await page
+        .getByRole("combobox", { name: "View", exact: true })
+        .selectOption("project-view");
+      await expect
+        .poll(async () => (await stored())[0])
+        .toMatchObject({
+          table: "projects",
+          view: "project-view",
+          row: null,
+          label: "Pinned",
+          context: "View · projects",
+        });
+      await expect(recent("Pinned")).toHaveAttribute("aria-current", "page");
+      // Cmd+K's table entry is a plain table link again.
+      await navigateTable("widgets");
+      await page.keyboard.press("Meta+k");
+      const find = page.getByRole("dialog", {
+        name: "Find records",
+        exact: true,
+      });
+      await find
+        .getByRole("combobox", { name: "Search records", exact: true })
+        .fill("projects");
+      await find
+        .getByRole("group", { name: "Tables", exact: true })
+        .getByRole("option", { name: "projects", exact: true })
+        .click();
+      await expect.poll(() => query().get("table")).toBe("projects");
+      await expect
+        .poll(async () => (await tuples())[0])
+        .toEqual({
+          table: "projects",
+          view: null,
+          row: null,
+        });
     },
   );
   await run(
@@ -362,8 +430,9 @@ try {
       await tableRecent("projects").click();
       await expect(editor).not.toBeVisible();
       await expect.poll(() => query().get("table")).toBe("projects");
-      expect((await tuples())[0]).toMatchObject({
+      expect((await tuples())[0]).toEqual({
         table: "projects",
+        view: null,
         row: null,
       });
     },
@@ -373,7 +442,6 @@ try {
     async () => {
       await navigateTable("projects");
       await home();
-      const homeView = query().get("view");
       await page
         .getByRole("button", {
           name: /^(Fixture record|Current record label)$/,
@@ -407,7 +475,7 @@ try {
       expect(await tuples()).toEqual(before);
       expect(
         (await stored()).some(
-          (d: any) => d.row === "fixture-record" && d.view === homeView,
+          (d: any) => d.row === "fixture-record" && d.view === null,
         ),
       ).toBe(false);
     },
@@ -417,10 +485,31 @@ try {
     async () => {
       await navigateTable("projects");
       await home();
-      await page.evaluate(() => ((window as any).hold = "snapshot"));
-      await tableRecent("projects").click();
+      // Recents keep refreshing their labels in the background, so once no request
+      // is in flight, arm the hold and click in the same task: the held lookup is
+      // then the click's own.
+      await tableRecent("projects").evaluate(
+        (button) =>
+          new Promise<void>((resolve) => {
+            const state = window as any;
+            const ready = () => {
+              if (
+                ![...state.activeWorkers].every(
+                  (w: any) => w.requests.size === 0,
+                )
+              )
+                return setTimeout(ready, 10);
+              state.hold = "snapshot";
+              (button as HTMLButtonElement).click();
+              resolve();
+            };
+            ready();
+          }),
+      );
       await page.waitForFunction(() => (window as any).held.length === 1);
-      await navigateTable("widgets");
+      // The newer navigation leaves the open table, so its completion is visible
+      // before the late lookup is released.
+      await navigateTable("views");
       const before = await tuples();
       await page.evaluate(() => (window as any).release());
       await page.waitForFunction(() =>
@@ -430,9 +519,9 @@ try {
       );
       await settled();
       await expect(
-        page.getByRole("heading", { name: "widgets", exact: true }),
+        page.getByRole("heading", { name: "views", exact: true }),
       ).toBeVisible();
-      await expect.poll(() => query().get("table")).toBe("widgets");
+      await expect.poll(() => query().get("table")).toBe("views");
       expect(await tuples()).toEqual(before);
     },
   );
@@ -487,7 +576,9 @@ try {
       // The fixture catalogs no catalog_tables properties; nothing is editable.
       await expect(editor.getByText("Saved", { exact: true })).toBeVisible();
       await expect(
-        editor.locator("input:not([disabled]), textarea:not([disabled]), select:not([disabled])"),
+        editor.locator(
+          "input:not([disabled]), textarea:not([disabled]), select:not([disabled])",
+        ),
       ).toHaveCount(0);
       await expect(
         editor.getByRole("button", { name: "Move to trash", exact: true }),
@@ -626,9 +717,7 @@ try {
         .click();
       await ready();
       await settled();
-      await expect(
-        recents.locator(".destination"),
-      ).toHaveCount(8);
+      await expect(recents.locator(".destination")).toHaveCount(8);
       await expect(recent("missing/0+?")).toBeDisabled();
       await expect(
         recents.getByText(/outside this replica/).first(),
@@ -641,7 +730,9 @@ try {
         .click();
       await expect(recent("missing/0+?")).toHaveCount(0);
       // Resolved once, the missing entries are stored with their snapshot and reason.
-      const missing = (await stored()).filter((item: any) => item.row?.startsWith("missing/"));
+      const missing = (await stored()).filter((item: any) =>
+        item.row?.startsWith("missing/"),
+      );
       expect(missing.length).toBeGreaterThan(0);
       for (const item of missing)
         expect(item).toMatchObject({

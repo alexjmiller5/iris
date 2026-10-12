@@ -77,6 +77,26 @@ const mutations = [
     browser: "cold reopen",
   },
   {
+    name: "a plain table is named by its default view",
+    file: model,
+    before: "const view = destination.view ? resolved.view : null;",
+    after: "const view = resolved.view;",
+  },
+  {
+    name: "a plain table link records its default view",
+    file: page,
+    before: "view: chosenView?.id === explicitView ? destination.view : null",
+    after: "view: destination.view",
+    browser: "plain table link",
+  },
+  {
+    name: "this page's URL turns its default view into a chosen view",
+    file: page,
+    before: "destination.view === plainViews.get(resolved.table)",
+    after: "false",
+    browser: "storage read",
+  },
+  {
     name: "system partition ignores core boolean",
     file: tables,
     before: "table.readOnly === true",

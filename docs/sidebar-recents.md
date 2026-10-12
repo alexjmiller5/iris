@@ -14,6 +14,14 @@ recent destination resolves its current catalog, saved-view definition and full
 record through the existing core requests before applying the normal draft and
 pending-write guards. Saved views are identified by their stable ID.
 
+A plain table link (a sidebar table, a pinned table, Find's table entry, a table
+recent) is a table visit: `view` is null and it is named by the table, although the
+table opens on its default saved view. Only a chosen view (the view switcher, a view
+link, Find's view entry, Save as new view) is a view visit, named by the view, and
+only a chosen view joins a record visit's identity and context. Restoring this
+page's own URL, which names the default view a plain table opened on, keeps it a
+table visit.
+
 A visit stores the title, view name or table the page shows when it is recorded,
 and stored snapshots paint with the sidebar when a workspace opens, so a recent
 never flashes its ID or a Loading line. Labels then refresh from current local

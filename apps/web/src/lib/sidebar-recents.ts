@@ -86,7 +86,9 @@ function pending(destination: Destination): RecentEntry {
 		unavailable: null
 	};
 }
-/** Also builds a visit's snapshot from what the host shows when it records it. */
+/** Also builds a visit's snapshot from what the host shows when it records it.
+ * A view names the entry, or joins a record's context, only when the destination
+ * chose it: a plain table opens on its default view but is remembered as the table. */
 export function describeRecent(
 	destination: Destination,
 	resolved: Pick<
@@ -95,15 +97,15 @@ export function describeRecent(
 	>
 ): RecentEntry {
 	const display = resolved.catalog.tables.find((t) => t.id === resolved.table)?.display;
+	const view = destination.view ? resolved.view : null;
 	const label = resolved.row
 		? displayName(resolved.row, typeof display === 'string' ? display : undefined)
-		: (resolved.view?.name ?? resolved.table);
+		: (view?.name ?? resolved.table);
 	const base = pending(destination);
 	return {
 		...base,
 		label,
-		context:
-			resolved.row && resolved.view ? `${base.context} · ${resolved.view.name}` : base.context,
+		context: resolved.row && view ? `${base.context} · ${view.name}` : base.context,
 		trash: !!resolved.row?.deleted_at,
 		loading: false
 	};

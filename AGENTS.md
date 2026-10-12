@@ -320,8 +320,16 @@ stored entries paint in the sidebar's first frame on launch or workspace open wi
 no raw id or Loading. Labels then refresh from current local data in the background
 and the list updates, and the snapshot is stored again, only when one changed
 (rename, trash, unavailable). An entry never resolved on this device shows its raw
-id until it is. Record only completed navigation; preserve unavailable entries with
-a reason and an explicit Remove action. Preference read failures must not overwrite
+id until it is. A plain table link (sidebar table, pinned table, Find's table entry,
+a table recent) records a table visit (view null, labelled by the table, context
+"Table") even though core's `ensureDefaultView` opens it on the default view; only a
+chosen view (view switcher, view link, Find's view entry, Save as new view) records
+a view visit, named by the view in "View · <table>" context. Web tracks the chosen
+view (`explicitView`), keeps it out of record visits opened under the default view,
+and treats a URL naming the table's default view (its own reflected URL) as a plain
+table. Native records the requested destination, which `NativeResolvedDestination`
+labels by table when it has no view; native record contexts never name a view.
+Record only completed navigation; preserve unavailable entries with a reason and an explicit Remove action. Preference read failures must not overwrite
 the unread stored history. System table grouping uses core catalog `readOnly`,
 never host naming conventions. Native destination resolution reads fresh catalog,
 saved-view metadata and full active or trashed rows through the same core. Keep

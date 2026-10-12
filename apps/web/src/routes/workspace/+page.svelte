@@ -202,9 +202,22 @@
 			() => database === workspace && demo === scope && request === recentsRequest
 		);
 	}
-	function recordRecent() {
+	/** The view the user chose (view switcher, view link, Cmd+K view, a view's
+	 * recent). A plain table link opens the default view without choosing it. */
+	let explicitView = $state<string | null>(null);
+	/** The view each table's plain link opened on this session, so this page's own
+	 * URL (Back, reopening) is not mistaken for a chosen view. */
+	const plainViews = new Map<string, string>();
+	/** Recents name a view only when it was chosen, so a plain table link is
+	 * remembered as the table, not as its default view. */
+	function recentDestination() {
 		const destination = currentDestination();
+		return { ...destination, view: chosenView?.id === explicitView ? destination.view : null };
+	}
+	function recordRecent() {
+		const destination = recentDestination();
 		if (!destination.table) return;
+		if (chosenView && !destination.view) plainViews.set(destination.table, chosenView.id);
 		// The visit's snapshot is what this page shows right now.
 		recentEntries = rememberRecent(
 			recentEntries,
@@ -459,7 +472,8 @@
 		const current = () =>
 			database === workspace && request === locationRequest && version === editorVersion;
 		try {
-			const resolved = await resolveDestination(workspace, readDestination(url), table);
+			const destination = readDestination(url);
+			const resolved = await resolveDestination(workspace, destination, table);
 			if (!current()) return;
 			resetView();
 			catalog = resolved.catalog;
@@ -473,6 +487,15 @@
 			await Promise.all([loadRows(), loadViews(), loadWriteability(), pins.refresh()]);
 			await tick();
 			if (current()) {
+				// This page's own URL (reload, Back) names the view a plain table opened
+				// on, the table's default; a link naming any other view chose it.
+				// ponytail: after a reload, an estate without view-defaults storage has
+				// no default to compare, so its default view reads as chosen.
+				explicitView =
+					destination.view === preferredView?.view?.id ||
+					destination.view === plainViews.get(resolved.table)
+						? null
+						: destination.view;
 				if (resolved.row) recordHeading?.focus();
 				recordRecent();
 			}
@@ -1470,6 +1493,7 @@
 		}
 	}
 	function resetView() {
+		explicitView = null;
 		void viewAutosave.flush();
 		exportSnapshot = null;
 		undoPaused = false;
@@ -1728,6 +1752,7 @@
 		if (!usable(view ?? undefined)) return false;
 		locationRequest++;
 		navigationLoading = false;
+		explicitView = id;
 		applyView(view ?? null);
 		const version = editorVersion;
 		await loadRows();
@@ -1831,6 +1856,8 @@
 			});
 			if (saved.updated_at) viewRevisions.set(saved.id, saved.updated_at);
 			if (workspace !== database || table !== target || version !== viewVersion) return;
+			// A view saved as new is the user's own choice.
+			if (!update) explicitView = saved.id;
 			chosenView = saved;
 			viewBaseline = JSON.stringify(definition);
 			await refresh();
@@ -2580,6 +2607,7 @@
 		locationRequest++;
 		navigationLoading = false;
 		resetView();
+		explicitView = destination.view;
 		catalog = resolved.catalog;
 		table = resolved.table;
 		graphVisible = false;
@@ -2848,7 +2876,7 @@
 				>
 				<SidebarRecents
 					entries={recentEntries}
-					current={currentDestination()}
+					current={recentDestination()}
 					busy={busy || writing}
 					storageError={[recentReadError, recentStorageError].filter(Boolean).join(' ')}
 					onchoose={openRecent}
