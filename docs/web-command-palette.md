@@ -14,8 +14,10 @@ The host reads saved views progressively through `listViews({table})` once per
 dialog opening. Closing or switching workspace invalidates late receipts and
 stops further list requests. Metadata failures leave table choices and record
 search usable. Choosing a table or saved view re-resolves its current catalog and
-definition through the existing workspace destination helper. Pending writes
-block navigation; cancelling draft discard retains the dialog, draft and URL.
+definition through the existing workspace destination helper. A pending save does
+not block navigation and still lands; cancelling draft discard retains the dialog,
+draft and URL. A table or record open that began before the palette opened leaves
+it open when it lands.
 Successful navigation uses the same table/view URL and history behavior as the
 workspace controls. The dialog never receives a database or credentials.
 

@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { resolve } from 'node:path';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, workspacePage, recordSaved } from './test-origin';
+import { disposableOrigin, workspacePage, recordReady, recordSaved } from './test-origin';
 
 const url = process.env.IRIS_TEST_URL ?? 'http://iris-relations.localhost:5223/workspace?review';
 const origin = disposableOrigin(url);
@@ -123,6 +123,7 @@ try {
 		if (await editor.isVisible()) await editor.getByRole('button', { name: 'Close record', exact: true }).click();
 		await page.getByRole('button', { name: 'widgets', exact: true }).click();
 		await page.getByRole('button', { name: 'Fixture record', exact: true }).click();
+		await recordReady(page);
 		await expect(editor.getByLabel('Parent', { exact: true }).locator('option[value="fixture-record"]')).toHaveText('Target project');
 	}
 	async function check(name: string, run: () => Promise<void>) {
@@ -150,6 +151,10 @@ try {
 		await group('Related').getByRole('button', { name: 'Remove Second project', exact: true }).click();
 		await expect(open('Related', 'Second project')).toHaveCount(0);
 		await expect(editor.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Fixture record');
+		// The removal saves itself; Undo restores the fixture for later cases.
+		await recordSaved(page);
+		await page.getByRole('button', { name: 'Undo last saved change', exact: true }).click();
+		await expect(open('Related', 'Second project')).toBeVisible();
 	});
 	await check('opening a relation refreshes the destination saved views', async () => {
 		await open().click();
@@ -159,13 +164,15 @@ try {
 		await expect(views).toHaveValue('');
 	});
 	await check('cancelled discard retains the source draft and restores action focus', async () => {
-		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('Unsaved source title');
+		// A valid edit saves itself; only a value the catalog refuses is left to discard.
+		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('');
+		await recordSaved(page);
 		acceptDiscard = false;
 		const before = dialogs;
 		await open().click();
 		await expect.poll(() => dialogs).toBe(before + 1);
 		await expect(open()).toBeEnabled();
-		await expect(editor.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Unsaved source title');
+		await expect(editor.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('');
 		await expect(open()).toBeFocused();
 		await expect(editor.getByLabel('Parent', { exact: true })).toHaveValue('fixture-record');
 		acceptDiscard = true;
@@ -203,10 +210,12 @@ try {
 		}
 	});
 	await check('missing targets preserve the editor and explain local unavailability', async () => {
-		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('Keep unavailable draft');
+		// A refused draft stays unsaved, so later cases still find the stored title.
+		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('');
+		await recordSaved(page);
 		await open('Absent', 'missing-target').click();
 		await expect(page.getByRole('alert')).toContainText('not available locally');
-		await expect(editor.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Keep unavailable draft');
+		await expect(editor.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('');
 		await expect(editor.getByLabel('Absent', { exact: true })).toHaveValue('missing-target');
 	});
 	await check('trashed targets cannot open through stale picker labels', async () => {
@@ -251,32 +260,41 @@ try {
 			await expect(page.getByRole('alert')).toHaveCount(0);
 		}
 	});
-	await check('pending writes lock reference navigation until the receipt arrives', async () => {
-		await page.evaluate(() => { (window as any).holdWrites = true; });
-		await editor.getByLabel('Absent', { exact: true }).selectOption('');
-		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('Pending title');
-		await recordSaved(page);
-		await page.waitForFunction(() => (window as any).heldWrites.length > 0);
-		await expect(open()).toBeDisabled();
-		await page.evaluate(() => (window as any).releaseWrites());
-		await expect(open()).toBeEnabled();
-		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('Fixture record');
-		await recordSaved(page);
-	});
-	await check('body autosave locks reference navigation until the receipt arrives', async () => {
+	// Record pages save themselves: a save still waiting for its receipt never blocks
+	// leaving, and it lands after the editor closes.
+	await check('a pending autosave leaves reference navigation open and still lands', async () => {
 		// Make the fixture valid for an independent selective run, too.
 		await editor.getByLabel('Absent', { exact: true }).selectOption('');
 		await recordSaved(page);
 		await page.evaluate(() => { (window as any).holdWrites = true; });
-		await editor.getByRole('button', {name:'Body options',exact:true}).click();
-  await editor.getByRole('menuitem', {name:'Body source',exact:true}).click();
-		await editor.getByRole('textbox', { name: 'Body', exact: true }).fill('Body waiting for its receipt');
+		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('Pending title');
+		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 		await page.waitForFunction(() => (window as any).heldWrites.length > 0);
-		await expect(open()).toBeDisabled();
-		await page.evaluate(() => (window as any).releaseWrites());
 		await expect(open()).toBeEnabled();
 		await open().click();
 		await expect(editor.getByLabel('Headline', { exact: true })).toHaveValue('Target project');
+		await page.evaluate(() => (window as any).releaseWrites());
+		await editor.getByRole('button', { name: 'Close record', exact: true }).click();
+		await page.getByRole('button', { name: 'widgets', exact: true }).click();
+		await page.getByRole('button', { name: 'Pending title', exact: true }).click();
+		await recordReady(page);
+		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('Fixture record');
+		await recordSaved(page);
+	});
+	await check('a pending body autosave leaves reference navigation open and still lands', async () => {
+		await editor.getByLabel('Absent', { exact: true }).selectOption('');
+		await recordSaved(page);
+		await page.evaluate(() => { (window as any).holdWrites = true; });
+		await editor.getByRole('button', {name:'Body options',exact:true}).click();
+		await editor.getByRole('menuitem', {name:'Body source',exact:true}).click();
+		await editor.getByRole('textbox', { name: 'Body', exact: true }).fill('Body waiting for its receipt');
+		await page.waitForFunction(() => (window as any).heldWrites.length > 0);
+		await expect(open()).toBeEnabled();
+		await open().click();
+		await expect(editor.getByLabel('Headline', { exact: true })).toHaveValue('Target project');
+		await page.evaluate(() => (window as any).releaseWrites());
+		await sourceRecord();
+		await expect(editor.getByRole('textbox', { name: 'Body', exact: true })).toContainText('Body waiting for its receipt');
 	});
 	await check('reference controls fit desktop and narrow screens', async () => {
 		const longTitle = 'A related project with a deliberately long descriptive title';

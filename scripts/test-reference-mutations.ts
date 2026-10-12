@@ -19,10 +19,10 @@ const mutations: { name: string; test: string; edits: [string | RegExp, string][
 		['if (!discard()) return false;\n\t\tlocationRequest++;\n\t\tnavigationLoading = false;\n\t\tif (preserveView', 'locationRequest++;\n\t\tnavigationLoading = false;\n\t\tif (preserveView']
 	] },
 	{ name: 'stale successful lookup accepted', test: 'held old-record', edits: [
-		['if (!current()) return false;', '/* mutation: accept stale success */']
+		['if (!current()) return false;\n\t\tif (!found[0])\n\t\t\tthrow new Error(\n', '/* mutation: accept stale success */\n\t\tif (!found[0])\n\t\t\tthrow new Error(\n']
 	] },
 	{ name: 'stale failed lookup displayed', test: 'held old-record', edits: [
-		['if (current()) throw e;', 'throw e;'],
+		['if (current()) throw e;\n\t\t\treturn false;\n\t\t}\n\t\tif (!current()) return false;\n\t\tif (!found[0])', 'throw e;\n\t\t\treturn false;\n\t\t}\n\t\tif (!current()) return false;\n\t\tif (!found[0])'],
 		['if (current()) error = message(e);\n\t\t} finally {\n\t\t\tif (relationOpening', 'error = message(e);\n\t\t} finally {\n\t\t\tif (relationOpening']
 	] },
 	{ name: 'immutable references cannot be opened', test: 'immutable references', edits: [
@@ -31,11 +31,11 @@ const mutations: { name: string; test: string; edits: [string | RegExp, string][
 	{ name: 'skipped local targets cannot be opened', test: 'skipped tables', edits: [
 		['catalog.tables.some((target) => target.id === p.ref_table)}', 'catalog.tables.some((target) => target.id === p.ref_table) && !skipped.includes(p.ref_table)}']
 	] },
-	{ name: 'body write no longer disables opening', test: 'body autosave locks', edits: [
-		['disabled={busy || relationOpening === editorVersion || !available}', 'disabled={relationOpening === editorVersion || !available}']
+	{ name: 'a pending autosave blocks opening', test: 'pending body autosave', edits: [
+		['disabled={busy || relationOpening === editorVersion || !available}', 'disabled={busy || autosaving || relationOpening === editorVersion || !available}']
 	] },
 	{ name: 'destination saved views never loaded', test: 'destination saved views', edits: [
-		['recordHeading?.focus();\n\t\tawait Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {', 'recordHeading?.focus();\n\t\tawait Promise.all([loadRows(), loadWriteability()]).catch((e) => {']
+		['recordHeading?.focus();\n\t\tlet loaded = true;\n\t\tawait Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {', 'recordHeading?.focus();\n\t\tlet loaded = true;\n\t\tawait Promise.all([loadRows(), loadWriteability()]).catch((e) => {']
 	] }
 ];
 

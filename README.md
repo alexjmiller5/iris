@@ -160,10 +160,11 @@ carry credentials or record drafts.
 
 Back and Forward restore the destination from current local data, including
 hidden editor fields and explicitly linked trashed records. Cancelling a draft
-discard retains both the editor and its current address; pending writes block
-navigation until their receipt. Missing destinations show an explanation while
-keeping the current editor. Copy link includes the saved view's identity, so
-reopening uses its latest saved revision while retaining the copied query settings.
+discard retains both the editor and its current address; a save still waiting for
+its receipt does not hold navigation and lands after you leave. Missing destinations
+show an explanation while keeping the current editor. Copy link includes the saved
+view's identity, so reopening uses its latest saved revision while retaining the
+copied query settings.
 Unsaved action definitions, grid pagination and editor drafts are not encoded in links.
 
 **Find records** (Cmd+K or Ctrl+K) searches across locally available tables,
@@ -675,7 +676,7 @@ and verify ordinary schema replay and sync. Environment overrides:
 
 Reference navigation checks use real Worker/OPFS reads and a synthetic hub. They
 cover fresh full-row lookup, cross-table IDs, draft cancellation, stale replies,
-read-only references, missing/trashed targets, skipped tables, pending writes,
+read-only references, missing/trashed targets, skipped tables, pending saves,
 destination saved views and narrow layouts. `IRIS_REFERENCE_CASE` selects a
 case by name; `IRIS_TEST_SCREENSHOTS` optionally names an output directory.
 

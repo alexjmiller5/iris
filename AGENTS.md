@@ -298,6 +298,7 @@ locally replicated rows and identifies skipped-table incompleteness.
 The web command palette also lists tables and saved views. Read saved views once
 per opening through the core, preserve selection by kind/table/id as entries
 arrive, and re-resolve destinations before navigating. Closing cancels late replies.
+A table or record open that began before the palette opened leaves it open when it lands.
 Selected relation actions share the guarded full-row opening path. Navigation
 stays separate from editing/removal permissions, and skipped tables may still
 contain navigable local rows. Preserve the source editor on unavailable targets
@@ -846,7 +847,9 @@ release both. A ping every 30 s without a pong within 10 s drops the socket;
 reconnects back off from 1 s doubling to 30 s, and after two minutes down the
 client retries and checks once a minute. The pill shows Live, Reconnecting or
 Checking every minute where it would say Synced. Synthetic test hubs serve the
-real `ChangeSignal` through `scripts/fixture-changes.ts`. The
+real `ChangeSignal` through `scripts/fixture-changes.ts`. A script that edits the hub
+database directly stamps `hub_at` (replicas pull by arrival) and calls the regression
+hub's `changed(tables)` so connected clients pull at once. The
 worker broadcasts a sync only when it pulled, pushed or rejected rows, so idle polls
 never refresh views. `SyncStatus.svelte` in the sidebar is the only sync/save status;
 add no sync or refresh buttons, progress bars or save notices. Cmd/Ctrl+\ toggles
