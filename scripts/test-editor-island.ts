@@ -82,6 +82,12 @@ try {
 	expect(finalKeystroke).toEqual({id:'draft-3',value:'Final!\n',label:'Body',readOnly:false});
 	await page.evaluate(() => (window as any).irisEditor.setDocument({id:'inline-code',value:'Use value here\n',label:'Body',readOnly:false}));
 	const body = page.getByRole('textbox',{name:'Body',exact:true});
+	// Place the caret only once the new document has rendered and focused: ProseMirror
+	// rewrites the DOM selection 20 ms after its view gains focus, which would undo keys
+	// pressed in that window.
+	await expect(page.locator('.ProseMirror p')).toHaveText('Use value here');
+	await body.focus();
+	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 40)));
 	await body.press('Home');
 	for (let i = 0; i < 4; i++) await body.press('ArrowRight');
 	for (let i = 0; i < 5; i++) await body.press('Shift+ArrowRight');
@@ -113,8 +119,9 @@ try {
 	await body.pressSequentially('# ');
 	await expect(page.locator('.ProseMirror h1')).toBeVisible();
 	await body.press('/');
+	// The block menu opens on its filter field.
+	await expect(page.getByRole('textbox',{name:'Filter blocks',exact:true})).toBeFocused();
 	const textChoice = page.getByRole('menuitem',{name:'Text',exact:true});
-	await expect(textChoice).toBeFocused();
 	await textChoice.click();
 	await body.pressSequentially('A plain paragraph');
 	await expect(page.locator('.ProseMirror > p')).toHaveText('A plain paragraph');
