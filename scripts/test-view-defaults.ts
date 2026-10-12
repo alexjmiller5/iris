@@ -33,6 +33,9 @@ try {
   if(!(await cdp.evaluate(`!!document.querySelector('[role="dialog"][aria-label="View settings"]:popover-open')`)))await click('View settings');
   await click(name);
  };
+ // Close the workspace before a full navigation: leaving with its database worker
+ // still open can wedge the headless renderer.
+ const leave=async()=>{await click('Switch workspace');await cdp.until(`!!(${button('Open my workspace')})`);};
  // A click before hydration does nothing; retry until the personal workspace shell is up.
  const enter=()=>expect.poll(async()=>(await cdp.evaluate(`!!document.querySelector('#hub-connect')`))||(await click('Open my workspace').then(()=>false,()=>false)),{timeout:60000}).toBe(true);
  await cdp.navigate(new URL('/',url).href);await cdp.command('Storage.clearDataForOrigin',{origin,storageTypes:'all'});await cdp.navigate(url);
@@ -51,9 +54,9 @@ try {
  await cdp.until(`${records('Fixture record')}===true && ${records('Second record')}===false`);
  await expect.poll(()=>(db.db.query('SELECT view_id FROM view_defaults WHERE tbl=? AND deleted_at IS NULL').get('widgets') as any)?.view_id,{timeout:15000}).toBe('preferred-opaque');
  // An explicit view wins over the persisted pointer, including after an OPFS reopen.
- await cdp.navigate(new URL('/workspace?table=widgets&view=other-opaque',url).href);await enter();await waitSelected('other-opaque');
+ await leave();await cdp.navigate(new URL('/workspace?table=widgets&view=other-opaque',url).href);await enter();await waitSelected('other-opaque');
  await cdp.until(`${records('Second record')}===true`);
- await cdp.navigate(new URL('/workspace?table=widgets',url).href);await enter();await waitSelected('preferred-opaque');
+ await leave();await cdp.navigate(new URL('/workspace?table=widgets',url).href);await enter();await waitSelected('preferred-opaque');
  console.log('PASS preferred view set from View settings, synced pointer, table navigation, explicit view link precedence and OPFS reopen.');
  await settings('Delete view');await click('Confirm delete');
  await waitSelected(catalogDefault);

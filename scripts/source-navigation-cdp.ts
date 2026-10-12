@@ -50,7 +50,7 @@ export async function sourceNavigationCDP(address: string) {
       const id = ++sequence;
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(Error(`CDP timeout: ${method}`));
+        reject(Error(`CDP timeout: ${method} ${JSON.stringify(params).slice(0, 200)}`));
       }, 10000);
       pending.set(id, { resolve, reject, timer });
       socket.send(JSON.stringify({ id, method, params }));
