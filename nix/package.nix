@@ -1,7 +1,7 @@
 { lib, stdenvNoCC, fetchurl, unzip
-, version ? "1.1.0"
+, version ? "1.2.0"
 , url ? "https://github.com/alexjmiller5/iris/releases/download/v${version}/Iris-v${version}.zip"
-, hash ? "sha256-cnxF4gfC3/VnpCwEcked7kifSvWLMCrsquEs1sYQoaY="
+, hash ? "sha256-Lv+0I9HSLIH6zYaZ1YYU4Kjo9dU8ZRVpnuPVMkLV93A="
 }:
 stdenvNoCC.mkDerivation {
   pname = "iris";
