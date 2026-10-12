@@ -174,6 +174,9 @@ try {
   await expect(
     page.getByRole("button", { name: "Fixture record", exact: true }),
   ).toBeVisible({ timeout: 30000 });
+  // The open has landed once its default view is in the URL.
+  await expect.poll(() => new URL(page!.url()).searchParams.get("view")).toBeTruthy();
+  const homeView = new URL(page.url()).searchParams.get("view");
   const dialog = page.getByRole("dialog", {
     name: "Find records",
     exact: true,
@@ -216,8 +219,14 @@ try {
       await owned
         .getByRole("button", { name: "Close record", exact: true })
         .click();
-    await tables.getByRole("button", { name: "widgets", exact: true }).click();
-    await expect.poll(() => query().get("table")).toBe("widgets");
+    await expect.poll(() => query().get("row")).toBeNull();
+    // Clicking starts a fresh table open that closes the palette when it lands, so
+    // click only when away and wait for that open to reach the URL.
+    if (query().get("table") !== "widgets" || query().get("view") !== homeView)
+      await tables.getByRole("button", { name: "widgets", exact: true }).click();
+    await expect
+      .poll(() => [query().get("table"), query().get("view")])
+      .toEqual(["widgets", homeView]);
     await expect(
       owned.getByRole("region", { name: "Recents", exact: true })
         .locator('[aria-busy="true"]'),
@@ -290,6 +299,22 @@ try {
         await expect(
           owned.getByRole("heading", { name: "widgets", exact: true }),
         ).toBeVisible();
+      },
+    ],
+    [
+      "a table open still in flight leaves a palette opened after it",
+      async () => {
+        await hold("ensureDefaultView");
+        await tables.getByRole("button", { name: "projects", exact: true }).click();
+        await held();
+        await open();
+        await owned.evaluate(() => (window as any).release());
+        await expect.poll(() => query().get("table")).toBe("projects");
+        await expect(
+          owned.getByRole("heading", { name: "projects", exact: true }),
+        ).toBeVisible();
+        await expect(dialog).toBeVisible();
+        await expect(tableOption("widgets")).toBeVisible();
       },
     ],
     [
@@ -463,11 +488,15 @@ try {
         await expect(viewOption("projects")).toBeVisible();
         await editView("project-view");
         await viewOption("projects").click();
+        // The name field sits in the closed View settings menu; the switcher shows it.
         await expect(
-          owned.getByRole("textbox", { name: "View name", exact: true }),
-        ).toHaveValue("Renamed view");
+          owned
+            .getByRole("combobox", { name: "View", exact: true })
+            .locator("option:checked"),
+        ).toHaveText("Renamed view");
+        // Headers are named by their column options button.
         await expect(
-          owned.getByRole("columnheader", { name: "Detail", exact: true }),
+          owned.getByRole("columnheader", { name: /^Detail\b/ }),
         ).toBeVisible();
       },
     ],

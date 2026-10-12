@@ -2495,7 +2495,8 @@
 		navigationLoading = false;
 		const workspace = database,
 			version = editorVersion,
-			request = ++recordOpenVersion;
+			request = ++recordOpenVersion,
+			find = findVersion;
 		const current = () =>
 			database === workspace &&
 			version === editorVersion &&
@@ -2535,7 +2536,8 @@
 		table = target.table;
 		graphVisible = false;
 		edit(found[0], false);
-		showFind(false);
+		// A palette opened while this record was loading stays open.
+		if (findVersion === find) showFind(false);
 		const openedVersion = editorVersion;
 		await tick();
 		if (database !== workspace || editorVersion !== openedVersion) return false;
@@ -2615,7 +2617,8 @@
 		if (!database || busy || writing) return false;
 		const workspace = database,
 			sourceEditor = editorVersion,
-			request = reservedRequest ?? ++recordOpenVersion;
+			request = reservedRequest ?? ++recordOpenVersion,
+			find = findVersion;
 		const current = () =>
 			database === workspace &&
 			editorVersion === sourceEditor &&
@@ -2642,7 +2645,8 @@
 			trash = !!resolved.row.deleted_at;
 			edit(resolved.row, false);
 		}
-		showFind(false);
+		// A palette opened while this destination was resolving stays open.
+		if (findVersion === find) showFind(false);
 		const openedVersion = editorVersion;
 		let loaded = true;
 		await Promise.all([loadRows(), loadViews(), loadWriteability()]).catch((e) => {
