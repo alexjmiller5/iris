@@ -1,4 +1,4 @@
-// Generated from soma-core/src/validate.ts. SHA-256: d1fcfb0233cd8524207797952df5859289823591f0a3df997d8929a0fe0711e9
+// Generated from soma-core/src/validate.ts. SHA-256: dd81938ad66e7531ef40b80de774bc1ce9c9917feb90855e71800444be6d3584
 import type { Row, Property, Violation } from './contract.generated.ts';
 export type { Row, OptionDef, Property, Violation } from './contract.generated.ts';
 export type ValidateOptions = {

@@ -1,4 +1,4 @@
-import type { SearchArgs, SearchHit, SearchIndexStatus, SearchIndexStepArgs } from './contract.generated.ts';
+import type { EmptyArgs, SearchArgs, SearchHit, SearchIndexStatus, SearchIndexStepArgs, SearchTableList, SetSearchTableArgs } from './contract.generated.ts';
 import type { SqlDriver } from './driver.ts';
 import { type Row } from './validate.ts';
 export declare const SEARCH_TEXT_TYPES: Set<string>;
@@ -22,6 +22,12 @@ export declare const SEARCH_TABLES_KEY = "search_tables";
  * rows until `budgetMs` passes (always at least one chunk), so requests between calls
  * never wait long. Searches and backlinks read whatever it has built so far. */
 export declare function searchIndexStep(db: SqlDriver, args?: SearchIndexStepArgs): Promise<SearchIndexStatus>;
+/** For a host's settings: every table the index can hold, whether it does and why, its records
+ * and an estimate of its text. It only reads; the index step applies any change. */
+export declare function searchTables(db: SqlDriver, args?: EmptyArgs): Promise<SearchTableList>;
+/** Stores this device's choice for one table: true indexes it whatever its default, false leaves it
+ * out, null returns it to the default. The next index step backfills or purges it. */
+export declare function setSearchTable(db: SqlDriver, args: SetSearchTableArgs): Promise<SearchTableList>;
 /** Hosts may call at database open to fail early on incompatible SQLite.
  * No triggers, user rows or sync schema are changed by this capability probe. */
 export declare function assertSearchSupport(db: SqlDriver): Promise<void>;

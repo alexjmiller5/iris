@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "2cf5f2af5dca5b8f59a715f0c532cfb018ef1b2581930fd22318bd87a02f087f";
+export declare const CORE_CONTRACT_HASH = "ee2008c4c2f4636c941b6e2de8db8f047a5d0410616981e5d4731614f4fd9b9c";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -206,6 +206,23 @@ export type SearchIndexStatus = {
     indexing: boolean;
     pending: Count;
     done: boolean;
+};
+export type SearchExclusion = "provenance" | "size";
+export type SearchTable = {
+    table: string;
+    indexed: boolean;
+    defaultExclusion: SearchExclusion | null;
+    override: boolean | null;
+    rows: Count;
+    textBytes: Count;
+};
+export type SearchTableList = {
+    tables: SearchTable[];
+    sizeLimit: Count;
+};
+export type SetSearchTableArgs = {
+    table: string;
+    indexed: boolean | null;
 };
 export type SavedViewDefinition = {
     version: Count;
@@ -1234,6 +1251,14 @@ export interface CoreOperations {
     searchIndexStep: {
         args: SearchIndexStepArgs;
         result: SearchIndexStatus;
+    };
+    searchTables: {
+        args: EmptyArgs;
+        result: SearchTableList;
+    };
+    setSearchTable: {
+        args: SetSearchTableArgs;
+        result: SearchTableList;
     };
     listViews: {
         args: ListViewsArgs;
