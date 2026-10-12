@@ -75,14 +75,14 @@
       let local = root.appendingPathComponent("local.sqlite")
       let chosen = WorkspaceModel(
         localURL: { local }, credentialStore: MemoryHubCredentials(nil))
-      let runtime = try IrisCoreRuntime()
-      let first = try NativeWorkspace(path: path.path, runtime: runtime)
+      let runtime = try await IrisCoreRuntime.onCore()
+      let first = try await NativeWorkspace(path: path.path, runtime: runtime)
       try await first.createSample()
       await chosen.open(url: path)
       #expect(chosen.client != nil)
       await chosen.close()
       // Another window holds a transaction, so the relaunch's restore waits mid-open.
-      runtime.context.evaluateScript(
+      await runtime.evaluateOnCore(
         #"""
         const original = IrisNative.request;
         IrisNative.request = function(id, method, args) {
@@ -106,7 +106,7 @@
       #expect(
         !WorkspaceView.showsWelcome(restoring: relaunched.restoring, opening: relaunched.loading),
         "The welcome screen must not flash while the remembered workspace opens")
-      runtime.context.evaluateScript("releaseWindow()")
+      await runtime.evaluateOnCore("releaseWindow()")
       _ = try await transaction.value
       await restore.value
       #expect(!relaunched.restoring)

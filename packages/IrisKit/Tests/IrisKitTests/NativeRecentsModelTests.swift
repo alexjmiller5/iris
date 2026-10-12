@@ -238,8 +238,8 @@ struct NativeRecentsModelTests {
   }
 
   @Test func aPlainTableVisitIsLabelledByTheTableNotItsDefaultView() async throws {
-    let runtime = try IrisCoreRuntime()
-    let workspace = try NativeWorkspace(path: ":memory:", runtime: runtime)
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
     try await workspace.createSample()
     let resolver = NativeDestinationResolver(workspace: workspace)
     let table = NativeDestination(table: "notes")
