@@ -9,6 +9,13 @@ extension NativeWorkspace {
   }
 }
 
+/// Waits up to `timeout` for `condition`, which a request on the core thread makes true.
+/// Counting main-actor yields does not bound work on another thread.
+@MainActor func waitForCore(timeout: Duration = .seconds(10), _ condition: () -> Bool) async {
+  let deadline = ContinuousClock.now.advanced(by: timeout)
+  while !condition(), ContinuousClock.now < deadline { await Task.yield() }
+}
+
 extension IrisCoreRuntime {
   /// A runtime created on the core thread, as NativeWorkspace(path:) creates its own:
   /// JavaScriptCore runs its heap timers on the creating thread's run loop.

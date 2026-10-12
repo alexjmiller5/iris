@@ -405,7 +405,7 @@ struct EditorAutosaveTests {
     }
     editor.setValue("B", for: "body")
     let saving = Task { try await editor.flushAutosave() }
-    for _ in 0..<1000 where held == nil { await Task.yield() }
+    await waitForCore { held != nil }
     let heldReceipt = try #require(held)
     editor.setValue("A", for: "body")
     let stored = try #require(try store.load(table: "notes", recordID: row["id"]?.text))
