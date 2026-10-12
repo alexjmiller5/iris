@@ -321,7 +321,9 @@ public struct WorkspaceView: View {
         let context = try model.activateDestination(
           resolved, workspace: client, generation: generation)
         if let row = resolved.row {
-          pendingSearchEditor = (EditorTarget(row: row.record, context: context), generation, resolved)
+          pendingSearchEditor = (
+            EditorTarget(row: row.record, context: context), generation, resolved
+          )
         }
         tableSearchPresented = false
         showingGraph = false
@@ -523,7 +525,9 @@ public struct WorkspaceView: View {
     var label = label
     if label == nil, destination.rowID == nil {
       if let viewID = destination.viewID {
-        if let view = model.appliedView, view.id.utf8.elementsEqual(viewID.utf8) { label = view.name }
+        if let view = model.appliedView, view.id.utf8.elementsEqual(viewID.utf8) {
+          label = view.name
+        }
       } else {
         label = destination.table
       }
@@ -537,7 +541,8 @@ public struct WorkspaceView: View {
   }
 
   private func recordNavigationSucceeded(_ resolved: NativeResolvedDestination) {
-    recordNavigationSucceeded(resolved.destination, label: resolved.label, record: resolved.row?.record)
+    recordNavigationSucceeded(
+      resolved.destination, label: resolved.label, record: resolved.row?.record)
   }
 
   private func openRecord(_ row: WorkspaceRow) {
@@ -1596,6 +1601,8 @@ private struct RecordEditor: View {
   @State private var pageCapture: PageCapturePresentation?
   @State private var captureFailure: String?
   @State private var emptyColumns: Set<Data>
+  /// The field whose help popover is open; Mac Escape closes it before the record.
+  @State private var helpField: String?
   @State private var backgroundFlush: Task<Void, Never>?
   /// The focused field once typed in: a remote edit never replaces it.
   @State private var typedInFocus: String?
@@ -2047,9 +2054,11 @@ private struct RecordEditor: View {
         ).post()
       }
       #if os(macOS)
-        // Escape closes like Done. As a key equivalent it reaches an open popover first.
+        // Escape closes like Done, but first closes an open help popover: the popover's
+        // window is not always key, so the key equivalent can reach this button instead.
         .background {
-          Button("Close record", action: done).keyboardShortcut(.cancelAction)
+          Button("Close record") { if helpField != nil { helpField = nil } else { done() } }
+          .keyboardShortcut(.cancelAction)
           .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
         }
       #endif
@@ -2331,7 +2340,13 @@ private struct RecordEditor: View {
           .accessibilityLabel("Required")
       }
       if !field.description.isEmpty || field.property["pattern"]?.text.nonempty != nil {
-        PropertyHelpButton(field: field)
+        PropertyHelpButton(
+          field: field,
+          presented: Binding(
+            get: { helpField == field.id },
+            set: { open in
+              if open { helpField = field.id } else if helpField == field.id { helpField = nil }
+            }))
       }
     }
   }
@@ -2613,7 +2628,7 @@ private struct RecordEditor: View {
 
 struct PropertyHelpButton: View {
   let field: CatalogField
-  @State private var presented = false
+  @Binding var presented: Bool
 
   var body: some View {
     Button {

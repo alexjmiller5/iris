@@ -47,13 +47,16 @@ final class CatalogRecordUITests: XCTestCase {
     XCTAssertTrue(title.waitForExistence(timeout: 5))
     XCTAssertTrue(app.images["Required"].exists)
     app.buttons["About Title"].click()
-    XCTAssertTrue(
-      app.staticTexts.matching(
-        NSPredicate(
-          format: "value CONTAINS %@ OR label CONTAINS %@", "Short fixture title.",
-          "Short fixture title.")
-      ).firstMatch.waitForExistence(timeout: 5))
+    let help = app.staticTexts.matching(
+      NSPredicate(
+        format: "value CONTAINS %@ OR label CONTAINS %@", "Short fixture title.",
+        "Short fixture title.")
+    ).firstMatch
+    XCTAssertTrue(help.waitForExistence(timeout: 5))
+    // Escape closes the help popover, never the record behind it.
     app.typeKey(.escape, modifierFlags: [])
+    XCTAssertTrue(help.waitForNonExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["done-record"].exists, "Escape must close only the popover")
     let state = app.popUpButtons["field-state"]
     XCTAssertTrue(state.exists)
     state.click()
@@ -80,8 +83,11 @@ final class CatalogRecordUITests: XCTestCase {
     detail.typeText("Retained second edit")
     let form = app.scrollViews["record-form"]
     let rules = app.buttons["catalog-rules"]
-    // macOS XCUI click can hit the sheet toolbar when a Form row is clipped.
-    form.scroll(byDeltaX: 0, deltaY: -400)
+    // macOS XCUI click can hit the sheet toolbar when a Form row is clipped. Detail's
+    // autosave relayouts the form (Undo row) and can swallow one scroll, so scroll until visible.
+    for _ in 0..<5 where !(rules.exists && rules.isHittable && form.frame.contains(rules.frame)) {
+      form.scroll(byDeltaX: 0, deltaY: -400)
+    }
     XCTAssertTrue(rules.isHittable)
     XCTAssertTrue(
       form.frame.contains(rules.frame), "Rules must be visible inside the form before clicking")
