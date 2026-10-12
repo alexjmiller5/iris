@@ -317,6 +317,15 @@ async function sampleWalk(page: Page, scheme: string) {
   await audit("table-graph");
   await page.keyboard.press("Enter");
 
+  // Search index settings dialog.
+  const searchIndex = role("button", "Search index");
+  await tabTo(searchIndex, true);
+  await page.keyboard.press("Enter");
+  await page.getByRole("dialog").first().getByRole("checkbox").first().waitFor();
+  await audit("search-index");
+  await page.keyboard.press("Escape");
+  await expectFocus([searchIndex], "Search index");
+
   // Backup, export and restore dialog.
   const backup = role("button", "Backup");
   await tabTo(backup, true);

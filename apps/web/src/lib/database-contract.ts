@@ -52,6 +52,8 @@ export interface DatabaseOperations {
 		result: CoreResult<'resolveSourceLink'>;
 	};
 	search: { args: CoreArgs<'search'>; result: CoreResult<'search'> };
+	searchTables: { args: CoreArgs<'searchTables'>; result: CoreResult<'searchTables'> };
+	setSearchTable: { args: CoreArgs<'setSearchTable'>; result: CoreResult<'setSearchTable'> };
 	mentionedBy: { args: CoreArgs<'mentionedBy'>; result: CoreResult<'mentionedBy'> };
 	mentionLabels: { args: CoreArgs<'mentionLabels'>; result: CoreResult<'mentionLabels'> };
 	viewEmbed: { args: CoreArgs<'viewEmbed'>; result: CoreResult<'viewEmbed'> };

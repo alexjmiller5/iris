@@ -62,7 +62,8 @@ try {
   const original=WorkspaceDatabase.prototype.request;
   WorkspaceDatabase.prototype.request=async function(method:any,...input:any[]){
    const result=await original.call(this,method,...input);
-   if(state.holdSearchOpen&&method==='rows'&&input[0]?.view?.filters?.some((f:any)=>f.column==='id')){
+   // Opening reads the full row (its view names trash); status labels read hits without it.
+   if(state.holdSearchOpen&&method==='rows'&&'trash' in (input[0]?.view??{})&&input[0].view.filters?.some((f:any)=>f.column==='id')){
     state.holdSearchOpen=false;
     await new Promise<void>(resolve=>{state.releaseSearchOpen=resolve;});
    }
@@ -85,5 +86,31 @@ try {
  await expect(search).toBeVisible();
  await page.keyboard.press('Escape');
  await expect(page.getByRole('complementary',{name:'Record editor',exact:true})).not.toBeVisible();
- console.log('PASS: Cmd+K finds Markdown prefixes/accents, opens records and survives reopen');
+ // Search index settings: turning a table off removes it from results; back on restores it.
+ const shots=process.env.IRIS_TEST_SHOTS;
+ const settings=page.getByRole('dialog',{name:'Search index',exact:true});
+ const notes=settings.getByRole('checkbox',{name:/^notes /});
+ const find=async(visible:boolean)=>{
+  await page.keyboard.press('Meta+k');
+  await search.getByRole('combobox',{name:'Search records',exact:true}).fill('nebul');
+  const hit=search.getByRole('option').filter({hasText:'Space journal'});
+  if(visible)await expect(hit).toBeVisible();else await expect(search).toContainText('No matches');
+  await page.keyboard.press('Escape');
+  await expect(search).not.toBeVisible();
+ };
+ for(const [checked,theme] of [[false,'light'],[true,'dark']] as const){
+  await page.emulateMedia({colorScheme:theme});
+  await page.getByRole('button',{name:'Search index',exact:true}).click();
+  await expect(notes).toBeChecked({checked:!checked});
+  await expect(settings).toContainText(/records · about [0-9.]+ (bytes|KB) of text/);
+  if(shots)await settings.screenshot({path:`${shots}/search-settings-${theme}.png`});
+  await notes.setChecked(checked);
+  await expect(notes).toBeChecked({checked});
+  await expect(notes).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await expect(settings).not.toBeVisible();
+  await find(checked);
+ }
+ await page.emulateMedia({colorScheme:'light'});
+ console.log('PASS: Cmd+K finds Markdown prefixes/accents, opens records and survives reopen; Search index settings remove and restore a table');
 } finally { await browser.close(); }

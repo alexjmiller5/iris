@@ -615,6 +615,10 @@ async function dispatch(request: DatabaseRequest) {
 				endpoint: args.endpoint
 			});
 		}
+		case 'searchTables':
+			return local.searchTables(args);
+		case 'setSearchTable':
+			return local.setSearchTable(args);
 		case 'listSidebarPins':
 			return local.listSidebarPins(args);
 		case 'pinTable':
@@ -791,7 +795,8 @@ scope.onmessage = ({ data }) => {
 					!!synced.pushed ||
 					!!synced.rejected?.length) &&
 				DATA_CHANGES.includes(data.method);
-			if (data.method === 'open' || moved) scheduleIndex(true);
+			// A changed search table choice is applied by the index step, like a change to data.
+			if (data.method === 'open' || data.method === 'setSearchTable' || moved) scheduleIndex(true);
 			if (moved) {
 				channel?.postMessage({ changed: data.method });
 				respond({ changed: data.method });

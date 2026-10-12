@@ -99,6 +99,7 @@
 	import SchemaGraph from '$lib/SchemaGraph.svelte';
 	import HubServices from '$lib/HubServices.svelte';
 	import Backup from '$lib/Backup.svelte';
+	import SearchSettings from '$lib/SearchSettings.svelte';
 	import HubEnrollment from '$lib/HubEnrollment.svelte';
 	import SyncStatus from '$lib/SyncStatus.svelte';
 	import {
@@ -2974,6 +2975,7 @@
 							</p>
 						</details>
 					{/if}
+					{#if database}<SearchSettings {database} />{/if}
 					{#if database}<Backup
 							{database}
 							{demo}
