@@ -490,7 +490,10 @@ Saved view version 2 supports bounded all/any groups, host-resolved Today,
 ordered option/value sorts, literal row actions and interleaved action columns.
 Preserve every clause and source order when editing or reopening. Browser Intl
 and native Foundation resolve the saved timezone's configured local day boundary,
-defaulting to midnight, and refresh there and on foreground entry. A missing local
+defaulting to midnight, and refresh there and on foreground entry. A definition
+without `timeZone` follows the reading device's current zone (empty field in view
+options, the default for new views); calendar helpers take the optional zone, and
+widgets resolve it at read time. A missing local
 time advances to the next valid instant; repeated times use the first occurrence.
 The shared JSC core has no Intl.
 Calendar contexts are query arguments only, never persisted in definitions.

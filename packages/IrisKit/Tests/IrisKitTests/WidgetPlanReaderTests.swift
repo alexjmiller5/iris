@@ -25,14 +25,15 @@ struct WidgetPlanReaderTests {
 
   private func plan(
     sql: String = "SELECT id,name FROM items WHERE due=? ORDER BY id LIMIT 20",
-    parameters: [[String: Any]] = [["kind": "calendar", "slot": "today"]]
+    parameters: [[String: Any]] = [["kind": "calendar", "slot": "today"]],
+    policy: [String: Any] = ["timeZone": "UTC", "dayStartMinutes": 180]
   ) throws -> CoreReadPlan {
     let value: [String: Any] = [
       "version": 1, "workspaceID": "workspace", "replicaID": "replica", "table": "items",
       "viewID": NSNull(), "viewUpdatedAt": NSNull(), "kind": "list", "sql": sql,
       "parameters": parameters,
       "columns": ["id", "name"], "displayColumn": "name", "maximumRows": 20,
-      "calendarPolicy": ["timeZone": "UTC", "dayStartMinutes": 180],
+      "calendarPolicy": policy,
       "guards": [
         [
           "kind": "catalog", "sql": "SELECT 'fixture' AS value", "parameters": [],
@@ -62,6 +63,18 @@ struct WidgetPlanReaderTests {
       #expect(before.effectiveDay == "2026-10-07")
       #expect(after.effectiveDay == "2026-10-08")
       #expect(before.nextBoundary == Date(timeIntervalSince1970: 1_791_428_400))
+    }
+  }
+
+  @Test func policyWithoutTimezoneResolvesThisDeviceAtReadTime() throws {
+    try database { url, _ in
+      let now = Date(timeIntervalSince1970: 1_791_428_399)
+      let read = try WidgetPlanReader(databaseURL: url).read(
+        plan: plan(policy: ["dayStartMinutes": 180]), workspaceID: "workspace",
+        replicaID: "replica", now: now)
+      let device = try extensionCalendarContext(
+        timeZone: TimeZone.current.identifier, now: now, dayStartMinutes: 180)
+      #expect(read.effectiveDay == device.today)
     }
   }
 

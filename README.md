@@ -956,7 +956,8 @@ IRIS_TEST_URL=http://iris-markdown.localhost:5198/workspace?review bun scripts/t
 
 Saved views can combine individual filters with all/any rule groups, compare date
 fields to Today in a chosen timezone and day boundary, and preserve multiple
-ordered sorts. The default boundary is midnight; choosing 03:00 keeps early-morning
+ordered sorts. A view with no timezone follows whichever timezone the device
+reading it is in; new views start that way. The default boundary is midnight; choosing 03:00 keeps early-morning
 records in the previous task day. A missing clock time advances to the next valid
 instant, and a repeated clock time uses its first occurrence.
 Option order follows the catalog. View options also define labeled buttons with

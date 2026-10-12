@@ -5,7 +5,7 @@
 //   IRIS_TEST_CDP=<endpoint> bun scripts/test-view-options.ts <soma-checkout> [all|rollover|options|actions]
 import { chromium, expect as base } from "@playwright/test";
 import { installCoreSchemas, logDDL, regressionHub } from "./workspace-regression-hub";
-import { disposableOrigin, workspacePage } from "./test-origin";
+import { disposableOrigin, synced, workspacePage } from "./test-origin";
 
 const expect = base.configure({ timeout: 15000 });
 const url =
@@ -209,6 +209,36 @@ try {
     await rows(["Fixture record", "Second record"]);
     await set("Today timezone", "America/New_York");
     await rows(["Fixture record"]);
+    // An empty timezone follows the device: on a UTC device both records are due.
+    const device = await page.context().newCDPSession(page);
+    await device.send("Emulation.setTimezoneOverride", { timezoneId: "UTC" });
+    await set("Today timezone", "");
+    await expect(menu.getByLabel("Today timezone", { exact: true })).toHaveAttribute(
+      "placeholder",
+      /^This device \(/,
+    );
+    await rows(["Fixture record", "Second record"]);
+    const stored = () => {
+      const row = db.db.query("SELECT definition FROM views WHERE id=?").get(copied) as {
+        definition: string;
+      } | null;
+      return row ? JSON.parse(row.definition) : null;
+    };
+    await expect
+      .poll(
+        async () => {
+          await synced(page);
+          const definition = stored();
+          return definition ? (definition.timeZone ?? "follows device") : "not synced";
+        },
+        { timeout: 60000 },
+      )
+      .toBe("follows device");
+    expect(stored()?.dayStartMinutes).toBe(240);
+    await set("Today timezone", "America/New_York");
+    await rows(["Fixture record"]);
+    await device.send("Emulation.setTimezoneOverride", { timezoneId: "" });
+    await device.detach();
     await page.evaluate(() => {
       (window as any).__viewClockOffset += 86400000;
       window.dispatchEvent(new Event("focus"));
@@ -216,7 +246,7 @@ try {
     await rows(["Fixture record", "Second record"]);
     await page.keyboard.press("Escape");
     console.log(
-      "PASS: 02:59/03:00 actual timer, policy/timezone refresh, save/reopen, midnight reset and foreground refresh",
+      "PASS: 02:59/03:00 actual timer, policy/timezone refresh, device timezone, save/reopen, midnight reset and foreground refresh",
     );
   }
 } catch (error) {

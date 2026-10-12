@@ -44,3 +44,19 @@ test('action fields receive dynamic choices without depending on record editor s
 	}).body;
 	expect(html).toContain('value="Dynamic"');
 });
+
+test('an empty timezone shows that Today follows this device', () => {
+	const window = new Window();
+	try {
+		window.document.body.innerHTML = render(ViewControls, {
+			props: { properties: [], actions: [], columns: [], timeZone: '', onchange: () => {} }
+		}).body;
+		const input = window.document.querySelector('[aria-label="Today timezone"]');
+		expect(input?.getAttribute('value') ?? '').toBe('');
+		expect(input?.getAttribute('placeholder')).toBe(
+			`This device (${Intl.DateTimeFormat().resolvedOptions().timeZone})`
+		);
+	} finally {
+		window.close();
+	}
+});

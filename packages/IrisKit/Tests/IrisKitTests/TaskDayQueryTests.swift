@@ -37,6 +37,26 @@ struct TaskDayQueryTests {
     await model.close()
   }
 
+  @Test func viewWithoutTimezoneFollowsThisDeviceAndSavesNoZone() async throws {
+    let model = WorkspaceModel()
+    await model.open(demo: true)
+    let context = try #require(model.editingContext)
+    var definition = CoreSavedViewDefinition(
+      version: 2, filters: [CoreFilter(column: "created_at", op: .lte, relative: .today)])
+    definition.dayStartMinutes = 180
+    let saved = try await context.workspace.saveView(
+      CoreSaveViewArgs(table: context.table, name: "Device day", definition: definition))
+    try model.applySavedView(saved, context: context)
+    #expect(model.viewTimeZone == "")
+    #expect(try model.currentViewDefinition() == definition)
+    let now = try instant("2026-06-02T06:30:00Z")
+    try model.refreshCalendar(now: now)
+    let device = try calendarContext(
+      timeZone: TimeZone.current.identifier, now: now, dayStartMinutes: 180)
+    #expect(model.calendarDay == device.today)
+    await model.close()
+  }
+
   @Test func boundaryAndTimezoneChangesInvalidateQueryAndSleepEvenWithinTheSameDay() throws {
     let model = WorkspaceModel()
     model.viewTimeZone = "UTC"

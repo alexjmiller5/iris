@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "66f681fca6b21a6881bc0db89903a44461cbb7b2e000d0e40154f9be6d7fa50c";
+export declare const CORE_CONTRACT_HASH = "a86ff4d015a77f8ad4570468c59370feed648f1a60e326ce877befd419bdfd55";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -1029,7 +1029,7 @@ export type ReadPlanCalendar = {
 export type ReadPlanParameter = ReadPlanLiteral | ReadPlanCalendar;
 export type ReadPlanKind = "list" | "count";
 export type ReadPlanCalendarPolicy = {
-    timeZone: string;
+    timeZone?: string;
     dayStartMinutes: Count;
 };
 export type ReadPlanGuard = {
@@ -1167,7 +1167,7 @@ export type ViewEmbedColumn = {
     type: string;
 };
 export type CalendarPolicy = {
-    timeZone: string;
+    timeZone?: string;
     dayStartMinutes: number;
 };
 export type ViewEmbed = {

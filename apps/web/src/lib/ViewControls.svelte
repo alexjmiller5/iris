@@ -2,6 +2,7 @@
 	import type { Property, RowAction, ViewLayoutItem } from 'iris-core/client';
 	import FieldEditor from './FieldEditor.svelte';
 	import { parseDayStart } from './view-controls';
+	import { deviceTimeZone } from './calendar-context';
 	import { cellPatch, rawValue } from './record-grid';
 	// View options that are not filters or sorts. Changes apply and save like
 	// every other view change.
@@ -36,6 +37,7 @@
 		}) => void;
 	} = $props();
 	let error = $state('');
+	const deviceZone = `This device (${deviceTimeZone()})`;
 	const writable = $derived(
 		properties.filter(
 			(p) =>
@@ -79,8 +81,10 @@
 			>Today timezone <input
 				aria-label="Today timezone"
 				value={timeZone}
-				placeholder="Area/City"
-				onchange={(e) => onchange({ timeZone: e.currentTarget.value })}
+				class="zone"
+				size={deviceZone.length}
+				placeholder={deviceZone}
+				onchange={(e) => onchange({ timeZone: e.currentTarget.value.trim() })}
 			/></label
 		>
 		<label
@@ -98,7 +102,10 @@
 				}}
 			/></label
 		>
-		<p>Today starts at this time in the selected timezone.</p>
+		<p>
+			Today starts at this time in the selected timezone. Leave the timezone empty to follow
+			whichever timezone this device is in.
+		</p>
 	</details>
 	<details>
 		<summary>Row actions{actions.length ? ` (${actions.length})` : ''}</summary>
@@ -244,6 +251,9 @@
 	}
 	button {
 		cursor: pointer;
+	}
+	.zone {
+		min-width: 0;
 	}
 	button:disabled {
 		opacity: 0.45;

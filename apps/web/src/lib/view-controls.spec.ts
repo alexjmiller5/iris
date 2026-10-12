@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { calendarContext } from './calendar-context';
 import {
 	initialFilterValue,
 	editSort,
@@ -109,4 +110,16 @@ test('moving a sort keeps every other clause in order', () => {
 	expect(moveItem(sorts, 3, 0)).toEqual(['d', 'a', 'b', 'c']);
 	expect(moveItem(sorts, 0, 2)).toEqual(['b', 'c', 'a', 'd']);
 	expect(sorts).toEqual(['a', 'b', 'c', 'd']);
+});
+
+test('a Today view without a saved timezone resolves this device zone', () => {
+	const definition = {
+		version: 2,
+		dayStartMinutes: 180,
+		filters: [{ column: 'due', op: 'lte' as const, relative: 'today' as const }]
+	};
+	const now = new Date('2026-06-02T06:30:00Z');
+	expect(queryDefinition('items', definition, now).calendar).toEqual(
+		calendarContext(undefined, now, 180)
+	);
 });

@@ -286,7 +286,8 @@ final class WorkspaceModel {
   var filterGroups: [WorkspaceFilterGroup] = []
   var viewActions: [CoreRowAction] = []
   var viewLayout: [CoreViewLayoutItem]?
-  var viewTimeZone = TimeZone.current.identifier
+  /// Empty follows this device's current zone.
+  var viewTimeZone = ""
   var viewDayStartMinutes = 0
   var viewPresentation = CoreViewPresentation(kind: "table")
   private(set) var calendarDay = ""
@@ -766,7 +767,7 @@ final class WorkspaceModel {
     filterGroups = []
     viewActions = []
     viewLayout = nil
-    viewTimeZone = TimeZone.current.identifier
+    viewTimeZone = ""
     viewDayStartMinutes = 0
     viewPresentation = CoreViewPresentation(kind: "table")
     calendarDay = ""
@@ -985,7 +986,7 @@ final class WorkspaceModel {
       definition.version = 2
     }
     if hasRelativeFilters || viewPresentation.kind == "calendar" || definition.timeZone != nil {
-      definition.timeZone = viewTimeZone
+      definition.timeZone = viewTimeZone.isEmpty ? nil : viewTimeZone
       definition.version = 2
     }
     if viewDayStartMinutes != 0 || definition.dayStartMinutes != nil {
@@ -1137,7 +1138,7 @@ final class WorkspaceModel {
       filterGroups = (definition.groups ?? []).map { WorkspaceFilterGroup($0, fields: fields) }
       viewActions = definition.actions ?? []
       viewLayout = definition.layout
-      viewTimeZone = definition.timeZone ?? TimeZone.current.identifier
+      viewTimeZone = definition.timeZone ?? ""
       viewDayStartMinutes = definition.dayStartMinutes ?? 0
       viewPresentation = definition.presentation ?? CoreViewPresentation(kind: "table")
       filters = (definition.filters ?? []).map { filter in
@@ -1153,7 +1154,7 @@ final class WorkspaceModel {
       filterGroups = []
       viewActions = []
       viewLayout = nil
-      viewTimeZone = TimeZone.current.identifier
+      viewTimeZone = ""
       viewDayStartMinutes = 0
       viewPresentation = CoreViewPresentation(kind: "table")
     }
@@ -1276,7 +1277,7 @@ final class WorkspaceModel {
     viewSaveTimer?.cancel()
     guard let context = editingContext, let applied = appliedView, let revision = applied.updatedAt,
       let definition = try? autosaveDefinition(), definition != applied.definition,
-      TimeZone(identifier: viewTimeZone) != nil
+      viewTimeZone.isEmpty || TimeZone(identifier: viewTimeZone) != nil
     else {
       pendingViewSave = nil
       return

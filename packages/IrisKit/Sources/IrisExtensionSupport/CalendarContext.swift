@@ -1,10 +1,16 @@
 import Foundation
 
-public func extensionCalendarContext(timeZone: String, now: Date = Date(), dayStartMinutes: Int = 0)
+/// An empty or missing timezone follows whichever zone this device is in now.
+public func extensionCalendarContext(
+  timeZone: String?, now: Date = Date(), dayStartMinutes: Int = 0
+)
   throws
   -> CoreCalendarContext
 {
-  guard let zone = TimeZone(identifier: timeZone), now.timeIntervalSince1970.isFinite else {
+  let named = timeZone.flatMap { $0.isEmpty ? nil : $0 }
+  guard let zone = named.map(TimeZone.init(identifier:)) ?? TimeZone.current,
+    now.timeIntervalSince1970.isFinite
+  else {
     throw ExtensionReadError(message: "Choose a valid timezone for Today.")
   }
   guard (0..<1440).contains(dayStartMinutes) else {

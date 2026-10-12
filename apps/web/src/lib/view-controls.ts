@@ -53,7 +53,6 @@ export function queryDefinition(
 	const relative = [...(filters ?? []), ...(groups ?? []).flatMap((g) => g.filters)].some(
 		(f) => f.relative
 	);
-	if (relative && !definition.timeZone) throw new Error('Choose a timezone for Today.');
 	return {
 		table,
 		filters,
@@ -62,7 +61,7 @@ export function queryDefinition(
 		search,
 		trash,
 		...(relative
-			? { calendar: calendarContext(definition.timeZone!, now, definition.dayStartMinutes) }
+			? { calendar: calendarContext(definition.timeZone, now, definition.dayStartMinutes) }
 			: {})
 	};
 }

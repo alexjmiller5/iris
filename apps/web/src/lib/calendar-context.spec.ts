@@ -109,3 +109,10 @@ test('a boundary inside a skipped midnight resolves to the first valid civil ins
 		end: '2018-11-05T02:30:00.000Z'
 	});
 });
+
+test('an empty or missing timezone follows this device', () => {
+	const now = new Date('2026-06-02T06:30:00Z');
+	const device = calendarContext(Intl.DateTimeFormat().resolvedOptions().timeZone, now, 180);
+	expect(calendarContext('', now, 180)).toEqual(device);
+	expect(calendarContext(undefined, now, 180)).toEqual(device);
+});

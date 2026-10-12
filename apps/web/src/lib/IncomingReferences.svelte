@@ -32,7 +32,7 @@
 				limit: 20,
 				offset,
 				expectedViewUpdatedAt: preference.view?.updated_at ?? undefined,
-				calendar: definition?.timeZone
+				calendar: definition
 					? calendarContext(definition.timeZone, new Date(), definition.dayStartMinutes ?? 0)
 					: undefined
 			});

@@ -4,6 +4,14 @@ import Testing
 @testable import IrisKit
 
 struct CalendarContextTests {
+  @Test func emptyOrMissingTimezoneFollowsThisDevice() throws {
+    let now = Date(timeIntervalSince1970: 1_780_000_000)
+    let device = try calendarContext(
+      timeZone: TimeZone.current.identifier, now: now, dayStartMinutes: 180)
+    #expect(try calendarContext(timeZone: "", now: now, dayStartMinutes: 180) == device)
+    #expect(try calendarContext(timeZone: nil, now: now, dayStartMinutes: 180) == device)
+  }
+
   @Test func configuredDayUsesCivilBoundariesAcrossRolloverAndDST() throws {
     let samples = [
       (

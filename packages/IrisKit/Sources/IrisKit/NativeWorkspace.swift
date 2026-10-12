@@ -566,11 +566,9 @@ public final class NativeWorkspace {
     if request.expectedViewUpdatedAt == nil {
       request.expectedViewUpdatedAt = preference.view?.updatedAt
     }
-    if request.calendar == nil, let definition = preference.view?.definition,
-      let zone = definition.timeZone
-    {
+    if request.calendar == nil, let definition = preference.view?.definition {
       request.calendar = try calendarContext(
-        timeZone: zone, dayStartMinutes: definition.dayStartMinutes ?? 0)
+        timeZone: definition.timeZone, dayStartMinutes: definition.dayStartMinutes ?? 0)
     }
     return try await decode(CoreRequests.ReferencedBy(request))
   }

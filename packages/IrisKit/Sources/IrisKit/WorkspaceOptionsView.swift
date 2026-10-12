@@ -26,14 +26,18 @@ struct WorkspaceOptionsView: View {
       set: { model.viewDayStartMinutes = Int($0.timeIntervalSinceReferenceDate / 60) % 1440 })
   }
   private var timeZoneProblem: String? {
-    TimeZone(identifier: model.viewTimeZone) == nil ? "Enter a timezone such as Europe/Paris." : nil
+    model.viewTimeZone.isEmpty || TimeZone(identifier: model.viewTimeZone) != nil
+      ? nil : "Enter a timezone such as Europe/Paris."
   }
 
   var body: some View {
     Form {
       Section {
-        TextField("Today timezone", text: $model.viewTimeZone)
-          .accessibilityIdentifier("today-timezone")
+        TextField(
+          "Today timezone", text: $model.viewTimeZone,
+          prompt: Text("This device (\(TimeZone.current.identifier))")
+        )
+        .accessibilityIdentifier("today-timezone")
         if let timeZoneProblem {
           Text(timeZoneProblem).font(.caption).foregroundStyle(.red)
         }
@@ -44,7 +48,9 @@ struct WorkspaceOptionsView: View {
       } header: {
         Text("Today")
       } footer: {
-        Text("Filters set to Today use this timezone and day boundary.")
+        Text(
+          "Filters set to Today use this timezone and day boundary. Leave the timezone empty to follow whichever timezone this device is in."
+        )
       }
       Section {
         ForEach($model.viewActions, id: \.id) { $action in

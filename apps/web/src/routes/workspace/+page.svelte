@@ -517,7 +517,7 @@
 	let filterGroups = $state<FilterGroup[]>([]),
 		actions = $state<RowAction[]>([]),
 		actionLayout = $state<ViewLayoutItem[] | undefined>(),
-		timeZone = $state('UTC'),
+		timeZone = $state(''),
 		dayStartMinutes = $state(0);
 	let references = $state<Record<string, Row[]>>({}),
 		referenceSearch = $state<Record<string, string>>({});
@@ -1489,7 +1489,7 @@
 		actions = [];
 		actionLayout = undefined;
 		presentation = { kind: 'table' };
-		timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		timeZone = '';
 		dayStartMinutes = 0;
 		chosenView = null;
 		viewBaseline = '';
@@ -1587,7 +1587,7 @@
 			version: 2,
 			presentation,
 			groups: filterGroups,
-			timeZone,
+			...(timeZone ? { timeZone } : {}),
 			...(dayStartMinutes !== 0 || chosenView?.definition?.dayStartMinutes !== undefined
 				? { dayStartMinutes }
 				: {}),
@@ -1746,7 +1746,7 @@
 		filterGroups = $state.snapshot(definition?.groups ?? []);
 		actions = $state.snapshot(definition?.actions ?? []);
 		actionLayout = definition?.layout ? $state.snapshot(definition.layout) : undefined;
-		timeZone = definition?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+		timeZone = definition?.timeZone ?? '';
 		dayStartMinutes = definition?.dayStartMinutes ?? 0;
 		presentation = definition?.presentation
 			? $state.snapshot(definition.presentation)

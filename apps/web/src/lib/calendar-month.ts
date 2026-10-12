@@ -3,7 +3,7 @@ import { calendarContext } from './calendar-context';
 
 export function calendarMonth(
 	month: string,
-	timeZone: string,
+	timeZone: string | undefined,
 	dayStartMinutes = 0
 ): CalendarContext[] {
 	if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Choose a valid month.');

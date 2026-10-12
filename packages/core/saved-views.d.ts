@@ -1,4 +1,4 @@
-import type { ResolveViewDefinitionArgs, ResolvedViewDefinition, DeleteViewArgs, ListViewsArgs, SaveViewArgs, SavedViewList, SavedViewRecord } from './contract.generated.ts';
+import type { CalendarPolicy, ResolveViewDefinitionArgs, ResolvedViewDefinition, DeleteViewArgs, ListViewsArgs, SaveViewArgs, SavedViewDefinition, SavedViewList, SavedViewRecord } from './contract.generated.ts';
 import type { SqlDriver } from './driver.ts';
 import { type Row } from './validate.ts';
 import { type WriteCapture } from './write.ts';
@@ -6,6 +6,8 @@ import { type WriteCapture } from './write.ts';
  * No saved-view storage, history or write reservation is required. */
 export declare function resolveViewDefinition(db: SqlDriver, args: ResolveViewDefinitionArgs): Promise<ResolvedViewDefinition>;
 /** Internal action lookup; the caller holds the writer transaction. */
+/** The host calendar a saved view needs: its pinned zone, or the reading device's zone when it has none. */
+export declare function calendarPolicy(definition: SavedViewDefinition): CalendarPolicy | null;
 export declare function loadSavedView(db: SqlDriver, id: string): Promise<SavedViewRecord>;
 /** Lists shared definitions only. Returned view.columns is SQL projection and
  * may omit id, updated_at and hidden fields. For editing, query without columns

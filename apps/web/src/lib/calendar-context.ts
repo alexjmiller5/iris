@@ -1,11 +1,15 @@
 import type { CalendarContext } from 'iris-core/client';
 
+/** The zone this device is in now; a view without a saved timezone follows it. */
+export const deviceTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 /** Calendar policy stays in the host. The shared core also runs without Intl. */
 export function calendarContext(
-	timeZone: string,
+	timeZone: string | undefined,
 	now: Date = new Date(),
 	dayStartMinutes = 0
 ): CalendarContext {
+	timeZone ||= deviceTimeZone();
 	if (!Number.isFinite(now.getTime())) throw new Error('Invalid calendar clock.');
 	if (!Number.isInteger(dayStartMinutes) || dayStartMinutes < 0 || dayStartMinutes >= 1440)
 		throw new Error('Day start must be a whole minute from 00:00 through 23:59.');

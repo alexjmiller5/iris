@@ -1,7 +1,7 @@
 import Foundation
 import IrisExtensionSupport
 
-public func calendarContext(timeZone: String, now: Date = Date(), dayStartMinutes: Int = 0) throws
+public func calendarContext(timeZone: String?, now: Date = Date(), dayStartMinutes: Int = 0) throws
   -> CoreCalendarContext
 {
   do {
