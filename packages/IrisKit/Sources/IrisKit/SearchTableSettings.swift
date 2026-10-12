@@ -61,7 +61,7 @@ struct SearchTablesSection: View {
           .accessibilityIdentifier("search-table-" + table.table)
         }
       } else if failure == nil {
-        ProgressView().accessibilityLabel("Reading tables")
+        SkeletonRows(count: 3, label: "Reading tables")
       }
       if let failure {
         Text(failure).foregroundStyle(.red).accessibilityIdentifier("search-tables-error")

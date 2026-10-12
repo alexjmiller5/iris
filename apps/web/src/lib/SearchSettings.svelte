@@ -2,6 +2,7 @@
 	import { IconListSearch, IconX } from '@tabler/icons-svelte';
 	import type { SearchTable } from 'iris-core/client';
 	import BreakName from './BreakName.svelte';
+	import Skeleton from './Skeleton.svelte';
 	import type { WorkspaceDatabase } from './database';
 	import { searchChoice, searchTableDetail } from './search-settings';
 
@@ -68,7 +69,7 @@
 		<button aria-label="Close" onclick={() => dialog.close()}><IconX size={20} /></button>
 	</header>
 	<div class="status" aria-live="polite">
-		{#if !tables && !failure}<p class="muted">Reading tables…</p>{/if}
+		{#if !tables && !failure}<Skeleton shape="list" rows={4} label="Reading tables" />{/if}
 		{#if failure}<p role="alert" class="failure">{failure}</p>{/if}
 	</div>
 	{#if tables}

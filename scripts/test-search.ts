@@ -63,6 +63,10 @@ try {
   WorkspaceDatabase.prototype.request=async function(method:any,...input:any[]){
    const result=await original.call(this,method,...input);
    // Opening reads the full row (its view names trash); status labels read hits without it.
+   if(state.holdSearchTables&&method==='searchTables'){
+    state.holdSearchTables=false;
+    await new Promise<void>(resolve=>{state.releaseSearchTables=resolve;});
+   }
    if(state.holdSearchOpen&&method==='rows'&&'trash' in (input[0]?.view??{})&&input[0].view.filters?.some((f:any)=>f.column==='id')){
     state.holdSearchOpen=false;
     await new Promise<void>(resolve=>{state.releaseSearchOpen=resolve;});
@@ -100,7 +104,15 @@ try {
  };
  for(const [checked,theme] of [[false,'light'],[true,'dark']] as const){
   await page.emulateMedia({colorScheme:theme});
+  // While the table list loads the dialog shows a placeholder, never loading text.
+  await page.evaluate(()=>{(window as any).holdSearchTables=true;});
   await page.getByRole('button',{name:'Search index',exact:true}).click();
+  await page.waitForFunction(()=>!!(window as any).releaseSearchTables);
+  await expect(settings.locator('[aria-busy="true"]')).toBeVisible();
+  await expect(settings).not.toContainText('…');
+  if(shots)await settings.screenshot({path:`${shots}/search-settings-loading-${theme}.png`});
+  await page.evaluate(()=>{const w=window as any;w.releaseSearchTables();w.releaseSearchTables=null;});
+  await expect(settings.locator('[aria-busy="true"]')).toHaveCount(0);
   await expect(notes).toBeChecked({checked:!checked});
   await expect(settings).toContainText(/records · about [0-9.]+ (bytes|KB) of text/);
   if(shots)await settings.screenshot({path:`${shots}/search-settings-${theme}.png`});
