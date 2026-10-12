@@ -2,7 +2,7 @@ import { chromium, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, workspacePage, recordSaved } from './test-origin';
+import { disposableOrigin, workspacePage, recordReady, recordSaved } from './test-origin';
 
 // Usage: bun scripts/test-reference-create.ts <soma-checkout>
 // Open http://iris-reference-create.localhost:5244/workspace?review in the dedicated test page first.
@@ -99,6 +99,8 @@ try {
 		await page.getByRole('button', { name: 'meetings', exact: true }).click();
 		await page.getByRole('button', { name: 'Planning sync', exact: true }).click();
 		await expect(editor.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Planning sync');
+		// The listed row paints at once; typing before the fresh row arrives is lost.
+		await recordReady(page);
 	}
 	async function check(name: string, run: () => Promise<void>) {
 		try {
@@ -131,7 +133,7 @@ try {
 		await expect(page.getByRole('button', { name: 'Undo last saved change', exact: true })).toBeEnabled();
 		await shot('created-ref');
 		await recordSaved(page);
-		await expect(editor.getByText('Edit record / Saved', { exact: true })).toBeVisible();
+		await expect(editor.locator('[aria-label="Record save status"]')).toHaveAttribute('data-state', 'saved');
 		expect(peopleNamed('Katherine Johnson')).toEqual([]);
 		offline = false;
 		const host = () =>
@@ -150,7 +152,7 @@ try {
 		]);
 		await shot('created-multi');
 		await recordSaved(page);
-		await expect(editor.getByText('Edit record / Saved', { exact: true })).toBeVisible();
+		await expect(editor.locator('[aria-label="Record save status"]')).toHaveAttribute('data-state', 'saved');
 		const attendees = () =>
 			(db.db.query("SELECT attendees FROM meetings WHERE id='meeting-1'").get() as { attendees: string })
 				.attendees;
@@ -176,7 +178,7 @@ try {
 		);
 		await shot('handoff-saved');
 		await recordSaved(page);
-		await expect(editor.getByText('Edit record / Saved', { exact: true })).toBeVisible();
+		await expect(editor.locator('[aria-label="Record save status"]')).toHaveAttribute('data-state', 'saved');
 	});
 
 	await check('cancel leaves the source draft and the target table untouched', async () => {
@@ -193,6 +195,9 @@ try {
 		);
 		await pushed(() => db.db.query("SELECT 1 FROM companies WHERE name='Initech'").all().length === 1);
 		expect(db.db.query("SELECT 1 FROM companies WHERE name='Globex'").all()).toEqual([]);
+		// The title saved itself; put it back for the later cases.
+		await editor.getByRole('textbox', { name: 'Title', exact: true }).fill('Planning sync');
+		await recordSaved(page);
 	});
 
 	await check('Undo removes a record created in place', async () => {
@@ -201,6 +206,11 @@ try {
 		await expect(editor.getByLabel('Host', { exact: true }).locator('option:checked')).toHaveText(
 			'Undo Person'
 		);
+		// Choosing the new person saves the meeting too, so the first Undo reverts that
+		// choice and the next removes the person.
+		await recordSaved(page);
+		await page.getByRole('button', { name: 'Undo last saved change', exact: true }).click();
+		await expect(page.getByRole('status').filter({ hasText: 'Undid the last saved change in meetings' })).toBeVisible();
 		await page.getByRole('button', { name: 'Undo last saved change', exact: true }).click();
 		await expect(page.getByRole('status').filter({ hasText: 'Undid the last saved change in people' })).toBeVisible();
 		const undone = () =>

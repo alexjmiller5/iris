@@ -308,8 +308,9 @@ no exact loaded name. Targets must be writable with a non-derived display proper
 (`reference-create.ts`, `ReferenceCreator`). Creation uses the ordinary writer:
 untouched catalog defaults are omitted for core, required fields without defaults
 open a target-table editor first (dialog on web, sheet on native) and Cancel writes
-nothing. Only the receipt's exact id enters the source draft (multi_ref appends);
-the source still needs its own Save. Writes are local, sync later and join Undo.
+nothing. Only the receipt's exact id enters the source draft (multi_ref appends),
+which then saves itself like any reference choice. Writes are local, sync later and
+join Undo: the first Undo reverts the source's choice, the next the created record.
 
 Recents store at most eight table/view/row identity tuples per workspace, each with
 a display snapshot (label, web context line, trash mark, unavailable reason) in
