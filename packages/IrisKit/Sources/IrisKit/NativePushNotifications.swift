@@ -76,6 +76,12 @@ import UserNotifications
   public nonisolated func userNotificationCenter(
     _ center: UNUserNotificationCenter, willPresent notification: UNNotification
   ) async -> UNNotificationPresentationOptions { [.banner, .sound, .list] }
+  /// A due-time alert tap fills the pending-link banner; it never opens by itself.
+  public nonisolated func userNotificationCenter(
+    _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
+  ) async {
+    DueAlertLinks.received(response.notification.request.content.userInfo)
+  }
 }
 
 #if os(macOS)

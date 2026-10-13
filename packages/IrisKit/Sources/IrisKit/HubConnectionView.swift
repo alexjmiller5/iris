@@ -49,6 +49,13 @@ struct HubConnectionView: View {
             } label: {
               Label("Backup", systemImage: "externaldrive")
             }.accessibilityIdentifier("backup-settings")
+            if model.integrations != nil {
+              NavigationLink {
+                DueAlertsView(model: model)
+              } label: {
+                Label("Due-time alerts", systemImage: "bell.badge")
+              }.accessibilityIdentifier("due-alert-settings")
+            }
             #if os(macOS)
               NavigationLink {
                 SearchTablesView(model: model)

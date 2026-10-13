@@ -30,6 +30,9 @@ struct LookupHit: Sendable {
   private(set) var spotlightTables: [String] = []
   private(set) var lookupTable: String?
   private(set) var dailySource: NativeWidgetSelection?
+  /// Saved views whose rows notify this device at their specific due times (default none).
+  private(set) var alertViews: [NativeWidgetSelection] = []
+  private(set) var alertError: String?
   private(set) var busy = false
   private(set) var error: String?
   private let workspace: NativeWorkspace
@@ -37,8 +40,10 @@ struct LookupHit: Sendable {
   private let binding: NativeWorkspaceBinding
   private let preferencesURL: URL
   private let spotlight: SpotlightIndexing?
+  private let alerts: DueAlertCenter?
   private var unreadable = false
   private var refreshTask: Task<Void, Never>?
+  private var alertTask: Task<Void, Never>?
   private var alive = true
   private struct Preferences: Codable {
     let version: Int
@@ -46,17 +51,19 @@ struct LookupHit: Sendable {
     let spotlightTables: [String]
     let lookupTable: String?
     let dailySource: NativeWidgetSelection?
+    let alertViews: [NativeWidgetSelection]?
   }
 
   init(
     workspace: NativeWorkspace, workspaceID: String, binding: NativeWorkspaceBinding,
-    preferencesURL: URL, spotlight: SpotlightIndexing? = nil
+    preferencesURL: URL, spotlight: SpotlightIndexing? = nil, alerts: DueAlertCenter? = nil
   ) {
     self.workspace = workspace
     self.workspaceID = workspaceID
     self.binding = binding
     self.preferencesURL = preferencesURL
     self.spotlight = spotlight
+    self.alerts = alerts
     do {
       guard FileManager.default.fileExists(atPath: preferencesURL.path) else { return }
       let data = try Data(contentsOf: preferencesURL)
@@ -67,6 +74,7 @@ struct LookupHit: Sendable {
       spotlightTables = saved.spotlightTables
       lookupTable = saved.lookupTable
       dailySource = saved.dailySource
+      alertViews = saved.alertViews ?? []
     } catch {
       unreadable = true
       self.error = "Search and Shortcuts settings could not be read. The saved file has been kept."
@@ -122,6 +130,79 @@ struct LookupHit: Sendable {
     }
   }
 
+  @discardableResult func setAlertViews(_ views: [NativeWidgetSelection]) async -> Bool {
+    guard alive, views.count <= 32, Set(views.map(\.id)).count == views.count,
+      views.allSatisfy({ $0.viewID != nil })
+    else { return false }
+    do {
+      try save(alertViews: views)
+      alertViews = views
+    } catch {
+      self.error = error.localizedDescription
+      return false
+    }
+    await reconcileDueAlerts()
+    return true
+  }
+
+  /// After sync, edits and setting changes: schedule this workspace's due-time alerts again.
+  func scheduleDueAlerts() {
+    guard alive, alerts != nil else { return }
+    alertTask?.cancel()
+    alertTask = Task { @MainActor [weak self] in
+      do { try await Task.sleep(for: .seconds(2)) } catch { return }
+      await self?.reconcileDueAlerts()
+    }
+  }
+
+  /// One alert per row and specific due time in the chosen views, nearest first up to
+  /// the platform limit. Date-only values never notify. Without permission nothing is
+  /// scheduled; permission is requested only by the explicit Enable alerts action.
+  func reconcileDueAlerts(now: Date = Date()) async {
+    guard alive, let alerts else { return }
+    let prefix = DueAlerts.prefix(workspaceID: workspaceID)
+    var requests: [DueAlertRequest] = []
+    do {
+      if !alertViews.isEmpty, await alerts.authorized() {
+        for selection in alertViews {
+          guard let viewID = selection.viewID else { continue }
+          let listed = try await workspace.listViews(table: selection.table)
+          guard
+            let view = listed.views.first(where: { $0.id.utf8.elementsEqual(viewID.utf8) }),
+            view.deletedAt == nil, view.unavailable == nil, let definition = view.definition,
+            let column = DueTimes.dueColumn(definition)
+          else { continue }
+          let floating = (definition.timeZone ?? "").isEmpty
+          for due in try await DueTimes.upcoming(
+            workspace: workspace, table: selection.table, definition: definition, column: column,
+            now: now, days: 7)
+          {
+            let time = due.at.formatted(date: .omitted, time: .shortened)
+            requests.append(
+              DueAlertRequest(
+                identifier: DueAlerts.identifier(
+                  workspaceID: workspaceID, table: selection.table, rowID: due.rowID,
+                  value: due.value),
+                title: due.label, body: "Due \(time) · \(view.name)",
+                link: try NativeDeepLink(
+                  destination: NativeDestination(table: selection.table, rowID: due.rowID),
+                  workspace: binding
+                ).url, at: due.at,
+                floating: floating && localTimeInstant(due.value, timeZone: nil) != nil))
+          }
+        }
+      }
+      guard alive else { return }
+      let change = DueAlerts.plan(
+        requests, pending: await alerts.pendingIdentifiers(), prefix: prefix)
+      alerts.remove(change.remove)
+      for request in change.add { try await alerts.add(request) }
+      alertError = nil
+    } catch {
+      if !Task.isCancelled { alertError = error.localizedDescription }
+    }
+  }
+
   /// Display-title matches in the configured table only; excerpts never leave the app.
   func lookUp(_ text: String) async throws -> [LookupHit] {
     guard let table = lookupTable else {
@@ -161,17 +242,24 @@ struct LookupHit: Sendable {
   /// Explicit access removal: forget the workspace's searchable titles and choices.
   func removeAll() async throws {
     refreshTask?.cancel()
+    alertTask?.cancel()
     try await spotlight?.remove(domains: [Self.domain(workspaceID)])
-    try save(spotlightTables: [], lookupTable: .some(nil), dailySource: .some(nil))
+    try save(spotlightTables: [], lookupTable: .some(nil), dailySource: .some(nil), alertViews: [])
     spotlightTables = []
     lookupTable = nil
     dailySource = nil
+    alertViews = []
+    if let alerts {
+      let prefix = DueAlerts.prefix(workspaceID: workspaceID)
+      alerts.remove(await alerts.pendingIdentifiers().filter { $0.hasPrefix(prefix) })
+    }
   }
 
   /// Closing keeps indexed titles; they open through the ordinary guarded link flow.
   func cancel() {
     alive = false
     refreshTask?.cancel()
+    alertTask?.cancel()
   }
 
   private func reindex() async throws {
@@ -203,7 +291,7 @@ struct LookupHit: Sendable {
 
   private func save(
     spotlightTables: [String]? = nil, lookupTable: String?? = nil,
-    dailySource: NativeWidgetSelection?? = nil
+    dailySource: NativeWidgetSelection?? = nil, alertViews: [NativeWidgetSelection]? = nil
   ) throws {
     if unreadable, FileManager.default.fileExists(atPath: preferencesURL.path) {
       try FileManager.default.moveItem(
@@ -216,7 +304,8 @@ struct LookupHit: Sendable {
         version: 1, workspaceID: workspaceID,
         spotlightTables: spotlightTables ?? self.spotlightTables,
         lookupTable: lookupTable ?? self.lookupTable,
-        dailySource: dailySource ?? self.dailySource))
+        dailySource: dailySource ?? self.dailySource,
+        alertViews: alertViews ?? self.alertViews))
     try FileManager.default.createDirectory(
       at: preferencesURL.deletingLastPathComponent(), withIntermediateDirectories: true,
       attributes: [.posixPermissions: 0o700])

@@ -73,6 +73,9 @@ public struct WorkspaceView: View {
       undoSavedChange()
     }
     .onOpenURL { pendingLink.receive($0) }
+    .onChange(of: DueAlertLinks.shared.link?.revision) {
+      if let url = DueAlertLinks.shared.link?.url { pendingLink.receive(url) }
+    }
     #if os(iOS)
       .modifier(NativeIntegrationHandlers(model: model) { pendingLink.receive($0) })
     #endif
@@ -2683,8 +2686,12 @@ struct FieldInput: View {
         NativeChoiceField(
           field: field, isNew: editor.isNew, value: $value, workspace: workspace,
           focus: focus, isCurrent: isCurrent)
-      } else if let kind = NativeDateKind(rawValue: field.type) {
+      } else if ["date", "datetime"].contains(field.type),
+        let kind = NativeDateKind(rawValue: field.type)
+      {
         NativeDateField(field: field, kind: kind, focus: focus, value: $value)
+      } else if field.type == "date_or_datetime" {
+        NativeMixedDateField(field: field, focus: focus, value: $value)
       } else if ["url", "email", "phone"].contains(field.type) {
         NativeLinkField(field: field, focus: focus, value: $value)
       } else if field.type == "json" {

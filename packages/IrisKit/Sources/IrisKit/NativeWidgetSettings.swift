@@ -218,14 +218,21 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
       try Task.checkCancellation()
       var title = selection.table
       var revision: String?
+      var dueValues: [String]?
       if let id = selection.viewID {
         let listed = try await workspace.listViews(table: selection.table)
         guard let view = listed.views.first(where: { $0.id.utf8.elementsEqual(id.utf8) }),
-          view.deletedAt == nil, view.unavailable == nil, view.definition != nil,
+          view.deletedAt == nil, view.unavailable == nil, let definition = view.definition,
           let updated = view.updatedAt
         else { throw Self.failure }
         title = view.name
         revision = updated
+        // A Now view's rows change when a timed value comes due: publish those times.
+        for column in DueTimes.nowColumns(definition) {
+          let upcoming = try await DueTimes.upcoming(
+            workspace: workspace, table: selection.table, definition: definition, column: column)
+          dueValues = (dueValues ?? []) + upcoming.prefix(64).map(\.value)
+        }
       }
       let openURL = try binding.map {
         try NativeDeepLink(
@@ -250,7 +257,8 @@ struct NativeWidgetSelection: Codable, Identifiable, Sendable {
               workspaceID: workspaceID, replicaID: replicaID,
               table: selection.table, kind: kind, viewID: selection.viewID,
               expectedViewUpdatedAt: revision),
-            openURL: openURL, allowsQuickAdd: kind == .list && allowsQuickAdd))
+            openURL: openURL, allowsQuickAdd: kind == .list && allowsQuickAdd,
+            dueValues: dueValues))
       }
     }
     try Task.checkCancellation()

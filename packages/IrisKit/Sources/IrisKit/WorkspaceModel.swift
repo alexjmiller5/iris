@@ -116,8 +116,9 @@ final class WorkspaceModel {
       workspace: client, workspaceID: workspaceID, binding: binding,
       preferencesURL: root.appendingPathComponent("integrations", isDirectory: true)
         .appendingPathComponent(replica.uuidString.lowercased() + ".json"),
-      spotlight: spotlight)
+      spotlight: spotlight, alerts: SystemDueAlertCenter())
     integrations?.scheduleRefresh()
+    integrations?.scheduleDueAlerts()
     if linkBinding == nil { linkBinding = physical }
   }
   private struct LoadedRowsContext: Equatable {
@@ -308,13 +309,28 @@ final class WorkspaceModel {
       }
   }
   var hasRelativeFilters: Bool {
-    (filters + filterGroups.flatMap(\.filters)).contains(where: \.today)
+    (filters + filterGroups.flatMap(\.filters)).contains { $0.relative != nil }
+  }
+  /// Advances when a timed value a relative-Now filter compares with comes due.
+  private(set) var dueGeneration = 0
+  /// When the next such value comes due, as last planned.
+  private(set) var nextDue: Date?
+  private(set) var rowsGeneration = 0
+  var nowColumns: [String] {
+    var seen: [String] = []
+    for filter in filters + filterGroups.flatMap(\.filters)
+    where filter.now && !seen.contains(filter.column) {
+      seen.append(filter.column)
+    }
+    return seen
   }
   var calendarRefreshKey: [String] {
     [
       String(workspaceGeneration), table ?? "", viewTimeZone, String(viewDayStartMinutes),
       String(hasRelativeFilters),
     ]
+      // A Now view plans its next due time again after every reload (sync, edits).
+      + (nowColumns.isEmpty ? [] : nowColumns + [String(rowsGeneration)])
   }
   func refreshCalendar(now: Date = Date()) throws {
     calendarDay =
@@ -322,17 +338,31 @@ final class WorkspaceModel {
       ? try calendarContext(timeZone: viewTimeZone, now: now, dayStartMinutes: viewDayStartMinutes)
         .today : ""
   }
+  /// A due time that passed (while asleep, in the background or just now) re-runs the view.
+  func passDueTimes(now: Date = Date()) {
+    guard let due = nextDue, due <= now else { return }
+    nextDue = nil
+    dueGeneration += 1
+  }
   func runCalendarRefresh() async {
     guard hasRelativeFilters else { return }
     let key = calendarRefreshKey
     do {
       while !Task.isCancelled, key == calendarRefreshKey {
         try refreshCalendar()
+        passDueTimes()
         let day = try calendarContext(timeZone: viewTimeZone, dayStartMinutes: viewDayStartMinutes)
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         guard let end = formatter.date(from: day.end) else { return }
-        try await Task.sleep(for: .seconds(max(0.01, end.timeIntervalSinceNow)))
+        if let client, let table, !nowColumns.isEmpty {
+          nextDue = try await DueTimes.nextDue(
+            workspace: client, table: table, columns: nowColumns, timeZone: viewTimeZone,
+            dayStartMinutes: viewDayStartMinutes)
+          guard !Task.isCancelled, key == calendarRefreshKey else { return }
+        }
+        let wake = min(end, nextDue ?? end)
+        try await Task.sleep(for: .seconds(max(0.01, wake.timeIntervalSinceNow)))
       }
     } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
   }
@@ -409,7 +439,10 @@ final class WorkspaceModel {
   private(set) var syncError: String?
   /// Bumped when a round received or sent data, so views refresh only then.
   private(set) var syncDataRevision = 0 {
-    didSet { integrations?.scheduleRefresh() }
+    didSet {
+      integrations?.scheduleRefresh()
+      integrations?.scheduleDueAlerts()
+    }
   }
   /// A shared CLI file whose own background service owns sync.
   private(set) var cliSyncBound = false
@@ -797,10 +830,13 @@ final class WorkspaceModel {
     let groups = try? filterGroups.map { try $0.core(fields: viewFields) }
     var key: [String] = [
       table ?? "", search, String(trash), appliedView?.id ?? "", String(viewGeneration),
-      viewTimeZone, String(viewDayStartMinutes), calendarDay, String(describing: groups),
+      viewTimeZone, String(viewDayStartMinutes), calendarDay, String(dueGeneration),
+      String(describing: groups),
     ]
     key += sortRules.flatMap { [$0.column, $0.direction.rawValue, $0.mode?.rawValue ?? ""] }
-    key += filters.flatMap { [$0.column, $0.operation.rawValue, $0.value, String($0.today)] }
+    key += filters.flatMap {
+      [$0.column, $0.operation.rawValue, $0.value, $0.relative?.rawValue ?? ""]
+    }
     return key
   }
 
@@ -867,7 +903,7 @@ final class WorkspaceModel {
     guard (0..<1440).contains(dayStartMinutes) else {
       throw WorkspaceError(message: "Choose a valid day start time.", violations: [])
     }
-    if (filters + groups.flatMap(\.filters)).contains(where: \.today) {
+    if (filters + groups.flatMap(\.filters)).contains(where: { $0.relative != nil }) {
       _ = try calendarContext(timeZone: timeZone, dayStartMinutes: dayStartMinutes)
     }
     sortRules = sorts
@@ -1307,7 +1343,7 @@ final class WorkspaceModel {
   }
   func removeFilter(_ id: UUID) { filters.removeAll { $0.id == id } }
   private func isFlag(_ filter: WorkspaceFilter, _ column: String) -> Bool {
-    filter.column == column && filter.operation == .eq && filter.value == "true" && !filter.today
+    filter.column == column && filter.operation == .eq && filter.value == "true" && filter.relative == nil
   }
   func flagIsOn(_ column: String) -> Bool { filters.contains { isFlag($0, column) } }
   func toggleFlag(_ column: String) {
@@ -1837,6 +1873,7 @@ final class WorkspaceModel {
       undoAction = undo.action
       widgets?.scheduleRefresh(partial: isReplica)
       rows = append ? rows + result : result
+      rowsGeneration += 1
       canLoadMore = result.count == 100
       // Catalog/status are separate reads. Export only a successfully loaded context
       // whose catalog and exact query stayed current throughout this request.
@@ -2487,6 +2524,7 @@ final class WorkspaceModel {
     scheduleSearchIndex()
     widgets?.scheduleRefresh(partial: isReplica)
     integrations?.scheduleRefresh()
+    integrations?.scheduleDueAlerts()
     scheduleAutomaticSync()
   }
 

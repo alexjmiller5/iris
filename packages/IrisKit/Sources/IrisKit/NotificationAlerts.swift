@@ -175,4 +175,10 @@ private final class NativeNotificationCenter: NSObject, NotificationCenterClient
   ) async -> UNNotificationPresentationOptions {
     [.banner, .sound, .list]
   }
+
+  nonisolated func userNotificationCenter(
+    _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
+  ) async {
+    DueAlertLinks.received(response.notification.request.content.userInfo)
+  }
 }

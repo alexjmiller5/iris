@@ -6,6 +6,8 @@ struct WorkspaceFilter: Identifiable, Equatable {
   var operation: CoreFilterOp = .eq
   var value = ""
   var today = false
+  /// Relative Now (the host clock): only before/after comparisons.
+  var now = false
   private var imported: CoreFilter?
   private var importedText: String?
 
@@ -17,6 +19,7 @@ struct WorkspaceFilter: Identifiable, Equatable {
 
   init(_ filter: CoreFilter, field: CatalogField? = nil) {
     today = filter.relative == .today
+    now = filter.relative == .now
     column = filter.column
     operation = filter.op
     switch filter.value {
@@ -35,13 +38,16 @@ struct WorkspaceFilter: Identifiable, Equatable {
   /// Chips apply as they are edited. One without a usable value stays visible
   /// but neither filters nor saves, like an unfinished Notion filter.
   func activeCoreFilter(field: CatalogField?) -> CoreFilter? {
-    if operation != .empty, operation != .notEmpty, !today, value.isEmpty,
+    if operation != .empty, operation != .notEmpty, relative == nil, value.isEmpty,
       imported == nil || importedText != value
     {
       return nil
     }
     return try? coreFilter(field: field)
   }
+
+  var relative: CoreFilterRelative? { now ? .now : today ? .today : nil }
+  static let nowOperations: [CoreFilterOp] = [.lt, .lte, .gt, .gte]
 
   static func operations(for type: String) -> [CoreFilterOp] {
     switch type {
@@ -54,18 +60,23 @@ struct WorkspaceFilter: Identifiable, Equatable {
 
   func coreFilter(field: CatalogField?) throws -> CoreFilter {
     if let imported, imported.column == column, imported.op == operation, importedText == value,
-      (imported.relative == .today) == today
+      imported.relative == relative
     {
       return imported
     }
     if operation == .empty || operation == .notEmpty {
       return CoreFilter(column: column, op: operation)
     }
-    if today {
-      guard ["date", "datetime", "date_or_datetime"].contains(field?.type ?? ""), operation != .contains else {
-        throw WorkspaceError(message: "Today requires a date comparison.", violations: [])
+    if let relative {
+      guard ["date", "datetime", "date_or_datetime"].contains(field?.type ?? ""), operation != .contains,
+        relative == .today || Self.nowOperations.contains(operation)
+      else {
+        throw WorkspaceError(
+          message: relative == .now
+            ? "Now compares only before or after a date." : "Today requires a date comparison.",
+          violations: [])
       }
-      return CoreFilter(column: column, op: operation, relative: .today)
+      return CoreFilter(column: column, op: operation, relative: relative)
     }
     let typed: CoreFilterValue
     if ["int", "number"].contains(field?.type ?? "") {

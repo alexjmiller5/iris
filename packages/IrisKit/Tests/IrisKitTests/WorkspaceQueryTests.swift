@@ -43,6 +43,21 @@ struct WorkspaceQueryTests {
     #expect(try filter.coreFilter(field: field) == CoreFilter(column: "due", op: .lte, relative: .today))
   }
 
+  @Test func nowFilterRoundTripsAndComparesOnlyBeforeOrAfter() throws {
+    let field = CatalogField(property: ["col": .string("due"), "type": .string("date_or_datetime")])
+    let source = CoreFilter(column: "due", op: .lte, relative: .now)
+    let imported = WorkspaceFilter(source, field: field)
+    #expect(imported.now && !imported.today)
+    #expect(try imported.coreFilter(field: field) == source)
+    #expect(imported.summary(label: "Due") == "Due ≤ Now")
+    var equality = WorkspaceFilter(column: "due", operation: .eq)
+    equality.now = true
+    #expect(throws: WorkspaceError.self) { try equality.coreFilter(field: field) }
+    let model = WorkspaceModel()
+    model.filters = [imported]
+    #expect(model.hasRelativeFilters && model.nowColumns == ["due"])
+  }
+
   @Test func typedFilterValuesAndEmptyOperatorsPreserveMeaning() throws {
     let number = CatalogField(property: ["col": .string("quantity"), "type": .string("int")])
     let boolean = CatalogField(property: ["col": .string("done"), "type": .string("bool")])
