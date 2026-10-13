@@ -150,7 +150,7 @@ try {
   await expect(page.getByRole('button',{name:'Fresh online title',exact:true})).toHaveCount(0);
   // The workspace reopens by itself, offline.
   await page.reload();
-  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
+  await expect(page.getByRole('button',{name:/Find records/})).toBeEnabled();
   await expect(page.getByRole('button',{name:'Fresh online title',exact:true})).toHaveCount(0);
   console.log('PASS: online browsing fits a narrow screen and leaves the local replica and pending edits untouched across reopen');
 } finally {
