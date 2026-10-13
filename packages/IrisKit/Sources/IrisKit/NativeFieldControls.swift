@@ -265,13 +265,20 @@ struct NativeMixedDateField: View {
         .environment(\.calendar, Calendar(identifier: .gregorian))
         .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
         .accessibilityIdentifier("date-picker-\(field.id)")
-        Toggle(
-          "Add time",
-          isOn: Binding(
-            get: { kind == .local },
-            set: { value = NativeDateValue.toggleTime(value, on: $0) })
-        )
-        .accessibilityIdentifier("date-time-toggle-\(field.id)")
+        // Rows hide control labels (the row names the field), so the switch's own
+        // text stays visible beside it; VoiceOver still reads the toggle's label.
+        HStack {
+          Text("Add time").foregroundStyle(.secondary)
+          Spacer()
+          Toggle(
+            "Add time",
+            isOn: Binding(
+              get: { kind == .local },
+              set: { value = NativeDateValue.toggleTime(value, on: $0) })
+          )
+          .labelsHidden()
+          .accessibilityIdentifier("date-time-toggle-\(field.id)")
+        }
       } else if kind == .datetime {
         Text(NativePropertyValue.text(type: field.type, value: value))
       } else {

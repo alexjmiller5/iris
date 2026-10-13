@@ -27,10 +27,12 @@ final class DueTimeUITests: XCTestCase {
     for _ in 0..<6 where !toggle.isHittable { app.swipeUp() }
     XCTAssertTrue(toggle.waitForExistence(timeout: 5), app.debugDescription)
     XCTAssertEqual(toggle.value as? String, "0")
+    XCTAssertTrue(app.staticTexts["Add time"].exists, "The switch keeps its visible text")
     toggle.switches.firstMatch.tap()
     XCTAssertEqual(toggle.value as? String, "1")
     capture(app, "ios-due-add-time-on")
     XCUIDevice.shared.appearance = .dark
+    RunLoop.current.run(until: Date().addingTimeInterval(2))  // the app redraws in dark
     capture(app, "ios-due-add-time-on-dark")
     XCUIDevice.shared.appearance = .light
     let source = app.buttons["date-source-due"]
@@ -67,6 +69,7 @@ final class DueTimeUITests: XCTestCase {
     XCTAssertFalse(app.alerts.firstMatch.exists)
     capture(app, "ios-due-time-alerts")
     XCUIDevice.shared.appearance = .dark
+    RunLoop.current.run(until: Date().addingTimeInterval(2))
     capture(app, "ios-due-time-alerts-dark")
     XCUIDevice.shared.appearance = .light
   }
