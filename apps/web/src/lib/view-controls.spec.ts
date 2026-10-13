@@ -4,6 +4,7 @@ import {
 	initialFilterValue,
 	editSort,
 	moveItem,
+	nextDue,
 	parseDayStart,
 	parseFilter,
 	queryDefinition
@@ -69,7 +70,7 @@ test('the selected view policy changes query bounds without changing saved value
 	const original = JSON.stringify(definition);
 	expect(
 		queryDefinition('items', definition, new Date('2026-06-02T06:59:59.999Z')).calendar
-	).toEqual({
+	).toMatchObject({
 		today: '2026-06-01',
 		start: '2026-06-01T07:00:00.000Z',
 		end: '2026-06-02T07:00:00.000Z'
@@ -122,4 +123,45 @@ test('a Today view without a saved timezone resolves this device zone', () => {
 	expect(queryDefinition('items', definition, now).calendar).toEqual(
 		calendarContext(undefined, now, 180)
 	);
+});
+
+test('a Now view comes due at its next timed value later in the policy day', async () => {
+	const definition = {
+		version: 2,
+		timeZone: 'America/New_York',
+		dayStartMinutes: 180,
+		filters: [{ column: 'due', op: 'lte' as const, relative: 'now' as const }]
+	};
+	const now = new Date('2032-10-13T16:30:00Z');
+	const views: unknown[] = [];
+	const at = await nextDue(
+		async (view) => {
+			views.push(view);
+			return [
+				{ id: 'later-local', due: '2032-10-13T18:00' },
+				{ id: 'sooner-instant', due: '2032-10-13T21:15:00.000Z' },
+				{ id: 'after-midnight', due: '2032-10-14T01:00' }
+			];
+		},
+		'items',
+		definition,
+		now
+	);
+	// 18:00 New York is 22:00 UTC, after the 21:15 UTC instant.
+	expect(at).toBe(Date.parse('2032-10-13T21:15:00.000Z'));
+	expect(views).toEqual([
+		{
+			table: 'items',
+			calendar: queryDefinition('items', definition, now).calendar,
+			columns: ['id', 'due'],
+			filters: [
+				{ column: 'due', op: 'gt', relative: 'now' },
+				{ column: 'due', op: 'eq', relative: 'today' }
+			],
+			sort: [{ column: 'due', direction: 'asc' }],
+			limit: 200
+		}
+	]);
+	expect(await nextDue(async () => [], 'items', { ...definition, filters: [] }, now)).toBeNull();
+	expect(await nextDue(async () => [], 'items', definition, now)).toBeNull();
 });

@@ -126,7 +126,7 @@
 	import { labelStatus } from '$lib/search-status';
 	import SortMenu from '$lib/SortMenu.svelte';
 	import { createViewAutosave } from '$lib/saved-views';
-	import { queryDefinition } from '$lib/view-controls';
+	import { nextDue, queryDefinition } from '$lib/view-controls';
 	import { calendarContext } from '$lib/calendar-context';
 	import { untrack } from 'svelte';
 	import type { FilterGroup, RowAction, ViewLayoutItem } from 'iris-core/client';
@@ -1382,12 +1382,16 @@
 	$effect(() => {
 		const workspace = database,
 			zone = timeZone,
-			boundary = dayStartMinutes;
-		const relative = [...filters, ...filterGroups.flatMap((g) => g.filters)].some(
-			(f) => f.relative === 'today'
-		);
-		if (!workspace || !relative) return;
-		let timer: ReturnType<typeof setTimeout>, previous: string;
+			boundary = dayStartMinutes,
+			current = table;
+		const relative = [...filters, ...filterGroups.flatMap((g) => g.filters)].map((f) => f.relative);
+		// Every reload (sync, edits, a value coming due) plans the next due time again.
+		void rows;
+		if (!workspace || !relative.some(Boolean)) return;
+		let timer: ReturnType<typeof setTimeout>,
+			previous: string,
+			due: number | null = null,
+			live = true;
 		try {
 			previous = calendarContext(zone, new Date(), boundary).today;
 		} catch (e) {
@@ -1397,17 +1401,32 @@
 		const refresh = () => {
 			clearTimeout(timer);
 			const next = calendarContext(zone, new Date(), boundary);
-			if (next.today !== previous) {
+			if (next.today !== previous || (due !== null && Date.now() >= due)) {
 				previous = next.today;
+				due = null;
 				untrack(() => void loadRows().catch((e) => (error = message(e))));
 			}
-			timer = setTimeout(refresh, Math.max(1, Date.parse(next.end) - Date.now() + 1));
+			const until = Math.min(Date.parse(next.end), due ?? Infinity);
+			timer = setTimeout(refresh, Math.max(1, until - Date.now() + 1));
 		};
 		refresh();
+		// A Now view also re-runs when its next timed value comes due.
+		if (relative.includes('now'))
+			untrack(() =>
+				nextDue((view) => workspace.request('rows', { view }), current, viewDefinition())
+					.then((at) => {
+						if (!live) return;
+						due = at;
+						refresh();
+					})
+					// Unscheduled is safe: the boundary and focus still refresh the view.
+					.catch(() => {})
+			);
 		window.addEventListener('focus', refresh);
 		window.addEventListener('pageshow', refresh);
 		document.addEventListener('visibilitychange', refresh);
 		return () => {
+			live = false;
 			clearTimeout(timer);
 			window.removeEventListener('focus', refresh);
 			window.removeEventListener('pageshow', refresh);
