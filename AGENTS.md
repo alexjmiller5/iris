@@ -395,7 +395,15 @@ The core bundle source hash includes the manifest. Keep the applied view's
 revision until the user reopens it, even when a refreshed list has a newer one.
 Definitions control layout; edit queries must return full rows, not the
 saved definition's SQL column projection. Preserve imported multi-column sorts.
-Native Properties controls edit ordered visibility through that same definition.
+Native Properties controls and Mac header menus edit ordered visibility through that same definition.
+Mac headers drag to reorder columns and actions; right-click offers sorting, filtering,
+wrapping, Hide column and Show columns. Divider resizing and double-click fitting autosave
+widths with the applied view. Fitting scans every matching local page, including rows not
+loaded into the grid, and resolves reference labels. Hidden properties retain their layout positions and widths when shown again.
+Order, visibility and widths remain separate per saved view and sync through ordinary view writes. Programmatic column changes
+do not trigger header edits; moved columns retain their property/action identity.
+Startup reopens the most recently visited table from the workspace's device-local recents,
+falling back to the normal initial table if it no longer exists. Demo launches stay temporary.
 The configured table display column stays prominent, while hidden fields remain
 in the editor draft and are reachable through More properties. New required
 fields and validation failures stay visible. A title-only saved view keeps a
@@ -1108,6 +1116,8 @@ releasing file admission. The total deadline is fifteen
 minutes, with per-request transport timeouts retained. Core commits each finished
 table and resumes an interrupted table at its last applied page, so a round cut
 short by the deadline or one failed request continues where it stopped.
+
+App icon master: `assets/icon.svg` (Tabler eye with a table-cell iris). iOS uses an opaque 1024px raster; macOS uses a centered rounded 824px artwork in a transparent 1024px canvas, with all declared sizes generated from it. The web favicon is the rounded SVG derivative.
 
 Web design tokens live in `apps/web/src/theme.css`; use Tabler UI icons,
 accessible controls, keyboard focus and narrow-screen layouts. Native views use

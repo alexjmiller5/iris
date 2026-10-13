@@ -2288,6 +2288,10 @@
         },
         "id": {
           "type": "string"
+        },
+        "width": {
+          "type": "number",
+          "description": "Finite positive persistent width for an action column. Property column widths use the saved view widths map."
         }
       },
       "required": [
@@ -4951,6 +4955,10 @@
           "items": {
             "$ref": "#/$defs/CatalogProjectionOption"
           }
+        },
+        "default": {
+          "type": "string",
+          "description": "The property's static catalog default; a SQL default is never disclosed."
         }
       },
       "required": [
@@ -4972,6 +4980,13 @@
           "items": {
             "$ref": "#/$defs/CatalogProjectedProperty"
           }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The table's enforced invariant texts, never their SQL."
         }
       },
       "required": [

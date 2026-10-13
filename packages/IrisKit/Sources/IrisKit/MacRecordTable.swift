@@ -26,13 +26,20 @@
     /// Property IDs whose cells wrap their whole value; their rows grow to fit.
     var wrapped: Set<String> = []
     var onWrap: (String, Bool) -> Void = { _, _ in }
+    var availableFields: [CatalogField] = []
+    var columnWidths: [String: Double] = [:]
+    var onColumnVisibility: (String, Bool) -> Void = { _, _ in }
+    var onColumnOrder: ([CoreViewLayoutItem]) -> Void = { _ in }
+    var onColumnWidth: (String, Double) -> Void = { _, _ in }
+    var onActionColumnWidth: (String, Double) -> Void = { _, _ in }
+    var onFitColumn: ((CatalogField) async throws -> Double)?
     @ViewBuilder let editor: () -> Editor
 
     private var gridItems: [NativeGridItem] {
       let title =
         titleField ?? CatalogField(property: ["col": .string("id"), "label": .string("Record")])
       return NativeGridItem.items(
-        columns: [NativeGridColumn(field: title, width: 240)]
+        columns: [NativeGridColumn(field: title, width: columnWidths[title.id] ?? 240)]
           + columns.filter { Data($0.id.utf8) != Data(title.id.utf8) },
         actions: actions, layout: layout)
     }
@@ -61,6 +68,8 @@
       table.intercellSpacing = NSSize(width: 12, height: 4)
       table.usesAutomaticRowHeights = false
       table.usesAlternatingRowBackgroundColors = true
+      table.allowsColumnReordering = true
+      table.allowsColumnResizing = true
       table.columnAutoresizingStyle = .noColumnAutoresizing
       table.dataSource = context.coordinator
       table.delegate = context.coordinator
@@ -79,6 +88,9 @@
       header.makeMenu = { [weak coordinator = context.coordinator] column in
         coordinator?.columnMenu(column)
       }
+      header.fitColumn = { [weak coordinator = context.coordinator] index in
+        Task { await coordinator?.fitColumn(index) }
+      }
       table.headerView = header
       let menu = NSMenu()
       menu.autoenablesItems = false
@@ -96,6 +108,8 @@
       guard let table = scroll.documentView as? NSTableView else { return }
       let coordinator = context.coordinator
       let previous = coordinator.parent
+      coordinator.applyingColumns = true
+      defer { coordinator.applyingColumns = false }
       coordinator.parent = self
       coordinator.items = gridItems
       let items = coordinator.items
@@ -112,6 +126,9 @@
         || previous.titleField?.property != titleField?.property
         || previous.actions != actions || previous.canRunAction != canRunAction
         || previous.wrapped != wrapped
+        || previous.columnWidths != columnWidths
+        || previous.layout != layout
+        || previous.columns.map(\.width) != columns.map(\.width)
       if previous.wrapped != wrapped || columnsChanged { coordinator.wrapHeights = [:] }
       guard columnsChanged || rowsChanged || contentChanged else {
         coordinator.updateEditor()
@@ -129,8 +146,8 @@
         for (index, id) in identifiers.enumerated() {
           let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
           column.title = items[index].label
-          column.minWidth = isTitle(items[index]) ? 180 : 96
-          column.maxWidth = 800
+          column.minWidth = isTitle(items[index]) ? 100 : 48
+          column.maxWidth = .greatestFiniteMagnitude
           column.width = items[index].width
           table.addTableColumn(column)
         }
@@ -138,6 +155,7 @@
       }
       for (index, column) in table.tableColumns.enumerated() {
         column.title = items[index].label
+        if abs(column.width - items[index].width) > 0.5 { column.width = items[index].width }
       }
       if columnsChanged || rowsChanged {
         table.reloadData()
@@ -238,11 +256,78 @@
       weak var table: NSTableView?
       /// Measured heights of wrapped cells by row and property.
       var wrapHeights: [Data: [String: CGFloat]] = [:]
+      var applyingColumns = false
       var items: [NativeGridItem]
       init(_ parent: MacRecordTable) {
         self.parent = parent
         items = parent.gridItems
       }
+      func tableViewColumnDidMove(_ notification: Notification) {
+        guard !applyingColumns, let table = notification.object as? NSTableView else { return }
+        let reordered = table.tableColumns.compactMap { column in
+          items.first { parent.identifier($0) == column.identifier.rawValue }
+        }
+        guard reordered.count == items.count else { return }
+        items = reordered
+        parent.onColumnOrder(
+          items.map {
+            CoreViewLayoutItem(
+              kind: $0.action == nil ? "column" : "action", id: $0.action?.id ?? $0.column!.id)
+          })
+        wrapHeights = [:]
+        table.reloadData()
+        updateEditor()
+      }
+
+      func tableViewColumnDidResize(_ notification: Notification) {
+        guard !applyingColumns, let table = notification.object as? NSTableView else { return }
+        for column in table.tableColumns {
+          guard
+            let item = items.first(where: { parent.identifier($0) == column.identifier.rawValue })
+          else { continue }
+          if let action = item.action {
+            if abs(item.width - column.width) > 0.5 {
+              parent.onActionColumnWidth(action.id, column.width)
+            }
+          } else if let field = item.column?.field,
+            abs((parent.columnWidths[field.id] ?? item.width) - column.width) > 0.5
+          {
+            parent.onColumnWidth(field.id, column.width)
+          }
+        }
+      }
+
+      func fitColumn(_ index: Int) async {
+        guard items.indices.contains(index), let table else { return }
+        if let action = items[index].action {
+          let width =
+            (action.label as NSString).size(withAttributes: [
+              .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            ]).width + 32
+          table.tableColumns[index].width = max(table.tableColumns[index].minWidth, ceil(width))
+          parent.onActionColumnWidth(action.id, table.tableColumns[index].width)
+          return
+        }
+        guard let field = items[index].column?.field,
+          let fit = parent.onFitColumn
+        else { return }
+        let workspace = parent.workspace
+        do {
+          let width = try await fit(field)
+          guard parent.workspace === workspace,
+            let column = table.tableColumns.first(where: { column in
+              items.first(where: { parent.identifier($0) == column.identifier.rawValue })?.column?
+                .id == field.id
+            })
+          else { return }
+          column.width = max(column.minWidth, width)
+          parent.onColumnWidth(field.id, column.width)
+        } catch is CancellationError { return } catch {
+          // The host reports a read failure; leave the existing width intact.
+          return
+        }
+      }
+
       func numberOfRows(in tableView: NSTableView) -> Int { parent.rows.count }
       func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         guard parent.rows.indices.contains(row) else { return 28 }
@@ -351,6 +436,31 @@
           if tag == 3 { item.state = parent.wrapped.contains(field.id) ? .on : .off }
           menu.addItem(item)
         }
+        menu.addItem(.separator())
+        if !parent.isTitle(items[column]) {
+          let hide = NSMenuItem(
+            title: "Hide column", action: #selector(columnAction(_:)), keyEquivalent: "")
+          hide.target = self
+          hide.representedObject = field.id
+          hide.tag = 4
+          hide.isEnabled = parent.actionsEnabled
+          menu.addItem(hide)
+        }
+        let show = NSMenuItem(title: "Show columns", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        for candidate in parent.availableFields {
+          let item = NSMenuItem(
+            title: candidate.label, action: #selector(columnAction(_:)), keyEquivalent: "")
+          item.target = self
+          item.representedObject = candidate.id
+          item.tag = 5
+          item.state = items.contains(where: { $0.column?.id == candidate.id }) ? .on : .off
+          item.isEnabled = parent.actionsEnabled && candidate.id != parent.titleField?.id
+          submenu.addItem(item)
+        }
+        show.submenu = submenu
+        menu.addItem(show)
         return menu
       }
 
@@ -359,6 +469,8 @@
         switch item.tag {
         case 2: parent.onFilter(id)
         case 3: parent.onWrap(id, !parent.wrapped.contains(id))
+        case 4: parent.onColumnVisibility(id, false)
+        case 5: parent.onColumnVisibility(id, item.state != .on)
         default: parent.onSort(id, item.tag == 0)
         }
       }
@@ -463,17 +575,17 @@
     override func menu(for event: NSEvent) -> NSMenu? {
       makeMenu?(column(at: convert(event.locationInWindow, from: nil)))
     }
+    var fitColumn: ((Int) -> Void)?
     override func mouseDown(with event: NSEvent) {
       let point = convert(event.locationInWindow, from: nil)
-      let column = column(at: point)
-      guard column >= 0, abs(headerRect(ofColumn: column).maxX - point.x) > 5,
-        abs(headerRect(ofColumn: column).minX - point.x) > 5,
-        let menu = menu(for: event)
-      else {
-        super.mouseDown(with: event)
-        return
+      if event.clickCount == 2, let tableView {
+        for index in tableView.tableColumns.indices
+        where abs(headerRect(ofColumn: index).maxX - point.x) <= 5 {
+          fitColumn?(index)
+          return
+        }
       }
-      menu.popUp(positioning: nil, at: NSPoint(x: point.x, y: bounds.maxY), in: self)
+      super.mouseDown(with: event)
     }
   }
 #endif

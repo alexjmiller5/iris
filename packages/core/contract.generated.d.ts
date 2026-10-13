@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "9430db740601ad29aa961e5ce961342793ef84100d38fd29902c9c6b550d8100";
+export declare const CORE_CONTRACT_HASH = "8ff77b3cbfd0e7c7e36c24b0ffb086e7a3e009e9a20c2e90ee73d44f30d22524";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -463,6 +463,7 @@ export type RowAction = {
 export type ViewLayoutItem = {
     kind: "column" | "action";
     id: string;
+    width?: number;
 };
 export type RunRowActionArgs = {
     viewId: string;
@@ -1005,10 +1006,12 @@ export type CatalogProjectedProperty = {
     required: boolean;
     readOnly: boolean;
     options?: CatalogProjectionOption[];
+    default?: string;
 };
 export type CatalogProjectionReply = {
     table: string;
     properties: CatalogProjectedProperty[];
+    rules?: string[];
 };
 export type RowsQueryOrder = {
     column: string;

@@ -100,6 +100,8 @@ jobs:
               -only-testing:IrisUITests/RelatedViewsUITests/testMainAndRelatedPreferencesStayIndependentThroughUserControls \
               -only-testing:IrisUITests/SidebarMenuBarUITests/testCommandBackslashTogglesPersistedSidebarAndMenuBarItemOpensQuickFind \
               -only-testing:IrisUITests/SidebarMenuBarUITests/testCommandKFindsRecordsWithTheSidebarHidden \
+              -only-testing:IrisUITests/RecordGridUITests/testColumnDragResizeFitAndVisibilityMenus \
+              -only-testing:IrisUITests/RecordGridUITests/testColumnTitleOpensSortingAndAPropertyFilter \
               -only-testing:IrisUITests/ReferenceCreateUITests/testPickersCreateRecordsInPlaceAndHandRequiredFieldsToTheEditor \
               -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
               CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/catalog-xcui.log"
@@ -111,8 +113,8 @@ jobs:
           import sys
 
           result = json.loads(pathlib.Path(sys.argv[1]).read_text())
-          if (result.get("passedTests"), result.get("failedTests"), result.get("skippedTests")) != (8, 0, 0):
-              raise SystemExit(f"Expected eight executed passing XCUI tests: {result}")
+          if (result.get("passedTests"), result.get("failedTests"), result.get("skippedTests")) != (10, 0, 0):
+              raise SystemExit(f"Expected ten executed passing XCUI tests: {result}")
           print("Verified catalog, presentation, filter-bar, related-view, sidebar/menu-bar and reference-create XCUI tests; no skipped or zero-test success")
           PYVERIFY
       - name: Keep the synthetic Mac XCUI screenshots

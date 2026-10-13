@@ -115,6 +115,32 @@
       try await first.close()
     }
 
+    @Test func launchReopensTheLastVisitedTable() async throws {
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let path = root.appendingPathComponent("workspace.sqlite")
+      let local = root.appendingPathComponent("local.sqlite")
+      let workspace = try await NativeWorkspace(path: path.path)
+      try await workspace.createSample()
+      try await workspace.close()
+      let first = WorkspaceModel(localURL: { local }, credentialStore: MemoryHubCredentials(nil))
+      await first.open(url: path)
+      await first.recents?.navigationSucceeded(NativeDestination(table: "topics"))
+      await first.close()
+      let reopened = WorkspaceModel(localURL: { local }, credentialStore: MemoryHubCredentials(nil))
+      await reopened.restoreAtLaunch(demo: false)
+      #expect(reopened.error == nil)
+      #expect(reopened.table == "topics")
+      await reopened.recents?.navigationSucceeded(NativeDestination(table: "removed_table"))
+      await reopened.close()
+      let fallback = WorkspaceModel(localURL: { local }, credentialStore: MemoryHubCredentials(nil))
+      await fallback.restoreAtLaunch(demo: false)
+      #expect(fallback.error == nil)
+      #expect(fallback.table == "notes")
+      await fallback.close()
+    }
+
     @Test func launchWithNothingRememberedShowsTheWelcomeScreen() async throws {
       let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
       defer { try? FileManager.default.removeItem(at: root) }

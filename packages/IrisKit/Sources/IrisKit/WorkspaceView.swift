@@ -1177,7 +1177,7 @@ public struct WorkspaceView: View {
     var columns = NativeGridColumn.columns(
       properties: model.visibleRecordColumns == nil
         ? model.properties : model.viewFields.map(\.property),
-      selected: model.visibleRecordColumns, widths: model.appliedView?.definition?.widths ?? [:]
+      selected: model.visibleRecordColumns, widths: model.columnWidths
     )
     .filter { $0.id != model.titleProperty?.id }
     // An applied flag quick filter shows its reason first.
@@ -1265,6 +1265,51 @@ public struct WorkspaceView: View {
               guard canFind else { return }
               model.setWrap(column: column, wrap)
               model.scheduleViewSave()
+            },
+            availableFields: model.properties.map(CatalogField.init),
+            columnWidths: model.columnWidths,
+            onColumnVisibility: { column, visible in
+              guard canFind else { return }
+              var columns = model.shownColumns
+              if visible {
+                if !columns.contains(column) { columns.append(column) }
+              } else {
+                columns.removeAll { $0 == column }
+              }
+              do {
+                try model.applyPropertyLayout(columns: columns, context: model.editingContext)
+                model.scheduleViewSave()
+              } catch { model.error = error.localizedDescription }
+            },
+            onColumnOrder: { order in
+              guard canFind else { return }
+              model.setColumnOrder(order)
+              model.scheduleViewSave()
+            },
+            onColumnWidth: { column, width in
+              guard canFind else { return }
+              model.setColumnWidth(column: column, width: width)
+              model.scheduleViewSave()
+            },
+            onActionColumnWidth: { action, width in
+              guard canFind else { return }
+              model.setActionColumnWidth(action: action, width: width)
+              model.scheduleViewSave()
+            },
+            onFitColumn: { field in
+              do {
+                return try await model.fittedColumnWidth(field: field) { text in
+                  let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+                  let width =
+                    text.components(separatedBy: .newlines).map {
+                      ($0 as NSString).size(withAttributes: [.font: font]).width
+                    }.max() ?? 0
+                  return Double(ceil(width) + (field.id == model.titleProperty?.id ? 44 : 24))
+                }
+              } catch {
+                if !(error is CancellationError) { model.error = error.localizedDescription }
+                throw error
+              }
             }
           ) {
             if let target = editor, target.inlineField != nil {

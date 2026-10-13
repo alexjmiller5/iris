@@ -184,6 +184,104 @@ struct SavedViewsTests {
     try await workspace.close()
   }
 
+  @Test func columnEditsAutosaveAndRemainSeparateForEachView() async throws {
+    let model = WorkspaceModel(credentialStore: MemoryHubCredentials(nil))
+    await model.open(demo: true)
+    let context = try #require(model.editingContext)
+    let first = try #require(model.appliedView)
+    let other = try await context.workspace.saveView(
+      CoreSaveViewArgs(
+        table: "notes", name: "Other layout", definition: CoreSavedViewDefinition(version: 1)))
+    try model.applyPropertyLayout(columns: ["title", "status"], context: context)
+    model.setColumnWidth(column: "title", width: 321)
+    model.setColumnWidth(column: "status", width: 137)
+    model.setColumnOrder([
+      CoreViewLayoutItem(kind: "column", id: "status"),
+      CoreViewLayoutItem(kind: "column", id: "title"),
+    ])
+    model.scheduleViewSave()
+    await model.flushViewSave()
+    let saved = try #require(
+      try await context.workspace.listViews(table: "notes").views.first {
+        $0.id == first.id
+      })
+    #expect(saved.definition?.widths == ["title": 321, "status": 137])
+    #expect(saved.definition?.layout?.map(\.id) == ["status", "title"])
+    #expect(saved.definition?.columns == ["title", "status"])
+    try model.applySavedView(other, context: context)
+    #expect(model.columnWidths.isEmpty)
+    try model.applySavedView(saved, context: context)
+    #expect(model.columnWidths["title"] == 321)
+    try model.applyPropertyLayout(columns: ["title"], context: context)
+    model.scheduleViewSave()
+    await model.flushViewSave()
+    #expect(model.appliedView?.definition?.layout?.map(\.id) == ["status", "title"])
+    try model.applyPropertyLayout(columns: ["title", "status"], context: context)
+    #expect(
+      NativeGridItem.items(
+        columns: NativeGridColumn.columns(
+          properties: model.properties,
+          selected: model.visibleRecordColumns), actions: [], layout: model.viewLayout
+      ).map(\.column?.id) == ["status", "title"])
+    #expect(model.columnWidths["status"] == 137, "Hiding a column preserves its width")
+    await model.close()
+  }
+
+  @Test func actionColumnWidthsSurviveReorderingAndAutosave() async throws {
+    let model = WorkspaceModel(credentialStore: MemoryHubCredentials(nil))
+    await model.open(demo: true)
+    let context = try #require(model.editingContext)
+    let saved = try await context.workspace.saveView(
+      CoreSaveViewArgs(
+        table: "notes", name: "Actions",
+        definition: CoreSavedViewDefinition(
+          version: 2,
+          columns: ["status"],
+          actions: [
+            CoreRowAction(id: "review", label: "Review", values: ["status": .string("Ready")])
+          ])))
+    try model.applySavedView(saved, context: context)
+    model.setActionColumnWidth(action: "review", width: 287)
+    #expect(model.viewLayout?.first?.id == "title")
+    model.setColumnOrder([
+      CoreViewLayoutItem(kind: "action", id: "review"),
+      CoreViewLayoutItem(kind: "column", id: "title"),
+    ])
+    model.scheduleViewSave()
+    await model.flushViewSave()
+    let reopened = try #require(
+      try await context.workspace.listViews(table: "notes").views.first { $0.id == saved.id })
+    #expect(reopened.definition?.layout?.first?.width == 287)
+    let items = NativeGridItem.items(
+      columns: NativeGridColumn.columns(properties: model.properties),
+      actions: reopened.definition?.actions ?? [], layout: reopened.definition?.layout)
+    #expect(items.first?.width == 287)
+    await model.close()
+  }
+
+  @Test func fittingAColumnReadsBeyondTheLoadedPage() async throws {
+    let model = WorkspaceModel(credentialStore: MemoryHubCredentials(nil))
+    await model.open(demo: true)
+    let context = try #require(model.editingContext)
+    for index in 0..<205 {
+      _ = try await context.workspace.write(
+        table: "notes",
+        patch: [
+          "title": .string(
+            index == 204 ? "Longest value in the last page" : String(format: "%03d", index)),
+          "status": .string("Draft"),
+        ])
+    }
+    model.setSort(column: "title", ascending: true)
+    await model.reload()
+    #expect(model.rows.count == 100)
+    #expect(model.rows.allSatisfy { $0.label != "Longest value in the last page" })
+    let field = try #require(model.properties.map(CatalogField.init).first { $0.id == "title" })
+    let width = try await model.fittedColumnWidth(field: field) { Double($0.count) }
+    #expect(width == Double("Longest value in the last page".count))
+    await model.close()
+  }
+
   @Test func applyingImportedViewPreservesLayoutSortAndFullEditableRows() async throws {
     let model = WorkspaceModel()
     await model.open(demo: true)

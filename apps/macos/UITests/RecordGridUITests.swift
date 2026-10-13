@@ -79,6 +79,56 @@ final class RecordGridUITests: XCTestCase {
       hypot(dx, dy), 48, "Property help must be anchored to the clicked info button")
   }
 
+  func testColumnDragResizeFitAndVisibilityMenus() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = ["--demo", "-ApplePersistenceIgnoreState", "YES"]
+    app.launch()
+    app.activate()
+    defer { app.terminate() }
+    let grid = app.descendants(matching: .any).matching(identifier: "record-grid").firstMatch
+    XCTAssertTrue(grid.waitForExistence(timeout: 15))
+    func header(_ title: String) -> XCUIElement {
+      grid.buttons.matching(NSPredicate(format: "title == %@", title)).firstMatch
+    }
+    let status = header("Status")
+    let title = header("Title")
+    XCTAssertTrue(status.exists && title.exists)
+    status.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+      .press(
+        forDuration: 0.2,
+        thenDragTo: title.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
+    XCTAssertLessThan(status.frame.minX, title.frame.minX)
+    let initial = status.frame.width
+    status.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+      .press(
+        forDuration: 0.2,
+        thenDragTo: status.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+          .withOffset(CGVector(dx: 140, dy: 0)))
+    let resized = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        status.frame.width > initial + 100
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [resized], timeout: 5), .completed)
+    status.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).doubleClick()
+    let fitted = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        status.frame.width < initial
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [fitted], timeout: 5), .completed)
+    let snugWidth = status.frame.width
+    status.rightClick()
+    app.menuItems["Hide column"].click()
+    XCTAssertTrue(status.waitForNonExistence(timeout: 5))
+    title.rightClick()
+    app.menuItems["Show columns"].hover()
+    app.menuItems["Status"].click()
+    XCTAssertTrue(status.waitForExistence(timeout: 5))
+    XCTAssertEqual(status.frame.width, snugWidth, accuracy: 2)
+    XCTAssertLessThan(status.frame.minX, title.frame.minX)
+    capture(app, name: "column-layout-controls")
+  }
+
   func testColumnTitleOpensSortingAndAPropertyFilter() throws {
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -94,13 +144,13 @@ final class RecordGridUITests: XCTestCase {
     XCTAssertTrue(grid.waitForExistence(timeout: 15))
     let header = grid.buttons.matching(NSPredicate(format: "title == %@", "Status")).firstMatch
     XCTAssertTrue(header.exists)
-    header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+    header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).rightClick()
     XCTAssertTrue(app.menuItems["Sort ascending"].waitForExistence(timeout: 3))
     XCTAssertTrue(app.menuItems["Sort descending"].exists)
     capture(app, name: "column-header-menu")
     app.menuItems["Sort descending"].click()
     XCTAssertTrue(header.waitForExistence(timeout: 3))
-    header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+    header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).rightClick()
     app.menuItems["Filter…"].click()
     let ready = app.descendants(matching: .any)["filter-option-Ready"]
     XCTAssertTrue(ready.waitForExistence(timeout: 3))

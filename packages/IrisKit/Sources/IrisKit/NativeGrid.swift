@@ -38,12 +38,18 @@ struct NativeGridItem: Identifiable {
   let action: CoreRowAction?
   var id: Data { Data(((action == nil ? "column:" : "action:") + (action?.id ?? column!.id)).utf8) }
   var label: String { action?.label ?? column!.label }
-  var width: Double { column?.width ?? 180 }
+  var actionWidth: Double = 180
+  var width: Double { column?.width ?? actionWidth }
   static func items(
     columns: [NativeGridColumn], actions: [CoreRowAction], layout: [CoreViewLayoutItem]?
   ) -> [Self] {
     let candidates =
-      columns.map { Self(column: $0, action: nil) } + actions.map { Self(column: nil, action: $0) }
+      columns.map { Self(column: $0, action: nil) }
+      + actions.map { action in
+        Self(
+          column: nil, action: action,
+          actionWidth: layout?.first { $0.kind == "action" && $0.id == action.id }?.width ?? 180)
+      }
     let ordered = (layout ?? []).compactMap { item in
       candidates.first { candidate in candidate.id == Data((item.kind + ":" + item.id).utf8) }
     }

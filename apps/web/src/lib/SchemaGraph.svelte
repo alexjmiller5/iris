@@ -19,7 +19,7 @@
 	const orderedNodes = $derived([...graph.nodes].sort((a, b) => a.id.localeCompare(b.id)));
 	let canvasWidth = $state(0);
 	let zoom = $state<number | null>(null);
-	const fit = $derived(canvasWidth > 8 ? Math.min(1, (canvasWidth - 8) / graph.width) : 1);
+	const fit = $derived(canvasWidth > 24 ? Math.min(1, (canvasWidth - 24) / graph.width) : 1);
 	const scale = $derived(zoom ?? fit);
 </script>
 
@@ -228,12 +228,20 @@
 		stroke: var(--color-muted);
 		stroke-width: 1.5;
 	}
+	.relationship path {
+		stroke: color-mix(in srgb, var(--color-muted) 45%, transparent);
+		stroke-width: 1.25;
+	}
 	.canvas {
 		max-width: 100%;
 		max-height: min(68vh, 680px);
 		overflow: auto;
-		padding: 4px;
-		border-radius: 8px;
+		padding: 12px;
+		border: 1px solid var(--color-rule);
+		border-radius: 24px;
+		background-color: color-mix(in srgb, var(--color-ink) 3.5%, var(--color-paper));
+		background-image: radial-gradient(color-mix(in srgb, var(--color-muted) 22%, transparent) .7px, transparent .7px);
+		background-size: 24px 24px;
 	}
 	.canvas > svg {
 		display: block;
@@ -243,6 +251,8 @@
 		justify-content: flex-end;
 		gap: 4px;
 		margin-bottom: 8px;
+		border-radius: 22px;
+		padding: 4px;
 	}
 	.zoom-controls button {
 		display: inline-flex;
@@ -253,7 +263,7 @@
 		color: var(--color-ink);
 		background: var(--color-paper);
 		border: 1px solid var(--color-rule);
-		border-radius: 8px;
+		border-radius: 18px;
 		cursor: pointer;
 	}
 	.zoom-controls button:focus-visible {
@@ -265,8 +275,9 @@
 		cursor: default;
 	}
 	.band {
-		fill: var(--color-bone);
-		stroke: var(--color-rule);
+		fill: color-mix(in srgb, #4d6ed1 7%, transparent);
+		stroke: none;
+		rx: 24px;
 	}
 	.group-name {
 		fill: var(--color-muted);
@@ -296,7 +307,9 @@
 		color: var(--color-ink);
 		background: var(--color-paper);
 		border: 1px solid var(--color-rule);
-		border-radius: 7px;
+		border-radius: 20px;
+		box-shadow: 0 3px 12px #0000000d;
+		border-color: color-mix(in srgb, #4d6ed1 30%, var(--color-rule));
 		cursor: pointer;
 		font: inherit;
 	}
@@ -309,6 +322,11 @@
 		outline-offset: -4px;
 	}
 	.table-node :global(svg) {
+		background: color-mix(in srgb, #4d6ed1 12%, transparent);
+		border-radius: 50%;
+		padding: 7px;
+		width: 36px;
+		height: 36px;
 		flex-shrink: 0;
 		color: var(--color-accent);
 	}

@@ -862,6 +862,7 @@ final class WorkspaceModel {
     savedViews = []
     appliedView = nil
     visibleRecordColumns = nil
+    columnWidths = [:]
     wrapColumns = []
     savedViewsUnavailable = nil
     viewDefault = nil
@@ -1031,6 +1032,7 @@ final class WorkspaceModel {
     }
   }
 
+  private(set) var columnWidths: [String: Double] = [:]
   private(set) var visibleRecordColumns: [String]?
   /// Columns whose values wrap their full text (saved view `wrap`); layout only.
   private(set) var wrapColumns: [String] = []
@@ -1059,7 +1061,7 @@ final class WorkspaceModel {
   }
   /// The view's layout options: Wrap all columns on or off.
   func setWrapAll(_ wrap: Bool, columns: [String]) {
-    if wrap { columns.forEach { setWrap(column: $0, true) } } else { wrapColumns = [] }
+    if wrap { for column in columns { setWrap(column: column, true) } } else { wrapColumns = [] }
   }
 
   private var titleColumn: String? {
@@ -1108,9 +1110,97 @@ final class WorkspaceModel {
     visibleRecordColumns = columns
   }
 
+  func setColumnOrder(_ items: [CoreViewLayoutItem]) {
+    if var columns = visibleRecordColumns {
+      for item in items where item.kind == "column" && !columns.contains(item.id) {
+        columns.append(item.id)
+      }
+      visibleRecordColumns = columns
+    }
+    let visible = Set(items.filter { $0.kind == "column" }.map(\.id))
+    var incoming = items.map { item in
+      var item = item
+      if item.kind == "action" {
+        item.width = viewLayout?.first { $0.kind == "action" && $0.id == item.id }?.width
+      }
+      return item
+    }.makeIterator()
+    var ordered: [CoreViewLayoutItem] = []
+    for prior in viewLayout ?? [] {
+      if prior.kind == "column", !visible.contains(prior.id) {
+        ordered.append(prior)
+      } else if let next = incoming.next() {
+        ordered.append(next)
+      }
+    }
+    ordered.append(contentsOf: incoming)
+    viewLayout = ordered
+  }
+
+  func setActionColumnWidth(action: String, width: Double) {
+    guard width.isFinite, width > 0, viewActions.contains(where: { $0.id == action }) else {
+      return
+    }
+    let title = titleProperty?.id ?? "id"
+    if var columns = visibleRecordColumns, !columns.contains(title) {
+      columns.insert(title, at: 0)
+      visibleRecordColumns = columns
+    }
+    var layout = viewLayout ?? defaultViewLayout
+    if let index = layout.firstIndex(where: { $0.kind == "action" && $0.id == action }) {
+      layout[index].width = width
+    } else {
+      layout.append(CoreViewLayoutItem(kind: "action", id: action, width: width))
+    }
+    viewLayout = layout
+  }
+
+  func setColumnWidth(column: String, width: Double) {
+    guard width.isFinite, width > 0,
+      column == "id" || properties.contains(where: { $0["col"]?.text == column })
+    else {
+      return
+    }
+    columnWidths[column] = width
+  }
+
+  /// Measure every matching local row, including pages the user has not scrolled to.
+  func fittedColumnWidth(field: CatalogField, measure: (String) -> Double) async throws -> Double {
+    let context = try requireViewContext(editingContext)
+    let generation = viewGeneration
+    let query = queryKey
+    let definition = try currentViewDefinition()
+    var view = CoreView(
+      table: context.table, filters: definition.filters, sort: definition.sort,
+      limit: 200, offset: 0, trash: trash, search: search, groups: definition.groups,
+      calendar: hasRelativeFilters
+        ? try calendarContext(timeZone: viewTimeZone, dayStartMinutes: viewDayStartMinutes) : nil)
+    var width = measure(field.label)
+    while true {
+      try Task.checkCancellation()
+      let page = try await context.workspace.rows(view: view)
+      for row in page {
+        let value = field.formValue(row.record[field.id])
+        let text =
+          ["ref", "multi_ref"].contains(field.type)
+          ? await NativePropertyValue.referenceLabels(
+            field: field, value: value, workspace: context.workspace)
+          : NativePropertyValue.text(type: field.type, value: value)
+        width = max(width, measure(text))
+      }
+      _ = try requireViewContext(context)
+      guard generation == viewGeneration, query == queryKey else { throw CancellationError() }
+      if page.count < 200 { return width }
+      view.offset = (view.offset ?? 0) + page.count
+    }
+  }
+
   var defaultViewLayout: [CoreViewLayoutItem] {
-    let columns = visibleRecordColumns ?? properties.compactMap { $0["col"]?.text }
-    return (columns.isEmpty ? ["id"] : columns).map { CoreViewLayoutItem(kind: "column", id: $0) }
+    let title = titleProperty?.id ?? "id"
+    let columns =
+      [title]
+      + (visibleRecordColumns ?? properties.compactMap { $0["col"]?.text }).filter { $0 != title }
+    return columns.map { CoreViewLayoutItem(kind: "column", id: $0) }
       + viewActions.map { CoreViewLayoutItem(kind: "action", id: $0.id) }
   }
 
@@ -1156,6 +1246,7 @@ final class WorkspaceModel {
     }
     // Core requires a nonempty projection. The title remains visible even when
     // the user hides every secondary property; edit queries still fetch full rows.
+    definition.widths = columnWidths.isEmpty ? nil : columnWidths
     definition.columns =
       visibleRecordColumns == [] ? [titleProperty?.id ?? "id"] : visibleRecordColumns
     return definition
@@ -1287,6 +1378,7 @@ final class WorkspaceModel {
     if let definition = transient ?? saved?.definition {
       appliedView = saved
       visibleRecordColumns = definition.columns
+      columnWidths = definition.widths ?? [:]
       wrapColumns = definition.wrap ?? []
       search = definition.search ?? ""
       trash = definition.trash ?? false
@@ -1304,6 +1396,7 @@ final class WorkspaceModel {
     } else {
       appliedView = nil
       visibleRecordColumns = nil
+      columnWidths = [:]
       wrapColumns = []
       search = ""
       trash = false
@@ -1833,7 +1926,9 @@ final class WorkspaceModel {
         : url == nil
           ? "Local workspace · saved on this device" : "Local database · \(url!.lastPathComponent)"
       table =
-        tables.first(where: { $0["id"]?.text == "notes" })?["id"]?.text ?? tables.first?["id"]?.text
+        rememberedTable
+        ?? tables.first(where: { $0["id"]?.text == "notes" })?["id"]?.text
+        ?? tables.first?["id"]?.text
       search = ""
       trash = false
       if let table {
@@ -2107,6 +2202,13 @@ final class WorkspaceModel {
     refreshDrafts()
   }
 
+  private var rememberedTable: String? {
+    guard let last = recents?.destinations.first?.table,
+      tables.contains(where: { $0["id"]?.text == last })
+    else { return nil }
+    return last
+  }
+
   private func configureRecents(store: NativeRecentsStore?) {
     guard let client else { return }
     let resolver = NativeDestinationResolver(workspace: client)
@@ -2366,7 +2468,8 @@ final class WorkspaceModel {
     isReplica = true
     location = "Hub workspace · local replica"
     table =
-      tables.first(where: { $0["readOnly"] == .bool(false) })?["id"]?.text
+      rememberedTable
+      ?? tables.first(where: { $0["readOnly"] == .bool(false) })?["id"]?.text
       ?? tables.first?["id"]?.text
     rows = []
     search = ""
