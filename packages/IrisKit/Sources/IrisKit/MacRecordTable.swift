@@ -215,7 +215,16 @@
         guard let tableColumn, let column = tableView.tableColumns.firstIndex(of: tableColumn),
           parent.rows.indices.contains(row)
         else { return nil }
+        // A cell scrolled out serves the row scrolled in: a new root costs about a third of
+        // a new hosting view. The root's row identity keeps SwiftUI state per row.
+        if let view = tableView.makeView(withIdentifier: tableColumn.identifier, owner: nil),
+          let host = view.subviews.first as? NSHostingView<MacRecordCell<Editor>>
+        {
+          host.rootView = cell(row: row, column: column)
+          return view
+        }
         let view = NSTableCellView()
+        view.identifier = tableColumn.identifier
         let host = NSHostingView(rootView: cell(row: row, column: column))
         host.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(host)
@@ -307,7 +316,7 @@
     }
   }
 
-  private struct MacRecordCell<Editor: View>: View {
+  struct MacRecordCell<Editor: View>: View {
     let row: WorkspaceRow
     let field: CatalogField?
     let isTitle: Bool
@@ -378,6 +387,7 @@
       }
       .padding(.top, editing ? 0 : 6)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .id(row.byteExactID)
     }
   }
 

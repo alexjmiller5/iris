@@ -170,6 +170,68 @@
       #expect(table.tableColumns.first?.title == "Name")
     }
 
+    @Test func scrollingReusesCellHostsForTheRowsScrolledIn() async throws {
+      func field(_ id: String) -> CatalogField {
+        CatalogField(property: [
+          "col": .string(id), "label": .string(id.capitalized), "type": .string("text"),
+        ])
+      }
+      let rows = (0..<300).map { index in
+        WorkspaceRow(
+          record: [
+            "id": .string("row-\(index)"), "title": .string("Row \(index)"),
+            "body": .string("Body \(index)"),
+          ], label: "Row \(index)")
+      }
+      let host = NSHostingView(
+        rootView: MacRecordTable(
+          rows: rows, columns: [NativeGridColumn(field: field("body"), width: 180)],
+          titleField: field("title"), editingRow: nil, editingColumn: nil, editorID: nil,
+          actionsEnabled: true, onOpen: { _ in }, onEdit: { _, _ in }, onSort: { _, _ in },
+          onFilter: { _ in }
+        ) { EmptyView() })
+      host.frame = NSRect(x: 0, y: 0, width: 800, height: 400)
+      let window = NSWindow(
+        contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+      window.isReleasedWhenClosed = false
+      window.contentView = host
+      window.orderFront(nil)
+      defer { window.close() }
+      for _ in 0..<100
+      where descendants(host).compactMap({ $0 as? NSTableView }).first?.numberOfRows != 300 {
+        try await Task.sleep(for: .milliseconds(20))
+      }
+      let table = try #require(descendants(host).compactMap { $0 as? NSTableView }.first)
+      typealias Cell = NSHostingView<MacRecordCell<EmptyView>>
+      func visibleCells() -> [(row: Int, host: Cell)] {
+        let range = table.rows(in: table.visibleRect)
+        return (range.lowerBound..<range.upperBound).flatMap { row in
+          table.tableColumns.indices.compactMap { column in
+            (table.view(atColumn: column, row: row, makeIfNecessary: false)?.subviews.first
+              as? Cell).map { (row, $0) }
+          }
+        }
+      }
+      // Retained, so no two hosts can share an identity.
+      var seen: [Cell] = []
+      let started = ContinuousClock.now
+      for row in stride(from: 0, to: 300, by: 4) {
+        table.scrollRowToVisible(row)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        seen += visibleCells().map(\.host)
+      }
+      let elapsed = started.duration(to: .now)
+      let created = Set(seen.map(ObjectIdentifier.init)).count
+      print("macGridScroll rows=300 columns=2 hosts_created=\(created) elapsed=\(elapsed)")
+      #expect(!seen.isEmpty)
+      #expect(created < 120, "300 rows x 2 columns scrolled through must reuse cell hosts")
+      // A reused host shows the row it was handed, not the one it showed before.
+      for (row, cell) in visibleCells() {
+        #expect(cell.rootView.row.id == "row-\(row)")
+      }
+    }
+
     private func descendants(_ view: NSView) -> [NSView] {
       [view] + view.subviews.flatMap(descendants)
     }
