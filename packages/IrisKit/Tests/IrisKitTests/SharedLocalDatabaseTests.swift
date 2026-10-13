@@ -97,9 +97,10 @@
       defer { try? FileManager.default.removeItem(at: root) }
       let original = try #require(model.rows.first?.record)
       let context = try #require(model.editingContext)
+      // The draft stays unsaved until saveAll: its own autosave could land before a slow CLI.
       let editor = RecordEditorModel(
         properties: model.properties, original: original, table: "notes",
-        store: nil
+        store: nil, debounce: .seconds(60), typingDelay: .seconds(60)
       ) { patch, before in
         try await model.save(patch, original: before, context: context)
       }
