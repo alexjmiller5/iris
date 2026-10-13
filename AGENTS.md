@@ -710,7 +710,13 @@ opening and refuse hard-linked database files so journals have one identity.
 decoded catalog while the revision is unchanged; the whole catalog is about a
 megabyte on a large estate, and navigation and every sync round ask for it.
 `WorkspaceModel.reload` publishes rows before its four writeability checks, which
-walk the schema per table; editing stays unavailable until they answer. Quick
+walk the schema per table; editing stays unavailable until they answer. A reload of
+the shown query (sync pull, write, shared-file commit) rereads every loaded page, in
+core reads of at most 200 rows; another query starts again at 100. Scrolling stays
+off the database and the model: shown reference labels stay cached per workspace until
+the next non-appending reload, so a cell scrolled back in starts from its label;
+`WorkspaceSyncPill` alone reads sync and index progress; `properties` is derived once
+per catalog and table; the Mac grid reuses cell hosts per column, roots keyed by row ID. Quick
 Find searches are cancellable reads, so a superseded keystroke's queued search
 never runs. `TableOpenPerformanceTests` holds the open path's request sequence
 and budgets on a 10,000-row table; `IRIS_TABLE_OPEN_DB=<disposable copy>` measures
