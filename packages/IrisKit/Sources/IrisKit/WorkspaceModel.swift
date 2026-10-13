@@ -142,6 +142,8 @@ final class WorkspaceModel {
   }
   private var exportCatalogRevision = 0
   private var loadedRowsContext: LoadedRowsContext?
+  /// The query `rows` shows.
+  @ObservationIgnored private var rowsQuery: [String]?
   private var loadedExportContext: LoadedExportContext?
   private var currentRowsContext: LoadedRowsContext {
     LoadedRowsContext(
@@ -1857,6 +1859,9 @@ final class WorkspaceModel {
     }
     let request = revision
     let query = queryKey
+    // A refresh of the shown query (a sync pull, a write, a shared-file commit) keeps
+    // every loaded page, so the list neither shrinks nor jumps back to the top.
+    let limit = append || rowsQuery != query ? 100 : max(100, rows.count)
     let exportContext = currentExportContext
     loading = true
     defer {
@@ -1865,14 +1870,21 @@ final class WorkspaceModel {
     do {
       try Task.checkCancellation()
       let definition = try currentViewDefinition()
-      let view = CoreView(
+      var view = CoreView(
         table: table,
-        filters: definition.filters, sort: definition.sort,
-        limit: 100, offset: append ? rows.count : 0, trash: trash, search: search,
+        filters: definition.filters, sort: definition.sort, trash: trash, search: search,
         groups: definition.groups,
         calendar: hasRelativeFilters
           ? try calendarContext(timeZone: viewTimeZone, dayStartMinutes: viewDayStartMinutes) : nil)
-      let result = try await client.rows(view: view)
+      // Core reads at most 200 rows at a time, so a kept refresh can take a few reads.
+      var result: [WorkspaceRow] = []
+      repeat {
+        view.offset = (append ? rows.count : 0) + result.count
+        view.limit = min(200, limit - result.count)
+        let page = try await client.rows(view: view)
+        result += page
+        if page.count < view.limit ?? 0 { break }
+      } while result.count < limit
       try Task.checkCancellation()
       let status = isReplica ? try await client.status() : nil
       let undo = try await client.undoStatus()
@@ -1885,7 +1897,8 @@ final class WorkspaceModel {
       widgets?.scheduleRefresh(partial: isReplica)
       rows = append ? rows + result : result
       rowsGeneration += 1
-      canLoadMore = result.count == 100
+      rowsQuery = query
+      canLoadMore = result.count == limit
       // Catalog/status are separate reads. Export only a successfully loaded context
       // whose catalog and exact query stayed current throughout this request.
       if exportContext == currentExportContext {
