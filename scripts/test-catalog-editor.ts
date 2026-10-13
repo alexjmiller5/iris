@@ -27,7 +27,7 @@ try {
   await cdp.evaluate(`(()=>{const e=${target};e.value=${js(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
  };
  const has=(text:string)=>cdp.until(`document.body.innerText.includes(${js(text)})`);
- await cdp.navigate(new URL('/',url).href);await cdp.command('Storage.clearDataForOrigin',{origin,storageTypes:'all'});await cdp.navigate(url);
+ await cdp.navigate(new URL("/favicon.svg", url).href);await cdp.command('Storage.clearDataForOrigin',{origin,storageTypes:'all'});await cdp.navigate(url);
  await click('Open my workspace');
  for(const label of ['Connect to a hub','Use a device token']){
   const control=named('button,summary',label);await cdp.until(`!!(${control})`);
@@ -61,6 +61,6 @@ try {
  console.log('PASS catalog property/options/option color/column/rule editing, failed-rule draft retention, catalog_log hub readback, coverage refresh, actual rule failure and corrected record save.');
 } catch(error) {if(page)console.error(await page.evaluate('document.body.innerText'));throw error;}
 finally {
- if(page){await page.navigate(new URL('/',url).href).catch(()=>{});await page.command('Storage.clearDataForOrigin',{origin,storageTypes:'all'}).catch(()=>{});page.close();}
+ if(page){await page.navigate(new URL("/favicon.svg", url).href).catch(()=>{});await page.command('Storage.clearDataForOrigin',{origin,storageTypes:'all'}).catch(()=>{});page.close();}
  server.stop(true);db.db.close();auth.db.close();
 }

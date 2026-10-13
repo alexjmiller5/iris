@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Property } from 'iris-core/client';
-import { chipValues, dateText, flagValue, isFlag, jsonText, markdownPreview } from './cell-values';
+import {
+	chipValues,
+	dateText,
+	flagValue,
+	isFlag,
+	jsonText,
+	joinLocalTime,
+	markdownPreview,
+	splitLocalTime
+} from './cell-values';
 
 const prop = (type: string, options?: string[]): Property =>
 	({ tbl: 'items', col: 'c', type, options: options?.map((v) => ({ v })) }) as Property;
@@ -116,6 +125,29 @@ describe('date cells', () => {
 		expect(dateText('date_or_datetime', '2026-02-28T23:59:00.000Z', 'en-US')).toMatch(
 			/^Feb 28, 2026(?:,| at) 11:59 PM UTC$/
 		);
+	});
+
+	it('reads a floating local time as that wall-clock time, with no zone', () => {
+		expect(dateText('date_or_datetime', '2026-10-13T12:00', 'en-US')).toBe(
+			'Oct 13, 2026, 12:00 PM'
+		);
+		expect(dateText('date_or_datetime', '2026-10-13T00:05', 'en-GB')).toBe('13 Oct 2026, 00:05');
+		expect(dateText('date', '2026-10-13T12:00', 'en-US')).toBeNull();
+		expect(dateText('date_or_datetime', '2026-02-30T12:00', 'en-US')).toBeNull();
+	});
+
+	it('splits and joins the optional time of a date', () => {
+		expect(splitLocalTime('2026-10-13')).toEqual({ date: '2026-10-13', time: '' });
+		expect(splitLocalTime('2026-10-13T12:00')).toEqual({ date: '2026-10-13', time: '12:00' });
+		expect(splitLocalTime('')).toEqual({ date: '', time: '' });
+		// A UTC instant keeps its own editing path.
+		expect(splitLocalTime('2026-10-13T12:00:00.000Z')).toBeNull();
+		expect(splitLocalTime('soon')).toBeNull();
+		expect(joinLocalTime('2026-10-13', '12:00')).toBe('2026-10-13T12:00');
+		expect(joinLocalTime('2026-10-13', '')).toBe('2026-10-13');
+		expect(joinLocalTime('', '12:00')).toBe('');
+		// Browsers that report seconds still store minutes.
+		expect(joinLocalTime('2026-10-13', '12:00:30')).toBe('2026-10-13T12:00');
 	});
 
 	it('leaves impossible or unexpected source as stored', () => {

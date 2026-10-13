@@ -22,7 +22,7 @@ const browser=await chromium.connectOverCDP(process.env.IRIS_TEST_CDP??'http://1
 const page=workspacePage(browser.contexts().flatMap(c=>c.pages()),url);if(!page)throw Error('Open the reserved fixture page');
 try{
  page.setDefaultTimeout(10000);await page.setViewportSize({width:1440,height:1000});
- await page.goto(new URL('/',url).href);const cdp=await page.context().newCDPSession(page);await cdp.send('Storage.clearDataForOrigin',{origin:new URL(url).origin,storageTypes:'all'});await cdp.detach();
+ await page.goto('about:blank');const cdp=await page.context().newCDPSession(page);await cdp.send('Storage.clearDataForOrigin',{origin:new URL(url).origin,storageTypes:'all'});await cdp.detach();
  await page.clock.install({time:new Date('2026-03-09T03:59:50Z')});
  await page.goto(url);await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
  await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token',{exact:true}).click();
@@ -60,7 +60,7 @@ try{
  await settings.click();await page.getByLabel('View name',{exact:true}).fill('Queue copy');
  await page.getByRole('button',{name:'Save as new view',exact:true}).click();
  await expect(views).not.toHaveValue('workflow');const copy=await views.inputValue();expect(copy).not.toBe('');
- await page.reload();await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
+ await page.reload();// The workspace reopens by itself.
  await page.getByRole('navigation',{name:'Tables'}).getByRole('button',{name:'widgets',exact:true}).click();await views.selectOption(copy);await expect(views).toHaveValue(copy);
  await settings.click();
  await page.getByText('Row actions (5)',{exact:true}).click();await expect(page.getByLabel('Button label')).toHaveCount(5);
@@ -75,6 +75,8 @@ try{
 }finally{
  await page.clock.resume();
  await page.clock.setSystemTime(new Date());
- await page.goto(new URL('/',url).href);
+ // Leave the reserved page on its welcome screen for the next run.
+ await page.evaluate(()=>localStorage.removeItem('iris:workspace')).catch(()=>{});
+ await page.goto(url).catch(()=>{});
  await browser.close();server.stop(true);db.db.close();auth.db.close();
 }

@@ -73,6 +73,9 @@ public struct WorkspaceView: View {
       undoSavedChange()
     }
     .onOpenURL { pendingLink.receive($0) }
+    .onChange(of: DueAlertLinks.shared.link?.revision) {
+      if let url = DueAlertLinks.shared.link?.url { pendingLink.receive(url) }
+    }
     #if os(iOS)
       .modifier(NativeIntegrationHandlers(model: model) { pendingLink.receive($0) })
     #endif
@@ -294,6 +297,14 @@ public struct WorkspaceView: View {
       }
     #endif
     .sheet(isPresented: $showingStatus) { WorkspaceStatusSheet(model: model) }
+    // Opening a skipped table asks to download it; an open record editor goes first.
+    .sheet(
+      item: Binding(
+        get: { editor == nil ? model.downloadPrompt : nil },
+        set: { if $0 == nil { model.dismissDownloadPrompt(hide: false) } })
+    ) { prompt in
+      DownloadPromptView(model: model, prompt: prompt)
+    }
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
     .sheet(item: $catalogEditor) { CatalogEditorView(model: $0) }
     .sheet(isPresented: $widgetSettings) {
@@ -935,12 +946,10 @@ public struct WorkspaceView: View {
         Label("Issues", systemImage: "exclamationmark.bubble")
       }.disabled(!canFind).accessibilityIdentifier("workspace-issues")
     #else
-      if let message = model.partialTableNotice, let context = model.downloadContext,
-        let table = model.table
-      {
-        PartialReplicaNotice(model: model, context: context, table: table, message: message)
+      if let message = model.partialTableNotice {
+        PartialReplicaNotice(model: model, message: message)
       }
-      if let reason = model.editingRefusal {
+      if let reason = model.editingRefusal, model.writeability?.reason?.rule != "not_synced" {
         Text(reason).font(.caption).foregroundStyle(.secondary)
           .accessibilityIdentifier("editing-availability")
       }
@@ -1306,8 +1315,8 @@ public struct WorkspaceView: View {
 
   /// The one sync status: rejected edits open the inbox, everything else the details.
   private var statusPill: some View {
-    SyncStatusPill(pill: model.syncPill) {
-      if model.syncPill.kind == .rejected && canFind {
+    WorkspaceSyncPill(model: model) { kind in
+      if kind == .rejected && canFind {
         showRejections()
       } else {
         showingStatus = true
@@ -1428,10 +1437,8 @@ public struct WorkspaceView: View {
         #if os(macOS)
           VStack(alignment: .leading, spacing: 8) {
             if model.isReplica { SyncSummary(model: model) }
-            if let message = model.partialTableNotice, let context = model.downloadContext,
-              let table = model.table
-            {
-              PartialReplicaNotice(model: model, context: context, table: table, message: message)
+            if let message = model.partialTableNotice {
+              PartialReplicaNotice(model: model, message: message)
             }
             if model.isReplica, model.table != nil {
               Button {
@@ -1442,7 +1449,7 @@ public struct WorkspaceView: View {
                 Label("Browse online", systemImage: "cloud")
               }.disabled(!canFind).accessibilityIdentifier("browse-online")
             }
-            if let reason = model.editingRefusal {
+            if let reason = model.editingRefusal, model.writeability?.reason?.rule != "not_synced" {
               Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 .accessibilityIdentifier("editing-availability")
             }
@@ -1623,6 +1630,8 @@ private struct RecordEditor: View {
   @State private var pageCapture: PageCapturePresentation?
   @State private var captureFailure: String?
   @State private var emptyColumns: Set<Data>
+  /// The field whose help popover is open; Mac Escape closes it before the record.
+  @State private var helpField: String?
   @State private var backgroundFlush: Task<Void, Never>?
   /// The focused field once typed in: a remote edit never replaces it.
   @State private var typedInFocus: String?
@@ -2091,9 +2100,11 @@ private struct RecordEditor: View {
         ).post()
       }
       #if os(macOS)
-        // Escape closes like Done. As a key equivalent it reaches an open popover first.
+        // Escape closes like Done, but first closes an open help popover: the popover's
+        // window is not always key, so the key equivalent can reach this button instead.
         .background {
-          Button("Close record", action: done).keyboardShortcut(.cancelAction)
+          Button("Close record") { if helpField != nil { helpField = nil } else { done() } }
+          .keyboardShortcut(.cancelAction)
           .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
         }
       #endif
@@ -2384,7 +2395,13 @@ private struct RecordEditor: View {
           .accessibilityLabel("Required")
       }
       if !field.description.isEmpty || field.property["pattern"]?.text.nonempty != nil {
-        PropertyHelpButton(field: field)
+        PropertyHelpButton(
+          field: field,
+          presented: Binding(
+            get: { helpField == field.id },
+            set: { open in
+              if open { helpField = field.id } else if helpField == field.id { helpField = nil }
+            }))
       }
     }
   }
@@ -2666,7 +2683,7 @@ private struct RecordEditor: View {
 
 struct PropertyHelpButton: View {
   let field: CatalogField
-  @State private var presented = false
+  @Binding var presented: Bool
 
   var body: some View {
     Button {
@@ -2718,10 +2735,12 @@ struct FieldInput: View {
         NativeChoiceField(
           field: field, isNew: editor.isNew, value: $value, workspace: workspace,
           focus: focus, isCurrent: isCurrent, direct: direct)
-      } else if let kind = NativeDateKind(rawValue: field.type)
-        ?? (field.type == "date_or_datetime" ? (value.contains("T") ? .datetime : .date) : nil)
+      } else if ["date", "datetime"].contains(field.type),
+        let kind = NativeDateKind(rawValue: field.type)
       {
         NativeDateField(field: field, kind: kind, direct: direct, focus: focus, value: $value)
+      } else if field.type == "date_or_datetime" {
+        NativeMixedDateField(field: field, direct: direct, focus: focus, value: $value)
       } else if ["url", "email", "phone"].contains(field.type) {
         NativeLinkField(field: field, focus: focus, value: $value)
       } else if field.type == "json" {

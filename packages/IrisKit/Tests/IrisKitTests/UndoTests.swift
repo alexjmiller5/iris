@@ -399,9 +399,7 @@ struct WorkspaceUndoTests {
       "var originalRequest = IrisNative.request; var heldUndo = null; IrisNative.request = (id,method,args) => { if(method === '\(phase)') heldUndo = [id,method,args]; else originalRequest(id,method,args); };"
     )
     let task = Task { try await model.undo(shown, context: context) }
-    for _ in 0..<100 where runtime.context.evaluateScript("heldUndo === null")?.toBool() == true {
-      await Task.yield()
-    }
+    await waitFor { runtime.context.evaluateScript("heldUndo === null")?.toBool() != true }
     #expect(model.undoing)
     await #expect(throws: WorkspaceError.self) {
       try await model.save(["title": .string("Blocked")], original: nil, context: context)

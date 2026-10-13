@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "ee2008c4c2f4636c941b6e2de8db8f047a5d0410616981e5d4731614f4fd9b9c";
+export declare const CORE_CONTRACT_HASH = "9430db740601ad29aa961e5ce961342793ef84100d38fd29902c9c6b550d8100";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -95,6 +95,13 @@ export type SyncStatus = {
     pendingUiEdits: Count;
     rejected: Count;
     skippedTables: string[];
+    skippedDetails?: SkippedTableDetail[];
+};
+export type SkippedTableDetail = {
+    table: string;
+    rows: Count | null;
+    estimatedBytes: Count | null;
+    waitingEdits: Count;
 };
 export type UsagePeriod = {
     start: string;
@@ -434,7 +441,7 @@ export type ScopedReplicaUnsupported = {
     message: string;
 };
 export type SortMode = "value" | "options";
-export type FilterRelative = "today";
+export type FilterRelative = "today" | "now";
 export type FilterGroup = {
     match: "all" | "any";
     filters: Filter[];
@@ -443,6 +450,10 @@ export type CalendarContext = {
     today: string;
     start: string;
     end: string;
+    now?: string;
+    localNow?: string;
+    localStart?: string;
+    localEnd?: string;
 };
 export type RowAction = {
     id: string;
@@ -1035,7 +1046,7 @@ export type CaptureReceipt = {
     item?: CaptureItem;
 };
 export type SQLScalar = string | number | null;
-export type CalendarSlot = "today" | "start" | "end";
+export type CalendarSlot = "today" | "start" | "end" | "now" | "localNow" | "localStart" | "localEnd";
 export type ReadPlanLiteral = {
     kind: "literal";
     value: SQLScalar;

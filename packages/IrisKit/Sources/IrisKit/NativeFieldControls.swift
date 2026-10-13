@@ -247,17 +247,6 @@ struct NativeDateField: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       if direct {
-        if field.type == "date_or_datetime" {
-          Toggle(
-            "Include time",
-            isOn: Binding(
-              get: { kind == .datetime },
-              set: { includeTime in
-                value = NativeDateValue.format(
-                  NativeDateValue.parse(value, kind: kind) ?? Date(),
-                  kind: includeTime ? .datetime : .date)
-              }))
-        }
         DatePicker(
           field.label,
           selection: Binding(
@@ -307,6 +296,93 @@ struct NativeDateField: View {
         }
       } label: {
         Text("Date source").accessibilityIdentifier("date-source-\(field.id)")
+      }
+    }
+  }
+}
+
+/// A `date_or_datetime` field: a date with an optional floating time ("Add time").
+/// Turning the time off returns to date-only. A UTC instant keeps its stored source,
+/// edited as text under Date source.
+struct NativeMixedDateField: View {
+  let field: CatalogField
+  var direct = false
+  let focus: FocusState<String?>.Binding
+  @Binding var value: String
+
+  var body: some View {
+    let kind = NativeDateValue.mixedKind(value)
+    VStack(alignment: .leading, spacing: 8) {
+      if direct {
+        NativeDateField(
+          field: field, kind: kind ?? .date, direct: true, focus: focus, value: $value)
+        if kind != .datetime {
+          HStack {
+            Text("Add time").foregroundStyle(.secondary)
+            Spacer()
+            Toggle(
+              "Add time",
+              isOn: Binding(
+                get: { kind == .local },
+                set: { value = NativeDateValue.toggleTime(value, on: $0) })
+            )
+            .disabled(value.isEmpty)
+            .labelsHidden()
+            .accessibilityIdentifier("date-time-toggle-\(field.id)")
+          }
+        }
+      } else if let kind, kind != .datetime, let date = NativeDateValue.parse(value, kind: kind) {
+        DatePicker(
+          field.label,
+          selection: Binding(
+            get: { date }, set: { value = NativeDateValue.format($0, kind: kind) }),
+          displayedComponents: kind == .local ? [.date, .hourAndMinute] : [.date]
+        )
+        .environment(\.calendar, Calendar(identifier: .gregorian))
+        .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
+        .accessibilityIdentifier("date-picker-\(field.id)")
+        // Rows hide control labels (the row names the field), so the switch's own
+        // text stays visible beside it; VoiceOver still reads the toggle's label.
+        HStack {
+          Text("Add time").foregroundStyle(.secondary)
+          Spacer()
+          Toggle(
+            "Add time",
+            isOn: Binding(
+              get: { kind == .local },
+              set: { value = NativeDateValue.toggleTime(value, on: $0) })
+          )
+          .labelsHidden()
+          .accessibilityIdentifier("date-time-toggle-\(field.id)")
+        }
+      } else if kind == .datetime {
+        Text(NativePropertyValue.text(type: field.type, value: value))
+      } else {
+        if !value.isEmpty {
+          Text("This value cannot be shown in the date picker. The source has been kept.")
+            .font(.caption).foregroundStyle(.secondary)
+        }
+        Button("Use today") {
+          value = NativeDateValue.currentValue(at: Date(), kind: .date)
+          focus.wrappedValue = nil
+        }.accessibilityIdentifier("choose-date-\(field.id)")
+      }
+      if !direct {
+        DisclosureGroup {
+          TextField(field.label, text: $value)
+            .focused(focus, equals: field.id)
+            .autocorrectionDisabled()
+            .accessibilityIdentifier("field-\(field.id)")
+          if kind == .datetime { Text("UTC").font(.caption).foregroundStyle(.secondary) }
+          if !value.isEmpty {
+            Button("Clear date") {
+              value = ""
+              focus.wrappedValue = nil
+            }.accessibilityIdentifier("clear-date-\(field.id)")
+          }
+        } label: {
+          Text("Date source").accessibilityIdentifier("date-source-\(field.id)")
+        }
       }
     }
   }

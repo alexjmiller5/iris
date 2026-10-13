@@ -8,7 +8,7 @@ development prerequisite; the Nix app package does not build Swift.
 ## Signed macOS app
 
 `nix build .#iris` produces `result/Applications/Iris.app`. The default
-package pins the published universal **0.8.2** ZIP by SHA-256. It extracts and
+package pins the published universal **1.4.0** ZIP by SHA-256. It extracts and
 copies the bundle without fixup, stripping, patching or re-signing. The embedded
 profile, entitlements and stapled notarization ticket stay with the app.
 App packages support Apple Silicon and Intel macOS. Their Nixpkgs 26.05 pin
@@ -71,17 +71,17 @@ xcrun stapler validate '<output>/Applications/Iris.app'
 spctl --assess --type execute --verbose=2 '<output>/Applications/Iris.app'
 ```
 
-Verification on macOS, 2026-10-09 UTC, against published 0.8.2:
+Verification on macOS, 2026-10-13 UTC, against published 1.4.0:
 
 | Check | Result |
 | --- | --- |
-| Archive SHA-256 | `5accbbf7d5827e64b7f75bd2482a6d788d1b8576fda231e0f9bae01f6afb31dd` |
+| Archive SHA-256 | `180d8b2fb409e9ae51bf04189ebe952f5ecfded348b7d57b587b73ba609986c5` |
 | Nix build and synthetic preservation/module checks | Pass |
 | All source/output file hashes, symlink targets, executable bits | Identical |
 | arm64 and x86_64 entitlements and designated requirements | Identical |
 | Strict signature, stapled ticket, Gatekeeper | Pass; Notarized Developer ID |
 
-The [0.8.2 release CI](https://github.com/alexjmiller5/iris/actions/runs/37870443536)
+The [1.4.0 release CI](https://github.com/alexjmiller5/iris/actions/runs/38377452269)
 also records `Data Protection Keychain create/read/update/delete passed` from
 the separately signed production-adapter probe with a unique synthetic service.
 That is release evidence, not a fresh local Keychain probe of the Nix output.

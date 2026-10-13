@@ -61,7 +61,7 @@ try {
     cdp.until(`(${field(column)})?.value===${js(expected)}`);
   const bodyHas = (text: string) =>
     cdp.until(`document.body.innerText.includes(${js(text)})`);
-  await cdp.navigate(new URL("/", url).href);
+  await cdp.navigate(new URL("/favicon.svg", url).href);
   await cdp.command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",
@@ -83,24 +83,31 @@ try {
     `!!(${button("New record")}) && !(${button("New record")}).disabled`,
   );
   await click("Fixture record");
+  // The record paints from the listed row and stays inert until its fresh row arrives.
+  await cdp.until("document.querySelector('.record-panel form')?.inert===false");
   await value("computed", "Old fixture value");
   await cdp.until(`(${field("computed")}).disabled`);
   const resolve = `document.querySelector('button[aria-label="Resolve Computed"]')`;
-  // A dirty draft must never reach the provider, and must remain intact.
-  await cdp.fill(field("title"), "Keep my unsaved title");
-  await cdp.click(resolve);
-  await bodyHas("Save or discard your changes before resolving.");
-  await value("title", "Keep my unsaved title");
-  expect(providerCalls).toBe(0);
-  expect(
+  const hubTitle = () =>
     db.db.query("SELECT title FROM widgets WHERE id='fixture-record'").get()
-      .title,
-  ).toBe("Fixture record");
+      .title;
+  // Resolve saves pending edits first. One the record refuses never reaches the
+  // provider and stays in the draft.
+  await cdp.evaluate(
+    `(()=>{const e=${field("title")};e.value='';e.dispatchEvent(new Event('input',{bubbles:true}));})()`,
+  );
+  await cdp.click(resolve);
+  await bodyHas("Some changes could not be saved. Fix them before resolving.");
+  await value("title", "");
+  expect(providerCalls).toBe(0);
+  expect(hubTitle()).toBe("Fixture record");
+  // Restoring the stored title leaves nothing to save; Resolve writes and syncs back.
   await cdp.fill(field("title"), "Fixture record");
   await cdp.click(resolve);
   await bodyHas("Resolved and synced");
   await value("computed", "Resolved fixture value");
   expect(providerCalls).toBe(1);
+  expect(hubTitle()).toBe("Fixture record");
   expect(
     db.db.query("SELECT computed FROM widgets WHERE id='fixture-record'").get()
       .computed,
@@ -112,13 +119,30 @@ try {
       )
       .get().from_ref,
   ).toBe("fixture:provider");
+  // An edit made just before Resolve saves and reaches the hub first, so the hub
+  // sees the revision shown here. (Quantity is no input of Computed, now fresh, so
+  // the hub derives nothing on its own when the edit arrives.)
+  await cdp.fill(field("quantity"), "7");
+  await cdp.click(resolve);
+  // The notice still reads from the first Resolve: wait for this one to finish.
+  await expect.poll(() => providerCalls).toBe(2);
+  await cdp.until(`!(${resolve}).disabled`);
+  await bodyHas("Resolved and synced");
+  expect(
+    await cdp.evaluate("document.body.innerText.includes('sync and reopen')"),
+  ).toBe(false);
+  await value("quantity", "7");
+  expect(
+    db.db.query("SELECT quantity FROM widgets WHERE id='fixture-record'").get()
+      .quantity,
+  ).toBe(7);
   // The field remains read-only; provider failure never claims a successful resolve.
   providerFails = true;
   await cdp.click(resolve);
   await bodyHas("Some derived values could not be resolved.");
   await bodyHas("503");
   await value("computed", "Resolved fixture value");
-  expect(providerCalls).toBe(2);
+  expect(providerCalls).toBe(3);
   await cdp.until(`(${field("computed")}).disabled`);
   // An externally changed hub revision must fail before another provider call.
   db.db.exec(
@@ -126,7 +150,7 @@ try {
   );
   await cdp.click(resolve);
   await bodyHas("sync and reopen it before resolving");
-  expect(providerCalls).toBe(2);
+  expect(providerCalls).toBe(3);
   if (process.env.IRIS_TEST_SCREENSHOT) {
     const shot = await cdp.command("Page.captureScreenshot", { format: "png" });
     await Bun.write(
@@ -138,11 +162,14 @@ try {
     "PASS actual Worker/OPFS Resolve: draft guard, provider write/provenance, sync readback, read-only display, failure and stale revision.",
   );
 } catch (failure) {
-  if (page) console.error(await page.evaluate("document.body.innerText"));
+  if (page)
+    console.error(
+      await page.evaluate("document.body?.innerText").catch(String),
+    );
   throw failure;
 } finally {
   if (page) {
-    await page.navigate(new URL("/", url).href).catch(() => {});
+    await page.navigate(new URL("/favicon.svg", url).href).catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
       .catch(() => {});

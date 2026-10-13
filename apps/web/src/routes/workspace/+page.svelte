@@ -126,7 +126,7 @@
 	import { labelStatus } from '$lib/search-status';
 	import SortMenu from '$lib/SortMenu.svelte';
 	import { createViewAutosave } from '$lib/saved-views';
-	import { queryDefinition } from '$lib/view-controls';
+	import { nextDue, queryDefinition } from '$lib/view-controls';
 	import { calendarContext } from '$lib/calendar-context';
 	import { untrack } from 'svelte';
 	import type { FilterGroup, RowAction, ViewLayoutItem } from 'iris-core/client';
@@ -258,6 +258,10 @@
 		}
 	}
 	import RemoteBrowser from '$lib/RemoteBrowser.svelte';
+	import DownloadPrompt from '$lib/DownloadPrompt.svelte';
+	import BreakName from '$lib/BreakName.svelte';
+	import { hiddenPrompts, willDownload } from '$lib/skipped-tables';
+	import type { SkippedTableDetail } from 'iris-core/client';
 	let onlineBrowser = $state<{
 		workspace: WorkspaceDatabase;
 		table: string;
@@ -321,11 +325,23 @@
 	}
 
 	let database = $state<WorkspaceDatabase | null>(null);
+	// The workspace this browser last opened ('mine' or 'sample') reopens on the next
+	// visit, straight to the shell's placeholders; Switch workspace forgets it.
+	const remembered = (() => {
+		try {
+			const kind = localStorage.getItem('iris:workspace');
+			return kind === 'mine' || kind === 'sample' ? kind : null;
+		} catch {
+			return null;
+		}
+	})();
 	let ready = $state(false),
-		online = $state(true);
+		online = $state(true),
+		restoring = $state(remembered !== null);
 	onMount(() => {
 		ready = true;
 		online = navigator.onLine;
+		if (remembered) void openWorkspace(remembered === 'sample', true);
 	});
 	let opened = $state(false),
 		// The opened workspace's first catalog read has finished; until then the shell shows
@@ -333,7 +349,7 @@
 		workspaceReady = $state(false),
 		// The current page's first rows read has finished; until then the grid shows placeholders.
 		rowsLoaded = $state(false),
-		demo = $state(false),
+		demo = $state(remembered === 'sample'),
 		busy = $state(false),
 		error = $state('');
 	$effect(() => {
@@ -376,6 +392,8 @@
 		revision: null
 	};
 	let autosaveChain: Promise<unknown> = Promise.resolve();
+	/** The database worker was stopped as this page entered the back/forward cache. */
+	let stoppedForCache = false;
 	let editorVersion = $state(0);
 	let relationOpening = $state<number | null>(null);
 	let gridActionOpening = $state<number | null>(null);
@@ -436,7 +454,9 @@
 	}
 	beforeNavigate((navigation) => {
 		if (navigation.to?.url.href === reflectingURL) return;
-		if ((opened && busy) || !discard()) {
+		// Leaving the page while a workspace opens or reopens loses nothing; unsaved
+		// edits still ask through onbeforeunload and discard().
+		if ((opened && busy && navigation.type !== 'leave') || !discard()) {
 			navigation.cancel();
 			return;
 		}
@@ -542,8 +562,38 @@
 		rejectedCount = $state(0),
 		notice = $state('');
 	let skipped = $state<string[]>([]),
+		skippedDetails = $state<SkippedTableDetail[]>([]),
 		maxRows = $state(50000),
 		included = $state<Record<string, boolean>>({});
+	// Opening a table this device skips asks to download it, once per visit, unless this
+	// device hid that table's prompt. A table that becomes skipped while open only shows
+	// its notice. Until it downloads, core keeps the table read-only.
+	const prompts = hiddenPrompts({
+		getItem: (key) => localStorage.getItem(key),
+		setItem: (key, value) => localStorage.setItem(key, value)
+	});
+	let hiddenPromptTables = $state<string[]>([]),
+		downloadPrompt = $state<SkippedTableDetail | null>(null);
+	let promptVisit: string | null = null;
+	const currentSkip = $derived(skippedDetails.find((d) => d.table === table) ?? null);
+	$effect(() => {
+		const t = table,
+			detail = currentSkip;
+		if (!workspaceReady || !t || promptVisit === t) return;
+		promptVisit = t;
+		if (detail && !demo && !untrack(() => hiddenPromptTables).includes(t))
+			untrack(() => (downloadPrompt = detail));
+	});
+	function approveDownload(next: { maxRows: number; tables: Record<string, boolean> }) {
+		maxRows = next.maxRows;
+		included = next.tables;
+		downloadPrompt = null;
+		wakeSync();
+	}
+	function dismissDownload(hide: boolean) {
+		if (hide && downloadPrompt) hiddenPromptTables = prompts.hide(downloadPrompt.table);
+		downloadPrompt = null;
+	}
 	let offset = $state(0);
 	let columns = $state<string[] | null>(null),
 		widths = $state<Record<string, number>>({}),
@@ -943,14 +993,18 @@
 		const created = !selected;
 		// Sent fields take their stored form unless typing continued; unsent ones (a
 		// refused value, an edit made during the write) stay drafts; untouched ones
-		// take stored values such as creation defaults.
+		// take stored values such as creation defaults. A new record has no stored
+		// baseline: its untouched fields showed previews, as captured with the write;
+		// a refused input stays explicit and stays in the draft.
 		const baseline = rowDraft(selected);
 		const merged = mergeRemote(
 			draft,
 			Object.fromEntries(
 				Object.keys(draft).map((col) => [
 					col,
-					Object.hasOwn(patch, col) ? values[col] : baseline[col]
+					Object.hasOwn(patch, col) || (created && !explicitCreation.has(col))
+						? values[col]
+						: baseline[col]
 				])
 			),
 			rowDraft(stored),
@@ -1334,12 +1388,16 @@
 	$effect(() => {
 		const workspace = database,
 			zone = timeZone,
-			boundary = dayStartMinutes;
-		const relative = [...filters, ...filterGroups.flatMap((g) => g.filters)].some(
-			(f) => f.relative === 'today'
-		);
-		if (!workspace || !relative) return;
-		let timer: ReturnType<typeof setTimeout>, previous: string;
+			boundary = dayStartMinutes,
+			current = table;
+		const relative = [...filters, ...filterGroups.flatMap((g) => g.filters)].map((f) => f.relative);
+		// Every reload (sync, edits, a value coming due) plans the next due time again.
+		void rows;
+		if (!workspace || !relative.some(Boolean)) return;
+		let timer: ReturnType<typeof setTimeout>,
+			previous: string,
+			due: number | null = null,
+			live = true;
 		try {
 			previous = calendarContext(zone, new Date(), boundary).today;
 		} catch (e) {
@@ -1349,17 +1407,32 @@
 		const refresh = () => {
 			clearTimeout(timer);
 			const next = calendarContext(zone, new Date(), boundary);
-			if (next.today !== previous) {
+			if (next.today !== previous || (due !== null && Date.now() >= due)) {
 				previous = next.today;
+				due = null;
 				untrack(() => void loadRows().catch((e) => (error = message(e))));
 			}
-			timer = setTimeout(refresh, Math.max(1, Date.parse(next.end) - Date.now() + 1));
+			const until = Math.min(Date.parse(next.end), due ?? Infinity);
+			timer = setTimeout(refresh, Math.max(1, until - Date.now() + 1));
 		};
 		refresh();
+		// A Now view also re-runs when its next timed value comes due.
+		if (relative.includes('now'))
+			untrack(() =>
+				nextDue((view) => workspace.request('rows', { view }), current, viewDefinition())
+					.then((at) => {
+						if (!live) return;
+						due = at;
+						refresh();
+					})
+					// Unscheduled is safe: the boundary and focus still refresh the view.
+					.catch(() => {})
+			);
 		window.addEventListener('focus', refresh);
 		window.addEventListener('pageshow', refresh);
 		document.addEventListener('visibilitychange', refresh);
 		return () => {
+			live = false;
 			clearTimeout(timer);
 			window.removeEventListener('focus', refresh);
 			window.removeEventListener('pageshow', refresh);
@@ -1497,6 +1570,7 @@
 			rejected = state.rejected;
 			rejectedCount = state.status.rejected;
 			skipped = state.skipped ?? [];
+			skippedDetails = state.status.skippedDetails ?? [];
 			if (!table && catalog.tables.length) {
 				table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
 				const target = table,
@@ -1564,7 +1638,8 @@
 		notice = '';
 		rowsLoaded = false;
 	}
-	async function openWorkspace(sample: boolean) {
+	/** existing: reopen the remembered workspace, failing if it is no longer stored. */
+	async function openWorkspace(sample: boolean, existing = false) {
 		if (busy) return;
 		showFind(false);
 		busy = true;
@@ -1582,9 +1657,11 @@
 				unpin: (args) => pinWorkspace.request('unpinTable', args),
 				move: (args) => pinWorkspace.request('moveTablePin', args)
 			});
-			await database.request('open', { demo: sample });
 			demo = sample;
 			readRecents();
+			hiddenPromptTables = prompts.read();
+			promptVisit = null;
+			await database.request('open', { demo: sample, existing });
 			try {
 				const prefs = JSON.parse(localStorage.getItem('iris:replica') ?? '{}');
 				maxRows = Number.isSafeInteger(prefs.maxRows) && prefs.maxRows >= 0 ? prefs.maxRows : 50000;
@@ -1615,6 +1692,13 @@
 			table = '';
 			opened = true;
 			editing = false;
+			// Remembered once open; a Switch workspace during the open keeps it forgotten.
+			if (database === pinWorkspace)
+				try {
+					localStorage.setItem('iris:workspace', sample ? 'sample' : 'mine');
+				} catch {
+					/* The next visit starts on the welcome screen. */
+				}
 			await refresh();
 			workspaceReady = true;
 			database.addEventListener('change', () => {
@@ -1635,6 +1719,7 @@
 			opened = false;
 		} finally {
 			busy = false;
+			restoring = false;
 		}
 	}
 	async function changeTable(name: string) {
@@ -2343,6 +2428,7 @@
 			lastSync = status.lastSuccessfulSync;
 			pendingEdits = status.pendingUiEdits;
 			rejectedCount = status.rejected;
+			skippedDetails = status.skippedDetails ?? [];
 			if (status.skippedTables.join('\n') !== skipped.join('\n')) await refresh();
 			syncRevision++;
 		} catch (e) {
@@ -2786,7 +2872,8 @@
 			void undoLastSavedChange();
 			return;
 		}
-		if ((event.metaKey || event.ctrlKey) && event.key === '\\' && opened) {
+		// The shell, and with it the sidebar, also shows while a remembered workspace reopens.
+		if ((event.metaKey || event.ctrlKey) && event.key === '\\' && (opened || restoring)) {
 			event.preventDefault();
 			toggleSidebar();
 			return;
@@ -2798,9 +2885,20 @@
 	}}
 	ononline={() => (online = true)}
 	onoffline={() => (online = false)}
-	onpagehide={() => {
+	onpagehide={(event) => {
 		flushAutosave();
 		void viewAutosave.flush();
+		// Chrome can crash the tab when it evicts a page from the back/forward cache while
+		// its frozen database worker is mid-write to OPFS, and a cached page keeps the
+		// database's file handles from the next one. Stop the worker unless a save is still
+		// landing; a page restored without it reloads, which reopens the workspace.
+		if (event.persisted && database && !writing && !autosaving && !$viewAutosave.pending) {
+			database.terminate();
+			stoppedForCache = true;
+		}
+	}}
+	onpageshow={(event) => {
+		if (event.persisted && stoppedForCache) location.reload();
 	}}
 	onbeforeunload={(e) => {
 		if (dirty || writing || autosaving || $viewAutosave.pending) {
@@ -2812,7 +2910,7 @@
 	}}
 />
 
-{#if !opened}
+{#if !opened && !restoring}
 	<main class="start">
 		<a class="back" href="/"><IconArrowLeft size={18} /> Iris</a>
 		<h1>Your data, within reach.</h1>
@@ -2871,6 +2969,14 @@
 			oncancel={() => (referenceCreation = null)}
 			onsave={(plan) => createReference(creation.property, '', plan)}
 		/>
+	{/if}
+	{#if downloadPrompt}
+		{#key downloadPrompt}<DownloadPrompt
+				detail={downloadPrompt}
+				prefs={{ maxRows, tables: included }}
+				onapprove={approveDownload}
+				ondismiss={dismissDownload}
+			/>{/key}
 	{/if}
 	{#if catalogEditing}
 		<CatalogEditor
@@ -2973,6 +3079,19 @@
 								Larger tables stay out of automatic sync. Catalogs always sync. Local rows are
 								retained.
 							</p>
+							{#if hiddenPromptTables.length}<div class="hidden-prompts">
+									<p id="hidden-prompts-label">Download prompts turned off</p>
+									<ul aria-labelledby="hidden-prompts-label">
+										{#each hiddenPromptTables as hidden (hidden)}<li>
+												<span><BreakName name={hidden} /></span><button
+													class="secondary"
+													aria-label={`Show prompt for ${hidden}`}
+													onclick={() => (hiddenPromptTables = prompts.show(hidden))}
+													>Show prompt</button
+												>
+											</li>{/each}
+									</ul>
+								</div>{/if}
 						</details>
 					{/if}
 					{#if database}<SearchSettings {database} />{/if}
@@ -3006,6 +3125,11 @@
 							showFind(false);
 							resetView();
 							token = '';
+							try {
+								localStorage.removeItem('iris:workspace');
+							} catch {
+								/* Nothing was remembered. */
+							}
 						}}>Switch workspace</button
 					>
 					<div class="pill-dock">
@@ -3022,6 +3146,7 @@
 							activity={backupActivity}
 							{liveness}
 							indexing={searchIndexing}
+							waiting={skippedDetails}
 							onaction={syncAction}
 						/>
 					</div>
@@ -3049,8 +3174,12 @@
 						bind:groups
 						onSelect={changeTable}
 					/>{:else}
-					{#if skipped.includes(table)}<div class="notice">
-							<p>This table is excluded from sync. Its local records may be incomplete.</p>
+					{#if skipped.includes(table)}<div class="notice" data-testid="skipped-notice">
+							<p>
+								{currentSkip && willDownload(currentSkip, { maxRows, tables: included })
+									? 'Downloading this table on this device. It becomes editable once its rows arrive.'
+									: 'Not synced on this device. Its records here are read-only and may be incomplete.'}
+							</p>
 							<button
 								class="secondary"
 								disabled={busy || writing || !connectedHub || !online}
@@ -3059,13 +3188,10 @@
 										onlineBrowser = { workspace: database, table, connection: connectedHub };
 								}}>Browse online</button
 							>
-							<button
-								class="secondary"
-								onclick={() => {
-									included = { ...included, [table]: true };
-									wakeSync();
-								}}>Include this table</button
-							>
+							{#if currentSkip && !willDownload(currentSkip, { maxRows, tables: included })}<button
+									class="secondary"
+									onclick={() => (downloadPrompt = currentSkip)}>Download…</button
+								>{/if}
 						</div>{/if}
 					{#if included[table]}<button
 							class="secondary"
@@ -3331,7 +3457,11 @@
 										changeWrap(on ? [...new Set([...wrap, ...gridColumns.map((p) => p.col)])] : [])
 								: undefined}
 						/>
-						{#if blocked}<p role="status" aria-label="Editing availability" class="notice">
+						{#if blocked && writePermission?.reason?.rule !== 'not_synced'}<p
+								role="status"
+								aria-label="Editing availability"
+								class="notice"
+							>
 								{writePermission?.reason?.message ?? 'Checking editing rules…'}
 							</p>{/if}
 						{#key database}
@@ -3742,6 +3872,11 @@
 		color: var(--color-muted);
 		line-height: 1.7;
 	}
+	/* A failed open keeps its alert color and stands apart from the hint above it. */
+	.start .failure {
+		margin-top: 16px;
+		color: var(--color-violation);
+	}
 	.back,
 	.wordmark {
 		display: flex;
@@ -3856,6 +3991,30 @@
 	}
 	.connect summary {
 		cursor: pointer;
+	}
+	.hidden-prompts p {
+		margin: 12px 0 4px;
+	}
+	.hidden-prompts ul {
+		display: grid;
+		gap: 4px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.hidden-prompts li {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		min-width: 0;
+	}
+	.hidden-prompts span {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.hidden-prompts button {
+		flex: none;
 	}
 	.leave {
 		width: 100%;

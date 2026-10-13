@@ -65,22 +65,30 @@ final class WorkspaceModel {
   private var widgetWorkspaceURL: URL?
 
   func prepareWidgets() throws {
+    guard widgetLibrary != nil else {
+      throw WorkspaceError(
+        message: "Open a saved workspace in an app with widget support.", violations: [])
+    }
     try configureWidgets(createIdentity: true)
   }
 
+  /// Due-time alerts (and Spotlight and Shortcuts choices) need only a saved workspace,
+  /// on the Mac too, where there is no widget library.
+  var canPrepareIntegrations: Bool { client != nil && widgetWorkspaceURL != nil }
+  func prepareIntegrations() throws { try configureWidgets(createIdentity: true) }
+
   private func configureWidgets(createIdentity: Bool) throws {
-    guard widgets == nil else { return }
-    guard let client, let widgetLibrary, let file = widgetWorkspaceURL else {
+    guard integrations == nil else { return }
+    guard let client, let file = widgetWorkspaceURL else {
       if createIdentity {
-        throw WorkspaceError(
-          message: "Open a saved workspace in an app with widget support.", violations: [])
+        throw WorkspaceError(message: "Open a saved workspace first.", violations: [])
       }
       return
     }
     let root = try resolveLocalURL().deletingLastPathComponent()
     let identity = try NativeLinkIdentityStore(root: root, workspace: file).retainingOpenedFile()
     let loaded = try identity.load()
-    if let replaced = try identity.replacedBinding() {
+    if let replaced = try identity.replacedBinding(), let widgetLibrary {
       let priorWorkspaceID: String
       switch linkBinding ?? replaced {
       case .local(let id): priorWorkspaceID = "local:" + id.uuidString.lowercased()
@@ -99,14 +107,16 @@ final class WorkspaceModel {
     }
     let preferences = root.appendingPathComponent("widgets", isDirectory: true)
       .appendingPathComponent(replica.uuidString.lowercased() + ".json")
-    widgets = NativeWidgetSettings(
-      workspace: client, library: widgetLibrary, workspaceID: workspaceID,
-      replicaID: replica.uuidString.lowercased(), preferencesURL: preferences, binding: binding,
-      didChange: {
-        #if canImport(WidgetKit)
-          WidgetCenter.shared.reloadAllTimelines()
-        #endif
-      })
+    if let widgetLibrary {
+      widgets = NativeWidgetSettings(
+        workspace: client, library: widgetLibrary, workspaceID: workspaceID,
+        replicaID: replica.uuidString.lowercased(), preferencesURL: preferences, binding: binding,
+        didChange: {
+          #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+          #endif
+        })
+    }
     #if os(iOS)
       let spotlight: SpotlightIndexing? = CoreSpotlightIndex()
     #else
@@ -116,8 +126,9 @@ final class WorkspaceModel {
       workspace: client, workspaceID: workspaceID, binding: binding,
       preferencesURL: root.appendingPathComponent("integrations", isDirectory: true)
         .appendingPathComponent(replica.uuidString.lowercased() + ".json"),
-      spotlight: spotlight)
+      spotlight: spotlight, alerts: SystemDueAlertCenter())
     integrations?.scheduleRefresh()
+    integrations?.scheduleDueAlerts()
     if linkBinding == nil { linkBinding = physical }
   }
   private struct LoadedRowsContext: Equatable {
@@ -131,6 +142,8 @@ final class WorkspaceModel {
   }
   private var exportCatalogRevision = 0
   private var loadedRowsContext: LoadedRowsContext?
+  /// The query `rows` shows.
+  @ObservationIgnored private var rowsQuery: [String]?
   private var loadedExportContext: LoadedExportContext?
   private var currentRowsContext: LoadedRowsContext {
     LoadedRowsContext(
@@ -248,6 +261,7 @@ final class WorkspaceModel {
   }
   var catalog: WorkspaceCatalog? {
     didSet {
+      catalogRevision += 1
       if !recordExportCatalogsMatch(oldValue, catalog) {
         exportCatalogRevision += 1
         widgets?.scheduleRefresh(partial: isReplica)
@@ -256,7 +270,13 @@ final class WorkspaceModel {
     }
   }
   var table: String? {
-    didSet { if oldValue != table { resetView() } }
+    didSet {
+      if oldValue != table {
+        resetView()
+        promptVisit = nil
+        downloadPrompt = nil
+      }
+    }
   }
   var rows: [WorkspaceRow] = []
   var search = ""
@@ -302,13 +322,28 @@ final class WorkspaceModel {
       }
   }
   var hasRelativeFilters: Bool {
-    (filters + filterGroups.flatMap(\.filters)).contains(where: \.today)
+    (filters + filterGroups.flatMap(\.filters)).contains { $0.relative != nil }
+  }
+  /// Advances when a timed value a relative-Now filter compares with comes due.
+  private(set) var dueGeneration = 0
+  /// When the next such value comes due, as last planned.
+  private(set) var nextDue: Date?
+  private(set) var rowsGeneration = 0
+  var nowColumns: [String] {
+    var seen: [String] = []
+    for filter in filters + filterGroups.flatMap(\.filters)
+    where filter.now && !seen.contains(filter.column) {
+      seen.append(filter.column)
+    }
+    return seen
   }
   var calendarRefreshKey: [String] {
     [
       String(workspaceGeneration), table ?? "", viewTimeZone, String(viewDayStartMinutes),
       String(hasRelativeFilters),
     ]
+      // A Now view plans its next due time again after every reload (sync, edits).
+      + (nowColumns.isEmpty ? [] : nowColumns + [String(rowsGeneration)])
   }
   func refreshCalendar(now: Date = Date()) throws {
     calendarDay =
@@ -316,17 +351,31 @@ final class WorkspaceModel {
       ? try calendarContext(timeZone: viewTimeZone, now: now, dayStartMinutes: viewDayStartMinutes)
         .today : ""
   }
+  /// A due time that passed (while asleep, in the background or just now) re-runs the view.
+  func passDueTimes(now: Date = Date()) {
+    guard let due = nextDue, due <= now else { return }
+    nextDue = nil
+    dueGeneration += 1
+  }
   func runCalendarRefresh() async {
     guard hasRelativeFilters else { return }
     let key = calendarRefreshKey
     do {
       while !Task.isCancelled, key == calendarRefreshKey {
         try refreshCalendar()
+        passDueTimes()
         let day = try calendarContext(timeZone: viewTimeZone, dayStartMinutes: viewDayStartMinutes)
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         guard let end = formatter.date(from: day.end) else { return }
-        try await Task.sleep(for: .seconds(max(0.01, end.timeIntervalSinceNow)))
+        if let client, let table, !nowColumns.isEmpty {
+          nextDue = try await DueTimes.nextDue(
+            workspace: client, table: table, columns: nowColumns, timeZone: viewTimeZone,
+            dayStartMinutes: viewDayStartMinutes)
+          guard !Task.isCancelled, key == calendarRefreshKey else { return }
+        }
+        let wake = min(end, nextDue ?? end)
+        try await Task.sleep(for: .seconds(max(0.01, wake.timeIntervalSinceNow)))
       }
     } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
   }
@@ -403,7 +452,10 @@ final class WorkspaceModel {
   private(set) var syncError: String?
   /// Bumped when a round received or sent data, so views refresh only then.
   private(set) var syncDataRevision = 0 {
-    didSet { integrations?.scheduleRefresh() }
+    didSet {
+      integrations?.scheduleRefresh()
+      integrations?.scheduleDueAlerts()
+    }
   }
   /// A shared CLI file whose own background service owns sync.
   private(set) var cliSyncBound = false
@@ -490,7 +542,8 @@ final class WorkspaceModel {
         do { status = try await client.searchIndexStep(budgetMs: Self.searchIndexBudget) } catch {
           // A failed step rolls back and keeps its work; the next change retries it.
           // Until then nothing is catching up, so the UI stops saying so.
-          Self.log.error("Search index step failed: \(error.localizedDescription, privacy: .public)")
+          Self.log.error(
+            "Search index step failed: \(error.localizedDescription, privacy: .public)")
           if self.client === client { self.searchIndexing = 0 }
           break
         }
@@ -691,16 +744,66 @@ final class WorkspaceModel {
       workspace: client, endpoint: transport.endpoint, generation: workspaceGeneration)
   }
   var skippedTables: [String] { isReplica ? syncStatus?.skippedTables ?? [] : [] }
+  var skippedDetails: [CoreSkippedTableDetail] {
+    isReplica ? syncStatus?.skippedDetails ?? [] : []
+  }
+  var currentSkip: CoreSkippedTableDetail? {
+    table.flatMap { table in skippedDetails.first { $0.table == table } }
+  }
 
+  /// Core keeps a skipped table read-only; this says why, or that the next round downloads it.
   var partialTableNotice: String? {
     guard isReplica, let table, skippedTables.contains(table) else { return nil }
-    if downloadPreferences.tables[table] == false {
-      return
-        "This table is excluded from future sync. Existing local records are kept and may be incomplete."
+    if let detail = currentSkip, downloadPreferences.willDownload(detail) {
+      return "Downloading this table on this device. It becomes editable once its rows arrive."
     }
-    return downloadPreferences.tables[table] == true
-      ? "This table is included in the next sync. Its local records may still be incomplete."
-      : "This table was not downloaded in the last sync. Its local records may be incomplete."
+    return "Not synced on this device. Its records here are read-only and may be incomplete."
+  }
+
+  /// Tables whose download prompt this device hides, per hub endpoint; never synced.
+  private(set) var hiddenDownloadPrompts: [String] = []
+  private var promptStore: DownloadPromptStore?
+  /// The prompt for the skipped table just opened. Each visit decides once.
+  var downloadPrompt: DownloadPromptRequest?
+  private var promptVisit: String?
+
+  func makeDownloadPrompt() -> DownloadPromptRequest? {
+    guard let detail = currentSkip, let context = downloadContext else { return nil }
+    return DownloadPromptRequest(
+      detail: detail, choices: downloadPreferences.downloadChoices(for: detail), context: context)
+  }
+
+  /// Opening a skipped table asks unless this device hid its prompt; a table that becomes
+  /// skipped while open only shows its notice.
+  private func considerDownloadPrompt() {
+    guard let table, promptVisit != table else { return }
+    promptVisit = table
+    guard !hiddenDownloadPrompts.contains(table) else { return }
+    downloadPrompt = makeDownloadPrompt()
+  }
+
+  /// Not now keeps the table read-only; hiding stops the prompt for this table on this device.
+  func dismissDownloadPrompt(hide: Bool) {
+    if hide, let table = downloadPrompt?.detail.table, !hiddenDownloadPrompts.contains(table) {
+      hiddenDownloadPrompts.append(table)
+      // ponytail: an unsaved choice only means the prompt shows again after reopening.
+      try? promptStore?.save(hiddenDownloadPrompts)
+    }
+    downloadPrompt = nil
+  }
+
+  func showDownloadPrompt(for table: String) {
+    hiddenDownloadPrompts.removeAll { $0 == table }
+    try? promptStore?.save(hiddenDownloadPrompts)
+  }
+
+  /// Saves the approved setting and runs a round; the table turns editable once its rows arrive.
+  func approveDownload(_ choice: DownloadChoice, for prompt: DownloadPromptRequest) async throws {
+    while syncing { try await Task.sleep(for: .milliseconds(100)) }
+    try saveDownloads(
+      downloadPreferences.applying(choice, to: prompt.detail.table), context: prompt.context)
+    if downloadPrompt?.id == prompt.id { downloadPrompt = nil }
+    await synchronize()
   }
 
   func saveDownloads(_ preferences: ReplicaPreferences, context: ReplicaDownloadContext) throws {
@@ -740,10 +843,13 @@ final class WorkspaceModel {
     let groups = try? filterGroups.map { try $0.core(fields: viewFields) }
     var key: [String] = [
       table ?? "", search, String(trash), appliedView?.id ?? "", String(viewGeneration),
-      viewTimeZone, String(viewDayStartMinutes), calendarDay, String(describing: groups),
+      viewTimeZone, String(viewDayStartMinutes), calendarDay, String(dueGeneration),
+      String(describing: groups),
     ]
     key += sortRules.flatMap { [$0.column, $0.direction.rawValue, $0.mode?.rawValue ?? ""] }
-    key += filters.flatMap { [$0.column, $0.operation.rawValue, $0.value, String($0.today)] }
+    key += filters.flatMap {
+      [$0.column, $0.operation.rawValue, $0.value, $0.relative?.rawValue ?? ""]
+    }
     return key
   }
 
@@ -810,7 +916,7 @@ final class WorkspaceModel {
     guard (0..<1440).contains(dayStartMinutes) else {
       throw WorkspaceError(message: "Choose a valid day start time.", violations: [])
     }
-    if (filters + groups.flatMap(\.filters)).contains(where: \.today) {
+    if (filters + groups.flatMap(\.filters)).contains(where: { $0.relative != nil }) {
       _ = try calendarContext(timeZone: timeZone, dayStartMinutes: dayStartMinutes)
     }
     sortRules = sorts
@@ -832,8 +938,21 @@ final class WorkspaceModel {
     tables.first { $0["id"]?.text == table }?["display"]?.text.nonempty ?? "id"
   }
   var tables: [WorkspaceRecord] { catalog?.tables ?? [] }
+  @ObservationIgnored private var catalogRevision = 0
+  @ObservationIgnored private var cachedProperties:
+    (catalog: Int, table: Data?, properties: [WorkspaceRecord])?
+  /// Read per row and column header: filtered and sorted once per catalog and table.
   var properties: [WorkspaceRecord] {
-    Self.properties(in: catalog, table: table)
+    // Reading both observed values keeps views tracking them on a cached answer too.
+    let catalog = catalog
+    let table = table
+    let key = table.map { Data($0.utf8) }
+    if let cached = cachedProperties, cached.catalog == catalogRevision, cached.table == key {
+      return cached.properties
+    }
+    let properties = Self.properties(in: catalog, table: table)
+    cachedProperties = (catalogRevision, key, properties)
+    return properties
   }
   private static func properties(in catalog: WorkspaceCatalog?, table: String?) -> [WorkspaceRecord]
   {
@@ -922,7 +1041,8 @@ final class WorkspaceModel {
     let system: Set<String> = ["id", "created_at", "updated_at", "deleted_at", "hub_at"]
     let title = titleProperty?.id ?? "id"
     let rest =
-      visibleRecordColumns ?? properties.compactMap { $0["col"]?.text }.filter {
+      visibleRecordColumns
+      ?? properties.compactMap { $0["col"]?.text }.filter {
         !system.contains($0)
       }
     return [title] + rest.filter { $0 != title }
@@ -1249,7 +1369,8 @@ final class WorkspaceModel {
   }
   func removeFilter(_ id: UUID) { filters.removeAll { $0.id == id } }
   private func isFlag(_ filter: WorkspaceFilter, _ column: String) -> Bool {
-    filter.column == column && filter.operation == .eq && filter.value == "true" && !filter.today
+    filter.column == column && filter.operation == .eq && filter.value == "true"
+      && filter.relative == nil
   }
   func flagIsOn(_ column: String) -> Bool { filters.contains { isFlag($0, column) } }
   func toggleFlag(_ column: String) {
@@ -1479,6 +1600,8 @@ final class WorkspaceModel {
     // it synchronously, including resetting settings for the same table.
     catalog = resolved.catalog
     if table == target { resetView() } else { table = target }
+    // An explicit open is a new visit, even of the current table (iPhone's sidebar).
+    promptVisit = nil
     let context = WorkspaceEditingContext(
       workspace: workspace, table: target, draftStore: draftStore)
     try applySavedView(resolved.view, context: context, definition: resolved.definition)
@@ -1634,6 +1757,9 @@ final class WorkspaceModel {
     services.configure(workspace: nil, transport: nil)
     isReplica = false
     downloadStore = nil
+    promptStore = nil
+    hiddenDownloadPrompts = []
+    downloadPrompt = nil
     downloadPreferences = ReplicaPreferences()
     syncResult = nil
     syncStatus = nil
@@ -1738,7 +1864,11 @@ final class WorkspaceModel {
       && loadedRowsContext == currentRowsContext
     // A failed next page may retry its valid prefix. A full refresh (including
     // post-write reconciliation) invalidates that prefix before awaiting anything.
-    if !append { loadedRowsContext = nil }
+    if !append {
+      loadedRowsContext = nil
+      // Every data change ends here, so shown reference labels are read again.
+      client?.clearReferenceLabelCache()
+    }
     revision += 1
     guard let client, let table else {
       rows = []
@@ -1747,6 +1877,9 @@ final class WorkspaceModel {
     }
     let request = revision
     let query = queryKey
+    // A refresh of the shown query (a sync pull, a write, a shared-file commit) keeps
+    // every loaded page, so the list neither shrinks nor jumps back to the top.
+    let limit = append || rowsQuery != query ? 100 : max(100, rows.count)
     let exportContext = currentExportContext
     loading = true
     defer {
@@ -1755,14 +1888,21 @@ final class WorkspaceModel {
     do {
       try Task.checkCancellation()
       let definition = try currentViewDefinition()
-      let view = CoreView(
+      var view = CoreView(
         table: table,
-        filters: definition.filters, sort: definition.sort,
-        limit: 100, offset: append ? rows.count : 0, trash: trash, search: search,
+        filters: definition.filters, sort: definition.sort, trash: trash, search: search,
         groups: definition.groups,
         calendar: hasRelativeFilters
           ? try calendarContext(timeZone: viewTimeZone, dayStartMinutes: viewDayStartMinutes) : nil)
-      let result = try await client.rows(view: view)
+      // Core reads at most 200 rows at a time, so a kept refresh can take a few reads.
+      var result: [WorkspaceRow] = []
+      repeat {
+        view.offset = (append ? rows.count : 0) + result.count
+        view.limit = min(200, limit - result.count)
+        let page = try await client.rows(view: view)
+        result += page
+        if page.count < view.limit ?? 0 { break }
+      } while result.count < limit
       try Task.checkCancellation()
       let status = isReplica ? try await client.status() : nil
       let undo = try await client.undoStatus()
@@ -1770,10 +1910,13 @@ final class WorkspaceModel {
       guard request == revision, self.client === client, query == queryKey else { return }
       error = nil
       syncStatus = status
+      if !append { considerDownloadPrompt() }
       undoAction = undo.action
       widgets?.scheduleRefresh(partial: isReplica)
       rows = append ? rows + result : result
-      canLoadMore = result.count == 100
+      rowsGeneration += 1
+      rowsQuery = query
+      canLoadMore = result.count == limit
       // Catalog/status are separate reads. Export only a successfully loaded context
       // whose catalog and exact query stayed current throughout this request.
       if exportContext == currentExportContext {
@@ -2158,6 +2301,9 @@ final class WorkspaceModel {
       root: path.deletingLastPathComponent().appendingPathComponent("downloads"),
       endpoint: hub.endpoint)
     let preferences = try preferencesStore.load()
+    let prompts = DownloadPromptStore(
+      root: path.deletingLastPathComponent().appendingPathComponent("downloads"),
+      endpoint: hub.endpoint)
     try FileManager.default.createDirectory(
       at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
     let prepared = try await NativeWorkspace(path: path.path)
@@ -2210,6 +2356,10 @@ final class WorkspaceModel {
     connection = canonical
     downloadStore = preferencesStore
     downloadPreferences = preferences
+    promptStore = prompts
+    hiddenDownloadPrompts = prompts.load()
+    promptVisit = nil
+    downloadPrompt = nil
     syncResult = nil
     syncStatus = nil
     isReplica = true
@@ -2416,6 +2566,7 @@ final class WorkspaceModel {
     scheduleSearchIndex()
     widgets?.scheduleRefresh(partial: isReplica)
     integrations?.scheduleRefresh()
+    integrations?.scheduleDueAlerts()
     scheduleAutomaticSync()
   }
 
@@ -2459,6 +2610,9 @@ final class WorkspaceModel {
     services.configure(workspace: nil, transport: nil)
     isReplica = false
     downloadStore = nil
+    promptStore = nil
+    hiddenDownloadPrompts = []
+    downloadPrompt = nil
     downloadPreferences = ReplicaPreferences()
   }
 
@@ -2493,6 +2647,9 @@ final class WorkspaceModel {
     transport = nil
     isReplica = false
     downloadStore = nil
+    promptStore = nil
+    hiddenDownloadPrompts = []
+    downloadPrompt = nil
     downloadPreferences = ReplicaPreferences()
     syncResult = nil
     syncStatus = nil

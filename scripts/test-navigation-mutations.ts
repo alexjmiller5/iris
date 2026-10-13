@@ -44,15 +44,15 @@ const mutations = [
   {
     name: "Back ignores cancelled discard",
     file: page,
-    before: "if ((opened && busy) || !discard()) {",
-    after: "if (opened && busy) {",
+    before: "if ((opened && busy && navigation.type !== 'leave') || !discard()) {",
+    after: "if (opened && busy && navigation.type !== 'leave') {",
     test: "Back cancellation",
   },
   {
     name: "Back waits for a pending autosave",
     file: page,
-    before: "if ((opened && busy) || !discard()) {",
-    after: "if ((opened && busy) || autosaving || !discard()) {",
+    before: "if ((opened && busy && navigation.type !== 'leave') || !discard()) {",
+    after: "if ((opened && busy && navigation.type !== 'leave') || autosaving || !discard()) {",
     test: "pending autosave receipt",
   },
   {

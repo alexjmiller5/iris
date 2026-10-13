@@ -44,7 +44,7 @@ try {
   });
   const button = (name: string) => named("button", name);
   const click = (name: string) => cdp.click(button(name));
-  await cdp.navigate(new URL("/", url).href);
+  await cdp.navigate(new URL("/favicon.svg", url).href);
   await cdp.command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",
@@ -230,7 +230,7 @@ try {
   throw error;
 } finally {
   if (page) {
-    await page.navigate(new URL("/", url).href).catch(() => {});
+    await page.navigate(new URL("/favicon.svg", url).href).catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
       .catch(() => {});

@@ -31,6 +31,11 @@ prepare it automatically. A same-name unrelated table is left untouched.
 
 Open the app, then choose **Open my workspace** or **Try sample workspace**.
 The sample has its own persistent database and cannot sync to an account.
+Later visits reopen the workspace this browser last opened, at the link's table,
+view or record when the address names one. **Switch workspace** returns to this
+choice and forgets it. A connected workspace reopens offline with its local
+records; connect it again in **Connect to a hub**, since the token lasts only
+for one browser session.
 In **Connect to a hub**, enter its address and choose **Approve this browser**.
 Open the approval page, compare the displayed code, and approve through the hub's
 owner sign-in. Return to Iris while it waits for approval. The browser creates
@@ -404,9 +409,16 @@ device at the hub. Use the hub's device controls to revoke access separately.
 table's **Automatic**, **Include** or **Skip** choice. Leave the limit blank to use
 the shared default. Catalog tables always download. Choices are private to this
 device and hub, survive reconnecting, and apply on the next sync. Skipping keeps
-existing local rows; an incomplete table offers **Include in next sync**.
-Incomplete-table warnings survive reopening offline and also apply to Find
-and reference links.
+existing local rows, read-only: a table this device does not sync never uploads an
+edit. Opening one asks to download it, with its row count, estimated size and a
+suggested setting (include the table, or a higher row limit) to approve or adjust;
+**Not now** keeps it read-only and the prompt returns next time. **Don't show this
+again for this table** stops asking on this device; **Show prompt** under Search
+(Widgets and Search on iOS, Search index on Mac; Connect to a hub on the web) brings
+it back, and the table's notice offers **Download…** meanwhile. Edits made before a
+table was skipped wait in the sync pill ("1 waiting for notes to sync") and upload
+once it downloads. Incomplete-table warnings survive reopening offline and also
+apply to Find and reference links.
 
 **Browse online** opens the current hub table in a separate read-only sheet,
 50 records at a time. Opening a result fetches its current full row; missing and
@@ -631,11 +643,16 @@ bun scripts/test-search.ts
 bun scripts/test-search-sync.ts /path/to/soma
 bun scripts/test-saved-views.ts /path/to/soma
 bun scripts/test-view-options.ts /path/to/soma   # optional: rollover|options|actions
+# Open http://iris-due-times.localhost:5297/workspace?review in its own page.
+bun scripts/test-due-times.ts /path/to/soma
 bun scripts/test-table-invariants.ts /path/to/soma
 bun scripts/test-read-dependencies.ts /path/to/soma
 bun scripts/test-remote-browse.ts /path/to/soma
 # Also open /workspace?review&observer=1 on the same reserved origin for this test.
 bun scripts/test-partial-sync.ts /path/to/soma
+# Skipped tables: read-only, waiting edits, the download prompt and approval.
+# Open http://iris-downloads.localhost:5371/workspace?review in its own page.
+bun scripts/test-skipped-tables.ts /path/to/soma
 # Open http://iris-relations.localhost:5223/workspace?review in its own page.
 bun scripts/test-reference-navigation.ts /path/to/soma
 # Only while owning that checkout and its dev server: temporarily mutate the route.
@@ -820,6 +837,12 @@ while connected. Forgetting a known push-enabled connection requires confirmatio
 that its registration was revoked. System permission is requested only by
 **Enable alerts**. APNs acceptance does not mark a notification read.
 
+**Due-time alerts** (Hub connection settings on iPhone and Mac) choose saved views whose
+records notify this device at their specific due time; date-only values never notify.
+Each device keeps its own choices (none by default) and schedules at most 64 upcoming
+alerts. They need the permission granted by **Enable alerts**; tapping one offers the
+record in the open-link banner.
+
 Replacement machines enroll through the normal connection UI, approve their own
 push subscription and choose system permission independently. Provider keys and
 app-profile configuration remain service-side. A signed app must carry the
@@ -971,7 +994,11 @@ fields to Today in a chosen timezone and day boundary, and preserve multiple
 ordered sorts. A view with no timezone follows whichever timezone the device
 reading it is in; new views start that way. The default boundary is midnight; choosing 03:00 keeps early-morning
 records in the previous task day. A missing clock time advances to the next valid
-instant, and a repeated clock time uses its first occurrence.
+instant, and a repeated clock time uses its first occurrence. A mixed date property can
+hold a date, or a date with a time of day (that clock time wherever you are; add or
+remove it beside the date on web, with Add time on iPhone and Mac). Before/after filters
+can also compare with Now: a date-only value counts all day, a timed value once its time
+passes, and the view refreshes itself when the next one comes due.
 Option order follows the catalog. View options also define labeled buttons with
 literal property values and their position among visible columns. Save the view
 before using its actions; local edits retain the normal undo and sync behavior.

@@ -109,7 +109,17 @@ try {
   };
   const waitSelected = (id: string) =>
     cdp.until(`(${select})?.value===${js(id)}`);
-  await cdp.navigate(new URL("/", url).href);
+  // Default choices live in the View settings popover.
+  const settings = async (name: string) => {
+    if (
+      !(await cdp.evaluate(
+        `!!document.querySelector('[role="dialog"][aria-label="View settings"]:popover-open')`,
+      ))
+    )
+      await click("View settings");
+    await click(name);
+  };
+  await cdp.navigate(new URL("/favicon.svg", url).href);
   await cdp.command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",
@@ -139,11 +149,11 @@ try {
   await openTable("widgets");
   await choose("preferred-opaque");
   await waitSelected("preferred-opaque");
-  await click("Use current view by default");
+  await settings("Use current view by default");
   await cdp.until("document.body.innerText.includes('Default view saved.')");
   await choose("linked-opaque");
   await waitSelected("linked-opaque");
-  await click("Use current view for related records");
+  await settings("Use current view for related records");
   await cdp.until(
     "document.body.innerText.includes('Related-record view saved.')",
   );
@@ -168,10 +178,10 @@ try {
       )
       .get()?.view_id,
   ).toBe("preferred-opaque");
+  // The workspace reopens by itself on the link's destination.
   await cdp.navigate(
     new URL("/workspace?table=widgets&row=second-record", url).href,
   );
-  await click("Open my workspace");
   const group = element('details[aria-label="widgets / Parent"]');
   await cdp.until(`!!(${group})`);
   await cdp.click(named("summary", "widgets / Parent"));
@@ -185,7 +195,6 @@ try {
     "document.querySelector('fieldset.workspace-controls')?.disabled===false",
   );
   await cdp.navigate(new URL("/workspace?table=widgets", url).href);
-  await click("Open my workspace");
   await waitSelected("preferred-opaque");
   await cdp.until(
     '!!document.querySelector(\'[aria-label="Records"] [data-row="fixture-record"]\')',
@@ -200,11 +209,14 @@ try {
     "PASS independent related preference, real Worker sync readback, filtered incoming links, full-record opening, table default and OPFS reopen.",
   );
 } catch (error) {
-  if (page) console.error(await page.evaluate("document.body.innerText"));
+  if (page)
+    console.error(
+      await page.evaluate("document.body?.innerText").catch(String),
+    );
   throw error;
 } finally {
   if (page) {
-    await page.navigate(new URL("/", url).href).catch(() => {});
+    await page.navigate(new URL("/favicon.svg", url).href).catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
       .catch(() => {});

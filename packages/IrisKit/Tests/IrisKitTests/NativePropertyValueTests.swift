@@ -100,6 +100,16 @@ struct NativePropertyValueTests {
       type: "datetime", value: "2024-02-29T00:04:00.000Z", locale: locale)
     #expect(instant.contains("29") && instant.contains("12:04") && instant.hasSuffix(" UTC"))
   }
+  @Test func mixedDatesShowDateOnlyFloatingTimesAndInstants() throws {
+    let locale = Locale(identifier: "en_US")
+    let mixed = { NativePropertyValue.text(type: "date_or_datetime", value: $0, locale: locale) }
+    #expect(mixed("2026-10-13") == NativePropertyValue.text(type: "date", value: "2026-10-13", locale: locale))
+    let local = mixed("2026-10-13T12:00")
+    #expect(local.contains("Oct") && local.contains("13") && local.contains("12:00"))
+    #expect(local.contains("PM") && !local.contains("UTC"))
+    #expect(mixed("2026-10-13T16:00:00.000Z").hasSuffix(" UTC"))
+    #expect(mixed("2026-02-30T12:00") == "2026-02-30T12:00")
+  }
   @Test @MainActor func referenceIdentityTracksContextAndExactValues() {
     let field = CatalogField(property: [
       "tbl": .string("source"), "col": .string("relation"), "type": .string("ref"),
@@ -175,6 +185,79 @@ struct NativePropertyValueTests {
     }
     #expect(
       runtime.context.evaluateScript("labelTrace")?.toArray() as? [String] == ["mentionLabels"])
+    try await workspace.close()
+  }
+  @Test @MainActor func shownLabelsAreReadOnceUntilTheRowsReload() async throws {
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await workspace.createSample()
+    let model = WorkspaceModel()
+    model.client = workspace
+    model.catalog = try await workspace.catalog()
+    model.table = "notes"
+    await model.reload()
+    let note = try #require(model.rows.first)
+    await runtime.evaluateOnCore(
+      #"""
+      globalThis.labelTrace = [];
+      const traced = IrisNative.request;
+      IrisNative.request = function(id, method, args) { labelTrace.push(method); return traced(id, method, args); };
+      """#)
+    func labelReads() -> Int {
+      (runtime.context.evaluateScript("labelTrace")?.toArray() as? [String] ?? [])
+        .filter { $0 == "mentionLabels" }.count
+    }
+    let field = CatalogField(property: ["type": .string("ref"), "ref_table": .string("notes")])
+    func cached() -> String? {
+      NativePropertyValue.cachedReferenceLabels(field: field, value: note.id, workspace: workspace)
+    }
+    func read() async -> String {
+      await NativePropertyValue.referenceLabels(field: field, value: note.id, workspace: workspace)
+    }
+    #expect(cached() == nil)
+    #expect(await read() == note.label)
+    // A cell scrolled back into view starts from the label it showed, without a read.
+    #expect(cached() == note.label)
+    #expect(await read() == note.label)
+    #expect(labelReads() == 1)
+    await model.reload(more: true)
+    #expect(cached() == note.label, "Another page leaves shown labels alone")
+    // Every data change ends in a reload of the rows, which reads labels afresh.
+    _ = try await model.save(
+      ["id": note.record["id"]!, "title": .string("Renamed target")], original: note.record,
+      context: model.editingContext)
+    #expect(cached() == nil)
+    #expect(await read() == "Renamed target")
+    #expect(labelReads() == 2)
+    try await workspace.close()
+  }
+  @Test @MainActor func labelsReadBeforeAReloadAreNotKept() async throws {
+    let runtime = try await IrisCoreRuntime.onCore()
+    let workspace = try await NativeWorkspace(path: ":memory:", runtime: runtime)
+    try await workspace.createSample()
+    let note = try #require(try await workspace.rows(table: "notes").first)
+    await runtime.evaluateOnCore(
+      #"""
+      globalThis.releaseLabels = null;
+      const held = IrisNative.request;
+      IrisNative.request = function(id, method, args) {
+        if (method !== 'mentionLabels' || releaseLabels === false) return held(id, method, args);
+        globalThis.releaseLabels = () => { releaseLabels = false; held(id, method, args); };
+      };
+      """#)
+    let field = CatalogField(property: ["type": .string("ref"), "ref_table": .string("notes")])
+    let label = Task {
+      await NativePropertyValue.referenceLabels(field: field, value: note.id, workspace: workspace)
+    }
+    await waitFor {
+      runtime.context.evaluateScript("typeof releaseLabels === 'function'")?.toBool() == true
+    }
+    workspace.clearReferenceLabelCache()
+    await runtime.evaluateOnCore("releaseLabels()")
+    #expect(await label.value == note.label)
+    #expect(
+      NativePropertyValue.cachedReferenceLabels(field: field, value: note.id, workspace: workspace)
+        == nil)
     try await workspace.close()
   }
   @MainActor private func sampleWorkspace() async throws -> NativeWorkspace {

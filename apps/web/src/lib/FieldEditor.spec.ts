@@ -257,3 +257,30 @@ test.each([
 	expect(window.document.body.textContent).not.toContain('Download file');
 	window.close();
 });
+
+test('a mixed date field edits a date with an optional time beside it', () => {
+	const property = { col: 'due', label: 'Due', type: 'date_or_datetime' };
+	const timed = field({ property, value: '2026-10-13T12:00' });
+	expect(timed.document.querySelector('input[type="date"]')?.getAttribute('value')).toBe(
+		'2026-10-13'
+	);
+	const time = timed.document.querySelector('input[type="time"]');
+	expect(time?.getAttribute('value')).toBe('12:00');
+	expect(time?.getAttribute('aria-label')).toBe('Due time');
+	expect(timed.document.body.textContent).toContain('Remove time');
+	timed.close();
+	const dateOnly = field({ property, value: '2026-10-13' });
+	expect(dateOnly.document.querySelector('input[type="time"]')?.getAttribute('value')).toBe('');
+	expect(dateOnly.document.body.textContent).not.toContain('Remove time');
+	dateOnly.close();
+	const empty = field({ property, value: '' });
+	expect(empty.document.querySelector('input[type="time"]')?.hasAttribute('disabled')).toBe(true);
+	empty.close();
+	// An existing UTC instant keeps its current editing path.
+	const instant = field({ property, value: '2026-10-13T16:00:00.000Z' });
+	expect(instant.document.querySelector('input[type="time"]')).toBeNull();
+	expect(instant.document.querySelector('input')?.getAttribute('value')).toBe(
+		'2026-10-13T16:00:00.000Z'
+	);
+	instant.close();
+});

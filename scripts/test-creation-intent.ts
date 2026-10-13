@@ -1,6 +1,6 @@
 import { chromium, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { disposableOrigin, workspacePage, recordSaved } from "./test-origin";
+import { disposableOrigin, workspacePage, recordReady, recordSaved } from "./test-origin";
 import { regressionHub } from "./workspace-regression-hub";
 const url =
   process.env.IRIS_TEST_URL ??
@@ -146,6 +146,13 @@ try {
    await expect(editor.getByRole('heading',{name:title,exact:true})).toBeVisible();
    return (await all()).find(r=>r.title===title);
   };
+  // Duplicate is explicit creation intent: the copy is stored at once and edited in place.
+  const duplicate=async()=>{
+   const count=(await all()).length;
+   await editor.getByRole('button',{name:'Duplicate record',exact:true}).click();
+   await expect.poll(async()=>(await all()).length).toBe(count+1);
+   await recordSaved(page);
+  };
   const check=async(name:string,body:()=>Promise<void>)=>{
    if(process.env.IRIS_CREATION_CASE&&!name.includes(process.env.IRIS_CREATION_CASE))return;
    try{await body();console.log('PASS',name);}catch(error){failures++;console.error('FAIL',name,error);}finally{await close();}
@@ -160,7 +167,8 @@ try {
   });
   await check('untouched literal preview uses current core default at Save',async()=>{
    await fresh();await expect(editor.getByLabel('literal',{exact:true})).toHaveValue('Old default');
-   db.db.exec("UPDATE catalog_properties SET default_value='New default',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id='widgets.literal'");
+   // Replicas pull by arrival: a direct hub edit stamps hub_at.
+   db.db.exec("UPDATE catalog_properties SET default_value='New default',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),hub_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id='widgets.literal'");
    await local('sync',{endpoint:server.url.href.replace(/\/$/,''),token:'fixture'});
    expect((await save('Current default')).literal).toBe('New default');
   });
@@ -170,36 +178,41 @@ try {
    await expect(editor).toBeVisible();
    const row=await save('Grid copy');expect(row.empty).toBe('');expect(row.body).toBe('');expect(row.code).toBe('SET-ONCE');expect(row.id).not.toBe('fixture-record');
   });
-  await check('record editor exposes Duplicate without creating until Save',async()=>{
+  await check('record editor Duplicate creates the copy at once from saved values',async()=>{
    await close();await cell('title').focus();await cell('title').press('Control+Enter');
    await expect(editor).toBeVisible();const count=(await all()).length;
-   await editor.getByRole('button',{name:'Duplicate record',exact:true}).click();
-   await expect(editor.getByRole('heading',{name:'Untitled',exact:true})).toBeVisible();
-   expect((await all()).length).toBe(count);
-   const row=await save('Editor copy');expect(row.empty).toBe('');expect(row.body).toBe('');
+   await duplicate();
+   expect((await all()).length).toBe(count+1);
+   const row=await save('Editor copy');expect(row.empty).toBe('');expect(row.body).toBe('');expect(row.id).not.toBe('fixture-record');
   });
   const openSource=async()=>{
    await close();await cell('title').focus();await cell('title').press('Control+Enter');
    await expect(editor).toBeVisible();
+   // The record paints from the listed row and stays inert until its fresh row arrives.
+   await recordReady(page);
    await expect(editor.getByRole('button',{name:'Duplicate record',exact:true})).toBeEnabled();
   };
-  await check('dirty source cancellation waits for lookup and preserves the editor',async()=>{
-   await openSource();await editor.getByLabel('Title',{exact:true}).fill('Keep my source draft');
+  await check('unsaveable source cancellation waits for lookup and preserves the editor',async()=>{
+   // Edits save themselves; only one the record refuses (Title is required) is left to discard.
+   await openSource();await editor.getByLabel('Title',{exact:true}).fill('');await editor.getByLabel('Title',{exact:true}).blur();
+   await expect(editor.locator('.field-error')).toContainText('required');
    const count=(await all()).length;accept=false;const before=dialogs;
    await editor.getByRole('button',{name:'Duplicate record',exact:true}).click();
    await expect.poll(()=>dialogs).toBe(before+1);
-   await expect(editor.getByLabel('Title',{exact:true})).toHaveValue('Keep my source draft');
+   await expect(editor.getByLabel('Title',{exact:true})).toHaveValue('');
    expect((await all()).length).toBe(count);
   });
   await check('failed permission reply preserves source before any discard',async()=>{
-   await openSource();await editor.getByLabel('Title',{exact:true}).fill('Keep on permission failure');
+   // Edits save themselves; a refused title is the draft that a discard would ask about.
+   await openSource();await editor.getByLabel('Title',{exact:true}).fill('');await editor.getByLabel('Title',{exact:true}).blur();
+   await expect(editor.locator('.field-error')).toContainText('required');
    const before=dialogs;
    await owned.evaluate(()=>{(window as any).gridHold='writeability';});
    await editor.getByRole('button',{name:'Duplicate record',exact:true}).click();
    await expect.poll(()=>owned.evaluate(()=>(window as any).gridHeld.length)).toBe(1);
    await owned.evaluate(()=>(window as any).releaseGrid(true));
    await expect(editor.locator('.failure')).toContainText('late cell lookup');
-   await expect(editor.getByLabel('Title',{exact:true})).toHaveValue('Keep on permission failure');
+   await expect(editor.getByLabel('Title',{exact:true})).toHaveValue('');
    expect(dialogs).toBe(before);
   });
   await check('superseded permission failure leaves a newer draft and error untouched',async()=>{
@@ -208,26 +221,27 @@ try {
    await expect.poll(()=>owned.evaluate(()=>(window as any).gridHeld.length)).toBe(1);
    await fresh();await editor.getByLabel('Title',{exact:true}).fill('Newer draft');
    await owned.evaluate(()=>(window as any).releaseGrid(true));
+   // Look before the newer draft's own autosave (its first save clears errors) lands.
+   expect(await editor.locator('.failure').count()).toBe(0);
    await expect(editor.getByLabel('Title',{exact:true})).toHaveValue('Newer draft');
    await expect(editor.locator('.failure')).toHaveCount(0);
   });
-  await check('explicit Clear overrides copied empty text and failed Save retains the copy',async()=>{
-   await openSource();await editor.getByRole('button',{name:'Duplicate record',exact:true}).click();
-   await expect(editor.getByRole('heading',{name:'Untitled',exact:true})).toBeVisible();
-   await editor.getByRole('button',{name:'Clear empty',exact:true}).click();
+  await check('a refused value keeps the stored copy and its set-once data',async()=>{
+   await openSource();await duplicate();
    await editor.getByRole('button',{name:'Clear Title',exact:true}).click();
    const count=(await all()).length;
    await recordSaved(page);
-   await expect(editor.locator('.failure')).toContainText('required');
+   // The copy exists; autosave refuses only the cleared title, inline, and stores the rest.
+   await expect(editor.locator('.field-error')).toContainText('required');
    expect((await all()).length).toBe(count);
    await expect(editor.getByLabel('code',{exact:true})).toHaveValue('SET-ONCE');
-   const row=await save('Corrected copy');expect(row.empty).toBeNull();expect(row.body).toBe('');
+   const row=await save('Corrected copy');expect(row.empty).toBe('');expect(row.body).toBe('');expect(row.code).toBe('SET-ONCE');
    const source=(await all()).find(r=>r.id==='fixture-record');
    expect(source.title).toBe('Fixture record');expect(source.empty).toBe('');expect(source.body).toBe('');
   });
   await check('removing a preview or copied reference is explicit creation input',async()=>{
    for(const copy of [false,true]){
-    if(copy){await openSource();await editor.getByRole('button',{name:'Duplicate record',exact:true}).click();await expect(editor.getByRole('heading',{name:'Untitled',exact:true})).toBeVisible();}else await fresh();
+    if(copy){await openSource();await duplicate();}else await fresh();
     await editor.getByRole('button',{name:'Remove Second record',exact:true}).click();
     expect((await save(copy?'Removed copied reference':'Removed preview reference')).links).toBe('[]');
    }

@@ -8,14 +8,29 @@ public struct WidgetSource: Codable, Sendable {
   public let plan: CoreReadPlan
   public let openURL: URL?
   public let allowsQuickAdd: Bool?
+  /// Upcoming specific due times (floating local times or UTC instants) a relative-Now
+  /// plan compares with: the timeline adds an entry when each comes due.
+  public let dueValues: [String]?
   public init(
-    id: String, title: String, plan: CoreReadPlan, openURL: URL? = nil, allowsQuickAdd: Bool = false
+    id: String, title: String, plan: CoreReadPlan, openURL: URL? = nil, allowsQuickAdd: Bool = false,
+    dueValues: [String]? = nil
   ) {
     self.id = id
     self.title = title
     self.plan = plan
     self.openURL = openURL
     self.allowsQuickAdd = allowsQuickAdd
+    self.dueValues = dueValues
+  }
+
+  /// The next published due time after `now`, in the plan's zone (none: this device's).
+  public func nextDue(after now: Date) -> Date? {
+    let zone = plan.calendarPolicy?.timeZone
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return (dueValues ?? []).compactMap {
+      localTimeInstant($0, timeZone: zone) ?? formatter.date(from: $0)
+    }.filter { $0 > now }.min()
   }
 }
 
@@ -326,7 +341,8 @@ public struct WidgetPublicationStore: Sendable {
             workspaceID: workspaceID, replicaID: replicaID,
             sourceID: sourceID, title: source.title, rows: result.rows, dataAsOf: metadata.dataAsOf,
             partial: metadata.partial, effectiveDay: result.effectiveDay,
-            nextBoundary: result.nextBoundary, calendarPolicy: source.plan.calendarPolicy)
+            nextBoundary: [result.nextBoundary, source.nextDue(after: now)].compactMap { $0 }.min(),
+            calendarPolicy: source.plan.calendarPolicy)
           if saveSuccess { try? write(content, to: cache, limit: 1_048_576) }
           let failed: Pointer? = try? decode(
             root.appendingPathComponent("refresh-failed.json"), limit: 4096)

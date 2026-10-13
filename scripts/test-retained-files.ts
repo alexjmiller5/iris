@@ -108,7 +108,7 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await navigate(new URL("/", url).href);
+  await navigate(new URL("/favicon.svg", url).href);
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   // Observe the application's actual download anchor and resolved Blob, avoiding
   // OS download settings or files outside this disposable fixture.
@@ -218,7 +218,11 @@ try {
   await click(button("Save cell", cell));
   await click(button("Fixture record", grid));
   await until(`!!${element('img[alt="Diagram"]')}`);
-  const resync = await evaluate("new Date().toISOString()");
+  // A quiet workspace with a live wake socket runs no timed round for a minute;
+  // focus wakes one, as it does for a person returning to the tab.
+  const resync = await evaluate(
+    "(()=>{const now=new Date().toISOString();window.dispatchEvent(new Event('focus'));return now;})()",
+  );
   await until(
     `(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${js(resync)}`,
   );
@@ -245,7 +249,7 @@ try {
     "PASS: authenticated inline/full images, retry, exact source, downloads and source navigation",
   );
 } catch (error) {
-  console.error(await evaluate("document.body.innerText"));
+  console.error(await evaluate("document.body?.innerText").catch(String));
   throw error;
 } finally {
   finishDocument();
@@ -253,7 +257,7 @@ try {
     await command("Page.removeScriptToEvaluateOnNewDocument", {
       identifier: initScript,
     });
-  await navigate(new URL("/", url).href).catch(() => {});
+  await navigate(new URL("/favicon.svg", url).href).catch(() => {});
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   cdp.close();
   server.stop(true);

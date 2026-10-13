@@ -6,6 +6,7 @@ struct NativeWidgetSourceRequest: Sendable {
   let plan: CorePrepareReadPlanArgs
   var openURL: URL? = nil
   var allowsQuickAdd = false
+  var dueValues: [String]? = nil
 }
 
 /// Host-only preparation. The extension never links the writer or JS runtime.
@@ -54,7 +55,7 @@ struct NativeWidgetSourceRequest: Sendable {
       sources.append(
         WidgetSource(
           id: request.id, title: request.title, plan: plan, openURL: request.openURL,
-          allowsQuickAdd: request.allowsQuickAdd))
+          allowsQuickAdd: request.allowsQuickAdd, dueValues: request.dueValues))
     }
     let capturedAt = Date()
     let file = store.root.appendingPathComponent(".capture-" + UUID().uuidString + ".sqlite")

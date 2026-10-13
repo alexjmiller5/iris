@@ -11,7 +11,7 @@ try {
 	await page.setViewportSize({ width: 1440, height: 1000 });
 	page.setDefaultNavigationTimeout(10000);
 	page.on('dialog', dialog => dialog.accept());
-	await page.goto(new URL('/',url).href);
+	await page.goto('about:blank');
 	const cdp=await page.context().newCDPSession(page);
 	await cdp.send('Storage.clearDataForOrigin',{origin,storageTypes:'all'});
 	await cdp.detach();
@@ -82,8 +82,8 @@ try {
 	await expect(page.getByRole('textbox',{name:'Body',exact:true})).toHaveValue(original);
 	await recordSaved(page);
 	await expect(page.getByRole('button',{name:'Rich editor check',exact:true})).toBeVisible();
+	// The sample reopens by itself.
 	await page.reload();
-	await page.getByRole('button',{name:'Try sample workspace',exact:true}).click();
 	await page.getByRole('button',{name:'Rich editor check',exact:true}).click();
 	await mode('source');
 	await expect(page.getByRole('textbox',{name:'Body',exact:true})).toHaveValue(original);

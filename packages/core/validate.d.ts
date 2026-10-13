@@ -1,4 +1,4 @@
-// Generated from soma-core/src/validate.ts. SHA-256: dd81938ad66e7531ef40b80de774bc1ce9c9917feb90855e71800444be6d3584
+// Generated from soma-core/src/validate.ts. SHA-256: d3b146a409f15d39ad5f6a02c6baeb95b9f526f01c316538bee10808bdd48ba5
 import type { Row, Property, Violation } from './contract.generated.ts';
 export type { Row, OptionDef, Property, Violation } from './contract.generated.ts';
 export type ValidateOptions = {
@@ -13,6 +13,9 @@ export type ValidateOptions = {
 };
 /** An `updated_at` the sync protocol accepts: exact UTC millisecond ISO-8601. */
 export declare function validEditTimestamp(value: unknown): boolean;
+/** A floating local time, `YYYY-MM-DDTHH:MM`: that wall-clock time wherever
+ * the reader is. No seconds, no zone; the date must exist. */
+export declare function validLocalTime(value: unknown): boolean;
 export declare const empty: (v: unknown) => boolean;
 export declare function asList(v: unknown): unknown[] | null;
 export declare function same(a: unknown, b: unknown): boolean;

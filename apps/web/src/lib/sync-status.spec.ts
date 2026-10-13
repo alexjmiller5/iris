@@ -446,3 +446,31 @@ test('a socket that drops after a long healthy life reconnects at once, not once
 	expect(FakeSocket.all).toHaveLength(2);
 	socket.want(false);
 });
+
+test('edits in a table this device skips wait for it instead of reading as Syncing', () => {
+	const skipped = (table: string, waitingEdits: number) => ({
+		table,
+		rows: 60_000,
+		estimatedBytes: null,
+		waitingEdits
+	});
+	expect(syncPill({ ...base, pending: 2, waiting: [skipped('notes', 2)] })).toMatchObject({
+		label: '2 waiting for notes to sync',
+		tone: 'warn',
+		title:
+			'These edits upload once this device downloads notes. Open it to change its download setting.'
+	});
+	expect(
+		syncPill({ ...base, pending: 3, waiting: [skipped('notes', 2), skipped('tasks', 1)] })
+	).toMatchObject({ label: '3 waiting for 2 tables to sync' });
+	// Other edits still upload first; a skipped table without edits changes nothing.
+	expect(syncPill({ ...base, pending: 3, waiting: [skipped('notes', 2)] })).toMatchObject({
+		label: 'Syncing'
+	});
+	expect(syncPill({ ...base, waiting: [skipped('notes', 0)] })).toMatchObject({ label: 'Synced' });
+	expect(
+		syncPill({ ...base, pending: 1, online: false, waiting: [skipped('notes', 1)] })
+	).toMatchObject({
+		label: 'Offline · 1 pending'
+	});
+});

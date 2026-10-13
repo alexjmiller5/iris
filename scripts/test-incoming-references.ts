@@ -1,6 +1,6 @@
 import { chromium, expect } from "@playwright/test";
 import { regressionHub } from "./workspace-regression-hub";
-import { disposableOrigin, workspacePage } from "./test-origin";
+import { disposableOrigin, recordSaved, workspacePage } from "./test-origin";
 const url =
   process.env.IRIS_TEST_URL ??
   "http://iris-incoming.localhost:5232/workspace?review";
@@ -56,10 +56,7 @@ const failures: string[] = [];
 try {
   page.setDefaultTimeout(8000);
   await page.setViewportSize({ width: 1280, height: 960 });
-  await page.goto(origin);
-  await expect(
-    page.getByRole("button", { name: "Open my workspace", exact: true }),
-  ).toBeEnabled({ timeout: 30000 });
+  await page.goto("about:blank");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await cdp.detach();
@@ -151,6 +148,13 @@ try {
     await expect(panel).toBeVisible();
     accept = false;
   }
+  /** Edits save themselves: put the stored title back so later cases find the record. */
+  async function restoreTitle() {
+    await editor
+      .getByRole("textbox", { name: "Title", exact: true })
+      .fill("Fixture record");
+    await recordSaved(page);
+  }
   async function check(name: string, run: () => Promise<void>) {
     if (
       process.env.IRIS_INCOMING_CASE &&
@@ -211,9 +215,9 @@ try {
     "incoming navigation preserves a cancelled draft and opens a fresh full source record",
     async () => {
       await group("Owner").locator("summary").click();
-      await editor
-        .getByRole("textbox", { name: "Title", exact: true })
-        .fill("Keep this draft");
+      // A valid edit saves itself; only a title the catalog refuses is left to discard.
+      await editor.getByRole("textbox", { name: "Title", exact: true }).fill("");
+      await recordSaved(page);
       const priorDialogs = dialogs;
       await group("Owner")
         .getByRole("button", { name: "Open Entry 00", exact: true })
@@ -227,7 +231,7 @@ try {
       ).toBeEnabled();
       await expect(
         editor.getByRole("textbox", { name: "Title", exact: true }),
-      ).toHaveValue("Keep this draft");
+      ).toHaveValue("");
       accept = true;
       await group("Owner")
         .getByRole("button", { name: "Open Entry 00", exact: true })
@@ -320,6 +324,8 @@ try {
       await editor
         .getByRole("textbox", { name: "Title", exact: true })
         .fill("Keep after failure");
+      // The edit saves itself before the next action, as it would for a person pausing.
+      await recordSaved(page);
       await page.setViewportSize({ width: 390, height: 900 });
       await page.evaluate(() => ((window as any).failReferenceOpen = true));
       await group("Owner")
@@ -337,6 +343,7 @@ try {
       await expect(
         editor.getByRole("textbox", { name: "Title", exact: true }),
       ).toHaveValue("Keep after failure");
+      await restoreTitle();
       await page.setViewportSize({ width: 1280, height: 960 });
     },
   );
@@ -347,6 +354,8 @@ try {
       await editor
         .getByRole("textbox", { name: "Title", exact: true })
         .fill("Keep during metadata sync");
+      // The edit saves itself before the next action, as it would for a person pausing.
+      await recordSaved(page);
       const revision = new Date().toISOString();
       db.db
         .query(
@@ -369,6 +378,7 @@ try {
       await sync.click();
       await expect(sync).toBeEnabled({ timeout: 20000 });
       await expect(group("Owner")).toBeVisible();
+      await restoreTitle();
     },
   );
   await check(

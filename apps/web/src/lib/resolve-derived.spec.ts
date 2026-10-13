@@ -21,7 +21,7 @@ function fixture(options: { fail?: string; wrongRow?: boolean; noRefresh?: boole
 const connection = { endpoint: 'https://fixture.invalid', token: 'synthetic' };
 const download = { maxRows: 500, tables: {} };
 describe('Resolve derived field', () => {
-	it('runs checked resolve, normal sync and a full exact-row readback', async () => {
+	it('pushes pending edits, then runs checked resolve, normal sync and a full exact-row readback', async () => {
 		const { database, calls } = fixture();
 		const result = await resolveDerivedRecord(
 			database,
@@ -33,16 +33,17 @@ describe('Resolve derived field', () => {
 			() => true
 		);
 		expect(result.record).toEqual(receipt);
-		expect(calls.map((x) => x.method)).toEqual(['resolveDerived', 'sync', 'rows']);
-		expect(calls[0].args).toEqual({
+		expect(calls.map((x) => x.method)).toEqual(['sync', 'resolveDerived', 'sync', 'rows']);
+		expect(calls[0].args).toEqual({ ...connection, ...download });
+		expect(calls[1].args).toEqual({
 			...connection,
 			table: 'examples',
 			id: row.id,
 			column: 'computed',
 			expectedUpdatedAt: row.updated_at
 		});
-		expect(calls[1].args).toEqual({ ...connection, ...download });
-		expect(calls[2].args).toEqual({
+		expect(calls[2].args).toEqual({ ...connection, ...download });
+		expect(calls[3].args).toEqual({
 			view: { table: 'examples', filters: [{ column: 'id', op: 'eq', value: row.id }], limit: 1 }
 		});
 	});
@@ -90,9 +91,9 @@ describe('Resolve derived field', () => {
 				row,
 				'computed',
 				download,
-				() => calls.length === 0
+				() => !calls.some((call) => call.method === 'resolveDerived')
 			)
 		).rejects.toThrow('changed');
-		expect(calls.map((x) => x.method)).toEqual(['resolveDerived']);
+		expect(calls.map((x) => x.method)).toEqual(['sync', 'resolveDerived']);
 	});
 });

@@ -478,6 +478,7 @@ public final class NativeWorkspace {
     -> [CoreMentionLabel]
   {
     try Task.checkCancellation()
+    if let cached = cachedReferenceLabels(targets) { return cached }
     let id = UUID()
     return try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
@@ -496,13 +497,34 @@ public final class NativeWorkspace {
       }
     }
   }
+  /// Labels read for shown cells, by target (nil: missing), until the rows reload. A cell
+  /// scrolled back into view then starts from its label, at its final height, unread.
+  // ponytail: unbounded between reloads; every data or query change reloads, so it holds
+  // only labels shown since. Add an LRU if one long-lived query ever scrolls huge tables.
+  @MainActor private var labelCache: [[Data]: CoreMentionLabel?] = [:]
+  @MainActor private var labelCacheGeneration = 0
+  @MainActor func cachedReferenceLabels(_ targets: [CoreRecordTarget]) -> [CoreMentionLabel]? {
+    var labels: [CoreMentionLabel] = []
+    for target in targets {
+      guard let cached = labelCache[Self.labelKey(target)] else { return nil }
+      if let cached { labels.append(cached) }
+    }
+    return labels
+  }
+  /// After a data change. A read already in flight then keeps its answer out of the cache.
+  @MainActor func clearReferenceLabelCache() {
+    labelCache = [:]
+    labelCacheGeneration += 1
+  }
+  nonisolated private static func labelKey(_ target: CoreRecordTarget) -> [Data] {
+    [Data(target.table.utf8), Data(target.id.utf8)]
+  }
   @MainActor private func flushReferenceLabels() async {
     labelFlushScheduled = false
     let waiters = labelWaiters
     labelWaiters = []
-    func key(_ target: CoreRecordTarget) -> [Data] {
-      [Data(target.table.utf8), Data(target.id.utf8)]
-    }
+    let generation = labelCacheGeneration
+    let key = Self.labelKey
     var seen = Set<[Data]>()
     let targets = waiters.flatMap(\.targets).filter { seen.insert(key($0)).inserted }
     var found: [[Data]: CoreMentionLabel] = [:]
@@ -514,6 +536,9 @@ public final class NativeWorkspace {
         {
           found[key(CoreRecordTarget(table: label.table, id: label.id))] = label
         }
+      }
+      if generation == labelCacheGeneration {
+        for target in targets { labelCache.updateValue(found[key(target)], forKey: key(target)) }
       }
       for waiter in waiters {
         waiter.continuation.resume(returning: waiter.targets.compactMap { found[key($0)] })

@@ -1,8 +1,8 @@
 /** Only these reserved loopback origins may have their browser storage reset. */
 export function disposableOrigin(address: string): string {
 	const url = new URL(address);
-	const hosts = ['iris-attachments.localhost', 'iris-incoming.localhost', 'iris-write-fixes.localhost', 'iris-parent-regressions.localhost', 'iris-sql-integrity.localhost', 'iris-services.localhost', 'iris-markdown.localhost', 'iris-relations.localhost', 'iris-navigation.localhost', 'iris-palette.localhost', 'iris-grid.localhost', 'iris-graph.localhost', 'iris-reference-create.localhost'];
-	if (url.protocol !== 'http:' || !(hosts.includes(url.hostname) || ['http://iris-catalog.localhost:5282', 'http://iris-presentations.localhost:5252', 'http://iris-resolve.localhost:5252', 'http://iris-creation.localhost:5242', 'http://iris-enrollment.localhost:5230', 'http://iris-grid-enrollment.localhost:5234', 'http://iris-recents.localhost:5236', 'http://iris-rejections.localhost:5238'].includes(url.origin)) || url.username || url.password || url.pathname !== '/workspace' || !url.searchParams.has('review')) {
+	const hosts = ['iris-attachments.localhost', 'iris-incoming.localhost', 'iris-write-fixes.localhost', 'iris-parent-regressions.localhost', 'iris-sql-integrity.localhost', 'iris-services.localhost', 'iris-markdown.localhost', 'iris-relations.localhost', 'iris-navigation.localhost', 'iris-palette.localhost', 'iris-grid.localhost', 'iris-graph.localhost', 'iris-reference-create.localhost', 'iris-downloads.localhost'];
+	if (url.protocol !== 'http:' || !(hosts.includes(url.hostname) || ['http://iris-catalog.localhost:5282', 'http://iris-presentations.localhost:5252', 'http://iris-resolve.localhost:5252', 'http://iris-creation.localhost:5242', 'http://iris-enrollment.localhost:5230', 'http://iris-grid-enrollment.localhost:5234', 'http://iris-recents.localhost:5236', 'http://iris-rejections.localhost:5238', 'http://iris-due-times.localhost:5297'].includes(url.origin)) || url.username || url.password || url.pathname !== '/workspace' || !url.searchParams.has('review')) {
 		throw new Error('Refusing reset outside a reserved Iris test origin');
 	}
 	return url.origin;

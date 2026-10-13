@@ -24,7 +24,7 @@ try {
  if (!page) throw new Error('Open the reserved search review page');
  page.setDefaultTimeout(8000);
  page.on('dialog', d => d.accept());
- await page.goto(new URL('/', url).href);
+ await page.goto('about:blank');
  const cdp = await page.context().newCDPSession(page);
  await cdp.send('Storage.clearDataForOrigin', {origin, storageTypes:'all'});
  await cdp.detach();

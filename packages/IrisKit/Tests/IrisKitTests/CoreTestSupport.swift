@@ -9,6 +9,14 @@ extension NativeWorkspace {
   }
 }
 
+/// Waits up to `timeout` for `condition`. Work on the core thread, a URLSession thread or
+/// behind a timer runs at its own pace: neither a count of main-actor yields nor a fixed
+/// sleep bounds it on a loaded runner.
+@MainActor func waitFor(timeout: Duration = .seconds(10), _ condition: () -> Bool) async {
+  let deadline = ContinuousClock.now.advanced(by: timeout)
+  while !condition(), ContinuousClock.now < deadline { await Task.yield() }
+}
+
 extension IrisCoreRuntime {
   /// A runtime created on the core thread, as NativeWorkspace(path:) creates its own:
   /// JavaScriptCore runs its heap timers on the creating thread's run loop.

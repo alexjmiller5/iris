@@ -13,6 +13,9 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      # Its loopback page server makes macOS ask Python for local network access, a
+      # dialog that would sit over the apple job's XCUI windows; the script is portable.
+      - run: python3 -B scripts/ota_install_test.py
       - run: bun scripts/test-opfs-reopen.ts --verify-patch
       - run: bun run check:contract
       - name: Verify generated native resources
@@ -43,7 +46,6 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun test scripts/release-macos.test.ts scripts/ios-ci.test.ts
-      - run: python3 -B scripts/ota_install_test.py
       - run: python3 scripts/test-nix-migration.py
       - run: python3 scripts/macos_signing_test.py
       - run: python3 scripts/sign_ios_test.py
@@ -175,6 +177,37 @@ jobs:
           done
           bash scripts/test-quick-add-ios.sh apps/ios/Iris.xcodeproj \
             "$RUNNER_TEMP/catalog-ios-derived" "$simulator" "$RUNNER_TEMP"
+          # Due times: the hosted fixture seeds a mixed date and a Now view, then the
+          # Add time toggle and the due-time alert settings (scheduling needs permission).
+          export TEST_RUNNER_IRIS_TEST_DUE_TIME_SIMULATOR="$simulator"
+          for run in "due-seed IrisTests/DueTimeUIFixtureTests 1" \
+            "due-ui IrisUITests/DueTimeUITests/testAddTimeToggleAndDueTimeAlertSettings 1"; do
+            read -r name only expected <<<"$run"
+            xcodebuild -project apps/ios/Iris.xcodeproj -scheme Iris \
+              -derivedDataPath "$RUNNER_TEMP/catalog-ios-derived" \
+              -destination "platform=iOS Simulator,id=$simulator" \
+              -parallel-testing-enabled NO \
+              -resultBundlePath "$RUNNER_TEMP/catalog-ios-$name.xcresult" \
+              "-only-testing:$only" \
+              -test-timeouts-enabled YES -maximum-test-execution-time-allowance 180 \
+              CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES \
+              test-without-building 2>&1 | tee "$RUNNER_TEMP/catalog-ios-$name.log"
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/catalog-ios-$name.xcresult" > "$RUNNER_TEMP/catalog-ios-$name.json"
+            python3 - "$RUNNER_TEMP/catalog-ios-$name.json" "$expected" <<'PYVERIFY'
+          import json, pathlib, sys
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          if (result.get("passedTests"), result.get("failedTests"), result.get("skippedTests")) != (int(sys.argv[2]), 0, 0):
+              raise SystemExit(f"Expected {sys.argv[2]} executed passing tests: {result}")
+          print("Verified the expected passing tests with no skips")
+          PYVERIFY
+          done
+      - name: Keep the synthetic iOS due-time screenshots
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: due-time-ios-screens
+          path: ${{ runner.temp }}/catalog-ios-due-ui.xcresult
+          retention-days: 3
       - name: Preserve synthetic iOS catalog failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

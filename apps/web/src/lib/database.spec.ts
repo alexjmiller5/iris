@@ -50,3 +50,14 @@ test('a stale worker is stopped before any response or change event is accepted'
 	expect(worker.terminate).toHaveBeenCalledOnce();
 	await expect(db.request('snapshot')).rejects.toThrow('closed');
 });
+
+test('terminate stops the worker at once, without waiting for queued requests', async () => {
+	const db = new WorkspaceDatabase();
+	const pending = db.request('snapshot');
+	const worker = FakeWorker.current;
+	db.terminate();
+	expect(worker.terminate).toHaveBeenCalledOnce();
+	expect(worker.messages.map((message) => message.method)).toEqual(['snapshot']);
+	await expect(pending).rejects.toThrow('closed');
+	await expect(db.request('snapshot')).rejects.toThrow('closed');
+});

@@ -99,4 +99,45 @@ import Testing
     #expect(timeline.entries.last?.date == timeline.entries.first?.result.content?.nextBoundary)
     #expect(timeline.entries.first?.result.content?.effectiveDay != timeline.entries.last?.result.content?.effectiveDay)
   }
+
+  @Test func nowViewTimelineAddsAnEntryWhenTheNextTimedValueComesDue() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let workspace = try await NativeWorkspace(path: ":memory:")
+    try await workspace.createSample()
+    _ = try await workspace.saveCatalogProperty(
+      CoreSaveCatalogPropertyArgs(
+        table: "notes", column: "due", expectedUpdatedAt: nil,
+        fields: ["type": .string("date_or_datetime")], addColumn: true))
+    // A floating UTC wall time 20 minutes ahead, at a whole minute.
+    let now = Date()
+    let due = Date(timeIntervalSince1970: ((now.timeIntervalSince1970 + 1200) / 60).rounded(.up) * 60)
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+    _ = try await workspace.write(
+      table: "notes", patch: ["title": .string("Synthetic timed note"), "due": .string(formatter.string(from: due))])
+    let view = try await workspace.saveView(
+      CoreSaveViewArgs(table: "notes", name: "Synthetic due now",
+        definition: CoreSavedViewDefinition(version: 2, columns: ["title"],
+          filters: [CoreFilter(column: "due", op: .lte, relative: .now)], timeZone: "UTC")))
+    let library = WidgetLibrary(root: root.appendingPathComponent("shared"))
+    let settings = NativeWidgetSettings(
+      workspace: workspace, library: library, workspaceID: "workspace", replicaID: "replica",
+      preferencesURL: root.appendingPathComponent("widgets.json"))
+    #expect(await settings.setSelections([NativeWidgetSelection(table: "notes", viewID: view.id)], partial: false))
+    try await workspace.close()
+    let id = WidgetLibrary.sourceID(workspaceID: "workspace", table: "notes", viewID: view.id, kind: .list)
+    let timeline = WidgetEntry.timeline(sourceID: id, calendarOnly: true, library: library, now: now)
+    let first = try #require(timeline.entries.first?.result.content)
+    let boundary = try #require(first.nextBoundary)
+    // The note is not due yet; the timeline wakes at its time unless the day ends first.
+    #expect(first.rows.isEmpty)
+    #expect(boundary <= due)
+    if boundary == due {
+      #expect(timeline.entries.last?.date == due)
+      #expect(timeline.entries.last?.result.content?.rows.first?["title"] == .string("Synthetic timed note"))
+    }
+  }
 }

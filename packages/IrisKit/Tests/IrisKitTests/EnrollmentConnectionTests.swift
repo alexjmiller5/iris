@@ -129,10 +129,7 @@ struct EnrollmentConnectionTests {
       try await model.connect(
         HubCredentials(endpoint: "https://held.invalid", token: "candidate-fixture"))
     }
-    for _ in 0..<10000 {
-      if ConnectionSessionFixture.gate.hasRequest { break }
-      await Task.yield()
-    }
+    await waitFor { ConnectionSessionFixture.gate.hasRequest }
     #expect(ConnectionSessionFixture.gate.hasRequest)
     await model.open(demo: true)
     let replacement = model.client
@@ -156,10 +153,7 @@ struct EnrollmentConnectionTests {
     try await seed.close()
     let model = makeModel(directory, store: store)
     let task = Task { await model.resumeConnection() }
-    for _ in 0..<10000 {
-      if ConnectionSessionFixture.gate.hasRequest { break }
-      await Task.yield()
-    }
+    await waitFor { ConnectionSessionFixture.gate.hasRequest }
     #expect(ConnectionSessionFixture.gate.hasRequest)
     #expect(
       !model.rows.isEmpty,

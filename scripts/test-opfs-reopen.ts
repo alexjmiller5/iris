@@ -357,7 +357,7 @@ try {
     }
     console.log(JSON.stringify(results.at(-1)));
   }
-  await cdp.navigate(new URL("/", address).href);
+  await cdp.navigate(new URL("/favicon.svg", address).href);
   await cdp.command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",
@@ -382,8 +382,8 @@ try {
         "Initial clean sync has rendered its record",
       );
       // This is the original failing sequence, before any diagnostic Worker exists.
+      // The remembered workspace reopens by itself.
       await cdp.navigate(address);
-      await cdp.click(named("button", "Open my workspace"));
       await cdp.until(
         `!!(${named("button", "Fixture record")})`,
         "Reopen retains the synced record",
@@ -400,7 +400,6 @@ try {
       );
       await cdp.click(named("button", "Close record"));
       await cdp.navigate(address);
-      await cdp.click(named("button", "Open my workspace"));
       await cdp.until(
         `!!(${named("button", "Persisted reopen marker")})`,
         "Reopen retains the local committed edit",
@@ -421,11 +420,9 @@ try {
       try {
         await second.command("Page.bringToFront");
         await second.navigate(address + "&observer=second");
-        await second.click(named("button", "Open my workspace"));
         await second.until(`!!(${named("button", "Persisted reopen marker")})`);
         await cdp.command("Page.bringToFront");
         await cdp.navigate(address);
-        await cdp.click(named("button", "Open my workspace"));
         await cdp.until(`!!(${named("button", "Persisted reopen marker")})`);
         await second.until(`!!(${named("button", "Persisted reopen marker")})`);
         console.log(
@@ -435,7 +432,9 @@ try {
         await second.click(named("button", "Switch workspace"));
         await second.until(`!!(${named("button", "Open my workspace")})`);
       } finally {
-        await second.navigate(new URL("/", address).href);
+        // "/" renders the workspace and reopens a remembered one; leave the second tab on
+        // a page that opens none, or its workspace keeps the database open into the next run.
+        await second.navigate(new URL("/favicon.svg", address).href);
         second.close();
       }
       await cdp.command("Page.bringToFront");
@@ -454,7 +453,6 @@ try {
         expect(await cdp.evaluate("opfsCrashWorkers.length")).toBe(1);
         await cdp.evaluate("opfsCrashWorkers[0].terminate()");
         await cdp.navigate(address);
-        await cdp.click(named("button", "Open my workspace"));
         await cdp.until(`!!(${named("button", "Persisted reopen marker")})`);
         console.log(
           "PASS: abrupt database Worker termination preserves committed edit",
@@ -466,6 +464,8 @@ try {
       }
     },
   );
+  // A page on the origin that reopens no workspace hosts the fixture Workers.
+  await cdp.evaluate("localStorage.removeItem('iris:workspace')").catch(() => {});
   await cdp.navigate(new URL("/", address).href);
   await cdp.evaluate(
     `(${installWorkers.toString()})(${js(fixtureWorker.toString())})`,
@@ -529,7 +529,7 @@ try {
 } finally {
   if (page) {
     await page.evaluate("globalThis.opfsFixture?.stop()").catch(() => {});
-    await page.navigate(new URL("/", address).href).catch(() => {});
+    await page.navigate(new URL("/favicon.svg", address).href).catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
       .catch(() => {});

@@ -40,7 +40,8 @@ export interface DatabaseOperations {
 		args: CoreArgs<'sessionRevocationResult'>;
 		result: CoreResult<'sessionRevocationResult'>;
 	};
-	open: { args: { demo?: boolean }; result: WorkspaceSnapshot };
+	// existing: reopen only a database this browser still stores, never create one.
+	open: { args: { demo?: boolean; existing?: boolean }; result: WorkspaceSnapshot };
 	close: { args: Record<string, never>; result: null };
 	snapshot: { args: Record<string, never>; result: WorkspaceSnapshot };
 	rejections: { args: CoreArgs<'rejections'>; result: CoreResult<'rejections'> };

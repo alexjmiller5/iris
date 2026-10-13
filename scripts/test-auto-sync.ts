@@ -45,10 +45,13 @@ try {
 	const page = workspacePage(browser.contexts().flatMap((c) => c.pages()), url);
 	if (!page) throw new Error(`Open this dedicated test page first: ${url}`);
 	page.setDefaultTimeout(10000);
+	// Start on the welcome screen: an earlier run's workspace would reopen by itself.
+	await page.evaluate(() => localStorage.removeItem('iris:workspace'));
 	await page.reload();
 	await page.evaluate(() => localStorage.removeItem('iris:sidebar'));
-	const connect = async (target: Page) => {
-		await target.getByRole('button', { name: 'Open my workspace', exact: true }).click();
+	// A tab opened while the workspace is remembered reopens it by itself, unconnected.
+	const connect = async (target: Page, open = true) => {
+		if (open) await target.getByRole('button', { name: 'Open my workspace', exact: true }).click();
 		// A cold dev server compiles the database worker on first open.
 		await expect(target.getByText('Connect to a hub', { exact: true })).toBeVisible({
 			timeout: 30000
@@ -160,7 +163,7 @@ try {
 		);
 	second = await page.context().newPage();
 	await second.goto(url);
-	await connect(second);
+	await connect(second, false);
 	await expect.poll(() => leaders(second!)).toBe(1);
 	const leaderTab = await second.evaluate(() => document.visibilityState);
 	expect(leaderTab).toBe('visible');
@@ -176,7 +179,6 @@ try {
 	await expect(page.getByRole('button', { name: 'Show sidebar', exact: true })).toBeVisible();
 	await shot(page, '05-sidebar-collapsed');
 	await page.reload();
-	await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Show sidebar', exact: true })).toBeVisible();
 	await expect(sidebar).toBeHidden();
 	await page.keyboard.press('Meta+Backslash');

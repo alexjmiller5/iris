@@ -116,7 +116,7 @@ try {
     behavior: "allow",
     downloadPath: downloads,
   });
-  await navigate(new URL("/", url).href);
+  await navigate(new URL("/favicon.svg", url).href);
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await navigate(url);
   await click(button("Open my workspace"));
@@ -162,8 +162,8 @@ try {
   expect(stored.body).toBe(
     original + "\n\n[fixture.txt](</v1/files/" + key + ">)",
   );
+  // The workspace reopens by itself, offline until it connects again.
   await navigate(url);
-  await click(button("Open my workspace"));
   await open();
   const after = await sourceText();
   expect(
@@ -237,7 +237,7 @@ try {
   console.error(await evaluate("document.body.innerText"));
   throw error;
 } finally {
-  await navigate(new URL("/", url).href).catch(() => {});
+  await navigate(new URL("/favicon.svg", url).href).catch(() => {});
   await command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",

@@ -79,6 +79,12 @@ export class WorkspaceDatabase extends EventTarget {
 		);
 	}
 
+	/** Stop the worker at once, mid-request if need be: SQLite rolls an unfinished
+	 * transaction back on the next open. */
+	terminate(): void {
+		this.stop();
+	}
+
 	private stop(error = new Error('Database is closed.')) {
 		this.closed = true;
 		this.worker.terminate();

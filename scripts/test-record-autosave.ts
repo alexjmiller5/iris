@@ -82,11 +82,13 @@ function listed(page: Page, title: string, status: string) {
       name: new RegExp(`Title: ${title} Status: ${status}`),
     });
 }
-async function openSample(page: Page) {
+/** A later visit reopens the remembered sample by itself. */
+async function openSample(page: Page, reopen = false) {
   await page.goto(url);
-  await page
-    .getByRole("button", { name: "Try sample workspace", exact: true })
-    .click();
+  if (!reopen)
+    await page
+      .getByRole("button", { name: "Try sample workspace", exact: true })
+      .click();
   await expect(
     page.getByRole("grid", { name: "Records", exact: true }),
   ).toBeVisible({
@@ -106,7 +108,7 @@ try {
   page.on("dialog", (d) => d.accept());
   page.setDefaultTimeout(15000);
   page.setDefaultNavigationTimeout(30000);
-  await page.goto(new URL("/", url).href);
+  await page.goto("about:blank");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await cdp.detach();
@@ -340,7 +342,7 @@ try {
   await expect(
     page.locator('[aria-label="Record save status"]'),
   ).toHaveAttribute("data-state", "saved");
-  await openSample(page);
+  await openSample(page, true);
   await openListed(page, "Left mid-typing");
   await expect(title).toHaveValue("Left mid-typing");
   expect((await stored(page, "Left mid-typing"))?.body).toBe(

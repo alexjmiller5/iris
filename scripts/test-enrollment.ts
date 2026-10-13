@@ -10,7 +10,7 @@ const browser=await chromium.connectOverCDP(process.env.IRIS_TEST_CDP??'http://1
 try {
  const page=workspacePage(browser.contexts().flatMap(c=>c.pages()),url);if(!page)throw Error('Open the dedicated enrollment fixture page');
  page.setDefaultTimeout(10000);
- await page.goto(new URL('/',url).href);
+ await page.goto('about:blank');
  const cdp=await page.context().newCDPSession(page);await cdp.send('Storage.clearDataForOrigin',{origin,storageTypes:'all'});await cdp.detach();
  await page.goto(url);await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
  await page.getByText('Connect to a hub',{exact:true}).click();

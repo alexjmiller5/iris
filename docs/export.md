@@ -85,7 +85,7 @@ bun run --cwd apps/web dev --port 5256 --strictPort
 bun scripts/test-export.ts
 ```
 
-Use the existing agent browser at CDP port 9222. The script guards its exact
+Point `IRIS_TEST_CDP` at a disposable Chrome with that tab open. The script guards its exact
 disposable origin, seeds the separate sample workspace through supported APIs,
 and clears only that origin afterwards. It changes no browser-wide download
 preferences and never resets an enrolled workspace.

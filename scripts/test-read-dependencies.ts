@@ -15,7 +15,7 @@ try {
   const page = ownedPage = workspacePage(browser.contexts().flatMap(c => c.pages()),url);
   if (!page) throw Error('Open the dedicated dependency fixture page first.');
   await page.setViewportSize({width:1280,height:960});
-  await page.goto(new URL('/',url).href);
+  await page.goto('about:blank');
   const cdp=await page.context().newCDPSession(page);
   await cdp.send('Storage.clearDataForOrigin',{origin,storageTypes:'all'});
   await cdp.detach();

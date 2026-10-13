@@ -45,7 +45,9 @@ schema from the operator. Ordinary table defaults are unaffected.
   The share extension (IrisExtensionSupport only) puts one URL or text into a
   Quick Add source's display column; presenting a non-empty capture creates its row.
 - NativeIntegrationSettings holds per-workspace identities only: Spotlight tables,
-  the Shortcuts lookup table (default none) and the daily-section widget source.
+  the Shortcuts lookup table (default none), the daily-section widget source and the
+  due-time alert views. It needs only a saved workspace's private identity, never a
+  widget library (the Mac has none): `prepareIntegrations` creates it on first use.
   Spotlight indexes display titles of enabled tables in a protected Core Spotlight
   index; item IDs are `iris://open/v1` links handled by the pending-link banner.
   Disabling a table or forgetting the connection deletes its domains. Look Up and
@@ -378,7 +380,9 @@ Manual Resolve uses the core's revision-checked `resolveDerived` operation on th
 bound hub, followed by ordinary replica sync and a fresh full-row readback.
 HTTP-derived fields remain read-only. Require a saved, clean record before the
 request, collect retained native Markdown first, and preserve late input against
-the readback baseline. Display provider failures without claiming success.
+the readback baseline. Web Resolve saves pending edits and syncs before the request
+(`resolve-derived.ts`): the hub checks the revision shown, which an edit saved
+moments before has not reached yet. Display provider failures without claiming success.
 Never write provider results directly into the replica or implicitly save a draft.
 
 Saved views use the core contract and the canonical `core/schema/saved-views.json`
@@ -465,7 +469,8 @@ silently discarding later typing. Preserve unknown existing multi-select values.
 Record pages save themselves (web `+page.svelte` with `record-autosave.ts`, native
 `RecordEditorModel`); there is no Save, Cancel or Discard, only Done (native, Cmd+S and
 Escape on Mac) to save what is pending and close. Mac Escape is a hidden `.cancelAction`
-button, never `onExitCommand`, which also fires while a help popover is open. Choices, dates, checkboxes and
+button, never `onExitCommand`; the editor owns which field's help popover is open, and the
+button closes that popover instead of the record (a popover window is not always key). Choices, dates, checkboxes and
 references commit on change, typed fields after 500 ms idle or on blur, Markdown after
 its 600 ms pause. Each write carries only changed fields and is one core receipt (one
 Undo step), one at a time behind the record's latest revision, so leaving mid-typing
@@ -504,7 +509,21 @@ a single accessibility element with its label. Operation progress (saving, expor
 staging) and the sync pill are not content loading. A launching native window stays on the
 workspace shell's placeholders while `WorkspaceModel.restoring` (until `restoreAtLaunch`
 resolves) or an open is running; the welcome screen appears only when nothing is
-remembered or the restore failed, with its error. The web shell shows placeholders until the
+remembered or the restore failed, with its error. The web app remembers the workspace this
+browser last opened (localStorage `iris:workspace`: `mine` or `sample`) and reopens it on the
+next visit straight to the shell (`restoring`), honoring the URL's table/view/row. The reopen
+passes `existing` to the worker's `open`, which refuses a database no longer in OPFS; the welcome
+screen appears only when nothing is remembered or the reopen failed, with its error. Switch
+workspace forgets it; a workspace is remembered as soon as it is open. Leaving the page while a
+workspace opens never prompts (`beforeNavigate` skips its busy guard for `leave`); unsaved edits
+still do. Pages render in the browser only (`ssr = false` in `routes/+layout.ts`; `app.html`
+carries a static title until a route sets its own), so no server-rendered welcome frame
+precedes the reopen. A page entering the back/forward cache stops its database worker unless a
+save is still landing (Chrome can crash the tab evicting a page whose frozen worker is mid-write
+to OPFS, and a cached page keeps the database's file handles from the next one) and reloads if
+restored; the worker's `open` retries for 5 s while a page that just left still holds the file. A hub-connected workspace reopens its
+local replica offline: tokens are session-only, so the pill reads Not connected and Connect to
+a hub takes the token again. The web shell shows placeholders until the
 opened workspace's first catalog read (`workspaceReady`) and a page's first rows read
 (`rowsLoaded`); the empty-workspace guidance and empty-table messages wait for those reads.
 
@@ -517,7 +536,9 @@ Cell values are presentation only (`cell-values.ts`, `NativePropertyValue`): a
 checkbox (and edited as one on web); `json` lists of plain values are chips,
 objects read `key: value` and lists of records as a count; Markdown previews drop
 Notion-flavored tags (callout, details, mention-*, file, empty-block) and link
-targets; dates and UTC timestamps use the native format. Whole JSON numbers read
+targets; dates and UTC timestamps use the native format, and a floating local time
+(`date_or_datetime` `YYYY-MM-DDTHH:MM`) reads as that wall-clock date and time with no
+zone (web `dateText`, native `NativePropertyValue.text`). Whole JSON numbers read
 as JavaScript writes them (`1`, never `1.0`). Unparseable source shows as stored.
 Chips wrap onto new lines (native `ChipFlow`) or clip at the cell edge (web, unless the
 column wraps) rather than all shrinking; web grid chips keep a word break between them so a
@@ -532,7 +553,8 @@ The native `FilterBar` (iPhone and Mac) sits above the records with Filter and S
 popovers and a chip row that scrolls edge to edge, its margin inside the scroll view
 so no chip clips at the bar's inset. Filter is a searchable property list (Add filter group
 inside) that adds a chip and pushes its type editor: select options as checkmarks,
-text, number, date with Today, Boolean and the existing reference picker. Chips edit
+text, number, date with Today or Now (Now only for before/after), Boolean and the
+existing reference picker. Chips edit
 on tap and remove with x; Sort holds ordered rules with direction toggles and drag
 reorder. Edits apply to the query at once; chips without a usable value neither
 filter nor save. Closing a popover or the Views sheet, or removing a chip, calls
@@ -567,7 +589,24 @@ options, the default for new views); calendar helpers take the optional zone, an
 widgets resolve it at read time. A missing local
 time advances to the next valid instant; repeated times use the first occurrence.
 The shared JSC core has no Intl.
-Calendar contexts are query arguments only, never persisted in definitions.
+Calendar contexts are query arguments only, never persisted in definitions. Hosts fill
+every slot: `today`, `start`/`end`, the same bounds as floating local times
+(`localStart`/`localEnd`) and the clock reading (`now`, `localNow`), so a relative Now
+filter (web chips and the native bar offer Now beside Today for before/after) compares a
+timed value with the clock while a date-only value counts all day. A view comparing with
+Now also re-runs when its next timed value comes due later in the policy day (web
+`nextDue` in `view-controls.ts`, native `DueTimes.nextDue` in `runCalendarRefresh`) and on
+focus/foreground; the widget publication carries each Now view's upcoming due values, so
+the Today widget timeline and the iOS daily section wake then too.
+Native due-time alerts (iPhone and Mac, per device): Hub connection > Due-time alerts lists
+saved views with a relative date filter or calendar date (default none, stored with the
+other integration identities). `NativeIntegrationSettings.reconcileDueAlerts` schedules one
+local notification per row and specific due time (floating or instant, never date-only)
+for rows those views select apart from their relative filters, nearest first up to 64,
+after sync, local edits and setting changes. A floating time in a view without a zone
+fires at its wall clock wherever the device is. It schedules only with permission granted
+by the explicit Enable alerts action. A tap fills the pending-link banner with the row's
+`iris://open/v1` link (`DueAlertLinks`). The web client has no due-time alerts.
 Actions use the generated runRowAction operation with the selected full row's
 post-save revision and the applied saved-view revision. Disable them during writes
 or while view settings are unsaved. Core
@@ -592,7 +631,11 @@ Native catalog choices load through `NativeWorkspace.options`; controls only
 change draft bindings. Keep selected unknown choices and exact UTF-8 option keys,
 and expose malformed multi-select source for explicit repair. Late option replies
 must not replace a closed editor's state. Date controls preserve untouched source
-and use explicit UTC for datetimes; invalid values never silently become today.
+and use explicit UTC for datetimes; invalid values never silently become today. A
+`date_or_datetime` field edits a date with an optional floating time (web: a time input
+beside the date and Remove time, `splitLocalTime`/`joinLocalTime`; native:
+`NativeMixedDateField` with an Add time toggle starting at 09:00). Removing the time
+returns to date-only; a stored UTC instant keeps its source text editing.
 Link actions require explicit taps and supported schemes. Core remains the only
 validator and writer.
 
@@ -667,7 +710,13 @@ opening and refuse hard-linked database files so journals have one identity.
 decoded catalog while the revision is unchanged; the whole catalog is about a
 megabyte on a large estate, and navigation and every sync round ask for it.
 `WorkspaceModel.reload` publishes rows before its four writeability checks, which
-walk the schema per table; editing stays unavailable until they answer. Quick
+walk the schema per table; editing stays unavailable until they answer. A reload of
+the shown query (sync pull, write, shared-file commit) rereads every loaded page, in
+core reads of at most 200 rows; another query starts again at 100. Scrolling stays
+off the database and the model: shown reference labels stay cached per workspace until
+the next non-appending reload, so a cell scrolled back in starts from its label;
+`WorkspaceSyncPill` alone reads sync and index progress; `properties` is derived once
+per catalog and table; the Mac grid reuses cell hosts per column, roots keyed by row ID. Quick
 Find searches are cancellable reads, so a superseded keystroke's queued search
 never runs. `TableOpenPerformanceTests` holds the open path's request sequence
 and budgets on a 10,000-row table; `IRIS_TABLE_OPEN_DB=<disposable copy>` measures
@@ -807,6 +856,22 @@ Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never
 write that state or infer completeness from download preferences.
+A skipped table is read-only on that device: core `writeability` and the writer
+refuse it (rule `not_synced`), and its own notice replaces the editing-availability
+text. Edits queued before the skip stay pending and upload once a round includes
+the table; core `skippedDetails` counts them (`waitingEdits`), so the pill reads
+"N waiting for <table> to sync", never Syncing. A table visit that starts on a
+skipped table (not one that becomes skipped while open; natively every explicit open,
+including the current table from iPhone's sidebar) shows the download prompt once:
+hub row count and estimated size from `skippedDetails`, and the suggested setting
+(include the table, or raise the row limit to its count when only the limit left
+it out), adjustable before Download, which saves the setting and runs a round. Not now or Escape keeps it read-only and the next visit asks again; "Don't
+show this again for this table" hides it on this device only (web localStorage
+`iris:download-prompts`, native `downloads/<endpoint hash>.hidden-prompts.json`),
+never synced or consulted for writes. Web Connect to a hub and native Search
+settings (Widgets and Search on iOS, Search index on Mac) list hidden tables with
+Show prompt; the notice's Download… reopens it. Native waits for an open record
+editor to close before presenting it (`skipped-tables.ts`, `SkippedTables.swift`).
 Online browsing calls generated `remoteRows`/`remoteRow` through the same
 serialized adapter. The core checks the durable endpoint binding before HTTP
 and rechecks schema/binding after it. Hosts supply the active connection, never
@@ -898,7 +963,7 @@ Saved views can select Calendar, Gallery or a select-grouped Board. Keep these
 settings in the canonical v2 presentation object. Calendar and Board layout use
 shared core operations over loaded rows; hosts supply existing civil-day bounds
 and display pagination coverage. Date-only range ends are inclusive; timed ends
-are exclusive. Board moves use normal revision-checked writes and the same draft
+are exclusive. A floating local time lands on the day whose local bounds hold it. Board moves use normal revision-checked writes and the same draft
 and read-only guards as other edits. Gallery covers use the selected catalog
 property and the existing separate retained/public image credential paths.
 
@@ -912,15 +977,23 @@ Run the package suite with `swift test --no-parallel`: independent JSC fixtures 
 the one core thread and otherwise starve each other’s admission watchdogs. Tests create
 runtimes they hand to a workspace with `IrisCoreRuntime.onCore()` and run any script that
 reaches Swift (`IrisSql`, a held request, `__irisFinish`) with `evaluateOnCore`
-(`CoreTestSupport.swift`); reading plain JS globals works from the main actor. Keep explicit
+(`CoreTestSupport.swift`); reading plain JS globals works from the main actor. A test waiting
+for state set by the core thread, a URLSession request or a timer uses `waitFor` (a
+deadline), never a count of main-actor yields or a fixed sleep: CI runners are slow. Keep explicit
 concurrent tasks inside tests and their assertions unchanged.
 
 Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
-`IRIS_DEV_NO_HMR=1` dev server; usage in the README):
+`IRIS_DEV_NO_HMR=1` dev server; usage in the README). A reload or revisit reopens the
+remembered workspace by itself: a script that needs the welcome screen clicks Switch workspace
+(which forgets it) or clears the origin's storage from a page that opens no workspace
+(`about:blank`, or `/favicon.svg` through `source-navigation-cdp.ts`, which stays on the fixture
+origin), never from a page of the app, which would reopen the workspace first.
 - `check-a11y.ts`: keyboard and axe walk of every view, light and dark (`just check`).
 - `test-filter-bar.ts`: filter chips, sorts, autosave (also across a view switch while a
   save is in flight) and Undo on the sample workspace.
 - `test-auto-sync.ts`: background push/pull, offline pending, sync leader, sidebar toggle.
+- `test-skipped-tables.ts`: a skipped table is read-only, waiting edits in the pill, the
+  download prompt (Not now, Escape, Don't show again, Show prompt) and approval.
 - `test-notes-views.ts`: preferred and related-record views, flag quick filter, status search.
 - `test-workspace-regressions.ts`: autosave in flight, write locks, SQL defaults, dynamic options, typed
   filters, columns, workspace switch, pending count; `test-workspace-mutations.ts` breaks each.
@@ -930,13 +1003,34 @@ Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
 - `test-view-defaults.ts`: preferred view, explicit view links, deleted-preference notice.
 - `test-view-options.ts`: Today boundary/timezone, group rule types, row actions guard.
 - `test-view-presentations.ts`: Calendar, Gallery and Board layouts with synced moves.
+- `test-due-times.ts`: a relative-Now view re-running by itself when a floating time comes
+  due, the optional time beside a mixed date (Remove time) and its axe audit, light and dark.
 - `test-grid-presentation.ts`: placeholders while a workspace and its rows load (never the
-  empty-workspace guidance), blank empty cells, Wrap text and Wrap all columns with Undo.
+  empty-workspace guidance), a reload reopening the sample with no welcome frame (screencast
+  frames under `IRIS_TEST_SHOTS/reopen-frames`), Switch workspace forgetting it, a removed
+  database showing the welcome screen with its error, blank empty cells, Wrap text and Wrap all
+  columns with Undo.
 - `test-workflow-views.ts`: any-of groups, Today across midnight, row actions through
   sync, Save as new view preserving actions, groups and timezone.
 - `test-editor-links.ts`: /person mention and /view embed through the slash menu,
   synced Markdown links, render-time labels, click-through, Linked from, Open view
   and an unavailable target. Navigate in-app: a reload drops the session token.
+- `test-export.ts`: the Export disclosure (Escape, narrow width), exact JSON/CSV downloads,
+  loading blocks export, CSV metadata from the clicked capture, table switches.
+- `test-related-view-defaults.ts`: related-record view chosen apart from the table default,
+  synced, filtering incoming links.
+- `test-resolve-derived.ts`: Resolve refuses an unsaveable draft, pushes an edit saved just
+  before, writes provider values with provenance, reports failures and stale revisions.
+- `test-retained-files.ts`: retained images and retry, exact source, downloads aborted on
+  close or switch, source links.
+- `test-source-navigation.ts`: explicit identities and source links, held and superseded
+  lookups, leave prompts for refused edits.
+- `test-creation-intent.ts`: creation previews and defaults, Duplicate storing its copy at once,
+  explicit clears and references; `test-creation-mutations.ts [--browser]` breaks each.
+- `test-grid-undo.ts`: Undo over grid cell drafts and creation; `test-grid-undo-mutations.ts`
+  breaks each.
+- `test-opfs-reopen.ts`: reload with an open replica (two tabs, an abruptly stopped worker) and
+  OPFS temporary-file cleanup; `--verify-patch` (CI) checks the installed VFS patch only.
 
 `project.yml` is authoritative; generated Xcode projects and Info.plists are
 ignored. Child justfiles expose platform run/test/check/build. Caches and derived
@@ -955,8 +1049,8 @@ Sort are in the bar above the records);
 workspace actions are in the ellipsis Menu and full sync/location details in the
 read-only status sheet. One `SyncPill` (Mac sidebar bottom, iPhone bottom-bar status
 slot, Mac menu bar) is the only sync surface: Synced, Syncing (only while rows move, edits upload
-or before a first success), N pending, Offline · N pending, N rejected (opens
-Issues), Paused: cap reached (hub 429), Sync issue, Shared with CLI or Local only.
+or before a first success), N pending, N waiting for <table> to sync (edits in a skipped
+table), Offline · N pending, N rejected (opens Issues), Paused: cap reached (hub 429), Sync issue, Shared with CLI or Local only.
 Sync failures reach the pill and status sheet, never `model.error`. Ordinary saves
 show no progress text. `SyncStatusUITests` drives `navigation-hub.py`'s
 accept/reject/offline modes through those states and retains screenshots.
@@ -985,6 +1079,10 @@ items minutes after indexing), the Home Screen widget gallery and the Lock Scree
 editor (`com.apple.PosterBoard`). `TEST_RUNNER_IRIS_TEST_DAILY_AFTER_BOUNDARY`
 checks the daily section after the fixture view's 03:00 boundary passed. Erase the
 simulator before a run; Home and Lock Screen edits persist between runs.
+`DueTimeUIFixtureTests` (with `TEST_RUNNER_IRIS_TEST_DUE_TIME_SIMULATOR`) replaces that
+simulator's local workspace with a fresh sample plus a mixed `due` date and a Now view;
+`DueTimeUITests` then drives Add time and Due-time alerts (CI keeps its screenshots as
+`due-time-ios-screens`). Without notification permission nothing schedules.
 `TableNavigationUIFixtureTests` seeds 50,000 synthetic provenance rows on the
 explicit `TEST_RUNNER_IRIS_TEST_TABLE_NAV_SIMULATOR` only. Its local mode tests
 repeated table navigation; the optional loopback `navigation-hub.py` mode holds

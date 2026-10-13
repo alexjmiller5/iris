@@ -97,9 +97,10 @@
       defer { try? FileManager.default.removeItem(at: root) }
       let original = try #require(model.rows.first?.record)
       let context = try #require(model.editingContext)
+      // The draft stays unsaved until saveAll: its own autosave could land before a slow CLI.
       let editor = RecordEditorModel(
         properties: model.properties, original: original, table: "notes",
-        store: nil
+        store: nil, debounce: .seconds(60), typingDelay: .seconds(60)
       ) { patch, before in
         try await model.save(patch, original: before, context: context)
       }
@@ -108,9 +109,7 @@
       defer { observing.cancel() }
       _ = try await sql(
         file, "UPDATE notes SET title='CLI commit', updated_at='2030-01-01T00:00:00.000Z'")
-      for _ in 0..<100 where model.rows.first?.label != "CLI commit" {
-        try await Task.sleep(for: .milliseconds(20))
-      }
+      await waitFor { model.rows.first?.label == "CLI commit" }
       #expect(
         model.rows.first?.label == "CLI commit",
         "Offline commits must refresh without manual reload or hub")
@@ -163,11 +162,9 @@
       _ = try await sql(file, "UPDATE catalog_tables SET purpose='Changed by CLI' WHERE id='notes'")
       let observing = Task { await model.runLocalObservation(interval: .milliseconds(20)) }
       defer { observing.cancel() }
-      for _ in 0..<100
-      where model.tables.first(where: { $0["id"]?.text == "notes" })?["purpose"]?.text
-        != "Changed by CLI"
-      {
-        try await Task.sleep(for: .milliseconds(20))
+      await waitFor {
+        model.tables.first(where: { $0["id"]?.text == "notes" })?["purpose"]?.text
+          == "Changed by CLI"
       }
       #expect(
         model.tables.first(where: { $0["id"]?.text == "notes" })?["purpose"]?.text
@@ -209,16 +206,12 @@
       // Let the actual startup scene task reopen the persisted file first.
       try await Task.sleep(for: .milliseconds(300))
       _ = try await sql(file, "UPDATE notes SET title='Mounted offline update'")
-      for _ in 0..<100 where model.rows.first?.label != "Mounted offline update" {
-        try await Task.sleep(for: .milliseconds(30))
-      }
+      await waitFor { model.rows.first?.label == "Mounted offline update" }
       #expect(model.rows.first?.label == "Mounted offline update")
       // A second later commit cannot be satisfied by a delayed startup reload.
       try await Task.sleep(for: .milliseconds(300))
       _ = try await sql(file, "UPDATE notes SET title='Second offline update'")
-      for _ in 0..<100 where model.rows.first?.label != "Second offline update" {
-        try await Task.sleep(for: .milliseconds(30))
-      }
+      await waitFor { model.rows.first?.label == "Second offline update" }
       #expect(model.rows.first?.label == "Second offline update")
       #expect(model.workspaceGeneration >= openedGeneration)
       #expect(model.error == nil)

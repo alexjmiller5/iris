@@ -64,7 +64,7 @@ try {
 	await page.setViewportSize({ width: 1280, height: 960 });
 	// Other agents edit this checkout concurrently; never let dev-server reloads restart the fixture.
 	await page.routeWebSocket(/:\/\/[^/]+\/(\?token=|$)/, () => {});
-	await page.goto(new URL('/', url).href);
+	await page.goto('about:blank');
 	const cdp = await page.context().newCDPSession(page);
 	await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'all' });
 	await cdp.detach();

@@ -9,7 +9,7 @@ try {
  let acceptDiscard=true;
  page.setDefaultTimeout(8000);page.on('dialog',d=>acceptDiscard?d.accept():d.dismiss());
  await page.setViewportSize({width:1440,height:1000});
- await page.goto(new URL('/',url).href);
+ await page.goto('about:blank');
  const cdp=await page.context().newCDPSession(page);
  await cdp.send('Storage.clearDataForOrigin',{origin,storageTypes:'all'});await cdp.detach();
  await page.goto(url);
@@ -33,8 +33,8 @@ try {
  await page.keyboard.press('Enter');
  await expect(search).not.toBeVisible();
  await expect(page.getByRole('heading',{name:'Space journal',exact:true})).toBeVisible();
+ // The sample reopens by itself.
  await page.reload();
- await page.getByRole('button',{name:'Try sample workspace',exact:true}).click();
  await expect(page.getByRole('button',{name:'Find records',exact:false})).toBeEnabled();
  await page.keyboard.press('Meta+k');
  await search.getByRole('combobox',{name:'Search records',exact:true}).fill('astronomia');

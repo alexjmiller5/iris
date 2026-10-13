@@ -8,7 +8,11 @@ let network: CDPSession | undefined;
 try{
   const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);
   if(!page)throw new Error(`Open this dedicated test page first: ${url}`);
-  // A plain workspace URL: an earlier run's record link would reopen that record.
+  // The record panel overlays the records below desktop widths.
+  await page.setViewportSize({width:1440,height:1000});
+  // A plain workspace URL on the welcome screen: an earlier run's workspace and
+  // record link would reopen by themselves.
+  await page.evaluate(()=>localStorage.removeItem('iris:workspace'));
   await page.goto(url);
   await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
   await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
@@ -54,8 +58,8 @@ try{
   await expect(page.locator('.record-panel form')).not.toHaveAttribute('inert','');
   await page.getByRole('textbox',{name:'Title',exact:true}).fill(renamed);
   page.once('dialog',dialog=>dialog.accept());
+  // The workspace reopens by itself on the record; the session-only token connects it again.
   await page.reload();
-  await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
   await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
   await page.getByLabel('Hub address').fill(hub);
   await page.getByLabel('Device token').fill('fixture');
@@ -65,10 +69,13 @@ try{
   if(await page.getByRole('button',{name:'Use automatic size rule',exact:true}).count())await page.getByRole('button',{name:'Use automatic size rule',exact:true}).click();
   await page.getByLabel('Automatic sync row limit').fill('0');
   await synced(page);
-  await expect(page.getByText(/This table is excluded from sync/)).toBeVisible();
-  await page.getByRole('button',{name:'Include this table',exact:true}).click();
+  await expect(page.getByText(/Not synced on this device/)).toBeVisible();
+  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'Download…',exact:true}).click();
+  await page.getByRole('dialog',{name:'Not synced on this device'}).getByRole('button',{name:'Download',exact:true}).click();
   await synced(page);
-  await expect(page.getByText(/This table is excluded from sync/)).toHaveCount(0);
+  await expect(page.getByText(/Not synced on this device/)).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
   console.log('PASS: browser OPFS pulled the real Worker schema/catalog, autosaved a typed row offline, synced it back, and a rename typed just before a reload reached the hub');
 }finally{
   if(network){

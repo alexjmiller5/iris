@@ -1,5 +1,5 @@
-import type { Filter, SavedViewDefinition, Sort, View } from 'iris-core/client';
-import { calendarContext } from './calendar-context';
+import type { Filter, Row, SavedViewDefinition, Sort, View } from 'iris-core/client';
+import { calendarContext, localTimeInstant } from './calendar-context';
 
 export function parseDayStart(time: string): number {
 	if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Choose a valid day start time.');
@@ -64,4 +64,44 @@ export function queryDefinition(
 			? { calendar: calendarContext(definition.timeZone, now, definition.dayStartMinutes) }
 			: {})
 	};
+}
+
+/** When the next timed value a relative-Now filter compares with comes due later in
+ * the current policy day, or null. Only timed values count: a date-only value is
+ * due all day and the day boundary already refreshes the view. */
+export async function nextDue(
+	read: (view: View) => Promise<Row[]>,
+	table: string,
+	definition: SavedViewDefinition,
+	now = new Date()
+): Promise<number | null> {
+	const { filters, groups } = definition;
+	const columns = new Set(
+		[...(filters ?? []), ...(groups ?? []).flatMap((g) => g.filters)]
+			.filter((f) => f.relative === 'now')
+			.map((f) => f.column)
+	);
+	const calendar = calendarContext(definition.timeZone, now, definition.dayStartMinutes);
+	let next: number | null = null;
+	for (const column of columns) {
+		// ponytail: the 200 earliest by text; local times and instants interleave
+		// loosely, so a day with more timed values could refresh a little late.
+		const rows = await read({
+			table,
+			calendar,
+			columns: ['id', column],
+			filters: [
+				{ column, op: 'gt', relative: 'now' },
+				{ column, op: 'eq', relative: 'today' }
+			],
+			sort: [{ column, direction: 'asc' }],
+			limit: 200
+		});
+		for (const row of rows) {
+			const value = String(row[column]);
+			const at = localTimeInstant(value, definition.timeZone) ?? Date.parse(value);
+			if (Number.isFinite(at) && at > now.getTime() && (next === null || at < next)) next = at;
+		}
+	}
+	return next;
 }

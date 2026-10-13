@@ -24,7 +24,7 @@ try{
  page.setDefaultTimeout(15000);await page.bringToFront();await page.setViewportSize({width:1440,height:1000});
  let acceptDialog=true;
  page.on('dialog',dialog=>acceptDialog?dialog.accept():dialog.dismiss());
- await page.goto(new URL('/',url).href);
+ await page.goto('about:blank');
  const cdp=await page.context().newCDPSession(page);await cdp.send('Storage.clearDataForOrigin',{origin,storageTypes:'all'});await cdp.detach();
  await page.addInitScript(() => {
   const state=window as any;state.holdViewWrites=false;state.heldViewWrites=[];
@@ -92,8 +92,8 @@ try{
  expect(stored?.name).toBe('A saved copy');
  expect(JSON.parse(stored.definition)).toMatchObject({columns:['title','body'],filters:[{column:'title',op:'eq',value:'Second record'}],widths:{body:360},sort:[{column:'id',direction:'desc'},{column:'quantity',direction:'asc'}]});
  console.log('PASS: Save as new view writes a guarded synced row with the current layout');
+ // The workspace reopens by itself; the session-only token connects it again.
  await page.reload();
- await page.getByRole('button',{name:'Open my workspace',exact:true}).click({timeout:30000});
  await connect();
  await widgets.click();
  await expect(views).toContainText('A saved copy');
@@ -154,8 +154,7 @@ try{
  await page.keyboard.press('Escape');
  const sampleId=await views.inputValue();expect(sampleId).not.toBe('');
  await page.reload();
- await page.getByRole('button',{name:'Try sample workspace',exact:true}).click({timeout:30000});
- await expect(views).toContainText('Sample drafts');
+ await expect(views).toContainText('Sample drafts',{timeout:30000});
  await views.selectOption(sampleId);
  await expect(page.getByRole('button',{name:'A place to start',exact:true})).toBeVisible();
  console.log('PASS: the separate sample workspace provisions views locally and retains them across reopen');

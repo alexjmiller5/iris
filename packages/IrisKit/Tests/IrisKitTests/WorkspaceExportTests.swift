@@ -175,6 +175,31 @@ struct WorkspaceExportTests {
     await model.close()
   }
 
+  @Test func refreshOfTheShownQueryKeepsItsLoadedPages() async throws {
+    let fixture = try await ExportWorkspaceFixture()
+    let model = fixture.model
+    try await fixture.addPaginationRows()
+    await model.reload()
+    await model.reload(more: true)
+    let loaded = model.rows.map(\.byteExactID)
+    #expect(loaded.count == 200)
+    // Sync pulls, writes and shared-file commits all end in a plain reload.
+    await model.reload()
+    #expect(model.rows.map(\.byteExactID) == loaded)
+    #expect(model.canLoadMore)
+    await model.reload(more: true)
+    #expect(model.rows.count == 225 && !model.canLoadMore)
+    let all = model.rows.map(\.byteExactID)
+    // Core reads at most 200 rows at a time.
+    await model.reload()
+    #expect(model.rows.map(\.byteExactID) == all)
+    // Another query starts again from its first page.
+    model.sortColumn = "title"
+    await model.reload()
+    #expect(model.rows.count == 100 && model.canLoadMore)
+    await model.close()
+  }
+
   @Test(arguments: [false, true])
   func fullRefreshInvalidatesPrefixEvenWhenItDoesNotFinish(afterWrite: Bool) async throws {
     let fixture = try await ExportWorkspaceFixture()
@@ -216,7 +241,9 @@ struct WorkspaceExportTests {
       try #require(fixture.runtime.context.exception == nil)
     }
     await model.reload(more: true)
-    #expect(model.rows.count == 100)
+    // A fresh read from the first row: the failed refresh emptied the list, the cancelled
+    // one left both shown pages of the same query.
+    #expect(model.rows.count == (afterWrite ? 100 : 200))
     #expect(model.canExportLoadedRows)
     if afterWrite {
       #expect(model.rows.first?.record["body"] == .string("Committed new value"))

@@ -6,10 +6,7 @@ import Testing
 @MainActor
 struct QuickFindCoordinatorTests {
   private func waitForRequest(_ arrived: () -> Bool) async throws {
-    for _ in 0..<1_000 {
-      if arrived() { return }
-      await Task.yield()
-    }
+    await waitFor(arrived)
     try #require(arrived(), "The controlled request never started")
   }
 

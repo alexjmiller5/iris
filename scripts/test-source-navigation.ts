@@ -163,7 +163,7 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await navigate(new URL("/", url).href);
+  await navigate(new URL("/favicon.svg", url).href);
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   initScript = (
     await command("Page.addScriptToEvaluateOnNewDocument", {
@@ -185,7 +185,7 @@ try {
     acceptDiscard = true;
     await release();
     if (
-      await evaluate(`!!${element('dialog[open][aria-label="Find records"]')}`)
+      await evaluate(`!!${element("dialog[open]")}`)
     )
       await key("Escape");
     if (await evaluate(`!!${editor}`))
@@ -196,6 +196,18 @@ try {
     await click(button("Fixture record", grid));
     await until(`!!(${heading("Fixture record")})`);
     await until(`!!(${link("Related record", editor)})`);
+    // The record paints from the listed row and stays inert until its fresh row arrives.
+    await until("document.querySelector('.record-panel form')?.inert===false");
+  }
+  // Records save themselves; only a value autosave refuses (Title is required) keeps
+  // a draft that leaving has to ask about.
+  async function refuseTitle() {
+    await evaluate(
+      `(()=>{const e=${input("Title")};e.focus();e.value='';e.dispatchEvent(new Event('input',{bubbles:true}));e.blur();})()`,
+    );
+    await until(
+      `document.querySelector('[aria-label="Record save status"]')?.dataset.state==='failed'`,
+    );
   }
   async function clickSource(name = "Related record") {
     await click(link(name));
@@ -237,6 +249,11 @@ try {
     "unavailable explicit identity keeps the draft and reports an error",
     async () => {
       await fill(input("Output"), "widgets/missing");
+      // The edit saves itself first; opening it then writes nothing more.
+      await evaluate("document.activeElement?.blur()");
+      await until(
+        `document.querySelector('[aria-label="Record save status"]')?.dataset.state==='saved'`,
+      );
       const writes = await evaluate(`${fixture}.writes`);
       await click(button("Open record", editor));
       await until(
@@ -246,17 +263,26 @@ try {
         "widgets/missing",
       );
       expect(await evaluate(`${fixture}.writes`)).toBe(writes);
+      // The edit saved itself; put the identity back for the cases that follow.
+      await fill(input("Output"), "widgets/second-record");
+      await evaluate("document.activeElement?.blur()");
+      await until(
+        `document.querySelector('[aria-label="Record save status"]')?.dataset.state==='saved'`,
+      );
     },
   );
   await check(
-    "a changed draft can cancel explicit record navigation",
+    "an unsaveable draft can cancel explicit record navigation",
     async () => {
       acceptDiscard = false;
-      await fill(input("Title"), "Unsaved title");
+      const before = dialogs;
+      await refuseTitle();
       const writes = await evaluate(`${fixture}.writes`);
       await click(button("Open record", editor));
+      await expect.poll(() => dialogs).toBe(before + 1);
       await until(`!!(${button("Open record", editor)}) && !(${button("Open record", editor)}).disabled`);
-      expect(await evaluate(`(${input("Title")}).value`)).toBe("Unsaved title");
+      expect(await evaluate(`(${input("Title")}).value`)).toBe("");
+      expect(await evaluate(`!!(${heading("Fixture record")})`)).toBe(true);
       expect(await evaluate(`${fixture}.writes`)).toBe(writes);
     },
   );
@@ -267,17 +293,21 @@ try {
         await evaluate(`${fixture}.holdSource=true`);
         await clickSource();
         await until(`${fixture}.heldSource.length===1`);
-        await evaluate(`${fixture}.holdRow='legacy-record'`);
-        if (navigation === "related")
+        const hold = () => evaluate(`${fixture}.holdRow='legacy-record'`);
+        if (navigation === "related") {
+          await hold();
           await click(button("Open Legacy record", editor));
-        else {
+        } else {
           await click(
             `[...document.querySelectorAll('button')].find(e=>e.textContent.includes('Find records'))`,
           );
-          await fill(element('[aria-label="Search records"]'), "Legacy");
-          await click(
-            `[...document.querySelectorAll('[role="option"]')].find(e=>e.textContent.includes('Legacy record'))`,
-          );
+          // The table toolbar has a "Search records" box too; type into Find's.
+          await fill(element('dialog[open] [aria-label="Search records"]'), "Legacy");
+          const option = `[...document.querySelectorAll('[role="option"]')].find(e=>e.textContent.includes('Legacy record'))`;
+          await until(`!!(${option}) && !(${option}).disabled`);
+          // Hold only the destination's row read: search results read rows of their own.
+          await hold();
+          await click(option);
         }
         await until(`${fixture}.heldRows.length===1`);
         await evaluate(`${fixture}.releaseSource()`);
@@ -340,7 +370,7 @@ try {
     "canceling source navigation retains the latest full-record draft",
     async () => {
       const before = dialogs;
-      await fill(input("Title"), "Unsent title");
+      await refuseTitle();
       acceptDiscard = false;
       await clickSource();
       await expect.poll(() => dialogs).toBe(before + 1);
@@ -348,7 +378,7 @@ try {
       expect(
         await evaluate(`(${popup}).querySelectorAll('[role="status"]').length`),
       ).toBe(0);
-      expect(await evaluate(`(${input("Title")}).value`)).toBe("Unsent title");
+      expect(await evaluate(`(${input("Title")}).value`)).toBe("");
       expect(
         db.db
           .query("SELECT title FROM widgets WHERE id=?")
@@ -407,7 +437,7 @@ try {
       `${failures.length} source-navigation cases failed: ${failures.join("; ")}`,
     );
 } catch (error) {
-  console.error(await evaluate("document.body.innerText"));
+  console.error(await evaluate("document.body?.innerText").catch(String));
   throw error;
 } finally {
   await evaluate(`${fixture}?.releaseSource();${fixture}?.releaseRows()`).catch(
@@ -417,7 +447,7 @@ try {
     await command("Page.removeScriptToEvaluateOnNewDocument", {
       identifier: initScript,
     });
-  await navigate(new URL("/", url).href).catch(() => {});
+  await navigate(new URL("/favicon.svg", url).href).catch(() => {});
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   cdp.close();
   server.stop(true);

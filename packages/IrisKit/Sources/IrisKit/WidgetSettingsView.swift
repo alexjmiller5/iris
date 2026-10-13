@@ -74,12 +74,13 @@ struct WidgetSettingsView: View {
           }
         #endif
         SearchTablesSection(model: model)
+        DownloadPromptsSection(model: model)
         if settings.busy { ProgressView("Preparing widget data") }
         if let message = failure ?? settings.error {
           Section { Text(message).foregroundStyle(.red).accessibilityIdentifier("widget-settings-error") }
         }
         Section {
-          Text("Add a Iris widget from the Home Screen widget gallery, then edit it to choose an enabled source. Today uses the selected saved view’s time zone and day boundary. Stale or partial results are labeled.")
+          Text("Add an Iris widget from the Home Screen widget gallery, then edit it to choose an enabled source. Today uses the selected saved view’s time zone and day boundary. Stale or partial results are labeled.")
             .font(.callout).foregroundStyle(.secondary)
         }
       }

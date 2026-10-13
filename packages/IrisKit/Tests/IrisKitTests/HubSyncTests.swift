@@ -187,6 +187,115 @@ struct HubSyncTests {
     await recreated.close()
   }
 
+  @Test func skippedTablesAreReadOnlyAndAskToDownloadWhenOpened() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let seed = try await NativeWorkspace(path: directory.appendingPathComponent("hub.sqlite").path)
+    try await seed.createSample()
+    try await seed.close()
+    try await HubFixture.state.load(path: directory.appendingPathComponent("hub.sqlite").path)
+    func makeModel() -> WorkspaceModel {
+      WorkspaceModel(
+        localURL: { directory.appendingPathComponent("local.sqlite") },
+        makeTransport: { credentials in
+          let configuration = URLSessionConfiguration.ephemeral
+          configuration.protocolClasses = [HubFixture.self]
+          return try HubTransport(
+            endpoint: credentials.endpoint, token: credentials.token, configuration: configuration)
+        })
+    }
+    let credentials = HubCredentials(
+      endpoint: "https://fixture.invalid", token: "fixture-scoped-token")
+    let model = makeModel()
+    try await model.connect(credentials, remember: false)
+    func visit(_ table: String) async {
+      model.table = table
+      await model.reload()
+    }
+    await visit("notes")
+    #expect(model.downloadPrompt == nil)
+    let original = try #require(model.rows.first?.record)
+    let context = try #require(model.editingContext)
+    _ = try await model.save(
+      ["id": original["id"]!, "title": .string("Queued before the skip")], original: original,
+      context: context)
+    // The table leaves this device's sync while open: it turns read-only, the earlier edit
+    // waits for it, and the notice explains without interrupting with the prompt.
+    try model.saveDownloads(
+      ReplicaPreferences(tables: ["notes": false]), context: #require(model.downloadContext))
+    await model.synchronize()
+    #expect(model.skippedTables.contains("notes"))
+    #expect(!model.canWrite)
+    #expect(model.writeability?.reason?.rule == "not_synced")
+    #expect(model.syncPill.title == "1 waiting for notes to sync")
+    #expect(model.downloadPrompt == nil)
+    #expect(model.partialTableNotice?.hasPrefix("Not synced on this device.") == true)
+    #expect(
+      HubFixture.state.record(table: "notes", id: original["id"]!.text)?["title"]
+        == original["title"])
+    do {
+      _ = try await model.save(
+        ["id": original["id"]!, "title": .string("Refused")], original: nil, context: context)
+      Issue.record("A skipped table accepted an edit")
+    } catch let error as WorkspaceError {
+      #expect(error.violations.first?.rule == "not_synced")
+    }
+
+    // Opening it asks, with its size and suggested setting; Not now asks again next visit.
+    await visit("topics")
+    await visit("notes")
+    let prompt = try #require(model.downloadPrompt)
+    #expect(prompt.detail.table == "notes" && prompt.detail.waitingEdits == 1)
+    #expect(prompt.choices == [.include])
+    model.dismissDownloadPrompt(hide: false)
+    #expect(model.downloadPrompt == nil)
+    await model.reload()
+    #expect(model.downloadPrompt == nil, "One prompt per visit")
+    // Opening the current table again (iPhone's sidebar) is a new visit.
+    let client = try #require(model.client)
+    let resolved = try await NativeDestinationResolver(workspace: client).resolve(
+      NativeDestination(table: "notes"), isCurrent: { true })
+    _ = try model.activateDestination(
+      resolved, workspace: client, generation: model.workspaceGeneration)
+    await model.reload()
+    #expect(model.downloadPrompt != nil)
+    model.dismissDownloadPrompt(hide: false)
+    await visit("topics")
+    await visit("notes")
+    #expect(model.downloadPrompt != nil)
+
+    // Don't show again hides it for this table on this device until Settings brings it back.
+    model.dismissDownloadPrompt(hide: true)
+    #expect(model.hiddenDownloadPrompts == ["notes"])
+    await visit("topics")
+    await visit("notes")
+    #expect(model.downloadPrompt == nil)
+    await model.close()
+    let reopened = makeModel()
+    try await reopened.connect(credentials, remember: false)
+    #expect(reopened.hiddenDownloadPrompts == ["notes"])
+    reopened.showDownloadPrompt(for: "notes")
+    #expect(reopened.hiddenDownloadPrompts.isEmpty)
+    reopened.table = "topics"
+    await reopened.reload()
+    reopened.table = "notes"
+    await reopened.reload()
+    let again = try #require(reopened.downloadPrompt)
+
+    // Approving the suggestion saves it, runs a round and makes the table editable.
+    try await reopened.approveDownload(.include, for: again)
+    #expect(reopened.downloadPrompt == nil)
+    #expect(reopened.downloadPreferences.tables["notes"] == true)
+    #expect(!reopened.skippedTables.contains("notes"))
+    #expect(reopened.canWrite)
+    #expect(reopened.syncStatus?.pendingUiEdits == 0)
+    #expect(
+      HubFixture.state.record(table: "notes", id: original["id"]!.text)?["title"]
+        == .string("Queued before the skip"))
+    await reopened.close()
+  }
+
   @Test func compilerDependenciesPermitUnrelatedSkipsButRequireActualHistoryReads() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -583,7 +692,8 @@ private final class FixtureState: @unchecked Sendable {
         data = .object([
           // Every table asked gets a mark, as the deployed hub answers: core asks for
           // all of its tables, including ones this hub never seeded.
-          "max_hub_at": .string(""), "tables": .object(asked(body).reduce(into: [:]) { $0[$1] = .string("") }),
+          "max_hub_at": .string(""),
+          "tables": .object(asked(body).reduce(into: [:]) { $0[$1] = .string("") }),
           "pull_batch": .object([
             "items": .number(50), "rows": .number(5000), "bytes": .number(4_194_304),
           ]),

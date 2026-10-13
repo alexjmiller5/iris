@@ -9,7 +9,7 @@
 	import { creationOffer } from './reference-create';
 	import OptionChip from './OptionChip.svelte';
 	import { richSelect } from './option-colors';
-	import { isFlag } from './cell-values';
+	import { isFlag, joinLocalTime, splitLocalTime } from './cell-values';
 	let {
 		id,
 		inline = false,
@@ -79,6 +79,9 @@
 	);
 	let query = $state('');
 	const creation = $derived(oncreate && !disabled ? creationOffer(query, references) : null);
+	const localParts = $derived(
+		property.type === 'date_or_datetime' ? splitLocalTime(value ?? '') : null
+	);
 	function change(raw: string) {
 		value = raw;
 		onchange?.(raw);
@@ -353,7 +356,7 @@
 					>{value === '1' || value === 'true' ? 'Yes' : 'No'}</span
 				>{/if}
 		</div>
-	{:else if property.type === 'datetime' || (property.type === 'date_or_datetime' && value.includes('T'))}
+	{:else if property.type === 'datetime'}
 		<input
 			{id}
 			aria-invalid={invalid ? true : undefined}
@@ -366,6 +369,36 @@
 			value={value.replace(/Z$/, '')}
 			onchange={(event) => dateTime(event.currentTarget.value)}
 		/><small>UTC</small>
+	{:else if property.type === 'date_or_datetime' && localParts}
+		<!-- A date with an optional floating time; removing the time returns to date-only. -->
+		<div class="date-time">
+			<input
+				{id}
+				aria-invalid={invalid ? true : undefined}
+				aria-describedby={invalid}
+				aria-label={label}
+				aria-required={!!property.required}
+				type="date"
+				{disabled}
+				value={localParts.date}
+				onchange={(event) => change(joinLocalTime(event.currentTarget.value, localParts.time))}
+			/>
+			<input
+				aria-label={`${label} time`}
+				type="time"
+				disabled={disabled || !localParts.date}
+				value={localParts.time}
+				onchange={(event) => change(joinLocalTime(localParts.date, event.currentTarget.value))}
+			/>
+		</div>
+		{#if localParts.time}
+			<button
+				class="clear"
+				type="button"
+				{disabled}
+				onclick={() => change(joinLocalTime(localParts.date, ''))}>Remove time</button
+			>
+		{/if}
 	{:else}
 		<input
 			{id}
@@ -373,7 +406,7 @@
 			aria-describedby={invalid}
 			aria-label={label}
 			aria-required={!!property.required}
-			type={property.type === 'date' || property.type === 'date_or_datetime'
+			type={property.type === 'date'
 				? 'date'
 				: property.type === 'url'
 					? 'url'
@@ -399,20 +432,6 @@
 				: property.type === 'phone'
 					? 'Call'
 					: 'Open website'}</a
-		>
-	{/if}
-	{#if property.type === 'date_or_datetime'}
-		<label class="boolean"
-			><input
-				type="checkbox"
-				aria-label="Include time"
-				{disabled}
-				checked={value.includes('T')}
-				onchange={(e) => {
-					const day = value.slice(0, 10) || new Date().toISOString().slice(0, 10);
-					change(e.currentTarget.checked ? day + 'T00:00:00.000Z' : day);
-				}}
-			/>Include time</label
 		>
 	{/if}
 
@@ -502,6 +521,11 @@
 	}
 	textarea {
 		resize: vertical;
+	}
+	.date-time {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 8.5em);
+		gap: 6px;
 	}
 	.boolean {
 		display: flex;

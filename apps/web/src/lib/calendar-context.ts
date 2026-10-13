@@ -3,16 +3,8 @@ import type { CalendarContext } from 'iris-core/client';
 /** The zone this device is in now; a view without a saved timezone follows it. */
 export const deviceTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-/** Calendar policy stays in the host. The shared core also runs without Intl. */
-export function calendarContext(
-	timeZone: string | undefined,
-	now: Date = new Date(),
-	dayStartMinutes = 0
-): CalendarContext {
-	timeZone ||= deviceTimeZone();
-	if (!Number.isFinite(now.getTime())) throw new Error('Invalid calendar clock.');
-	if (!Number.isInteger(dayStartMinutes) || dayStartMinutes < 0 || dayStartMinutes >= 1440)
-		throw new Error('Day start must be a whole minute from 00:00 through 23:59.');
+/** Wall-clock `YYYY-MM-DDTHH:MM:SS` of an instant in a zone. */
+function wallClock(timeZone: string) {
 	const formatter = new Intl.DateTimeFormat('en-US', {
 		timeZone,
 		calendar: 'gregory',
@@ -25,11 +17,50 @@ export function calendarContext(
 		second: '2-digit',
 		hourCycle: 'h23'
 	});
-	const civil = (instant: number) => {
+	return (instant: number) => {
 		const parts = formatter.formatToParts(new Date(instant));
 		const part = (type: string) => parts.find((p) => p.type === type)!.value;
 		return `${part('year').padStart(4, '0')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:${part('second')}`;
 	};
+}
+
+const LOCAL_TIME = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/;
+
+/** The instant a floating local time (`YYYY-MM-DDTHH:MM`) names in a zone (default:
+ * this device's), or null for any other value. A time skipped by a clock change
+ * advances to the first valid instant; a repeated time uses its first occurrence. */
+export function localTimeInstant(value: string, timeZone?: string): number | null {
+	if (!LOCAL_TIME.test(value)) return null;
+	const nominal = Date.parse(`${value}:00Z`);
+	if (!Number.isFinite(nominal) || new Date(nominal).toISOString().slice(0, 16) !== value)
+		return null;
+	const civil = wallClock(timeZone || deviceTimeZone());
+	const wall = (instant: number) => Date.parse(`${civil(instant)}Z`);
+	const exact = [nominal - 129600000, nominal + 129600000]
+		.map((instant) => nominal - (wall(instant) - instant))
+		.filter((instant) => wall(instant) === nominal);
+	if (exact.length) return Math.min(...exact);
+	let lo = nominal - 172800000,
+		hi = nominal + 172800000;
+	while (lo < hi) {
+		const mid = Math.floor((lo + hi) / 2);
+		if (wall(mid) < nominal) lo = mid + 1;
+		else hi = mid;
+	}
+	return lo;
+}
+
+/** Calendar policy stays in the host. The shared core also runs without Intl. */
+export function calendarContext(
+	timeZone: string | undefined,
+	now: Date = new Date(),
+	dayStartMinutes = 0
+): CalendarContext {
+	timeZone ||= deviceTimeZone();
+	if (!Number.isFinite(now.getTime())) throw new Error('Invalid calendar clock.');
+	if (!Number.isInteger(dayStartMinutes) || dayStartMinutes < 0 || dayStartMinutes >= 1440)
+		throw new Error('Day start must be a whole minute from 00:00 through 23:59.');
+	const civil = wallClock(timeZone);
 	const day = (instant: number) => civil(instant).slice(0, 10);
 	const wall = (instant: number) => Date.parse(`${civil(instant)}Z`);
 	const nextDate = (label: string) => {
@@ -82,9 +113,16 @@ export function calendarContext(
 	// A midnight fold can return the clock to yesterday after today's first
 	// boundary has already passed. Keep the interval label monotonic.
 	while (now.getTime() >= boundary(nextDate(today))) today = day(midnight(nextDate(today)));
+	const start = boundary(today),
+		end = boundary(nextDate(today));
+	const local = (instant: number) => civil(instant).slice(0, 16);
 	return {
 		today,
-		start: new Date(boundary(today)).toISOString(),
-		end: new Date(boundary(nextDate(today))).toISOString()
+		start: new Date(start).toISOString(),
+		end: new Date(end).toISOString(),
+		now: now.toISOString(),
+		localNow: local(now.getTime()),
+		localStart: local(start),
+		localEnd: local(end)
 	};
 }

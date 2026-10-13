@@ -1,7 +1,7 @@
 import type { CoreArgs, CoreResult, Row } from 'iris-core/client';
 import type { WorkspaceDatabase } from './database';
 
-/** Resolve on the bound service, then obtain values through ordinary replica sync. */
+/** Push pending edits, resolve on the bound service, then obtain values through ordinary replica sync. */
 export async function resolveDerivedRecord(
 	database: WorkspaceDatabase,
 	connection: { endpoint: string; token: string },
@@ -21,6 +21,10 @@ export async function resolveDerivedRecord(
 		original.deleted_at != null
 	)
 		throw new Error('Open a saved, active record before resolving.');
+	// The hub checks the revision shown here, so an edit saved just before (autosave
+	// flushes one) has to reach it first.
+	await database.request('sync', { ...connection, ...download });
+	requireCurrent();
 	const result = await database.request('resolveDerived', {
 		...connection,
 		table,

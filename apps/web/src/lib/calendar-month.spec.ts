@@ -3,16 +3,20 @@ import { calendarMonth } from './calendar-month';
 it('uses real spring and fall civil boundaries', () => {
 	const spring = calendarMonth('2026-03', 'America/New_York');
 	expect(spring).toHaveLength(31);
-	expect(spring[7]).toEqual({
+	expect(spring[7]).toMatchObject({
 		today: '2026-03-08',
 		start: '2026-03-08T05:00:00.000Z',
-		end: '2026-03-09T04:00:00.000Z'
+		end: '2026-03-09T04:00:00.000Z',
+		localStart: '2026-03-08T00:00',
+		localEnd: '2026-03-09T00:00'
 	});
 	const fall = calendarMonth('2026-11', 'America/New_York', 180);
-	expect(fall[0]).toEqual({
+	expect(fall[0]).toMatchObject({
 		today: '2026-11-01',
 		start: '2026-11-01T08:00:00.000Z',
-		end: '2026-11-02T08:00:00.000Z'
+		end: '2026-11-02T08:00:00.000Z',
+		localStart: '2026-11-01T03:00',
+		localEnd: '2026-11-02T03:00'
 	});
 });
 it('selects the requested month in extreme timezones, and skips nonexistent civil dates', () => {

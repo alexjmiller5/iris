@@ -13,6 +13,8 @@ try{
   const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);
   if(!page)throw new Error(`Open dedicated rejection test page: ${url}`);
   page.setDefaultTimeout(10000);
+  // Start on the welcome screen: an earlier run's workspace would reopen by itself.
+  await page.evaluate(()=>localStorage.removeItem('iris:workspace'));
   await page.reload();
   await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
   await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();

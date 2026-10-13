@@ -367,9 +367,14 @@ private struct FilterRuleForm: View {
         .accessibilityIdentifier("filter-operation")
         if needsValue, isDate {
           Toggle("Today", isOn: $filter.today).accessibilityIdentifier("filter-today")
+            .onChange(of: filter.today) { if filter.today { filter.now = false } }
+          if WorkspaceFilter.nowOperations.contains(filter.operation) {
+            Toggle("Now", isOn: $filter.now).accessibilityIdentifier("filter-now")
+              .onChange(of: filter.now) { if filter.now { filter.today = false } }
+          }
         }
       }
-      if needsValue && !filter.today { Section { value } }
+      if needsValue && filter.relative == nil { Section { value } }
       Section {
         Button("Remove filter", role: .destructive, action: remove)
           .accessibilityIdentifier("remove-filter")
@@ -382,6 +387,11 @@ private struct FilterRuleForm: View {
     #endif
     .onChange(of: filter.operation) {
       if !WorkspaceFilter.operations(for: type).contains(filter.operation) { filter.value = "" }
+      // Now compares only before/after; is/is not fall back to Today.
+      if filter.now, !WorkspaceFilter.nowOperations.contains(filter.operation) {
+        filter.now = false
+        filter.today = true
+      }
     }
     .task(id: filter.column) {
       guard ["select", "multi_select"].contains(type), let table = model.table,
@@ -556,7 +566,7 @@ struct FilterGroupEditor: View {
 extension WorkspaceFilter {
   /// Short chip text, e.g. "Status: Draft" or "Due ≤ Today".
   func summary(label: String) -> String {
-    let shown = today ? "Today" : value
+    let shown = now ? "Now" : today ? "Today" : value
     switch operation {
     case .empty: return "\(label) is empty"
     case .notEmpty: return "\(label) is not empty"

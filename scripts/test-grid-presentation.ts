@@ -1,4 +1,5 @@
-// Loading placeholders, blank empty values and column wrapping on the sample workspace.
+// Loading placeholders, reopening the remembered workspace, blank empty values and column
+// wrapping on the sample workspace.
 // Usage: `IRIS_DEV_NO_HMR=1 bun run dev -- --port 5261`, then a disposable Chrome with a
 // fresh --user-data-dir and --remote-debugging-port=9333, then
 //   IRIS_TEST_CDP=http://127.0.0.1:9333 IRIS_TEST_URL=http://127.0.0.1:5261/workspace \
@@ -21,11 +22,25 @@ const shot = async (name: string) => {
 const rows = () => page.locator('[role="grid"] [role="row"][aria-rowindex]');
 const guidance = () => page.getByText("Connect to your hub in the sidebar", { exact: false });
 
-// Held worker replies: the page stays in its loading state until release().
+// Held worker replies: the page stays in its loading state until release(). A hold set in
+// sessionStorage applies from the next page load. Every load also counts the welcome
+// screen's appearances, from the first parsed node on.
 await page.addInitScript(() => {
   const state = window as any;
   state.held = [];
-  state.hold = null;
+  state.hold = sessionStorage.getItem("hold");
+  sessionStorage.removeItem("hold");
+  state.welcome = 0;
+  const look = () => {
+    if ([...document.querySelectorAll("button")].some((b) => b.textContent?.trim() === "Open my workspace"))
+      state.welcome++;
+  };
+  new MutationObserver(look).observe(document, { childList: true, subtree: true });
+  const frame = () => {
+    look();
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
   state.release = () => {
     state.hold = null;
     state.held.splice(0).forEach((deliver: () => void) => deliver());
@@ -149,9 +164,40 @@ try {
       db.close();
     }
   }, view);
-  await page.reload();
-  await sample.click();
-  await expect(rows().first()).toBeVisible();
+  await check("a reload reopens the sample on its placeholders, never the welcome screen", async () => {
+    // Every painted frame of the reload, kept as evidence.
+    const cdp = await context.newCDPSession(page);
+    const frames: Buffer[] = [];
+    cdp.on("Page.screencastFrame", ({ data, sessionId }) => {
+      frames.push(Buffer.from(data, "base64"));
+      void cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
+    });
+    await cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, everyNthFrame: 1 });
+    await page.evaluate(() => sessionStorage.setItem("hold", "snapshot"));
+    await page.reload();
+    await held();
+    await expect(page.locator('[aria-busy="true"]', { hasText: "Loading tables" })).toBeVisible();
+    await expect(page.locator('[aria-busy="true"]', { hasText: "Opening workspace" })).toBeVisible();
+    await expect(page.locator(".workspace-label")).toContainText("Sample workspace");
+    await shot("05-reopening-placeholders");
+    // Leaving while it reopens loses nothing, so the browser never asks first.
+    let prompts = 0;
+    const prompted = (dialog: { accept(): Promise<void> }) => {
+      prompts++;
+      void dialog.accept();
+    };
+    page.on("dialog", prompted);
+    await page.reload();
+    page.off("dialog", prompted);
+    expect(prompts).toBe(0);
+    await expect(rows().first()).toBeVisible();
+    await cdp.send("Page.stopScreencast");
+    await cdp.detach();
+    if (shots)
+      await Promise.all(frames.map((f, i) => Bun.write(`${shots}/reopen-frames/${String(i).padStart(3, "0")}.jpg`, f)));
+    expect(frames.length).toBeGreaterThan(0);
+    expect(await page.evaluate(() => (window as any).welcome)).toBe(0);
+  });
 
   await check("a table's rows show grid placeholders until they load", async () => {
     const views = page
@@ -212,6 +258,35 @@ try {
     await all.uncheck();
     await expect.poll(async () => (await saved(view))?.wrap).toBeUndefined();
     await page.getByText("Columns", { exact: true }).click();
+  });
+
+  await check("Switch workspace forgets it: the next visit shows the welcome screen", async () => {
+    await page.getByRole("button", { name: "Switch workspace", exact: true }).click();
+    await expect(sample).toBeEnabled();
+    await page.reload();
+    await expect(sample).toBeEnabled();
+    await expect(rows()).toHaveCount(0);
+  });
+
+  await check("a remembered workspace that is gone shows the welcome screen with why", async () => {
+    await sample.click();
+    await expect(rows().first()).toBeVisible();
+    await page.waitForFunction(() => localStorage.getItem("iris:workspace") === "sample");
+    // A page on the origin that opens no workspace, so nothing holds the database files.
+    await page.goto(new URL("/favicon.svg", url).href);
+    await page.evaluate(async () => {
+      const root = await navigator.storage.getDirectory();
+      for (const name of ["iris-demo", "iris-demo-journal", "iris-demo-wal"])
+        await root.removeEntry(name).catch(() => {});
+    });
+    await page.goto(url);
+    await expect(page.getByRole("alert")).toContainText("no longer stored");
+    await expect(sample).toBeEnabled();
+    await shot("06-remembered-workspace-gone");
+    expect(await page.evaluate(() => (window as any).welcome)).toBeGreaterThan(0);
+    // Opening it again starts a fresh sample.
+    await sample.click();
+    await expect(rows().first()).toBeVisible();
   });
 } finally {
   await page.close();

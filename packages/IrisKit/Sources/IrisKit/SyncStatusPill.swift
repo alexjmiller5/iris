@@ -20,7 +20,7 @@ enum SyncFailure: Equatable {
 /// The one sync summary every surface shows (sidebar, toolbar, menu bar).
 struct SyncPill: Equatable {
   enum Kind: Equatable {
-    case synced, syncing, pending, offline, rejected, paused, failed, cli, local, indexing
+    case synced, syncing, pending, waiting, offline, rejected, paused, failed, cli, local, indexing
   }
   let kind: Kind
   let title: String
@@ -60,11 +60,21 @@ struct SyncPill: Equatable {
     if failure == .other {
       return SyncPill(kind: .failed, title: "Sync issue", symbol: "exclamationmark.icloud")
     }
-    if syncing && (pending > 0 || movedRows > 0 || status?.lastSuccessfulSync == nil) {
+    // Edits in a table this device skips wait for it to sync again; they are not uploading.
+    let waiting = (status?.skippedDetails ?? []).filter { $0.waitingEdits > 0 }
+    let held = waiting.reduce(0) { $0 + $1.waitingEdits }
+    let uploading = pending - held
+    if syncing && (uploading > 0 || movedRows > 0 || status?.lastSuccessfulSync == nil) {
       return SyncPill(kind: .syncing, title: "Syncing", symbol: "arrow.triangle.2.circlepath")
     }
-    if pending > 0 {
-      return SyncPill(kind: .pending, title: "\(pending) pending", symbol: "clock")
+    if uploading > 0 {
+      return SyncPill(kind: .pending, title: "\(uploading) pending", symbol: "clock")
+    }
+    if held > 0 {
+      let names = waiting.count == 1 ? waiting[0].table : "\(waiting.count) tables"
+      return SyncPill(
+        kind: .waiting, title: "\(held) waiting for \(names) to sync", symbol: "icloud.and.arrow.up"
+      )
     }
     if let indexed { return indexed }
     switch liveness {
@@ -72,7 +82,8 @@ struct SyncPill: Equatable {
     case .reconnecting:
       return SyncPill(kind: .synced, title: "Reconnecting", symbol: "arrow.clockwise.icloud")
     case .minute:
-      return SyncPill(kind: .synced, title: "Checking every minute", symbol: "clock.arrow.circlepath")
+      return SyncPill(
+        kind: .synced, title: "Checking every minute", symbol: "clock.arrow.circlepath")
     case nil: return SyncPill(kind: .synced, title: "Synced", symbol: "checkmark.icloud")
     }
   }
@@ -85,6 +96,17 @@ func networkReachability() -> AsyncStream<Bool> {
     monitor.pathUpdateHandler = { continuation.yield($0.status == .satisfied) }
     continuation.onTermination = { _ in monitor.cancel() }
     monitor.start(queue: DispatchQueue(label: "iris.network-path"))
+  }
+}
+
+/// The workspace's pill. Sync progress and search indexing move it many times a second;
+/// reading them in this body redraws only the pill, not the workspace and its rows.
+struct WorkspaceSyncPill: View {
+  let model: WorkspaceModel
+  let action: (SyncPill.Kind) -> Void
+
+  var body: some View {
+    SyncStatusPill(pill: model.syncPill) { action(model.syncPill.kind) }
   }
 }
 
@@ -123,7 +145,7 @@ struct SyncStatusPill: View {
   private var tint: Color {
     switch pill.kind {
     case .rejected, .failed: .red
-    case .offline, .paused, .pending: .orange
+    case .offline, .paused, .pending, .waiting: .orange
     case .synced, .syncing, .cli, .local, .indexing: .secondary
     }
   }
