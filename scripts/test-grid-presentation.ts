@@ -180,7 +180,16 @@ try {
     await expect(page.locator('[aria-busy="true"]', { hasText: "Opening workspace" })).toBeVisible();
     await expect(page.locator(".workspace-label")).toContainText("Sample workspace");
     await shot("05-reopening-placeholders");
-    await release();
+    // Leaving while it reopens loses nothing, so the browser never asks first.
+    let prompts = 0;
+    const prompted = (dialog: { accept(): Promise<void> }) => {
+      prompts++;
+      void dialog.accept();
+    };
+    page.on("dialog", prompted);
+    await page.reload();
+    page.off("dialog", prompted);
+    expect(prompts).toBe(0);
     await expect(rows().first()).toBeVisible();
     await cdp.send("Page.stopScreencast");
     await cdp.detach();
@@ -262,6 +271,7 @@ try {
   await check("a remembered workspace that is gone shows the welcome screen with why", async () => {
     await sample.click();
     await expect(rows().first()).toBeVisible();
+    await page.waitForFunction(() => localStorage.getItem("iris:workspace") === "sample");
     // A page on the origin that opens no workspace, so nothing holds the database files.
     await page.goto(new URL("/favicon.svg", url).href);
     await page.evaluate(async () => {

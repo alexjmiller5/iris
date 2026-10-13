@@ -510,7 +510,9 @@ browser last opened (localStorage `iris:workspace`: `mine` or `sample`) and reop
 next visit straight to the shell (`restoring`), honoring the URL's table/view/row. The reopen
 passes `existing` to the worker's `open`, which refuses a database no longer in OPFS; the welcome
 screen appears only when nothing is remembered or the reopen failed, with its error. Switch
-workspace forgets it. Pages render in the browser only (`ssr = false` in `routes/+layout.ts`),
+workspace forgets it; a workspace is remembered as soon as it is open. Leaving the page while a
+workspace opens never prompts (`beforeNavigate` skips its busy guard for `leave`); unsaved edits
+still do. Pages render in the browser only (`ssr = false` in `routes/+layout.ts`),
 so no server-rendered welcome frame precedes the reopen. A hub-connected workspace reopens its
 local replica offline: tokens are session-only, so the pill reads Not connected and Connect to
 a hub takes the token again. The web shell shows placeholders until the

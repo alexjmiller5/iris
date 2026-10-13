@@ -452,7 +452,9 @@
 	}
 	beforeNavigate((navigation) => {
 		if (navigation.to?.url.href === reflectingURL) return;
-		if ((opened && busy) || !discard()) {
+		// Leaving the page while a workspace opens or reopens loses nothing; unsaved
+		// edits still ask through onbeforeunload and discard().
+		if ((opened && busy && navigation.type !== 'leave') || !discard()) {
 			navigation.cancel();
 			return;
 		}
@@ -1665,6 +1667,13 @@
 			table = '';
 			opened = true;
 			editing = false;
+			// Remembered once open; a Switch workspace during the open keeps it forgotten.
+			if (database === pinWorkspace)
+				try {
+					localStorage.setItem('iris:workspace', sample ? 'sample' : 'mine');
+				} catch {
+					/* The next visit starts on the welcome screen. */
+				}
 			await refresh();
 			workspaceReady = true;
 			database.addEventListener('change', () => {
@@ -1680,13 +1689,6 @@
 				await reflectLocation(true);
 				recordRecent();
 			}
-			// A Switch workspace while this open was finishing keeps it forgotten.
-			if (database === pinWorkspace)
-				try {
-					localStorage.setItem('iris:workspace', sample ? 'sample' : 'mine');
-				} catch {
-					/* The next visit starts on the welcome screen. */
-				}
 		} catch (e) {
 			error = message(e);
 			opened = false;
