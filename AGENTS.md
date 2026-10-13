@@ -512,8 +512,9 @@ passes `existing` to the worker's `open`, which refuses a database no longer in 
 screen appears only when nothing is remembered or the reopen failed, with its error. Switch
 workspace forgets it; a workspace is remembered as soon as it is open. Leaving the page while a
 workspace opens never prompts (`beforeNavigate` skips its busy guard for `leave`); unsaved edits
-still do. Pages render in the browser only (`ssr = false` in `routes/+layout.ts`),
-so no server-rendered welcome frame precedes the reopen. A hub-connected workspace reopens its
+still do. Pages render in the browser only (`ssr = false` in `routes/+layout.ts`; `app.html`
+carries a static title until a route sets its own), so no server-rendered welcome frame
+precedes the reopen. A hub-connected workspace reopens its
 local replica offline: tokens are session-only, so the pill reads Not connected and Connect to
 a hub takes the token again. The web shell shows placeholders until the
 opened workspace's first catalog read (`workspaceReady`) and a page's first rows read
