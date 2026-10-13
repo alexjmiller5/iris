@@ -59,6 +59,7 @@ try {
     page.getByRole("button", { name: "Draft", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Draft", exact: true }).click();
+  await expect(page.locator("[data-cell-editor]")).toHaveCount(0);
   await title.click();
   await page
     .getByRole("textbox", { name: "Title", exact: true })
