@@ -1,3 +1,4 @@
+import Observation
 import Testing
 
 @testable import IrisKit
@@ -15,6 +16,56 @@ struct WorkspaceModelTests {
     await #expect(throws: WorkspaceError.self) {
       try await model.save(["title": .string("Unsaved")], original: nil, context: context)
     }
+  }
+
+  @Test func catalogDerivedFieldsFollowTheCatalogAndTable() async throws {
+    let model = WorkspaceModel()
+    await model.open(demo: true)
+    func columns() -> [String] { model.properties.compactMap { $0["col"]?.text } }
+    func expected() -> Set<String> {
+      Set(
+        (model.catalog?.properties ?? []).filter { $0["tbl"]?.text == model.table }
+          .compactMap { $0["col"]?.text })
+    }
+    #expect(!columns().isEmpty && Set(columns()) == expected())
+    final class Changed: @unchecked Sendable { var value = false }
+    // Views reading derived fields still observe the table and catalog behind them.
+    let table = Changed()
+    withObservationTracking {
+      _ = model.properties
+    } onChange: {
+      table.value = true
+    }
+    model.table = "history"
+    #expect(table.value)
+    #expect(Set(columns()) == expected())
+    let catalog = try #require(model.catalog)
+    let edited = Changed()
+    withObservationTracking {
+      _ = model.properties
+    } onChange: {
+      edited.value = true
+    }
+    model.catalog = try WorkspaceCatalog(
+      CoreCatalog(tables: catalog.tables, properties: [], rules: catalog.rules))
+    #expect(edited.value)
+    #expect(columns().isEmpty && !model.canWrite)
+    // A wide replica: every row and column header reads these per render.
+    let tables = (0..<40).map { index -> WorkspaceRecord in
+      ["id": .string("t\(index)"), "display": .string("c\(index)"), "readOnly": .bool(false)]
+    }
+    let properties = (0..<1_302).map { index in
+      CoreProperty(tbl: "t\(index % 40)", col: "c\(index)", sort: .value(Double(index % 7)))
+    }
+    model.catalog = try WorkspaceCatalog(
+      CoreCatalog(tables: tables, properties: properties, rules: []))
+    model.table = "t3"
+    let clock = ContinuousClock()
+    let started = clock.now
+    for _ in 0..<1_000 { _ = model.titleProperty }
+    print("catalogDerived properties=1302 titleProperty_x1000=\(started.duration(to: clock.now))")
+    #expect(model.titleProperty?.id == "c3")
+    await model.close()
   }
 
   @Test func editorCannotWriteToAnotherWorkspaceWithTheSameTable() async throws {

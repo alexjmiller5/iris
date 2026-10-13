@@ -261,6 +261,7 @@ final class WorkspaceModel {
   }
   var catalog: WorkspaceCatalog? {
     didSet {
+      catalogRevision += 1
       if !recordExportCatalogsMatch(oldValue, catalog) {
         exportCatalogRevision += 1
         widgets?.scheduleRefresh(partial: isReplica)
@@ -937,8 +938,21 @@ final class WorkspaceModel {
     tables.first { $0["id"]?.text == table }?["display"]?.text.nonempty ?? "id"
   }
   var tables: [WorkspaceRecord] { catalog?.tables ?? [] }
+  @ObservationIgnored private var catalogRevision = 0
+  @ObservationIgnored private var cachedProperties:
+    (catalog: Int, table: Data?, properties: [WorkspaceRecord])?
+  /// Read per row and column header: filtered and sorted once per catalog and table.
   var properties: [WorkspaceRecord] {
-    Self.properties(in: catalog, table: table)
+    // Reading both observed values keeps views tracking them on a cached answer too.
+    let catalog = catalog
+    let table = table
+    let key = table.map { Data($0.utf8) }
+    if let cached = cachedProperties, cached.catalog == catalogRevision, cached.table == key {
+      return cached.properties
+    }
+    let properties = Self.properties(in: catalog, table: table)
+    cachedProperties = (catalogRevision, key, properties)
+    return properties
   }
   private static func properties(in catalog: WorkspaceCatalog?, table: String?) -> [WorkspaceRecord]
   {
