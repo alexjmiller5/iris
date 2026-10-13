@@ -177,10 +177,10 @@ jobs:
           done
           bash scripts/test-quick-add-ios.sh apps/ios/Iris.xcodeproj \
             "$RUNNER_TEMP/catalog-ios-derived" "$simulator" "$RUNNER_TEMP"
-          # Due times: the hosted fixture seeds a mixed date and proves the system
-          # center keeps a scheduled alert, then the Add time toggle and alert settings.
+          # Due times: the hosted fixture seeds a mixed date and a Now view, then the
+          # Add time toggle and the due-time alert settings (scheduling needs permission).
           export TEST_RUNNER_IRIS_TEST_DUE_TIME_SIMULATOR="$simulator"
-          for run in "due-seed IrisTests/DueTimeUIFixtureTests 2" \
+          for run in "due-seed IrisTests/DueTimeUIFixtureTests 1" \
             "due-ui IrisUITests/DueTimeUITests/testAddTimeToggleAndDueTimeAlertSettings 1"; do
             read -r name only expected <<<"$run"
             xcodebuild -project apps/ios/Iris.xcodeproj -scheme Iris \

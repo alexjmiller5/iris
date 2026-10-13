@@ -4,8 +4,9 @@ import Testing
 @testable import IrisKit
 
 /// Seeds the app's own local workspace on one explicit simulator for `DueTimeUITests`:
-/// a `due` mixed date on notes, a fixture note due today and a "Due today" view. The
-/// hosted run also proves the system notification center keeps a scheduled due alert.
+/// a `due` mixed date on notes, a fixture note due today and a "Due today" Now view.
+/// Plain SQL, like the other UI fixtures, so rules another fixture enforced on this
+/// simulator's workspace cannot refuse the seed.
 @MainActor
 struct DueTimeUIFixtureTests {
   #if targetEnvironment(simulator)
@@ -19,52 +20,25 @@ struct DueTimeUIFixtureTests {
       try await model.forgetConnection()
       await model.open()
       await model.close()
-      let workspace = try await NativeWorkspace(path: WorkspaceModel.localURL().path)
-      do {
-        let catalog = try await workspace.catalog()
-        if !catalog.properties.contains(where: { $0["id"]?.text == "notes.due" }) {
-          _ = try await workspace.saveCatalogProperty(
-            CoreSaveCatalogPropertyArgs(
-              table: "notes", column: "due", expectedUpdatedAt: nil,
-              fields: ["label": .string("Due"), "type": .string("date_or_datetime")],
-              addColumn: true))
-        }
-        let today = NativeDateValue.currentValue(at: Date(), kind: .date)
-        _ = try await workspace.write(
-          table: "notes",
-          patch: ["title": .string("Due fixture note"), "due": .string(today)])
-        if !(try await workspace.listViews(table: "notes")).views.contains(where: {
-          $0.name == "Due today"
-        }) {
-          _ = try await workspace.saveView(
-            CoreSaveViewArgs(
-              table: "notes", name: "Due today",
-              definition: CoreSavedViewDefinition(
-                version: 2, filters: [CoreFilter(column: "due", op: .lte, relative: .now)])))
-        }
-      } catch {
-        try? await workspace.close()
-        throw error
-      }
+      let runtime = try await IrisCoreRuntime.onCore()
+      let workspace = try await NativeWorkspace(
+        path: WorkspaceModel.localURL().path, runtime: runtime)
+      let today = NativeDateValue.currentValue(at: Date(), kind: .date)
+      let definition = String(
+        decoding: try JSONEncoder().encode(
+          CoreSavedViewDefinition(
+            version: 2, filters: [CoreFilter(column: "due", op: .lte, relative: .now)])),
+        as: UTF8.self)
+      await runtime.evaluateOnCore(
+        """
+        if (!IrisSql.all("SELECT 1 FROM pragma_table_info('notes') WHERE name='due'").length)
+          IrisSql.run('ALTER TABLE notes ADD COLUMN due TEXT');
+        IrisSql.run("INSERT OR REPLACE INTO catalog_properties(id,tbl,col,label,type,sort) VALUES ('notes.due','notes','due','Due','date_or_datetime',5)");
+        IrisSql.run("INSERT OR REPLACE INTO notes(id,title,due) VALUES ('due-fixture-note','Due fixture note',?)", [\(String(reflecting: today))]);
+        IrisSql.run("INSERT OR REPLACE INTO views(id,name,tbl,definition) VALUES ('due-fixture-view','Due today','notes',?)", [\(String(reflecting: definition))]);
+        """)
+      try #require(runtime.context.exception == nil)
       try await workspace.close()
-    }
-
-    @Test(
-      .enabled(
-        if: ProcessInfo.processInfo.environment["IRIS_TEST_DUE_TIME_SIMULATOR"] != nil))
-    func systemCenterKeepsAScheduledDueAlert() async throws {
-      let center = SystemDueAlertCenter()
-      let request = DueAlertRequest(
-        identifier: "iris.due.fixture." + UUID().uuidString, title: "Fixture alert",
-        body: "Due", link: try #require(URL(string: "iris://open/v1?fixture")),
-        at: Date().addingTimeInterval(3600), floating: true)
-      try await center.add(request)
-      #expect(await center.pendingIdentifiers().contains(request.identifier))
-      center.remove([request.identifier])
-      for _ in 0..<50 where await center.pendingIdentifiers().contains(request.identifier) {
-        try await Task.sleep(for: .milliseconds(100))
-      }
-      #expect(!(await center.pendingIdentifiers().contains(request.identifier)))
     }
   #endif
 }
