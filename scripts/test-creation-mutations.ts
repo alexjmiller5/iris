@@ -6,7 +6,8 @@ if(browser)disposableOrigin(process.env.IRIS_TEST_URL??'http://iris-creation.loc
 const grid='apps/web/src/lib/record-grid.ts',page='apps/web/src/routes/workspace/+page.svelte',prepare='apps/web/src/lib/record-duplicate.ts';
 // Run after formatting; exact matches refuse to silently skip a mutation.
 const mutants: [string,string,string,string,string?][]=browser?[
- ['empty-intent-not-dirty',page,'explicitCreation.size > 0 || copiedCreation !== null','false','same-empty'],
+ // An explicit clear on a new record is creation input: autosave sends it, the record refuses it, Close asks.
+ ['clear-not-creation-input',page,'if (focusedField === p.col) typedInFocus = true;\n\t\t\t\t\t\t\t\t\t\t\tif (!selected) explicitCreation = new Set([...explicitCreation, p.col]);','if (focusedField === p.col) typedInFocus = true;','same-empty'],
  ['discard-before-read',page,'const prepared = await prepareDuplicate','if (!discard()) return false;\n\t\t\tconst prepared = await prepareDuplicate','failed permission'],
  ['stale-error-published',page,'if (current()) error = message(e);','error = message(e);','superseded'],
 ]:[
