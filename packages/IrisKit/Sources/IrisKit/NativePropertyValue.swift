@@ -125,22 +125,45 @@ struct NativePropertyValue: View {
       ].map { Data($0.utf8) }, workspace: workspace.map(ObjectIdentifier.init))
   }
 
+  /// A cell's text without a read: empty and invalid values, or labels already shown.
+  @MainActor static func cachedReferenceLabels(
+    field: CatalogField, value: String, workspace: NativeWorkspace
+  ) -> String? {
+    let (targets, text) = referenceTargets(field: field, value: value)
+    guard let targets else { return text }
+    return workspace.cachedReferenceLabels(targets).map { labelText(targets, $0) }
+  }
+
   /// Live labels for one cell's references, read with the other cells rendered alongside.
   @MainActor static func referenceLabels(
     field: CatalogField, value: String, workspace: NativeWorkspace
   ) async -> String {
-    guard !value.isEmpty else { return "" }
+    let (targets, text) = referenceTargets(field: field, value: value)
+    guard let targets else { return text }
+    let labels = (try? await workspace.referenceLabels(targets)) ?? []
+    guard !Task.isCancelled else { return "Unavailable" }
+    return labelText(targets, labels)
+  }
+
+  /// The targets a value names, or nil and the text of a value with none to read.
+  private static func referenceTargets(field: CatalogField, value: String)
+    -> (targets: [CoreRecordTarget]?, text: String)
+  {
+    guard !value.isEmpty else { return (nil, "") }
     guard let table = field.property["ref_table"]?.text.nonempty,
       let selection = try? ReferenceSelection(value: value, multiple: field.type == "multi_ref")
-    else { return "Unavailable" }
-    guard !selection.ids.isEmpty else { return "" }
-    let labels =
-      (try? await workspace.referenceLabels(
-        selection.ids.map { CoreRecordTarget(table: table, id: $0) })) ?? []
-    guard !Task.isCancelled else { return "Unavailable" }
-    // Trashed and missing targets read as unavailable, as in the reference picker.
-    return selection.ids.map { id in
-      labels.first { Data($0.id.utf8) == Data(id.utf8) && !$0.trashed }?.label ?? "Unavailable"
+    else { return (nil, "Unavailable") }
+    guard !selection.ids.isEmpty else { return (nil, "") }
+    return (selection.ids.map { CoreRecordTarget(table: table, id: $0) }, "")
+  }
+
+  /// Trashed and missing targets read as unavailable, as in the reference picker.
+  private static func labelText(_ targets: [CoreRecordTarget], _ labels: [CoreMentionLabel])
+    -> String
+  {
+    targets.map { target in
+      labels.first { Data($0.id.utf8) == Data(target.id.utf8) && !$0.trashed }?.label
+        ?? "Unavailable"
     }.joined(separator: ", ")
   }
 
@@ -150,6 +173,17 @@ struct NativePropertyValue: View {
     let workspace: NativeWorkspace?
     @State private var resolved: String?
     @State private var request: UUID?
+
+    init(field: CatalogField, value: String, workspace: NativeWorkspace?) {
+      self.field = field
+      self.value = value
+      self.workspace = workspace
+      // A cell scrolled back into view shows its label at once, so its height never jumps.
+      _resolved = State(
+        initialValue: workspace.flatMap {
+          NativePropertyValue.cachedReferenceLabels(field: field, value: value, workspace: $0)
+        })
+    }
 
     var body: some View {
       Group {
@@ -170,10 +204,6 @@ struct NativePropertyValue: View {
           field: field, value: value, workspace: workspace)
         guard request == ticket, !Task.isCancelled else { return }
         resolved = label
-      }
-      .onDisappear {
-        request = nil
-        resolved = nil
       }
     }
   }

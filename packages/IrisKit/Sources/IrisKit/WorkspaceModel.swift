@@ -1850,7 +1850,11 @@ final class WorkspaceModel {
       && loadedRowsContext == currentRowsContext
     // A failed next page may retry its valid prefix. A full refresh (including
     // post-write reconciliation) invalidates that prefix before awaiting anything.
-    if !append { loadedRowsContext = nil }
+    if !append {
+      loadedRowsContext = nil
+      // Every data change ends here, so shown reference labels are read again.
+      client?.clearReferenceLabelCache()
+    }
     revision += 1
     guard let client, let table else {
       rows = []
