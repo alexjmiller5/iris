@@ -55,7 +55,7 @@ try {
   page.setDefaultTimeout(15000);
   await page.bringToFront();
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto(new URL("/", url).href);
+  await page.goto("about:blank");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await cdp.detach();
@@ -258,7 +258,7 @@ try {
   throw error;
 } finally {
   if (ownedPage) {
-    await ownedPage.goto(new URL("/", url).href).catch(() => {});
+    await ownedPage.goto("about:blank").catch(() => {});
     const cleanup = await ownedPage.context().newCDPSession(ownedPage).catch(() => null);
     await cleanup?.send("Storage.clearDataForOrigin", { origin, storageTypes: "all" }).catch(() => {});
     await cleanup?.detach().catch(() => {});

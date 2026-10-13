@@ -61,7 +61,7 @@ try {
     cdp.until(`(${field(column)})?.value===${js(expected)}`);
   const bodyHas = (text: string) =>
     cdp.until(`document.body.innerText.includes(${js(text)})`);
-  await cdp.navigate(new URL("/", url).href);
+  await cdp.navigate("about:blank");
   await cdp.command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",
@@ -142,7 +142,7 @@ try {
   throw failure;
 } finally {
   if (page) {
-    await page.navigate(new URL("/", url).href).catch(() => {});
+    await page.navigate("about:blank").catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
       .catch(() => {});

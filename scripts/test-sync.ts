@@ -10,7 +10,9 @@ try{
   if(!page)throw new Error(`Open this dedicated test page first: ${url}`);
   // The record panel overlays the records below desktop widths.
   await page.setViewportSize({width:1440,height:1000});
-  // A plain workspace URL: an earlier run's record link would reopen that record.
+  // A plain workspace URL on the welcome screen: an earlier run's workspace and
+  // record link would reopen by themselves.
+  await page.evaluate(()=>localStorage.removeItem('iris:workspace'));
   await page.goto(url);
   await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
   await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
@@ -56,8 +58,8 @@ try{
   await expect(page.locator('.record-panel form')).not.toHaveAttribute('inert','');
   await page.getByRole('textbox',{name:'Title',exact:true}).fill(renamed);
   page.once('dialog',dialog=>dialog.accept());
+  // The workspace reopens by itself on the record; the session-only token connects it again.
   await page.reload();
-  await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
   await page.getByText('Connect to a hub',{exact:true}).click();await page.getByText('Use a device token', {exact:true}).click();
   await page.getByLabel('Hub address').fill(hub);
   await page.getByLabel('Device token').fill('fixture');

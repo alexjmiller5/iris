@@ -77,9 +77,9 @@ try {
 	const editor = page.getByRole('dialog', { name: 'Edit filter', exact: true });
 	const shown = (count: number) => page.getByText(`${count} ${count === 1 ? 'record' : 'records'} shown`, { exact: true });
 	async function reopen() {
+		// The workspace reopens by itself.
 		await page.reload();
-		await page.getByRole('button', { name: 'Open my workspace', exact: true }).click({ timeout: 30000 });
-		await expect(page.getByRole('heading', { name: 'widgets', exact: true })).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'widgets', exact: true })).toBeVisible({ timeout: 30000 });
 		await expect(page.getByLabel('View', { exact: true })).not.toHaveValue('');
 		const close = page.getByRole('button', { name: 'Close record', exact: true });
 		if (await close.count()) await close.click();

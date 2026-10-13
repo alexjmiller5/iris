@@ -170,7 +170,7 @@ try {
     await cdp.navigate(new URL(path, url).href);
     await enter();
   };
-  await cdp.navigate(new URL("/", url).href);
+  await cdp.navigate("about:blank");
   await cdp.command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await cdp.navigate(url);
   await enter();
@@ -242,7 +242,7 @@ try {
   throw error;
 } finally {
   if (page) {
-    await page.navigate(new URL("/", url).href).catch(() => {});
+    await page.navigate("about:blank").catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
       .catch(() => {});

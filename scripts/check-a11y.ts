@@ -161,13 +161,8 @@ async function sampleWalk(page: Page, scheme: string) {
       db.close();
     }
   });
+  // The sample reopens by itself on the reloaded table and view.
   await page.reload();
-  await sample.waitFor();
-  await page.waitForFunction(() =>
-    [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("Try sample workspace") && !b.disabled),
-  );
-  await tabTo(sample);
-  await page.keyboard.press("Enter");
   await grid.waitFor({ timeout: 120_000 });
   await page.waitForURL(/[?&]view=/);
 

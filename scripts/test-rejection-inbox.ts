@@ -94,7 +94,7 @@ async function probe(method: string, args: object = {}) {
 try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await leave();
-  await page.goto(new URL("/", url).href);
+  await page.goto("about:blank");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await cdp.detach();

@@ -24,7 +24,7 @@ try {
 		if (!missingFeed) browserErrors.push(`${location}: ${message.text()}`);
 	});
 	page.on('dialog', dialog => dialog.accept());
-	await page.goto(new URL('/', url).href);
+	await page.goto('about:blank');
 	const cdp = await page.context().newCDPSession(page);
 	await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'all' });
 	await cdp.detach();
@@ -142,8 +142,8 @@ try {
 	// worker fetch interception can outlive removal of a Playwright route.
 	hub.db.query('UPDATE catalog_properties SET options_sql=? WHERE id=?').run("SELECT 'Dynamic' AS value", 'widgets.tags');
 	await page.evaluate(() => (window as any).sqlProbe.close());
+	// The workspace reopens by itself, offline until it connects again.
 	await page.reload();
-	await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
 	await page.getByText('Connect to a hub', { exact: true }).click();await page.getByText('Use a device token', {exact:true}).click();
 	await page.getByLabel('Hub address').fill(server.url.href.replace(/\/$/, ''));
 	await page.getByLabel('Device token').fill('fixture');

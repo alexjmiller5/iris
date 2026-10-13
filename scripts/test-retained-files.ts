@@ -108,7 +108,7 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await navigate(new URL("/", url).href);
+  await navigate("about:blank");
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   // Observe the application's actual download anchor and resolved Blob, avoiding
   // OS download settings or files outside this disposable fixture.
@@ -253,7 +253,7 @@ try {
     await command("Page.removeScriptToEvaluateOnNewDocument", {
       identifier: initScript,
     });
-  await navigate(new URL("/", url).href).catch(() => {});
+  await navigate("about:blank").catch(() => {});
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   cdp.close();
   server.stop(true);

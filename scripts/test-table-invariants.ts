@@ -83,7 +83,7 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await cdp.navigate(new URL("/", url).href);
+  await cdp.navigate("about:blank");
   await cdp.command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",
@@ -315,8 +315,8 @@ try {
     await bodyHas("hub HTTP 503");
     await enabled("New record", true);
     expect(await stored()).toEqual(certified);
+    // The workspace reopens by itself, offline until it connects again.
     await cdp.navigate(url);
-    await click("Open my workspace");
     await enabled("New record", true);
     await openFixture();
     await value("quantity", "44");
@@ -384,7 +384,7 @@ try {
   }
 } finally {
   if (page) {
-    await page.navigate(new URL("/", url).href).catch(() => {});
+    await page.navigate("about:blank").catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
       .catch(() => {});

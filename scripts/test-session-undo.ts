@@ -357,10 +357,8 @@ try {
     async () => {
       const observer = await page.context().newPage();
       try {
+        // The second tab reopens the remembered workspace by itself.
         await observer.goto(url + "&observer=undo");
-        await observer
-          .getByRole("button", { name: "Open my workspace", exact: true })
-          .click({ timeout: 30000 });
         const observed = observer
           .getByRole("row")
           .filter({
@@ -425,10 +423,9 @@ try {
       await expect(quantity()).toHaveValue("42");
       await setQuantity("43");
       await close();
+      // The workspace reopens by itself with an empty Undo stack.
       await page.reload();
-      await page
-        .getByRole("button", { name: "Open my workspace", exact: true })
-        .click();
+      await expect(page.getByRole("heading", { name: "widgets", exact: true })).toBeVisible({ timeout: 30000 });
       await expect(undo()).toBeDisabled();
     },
   );

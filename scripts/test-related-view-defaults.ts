@@ -109,7 +109,7 @@ try {
   };
   const waitSelected = (id: string) =>
     cdp.until(`(${select})?.value===${js(id)}`);
-  await cdp.navigate(new URL("/", url).href);
+  await cdp.navigate("about:blank");
   await cdp.command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",
@@ -168,10 +168,10 @@ try {
       )
       .get()?.view_id,
   ).toBe("preferred-opaque");
+  // The workspace reopens by itself on the link's destination.
   await cdp.navigate(
     new URL("/workspace?table=widgets&row=second-record", url).href,
   );
-  await click("Open my workspace");
   const group = element('details[aria-label="widgets / Parent"]');
   await cdp.until(`!!(${group})`);
   await cdp.click(named("summary", "widgets / Parent"));
@@ -185,7 +185,6 @@ try {
     "document.querySelector('fieldset.workspace-controls')?.disabled===false",
   );
   await cdp.navigate(new URL("/workspace?table=widgets", url).href);
-  await click("Open my workspace");
   await waitSelected("preferred-opaque");
   await cdp.until(
     '!!document.querySelector(\'[aria-label="Records"] [data-row="fixture-record"]\')',
@@ -204,7 +203,7 @@ try {
   throw error;
 } finally {
   if (page) {
-    await page.navigate(new URL("/", url).href).catch(() => {});
+    await page.navigate("about:blank").catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
       .catch(() => {});

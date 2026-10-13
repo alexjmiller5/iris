@@ -34,7 +34,7 @@ try {
   page.setDefaultTimeout(10000);
   await page.setViewportSize({width:1440,height:1000});
   page.on('dialog',dialog=>dialog.accept());
-  await page.goto(new URL('/',url).href);
+  await page.goto('about:blank');
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Storage.clearDataForOrigin',{origin,storageTypes:'all'});
   await cdp.detach();
@@ -148,8 +148,9 @@ try {
   await expect(page.locator('[data-pending]')).toHaveAttribute('data-pending', pending!);
   await expect(notice).toBeVisible();
   await expect(page.getByRole('button',{name:'Fresh online title',exact:true})).toHaveCount(0);
+  // The workspace reopens by itself, offline.
   await page.reload();
-  await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
+  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
   await expect(page.getByRole('button',{name:'Fresh online title',exact:true})).toHaveCount(0);
   console.log('PASS: online browsing fits a narrow screen and leaves the local replica and pending edits untouched across reopen');
 } finally {

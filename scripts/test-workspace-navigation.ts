@@ -102,7 +102,7 @@ try {
     dialogs++;
     return accept ? dialog.accept() : dialog.dismiss();
   });
-  await page.goto(new URL("/", url).href);
+  await page.goto("about:blank");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await cdp.detach();
@@ -192,10 +192,12 @@ try {
       await expect.poll(() => page.workers().length).toBe(0);
     }
     await page.goto(address);
-    // The landing button waits for hydration and the closed worker's locks.
-    await page
-      .getByRole("button", { name: "Open my workspace", exact: true })
-      .click({ timeout: 30000 });
+    // A reload reopens the remembered workspace by itself; after Switch workspace the
+    // landing button waits for hydration and the closed worker's locks.
+    if (!reload)
+      await page
+        .getByRole("button", { name: "Open my workspace", exact: true })
+        .click({ timeout: 30000 });
     await expect(page.getByRole("button", { name: /Find records/ }))
       .toBeEnabled({ timeout: 15000 })
       .catch(async (e) => {

@@ -56,10 +56,7 @@ const failures: string[] = [];
 try {
   page.setDefaultTimeout(8000);
   await page.setViewportSize({ width: 1280, height: 960 });
-  await page.goto(origin);
-  await expect(
-    page.getByRole("button", { name: "Open my workspace", exact: true }),
-  ).toBeEnabled({ timeout: 30000 });
+  await page.goto("about:blank");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await cdp.detach();

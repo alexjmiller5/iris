@@ -32,7 +32,7 @@ try{
  if(!page||!observer)throw Error(`Open both dedicated review pages, including ${observerUrl}`);
  for(const tab of [page,observer]){
   tab.setDefaultTimeout(10000);await tab.setViewportSize({width:1440,height:1000});
-  tab.on('dialog',dialog=>dialog.accept());await tab.goto(new URL('/',url).href);
+  tab.on('dialog',dialog=>dialog.accept());await tab.goto('about:blank');
  }
  const cdp=await page.context().newCDPSession(page);
  await cdp.send('Storage.clearDataForOrigin',{origin,storageTypes:'all'});await cdp.detach();
@@ -55,8 +55,8 @@ try{
  await page.getByLabel('Device token').fill('fixture');
  const sync=page.getByRole('button',{name:'Connect',exact:true});
  await sync.click();await expect(sync).toBeEnabled({timeout:30000});
+ // The observer tab reopens the remembered workspace by itself.
  await observer.goto(observerUrl);
- await observer.getByRole('button',{name:'Open my workspace',exact:true}).click();
  await observer.getByRole('button',{name:'Fixture record',exact:true}).click();
  await recordReady(observer);
  // A valid edit saves itself; a refused (empty) title stays an unsaved draft.
@@ -98,7 +98,8 @@ try{
  console.log('PASS: a failed local refresh retains the original sync error');
 }finally{
  // Reload the reserved observer page to close its worker without losing its
- // identity for a subsequent regression run. A new page opens no database.
+ // identity for a subsequent regression run. Forgotten first, it reopens no database.
+ await ownedObserver?.evaluate(()=>localStorage.removeItem('iris:workspace')).catch(()=>{});
  await ownedObserver?.goto(observerUrl).catch(()=>{});
  await browser.close();server.stop(true);db.db.close();
 }

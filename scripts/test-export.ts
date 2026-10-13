@@ -22,7 +22,7 @@ try {
   );
   if (!page) throw new Error("Open an owned export test tab first.");
   page.setDefaultTimeout(7000);
-  await page.goto(new URL("/", url).href);
+  await page.goto("about:blank");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Storage.clearDataForOrigin", {
     origin: target.origin,
@@ -290,7 +290,7 @@ try {
   );
 } finally {
   if (page) {
-    await page.goto(new URL("/", url).href);
+    await page.goto("about:blank");
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Storage.clearDataForOrigin", {
       origin: target.origin,

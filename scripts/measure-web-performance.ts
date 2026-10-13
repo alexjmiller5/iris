@@ -208,7 +208,11 @@ try {
       throw error;
     }
     cold.push({ navigationToFcpMs, sampleOpenToRowsMs, js, resources: sizes });
-    if (i < 5) await navigate("about:blank");
+    if (i < 5) {
+      await navigate("about:blank");
+      // Forget the remembered sample so the next visit measures opening it again.
+      await cdp.call("Storage.clearDataForOrigin", { origin, storageTypes: "local_storage" });
+    }
   }
   countRequests = true;
   const warm: number[] = [];

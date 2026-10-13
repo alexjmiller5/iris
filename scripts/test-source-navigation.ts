@@ -163,7 +163,7 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await navigate(new URL("/", url).href);
+  await navigate("about:blank");
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   initScript = (
     await command("Page.addScriptToEvaluateOnNewDocument", {
@@ -417,7 +417,7 @@ try {
     await command("Page.removeScriptToEvaluateOnNewDocument", {
       identifier: initScript,
     });
-  await navigate(new URL("/", url).href).catch(() => {});
+  await navigate("about:blank").catch(() => {});
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   cdp.close();
   server.stop(true);

@@ -90,19 +90,17 @@ try {
     proposal
   )
     throw new Error("First workspace open lost proposal");
+  // The reload reopens the remembered workspace by itself, keeping the proposal.
+  await evaluate(`window.__irisLeaving = true`);
   await send("Page.reload", {});
   await wait(
-    `[...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Open my workspace' && !button.disabled)`,
+    `!window.__irisLeaving && document.body.innerText.includes('Review changes')`,
   );
   if (
     (await evaluate(`new URL(location.href).searchParams.get('proposal')`)) !==
     proposal
   )
     throw new Error("Reload lost proposal");
-  await evaluate(
-    `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Open my workspace' && !button.disabled).click()`,
-  );
-  await wait(`document.body.innerText.includes('Review changes')`);
   if (
     (await evaluate(`new URL(location.href).searchParams.get('proposal')`)) !==
     proposal
