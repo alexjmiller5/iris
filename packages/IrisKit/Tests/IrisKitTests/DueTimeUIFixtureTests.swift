@@ -3,10 +3,10 @@ import Testing
 
 @testable import IrisKit
 
-/// Seeds the app's own local workspace on one explicit simulator for `DueTimeUITests`:
-/// a `due` mixed date on notes, a fixture note due today and a "Due today" Now view.
-/// Plain SQL, like the other UI fixtures, so rules another fixture enforced on this
-/// simulator's workspace cannot refuse the seed.
+/// Replaces the app's own local workspace on one explicit simulator with a fresh sample
+/// for `DueTimeUITests`: a `due` mixed date on notes, a fixture note due today and a
+/// "Due today" Now view. Fresh, so rules other fixtures left on this simulator cannot
+/// make notes read-only.
 @MainActor
 struct DueTimeUIFixtureTests {
   #if targetEnvironment(simulator)
@@ -18,26 +18,34 @@ struct DueTimeUIFixtureTests {
       try #require(env["IRIS_TEST_DUE_TIME_SIMULATOR"] == env["SIMULATOR_UDID"])
       let model = WorkspaceModel()
       try await model.forgetConnection()
+      let url = try WorkspaceModel.localURL()
+      for suffix in ["", "-wal", "-shm"] {
+        try? FileManager.default.removeItem(atPath: url.path + suffix)
+      }
       await model.open()
       await model.close()
-      let runtime = try await IrisCoreRuntime.onCore()
-      let workspace = try await NativeWorkspace(
-        path: WorkspaceModel.localURL().path, runtime: runtime)
-      let today = NativeDateValue.currentValue(at: Date(), kind: .date)
-      let definition = String(
-        decoding: try JSONEncoder().encode(
-          CoreSavedViewDefinition(
-            version: 2, filters: [CoreFilter(column: "due", op: .lte, relative: .now)])),
-        as: UTF8.self)
-      await runtime.evaluateOnCore(
-        """
-        if (!IrisSql.all("SELECT 1 FROM pragma_table_info('notes') WHERE name='due'").length)
-          IrisSql.run('ALTER TABLE notes ADD COLUMN due TEXT');
-        IrisSql.run("INSERT OR REPLACE INTO catalog_properties(id,tbl,col,label,type,sort) VALUES ('notes.due','notes','due','Due','date_or_datetime',5)");
-        IrisSql.run("INSERT OR REPLACE INTO notes(id,title,due) VALUES ('due-fixture-note','Due fixture note',?)", [\(String(reflecting: today))]);
-        IrisSql.run("INSERT OR REPLACE INTO views(id,name,tbl,definition) VALUES ('due-fixture-view','Due today','notes',?)", [\(String(reflecting: definition))]);
-        """)
-      try #require(runtime.context.exception == nil)
+      let workspace = try await NativeWorkspace(path: url.path)
+      do {
+        _ = try await workspace.saveCatalogProperty(
+          CoreSaveCatalogPropertyArgs(
+            table: "notes", column: "due", expectedUpdatedAt: nil,
+            fields: ["label": .string("Due"), "type": .string("date_or_datetime")],
+            addColumn: true))
+        _ = try await workspace.write(
+          table: "notes",
+          patch: [
+            "title": .string("Due fixture note"),
+            "due": .string(NativeDateValue.currentValue(at: Date(), kind: .date)),
+          ])
+        _ = try await workspace.saveView(
+          CoreSaveViewArgs(
+            table: "notes", name: "Due today",
+            definition: CoreSavedViewDefinition(
+              version: 2, filters: [CoreFilter(column: "due", op: .lte, relative: .now)])))
+      } catch {
+        _ = try? await workspace.close()
+        throw error
+      }
       try await workspace.close()
     }
   #endif
