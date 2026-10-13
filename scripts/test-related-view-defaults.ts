@@ -109,6 +109,16 @@ try {
   };
   const waitSelected = (id: string) =>
     cdp.until(`(${select})?.value===${js(id)}`);
+  // Default choices live in the View settings popover.
+  const settings = async (name: string) => {
+    if (
+      !(await cdp.evaluate(
+        `!!document.querySelector('[role="dialog"][aria-label="View settings"]:popover-open')`,
+      ))
+    )
+      await click("View settings");
+    await click(name);
+  };
   await cdp.navigate(new URL("/favicon.svg", url).href);
   await cdp.command("Storage.clearDataForOrigin", {
     origin,
@@ -139,11 +149,11 @@ try {
   await openTable("widgets");
   await choose("preferred-opaque");
   await waitSelected("preferred-opaque");
-  await click("Use current view by default");
+  await settings("Use current view by default");
   await cdp.until("document.body.innerText.includes('Default view saved.')");
   await choose("linked-opaque");
   await waitSelected("linked-opaque");
-  await click("Use current view for related records");
+  await settings("Use current view for related records");
   await cdp.until(
     "document.body.innerText.includes('Related-record view saved.')",
   );
@@ -199,7 +209,10 @@ try {
     "PASS independent related preference, real Worker sync readback, filtered incoming links, full-record opening, table default and OPFS reopen.",
   );
 } catch (error) {
-  if (page) console.error(await page.evaluate("document.body.innerText"));
+  if (page)
+    console.error(
+      await page.evaluate("document.body?.innerText").catch(String),
+    );
   throw error;
 } finally {
   if (page) {
