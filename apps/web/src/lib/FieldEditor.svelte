@@ -9,7 +9,7 @@
 	import { creationOffer } from './reference-create';
 	import OptionChip from './OptionChip.svelte';
 	import { richSelect } from './option-colors';
-	import { isFlag } from './cell-values';
+	import { isFlag, joinLocalTime, splitLocalTime } from './cell-values';
 	let {
 		id,
 		property,
@@ -77,6 +77,9 @@
 	);
 	let query = $state('');
 	const creation = $derived(oncreate && !disabled ? creationOffer(query, references) : null);
+	const localParts = $derived(
+		property.type === 'date_or_datetime' ? splitLocalTime(value ?? '') : null
+	);
 	function change(raw: string) {
 		value = raw;
 		onchange?.(raw);
@@ -319,6 +322,36 @@
 			value={value.replace(/Z$/, '')}
 			onchange={(event) => dateTime(event.currentTarget.value)}
 		/><small>UTC</small>
+	{:else if property.type === 'date_or_datetime' && localParts}
+		<!-- A date with an optional floating time; removing the time returns to date-only. -->
+		<div class="date-time">
+			<input
+				{id}
+				aria-invalid={invalid ? true : undefined}
+				aria-describedby={invalid}
+				aria-label={label}
+				aria-required={!!property.required}
+				type="date"
+				{disabled}
+				value={localParts.date}
+				onchange={(event) => change(joinLocalTime(event.currentTarget.value, localParts.time))}
+			/>
+			<input
+				aria-label={`${label} time`}
+				type="time"
+				disabled={disabled || !localParts.date}
+				value={localParts.time}
+				onchange={(event) => change(joinLocalTime(localParts.date, event.currentTarget.value))}
+			/>
+		</div>
+		{#if localParts.time}
+			<button
+				class="clear"
+				type="button"
+				{disabled}
+				onclick={() => change(joinLocalTime(localParts.date, ''))}>Remove time</button
+			>
+		{/if}
 	{:else}
 		<input
 			{id}
@@ -410,6 +443,11 @@
 	}
 	textarea {
 		resize: vertical;
+	}
+	.date-time {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 8.5em);
+		gap: 6px;
 	}
 	.boolean {
 		display: flex;

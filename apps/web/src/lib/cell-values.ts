@@ -91,6 +91,7 @@ export function markdownPreview(source: string, limit = 280): string {
 }
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const LOCAL_TIME = /^(\d{4}-\d{2}-\d{2})T((?:[01]\d|2[0-3]):[0-5]\d)$/;
 const DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 
 /** Dates and UTC timestamps as the native apps show them; anything else is null (keep the source). */
@@ -107,6 +108,17 @@ export function dateText(
 		if (date.toISOString().slice(0, 10) !== source) return null;
 		return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(date);
 	}
+	const local = LOCAL_TIME.exec(source);
+	if (local && type === 'date_or_datetime') {
+		// A floating local time: that wall-clock time wherever the reader is.
+		const date = new Date(`${source}:00Z`);
+		if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== local[1]) return null;
+		return new Intl.DateTimeFormat(locale, {
+			dateStyle: 'medium',
+			timeStyle: 'short',
+			timeZone: 'UTC'
+		}).format(date);
+	}
 	if (DATETIME.test(source) && (type === 'datetime' || type === 'date_or_datetime')) {
 		const date = new Date(source);
 		if (Number.isNaN(date.getTime())) return null;
@@ -118,4 +130,19 @@ export function dateText(
 		return `${text} UTC`;
 	}
 	return null;
+}
+
+/** A date with an optional floating time, as the date and time inputs edit it.
+ * Null for anything else (a UTC instant keeps its own editing path). */
+export function splitLocalTime(value: string): { date: string; time: string } | null {
+	if (value === '') return { date: '', time: '' };
+	if (DATE.test(value)) return { date: value, time: '' };
+	const local = LOCAL_TIME.exec(value);
+	return local ? { date: local[1], time: local[2] } : null;
+}
+
+/** Removing the time returns to date-only; no date means no value. */
+export function joinLocalTime(date: string, time: string): string {
+	if (!date) return '';
+	return time ? `${date}T${time.slice(0, 5)}` : date;
 }
