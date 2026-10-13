@@ -9,11 +9,10 @@ import Testing
 @MainActor
 struct DueTimeUIFixtureTests {
   #if targetEnvironment(simulator)
-    private static var enabled: Bool {
-      ProcessInfo.processInfo.environment["IRIS_TEST_DUE_TIME_SIMULATOR"] != nil
-    }
-
-    @Test(.enabled(if: enabled)) func prepareDueTimeUIFixture() async throws {
+    @Test(
+      .enabled(
+        if: ProcessInfo.processInfo.environment["IRIS_TEST_DUE_TIME_SIMULATOR"] != nil))
+    func prepareDueTimeUIFixture() async throws {
       let env = ProcessInfo.processInfo.environment
       try #require(env["IRIS_TEST_DUE_TIME_SIMULATOR"] == env["SIMULATOR_UDID"])
       let model = WorkspaceModel()
@@ -50,7 +49,10 @@ struct DueTimeUIFixtureTests {
       try await workspace.close()
     }
 
-    @Test(.enabled(if: enabled)) func systemCenterKeepsAScheduledDueAlert() async throws {
+    @Test(
+      .enabled(
+        if: ProcessInfo.processInfo.environment["IRIS_TEST_DUE_TIME_SIMULATOR"] != nil))
+    func systemCenterKeepsAScheduledDueAlert() async throws {
       let center = SystemDueAlertCenter()
       let request = DueAlertRequest(
         identifier: "iris.due.fixture." + UUID().uuidString, title: "Fixture alert",
