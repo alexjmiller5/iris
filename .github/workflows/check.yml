@@ -201,6 +201,13 @@ jobs:
           print("Verified the expected passing tests with no skips")
           PYVERIFY
           done
+      - name: Keep the synthetic iOS due-time screenshots
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: due-time-ios-screens
+          path: ${{ runner.temp }}/catalog-ios-due-ui.xcresult
+          retention-days: 3
       - name: Preserve synthetic iOS catalog failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
