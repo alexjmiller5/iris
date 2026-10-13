@@ -84,6 +84,32 @@ struct SyncStatusPillTests {
     #expect(titled(0, replica: false) == "Local only")
   }
 
+  @Test func editsInSkippedTablesWaitForThemInsteadOfReadingAsPending() {
+    func waiting(
+      pending: Int, _ details: [(String, Int)], syncing: Bool = false, online: Bool = true
+    )
+      -> SyncPill
+    {
+      var current = self.status(pending: pending)
+      current.skippedDetails = details.map {
+        CoreSkippedTableDetail(table: $0.0, rows: 60_000, estimatedBytes: nil, waitingEdits: $0.1)
+      }
+      return SyncPill.make(
+        replica: true, syncing: syncing, movedRows: 0, online: online, failure: nil,
+        status: current, cliBound: false)
+    }
+    #expect(waiting(pending: 2, [("notes", 2)]).title == "2 waiting for notes to sync")
+    #expect(waiting(pending: 2, [("notes", 2)]).kind == .waiting)
+    #expect(
+      waiting(pending: 2, [("notes", 2)], syncing: true).title == "2 waiting for notes to sync")
+    #expect(
+      waiting(pending: 3, [("notes", 2), ("topics", 1)]).title == "3 waiting for 2 tables to sync")
+    #expect(waiting(pending: 3, [("notes", 2)]).title == "1 pending")
+    #expect(waiting(pending: 3, [("notes", 2)], syncing: true).title == "Syncing")
+    #expect(waiting(pending: 0, [("notes", 0)]).title == "Synced")
+    #expect(waiting(pending: 1, [("notes", 1)], online: false).title == "Offline · 1 pending")
+  }
+
   @Test func sharedFilesReflectTheCLIAndNeverOfferSync() {
     #expect(pill(replica: false, cli: true) == "Shared with CLI")
     #expect(

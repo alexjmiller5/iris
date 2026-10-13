@@ -807,6 +807,22 @@ Skipped-table data can be incomplete and the UI must identify that state.
 Use core status `skippedTables` after reopen, including offline. Core persists
 the last completed pull's exclusions even when pushes are rejected; hosts never
 write that state or infer completeness from download preferences.
+A skipped table is read-only on that device: core `writeability` and the writer
+refuse it (rule `not_synced`), and its own notice replaces the editing-availability
+text. Edits queued before the skip stay pending and upload once a round includes
+the table; core `skippedDetails` counts them (`waitingEdits`), so the pill reads
+"N waiting for <table> to sync", never Syncing. A table visit that starts on a
+skipped table (not one that becomes skipped while open; natively every explicit open,
+including the current table from iPhone's sidebar) shows the download prompt once:
+hub row count and estimated size from `skippedDetails`, and the suggested setting
+(include the table, or raise the row limit to its count when only the limit left
+it out), adjustable before Download, which saves the setting and runs a round. Not now or Escape keeps it read-only and the next visit asks again; "Don't
+show this again for this table" hides it on this device only (web localStorage
+`iris:download-prompts`, native `downloads/<endpoint hash>.hidden-prompts.json`),
+never synced or consulted for writes. Web Connect to a hub and native Search
+settings (Widgets and Search on iOS, Search index on Mac) list hidden tables with
+Show prompt; the notice's Download… reopens it. Native waits for an open record
+editor to close before presenting it (`skipped-tables.ts`, `SkippedTables.swift`).
 Online browsing calls generated `remoteRows`/`remoteRow` through the same
 serialized adapter. The core checks the durable endpoint binding before HTTP
 and rechecks schema/binding after it. Hosts supply the active connection, never
@@ -923,6 +939,8 @@ Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
 - `test-filter-bar.ts`: filter chips, sorts, autosave (also across a view switch while a
   save is in flight) and Undo on the sample workspace.
 - `test-auto-sync.ts`: background push/pull, offline pending, sync leader, sidebar toggle.
+- `test-skipped-tables.ts`: a skipped table is read-only, waiting edits in the pill, the
+  download prompt (Not now, Escape, Don't show again, Show prompt) and approval.
 - `test-notes-views.ts`: preferred and related-record views, flag quick filter, status search.
 - `test-workspace-regressions.ts`: autosave in flight, write locks, SQL defaults, dynamic options, typed
   filters, columns, workspace switch, pending count; `test-workspace-mutations.ts` breaks each.
@@ -957,8 +975,8 @@ Sort are in the bar above the records);
 workspace actions are in the ellipsis Menu and full sync/location details in the
 read-only status sheet. One `SyncPill` (Mac sidebar bottom, iPhone bottom-bar status
 slot, Mac menu bar) is the only sync surface: Synced, Syncing (only while rows move, edits upload
-or before a first success), N pending, Offline · N pending, N rejected (opens
-Issues), Paused: cap reached (hub 429), Sync issue, Shared with CLI or Local only.
+or before a first success), N pending, N waiting for <table> to sync (edits in a skipped
+table), Offline · N pending, N rejected (opens Issues), Paused: cap reached (hub 429), Sync issue, Shared with CLI or Local only.
 Sync failures reach the pill and status sheet, never `model.error`. Ordinary saves
 show no progress text. `SyncStatusUITests` drives `navigation-hub.py`'s
 accept/reject/offline modes through those states and retains screenshots.

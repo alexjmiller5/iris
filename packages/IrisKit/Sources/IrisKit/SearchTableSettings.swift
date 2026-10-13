@@ -112,9 +112,12 @@ struct SearchTablesSection: View {
     let model: WorkspaceModel
 
     var body: some View {
-      Form { SearchTablesSection(model: model) }
-        .formStyle(.grouped)
-        .navigationTitle("Search index")
+      Form {
+        SearchTablesSection(model: model)
+        DownloadPromptsSection(model: model)
+      }
+      .formStyle(.grouped)
+      .navigationTitle("Search index")
     }
   }
 #endif

@@ -404,9 +404,16 @@ device at the hub. Use the hub's device controls to revoke access separately.
 table's **Automatic**, **Include** or **Skip** choice. Leave the limit blank to use
 the shared default. Catalog tables always download. Choices are private to this
 device and hub, survive reconnecting, and apply on the next sync. Skipping keeps
-existing local rows; an incomplete table offers **Include in next sync**.
-Incomplete-table warnings survive reopening offline and also apply to Find
-and reference links.
+existing local rows, read-only: a table this device does not sync never uploads an
+edit. Opening one asks to download it, with its row count, estimated size and a
+suggested setting (include the table, or a higher row limit) to approve or adjust;
+**Not now** keeps it read-only and the prompt returns next time. **Don't show this
+again for this table** stops asking on this device; **Show prompt** under Search
+(Widgets and Search on iOS, Search index on Mac; Connect to a hub on the web) brings
+it back, and the table's notice offers **Download…** meanwhile. Edits made before a
+table was skipped wait in the sync pill ("1 waiting for notes to sync") and upload
+once it downloads. Incomplete-table warnings survive reopening offline and also
+apply to Find and reference links.
 
 **Browse online** opens the current hub table in a separate read-only sheet,
 50 records at a time. Opening a result fetches its current full row; missing and
@@ -636,6 +643,9 @@ bun scripts/test-read-dependencies.ts /path/to/soma
 bun scripts/test-remote-browse.ts /path/to/soma
 # Also open /workspace?review&observer=1 on the same reserved origin for this test.
 bun scripts/test-partial-sync.ts /path/to/soma
+# Skipped tables: read-only, waiting edits, the download prompt and approval.
+# Open http://iris-downloads.localhost:5371/workspace?review in its own page.
+bun scripts/test-skipped-tables.ts /path/to/soma
 # Open http://iris-relations.localhost:5223/workspace?review in its own page.
 bun scripts/test-reference-navigation.ts /path/to/soma
 # Only while owning that checkout and its dev server: temporarily mutate the route.

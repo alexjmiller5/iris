@@ -419,7 +419,7 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
   }
 
-  func testDownloadSettingsRetainLocalRowsAndIncludeOnTheNextSync() throws {
+  func testSkippedTableIsReadOnlyAndAsksToDownloadWhenOpened() throws {
     guard let endpoint = ProcessInfo.processInfo.environment["IRIS_TEST_HUB"] else {
       throw XCTSkip("Set IRIS_TEST_HUB for the synthetic Worker test")
     }
@@ -433,7 +433,14 @@ final class WorkspaceUITests: XCTestCase {
     app.textFields["hub-endpoint"].typeText(endpoint)
     connectUsingFixtureToken(app)
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 15))
-    if app.sheets["Save Password?"].waitForExistence(timeout: 3) { dismissPasswordPrompt() }
+    // The system offers to save the token; under load its button arrives after the sheet.
+    let password = app.sheets["Save Password?"]
+    if password.waitForExistence(timeout: 10) {
+      let notNow = password.buttons["Not Now"]
+      XCTAssertTrue(notNow.waitForExistence(timeout: 10))
+      notNow.tap()
+      XCTAssertTrue(password.waitForNonExistence(timeout: 30))
+    }
     tapWhenReady(app.buttons["workspace-menu"])
     tapWhenReady(app.buttons["Hub connection"])
     tapWhenReady(app.buttons["hub-downloads"])
@@ -446,25 +453,78 @@ final class WorkspaceUITests: XCTestCase {
     tapWhenReady(app.navigationBars["Downloads"].buttons["save-downloads"])
     XCTAssertTrue(app.navigationBars["Hub connection"].waitForExistence(timeout: 5))
     tapWhenReady(app.navigationBars["Hub connection"].buttons["Done"])
-    // Automatic sync applies the saved download choice; there is no manual sync.
+    // The next automatic round (at most a minute with a live socket) applies the setting
+    // while the table is open: it turns read-only with a notice, without the prompt.
     let notice = app.staticTexts["partial-table-notice"]
-    XCTAssertTrue(notice.waitForExistence(timeout: 15))
-    // Skipping must retain the downloaded record and keep it available offline.
+    XCTAssertTrue(notice.waitForExistence(timeout: 75))
+    let prompt = app.buttons["download-prompt-approve"]
+    XCTAssertFalse(prompt.exists)
+    let newRecord = app.navigationBars["widgets"].buttons["new-record"]
+    XCTAssertFalse(newRecord.exists, "A skipped table is read-only: no New record")
+    // Its local records stay readable.
     openRecord(app, title: "Fixture record")
+    XCTAssertFalse(app.textFields["field-title"].exists, "Read-only records show no editable fields")
     tapWhenReady(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
-    tapWhenReady(app.buttons["include-table-next-sync"])
-    XCTAssertTrue(notice.waitForExistence(timeout: 5))
-    XCTAssertTrue(notice.waitForNonExistence(timeout: 15))
+
+    // Back to the sidebar and open the table again: a new visit.
+    func reopenWidgets() {
+      tapWhenReady(app.navigationBars.buttons["BackButton"].firstMatch)
+      tapWhenReady(app.buttons["sidebar-table-widgets"])
+      XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
+    }
+    // Opening it asks, with its size and the suggested setting; Not now asks again next time.
+    reopenWidgets()
+    XCTAssertTrue(prompt.waitForExistence(timeout: 10))
+    // Inline picker options are rows, whatever their element type.
+    for option in ["Download this table on this device", "Raise the automatic row limit"] {
+      XCTAssertTrue(
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", option))
+          .firstMatch.exists, option)
+    }
+    let promptShot = XCTAttachment(screenshot: app.screenshot())
+    promptShot.name = "native-download-prompt"
+    promptShot.lifetime = .keepAlways
+    add(promptShot)
+    tapWhenReady(app.buttons["download-prompt-dismiss"])
+    XCTAssertTrue(prompt.waitForNonExistence(timeout: 5))
+    XCTAssertTrue(notice.exists)
+    XCTAssertFalse(newRecord.exists)
+    reopenWidgets()
+    XCTAssertTrue(prompt.waitForExistence(timeout: 10))
+    // Don't show this again stops it for this table until Settings brings it back.
+    // A Form toggle switches from its control, not its label.
+    let hide = app.switches["download-prompt-hide"]
+    XCTAssertTrue(hide.waitForExistence(timeout: 5))
+    hide.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+    let on = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '1'"), object: hide)
+    XCTAssertEqual(XCTWaiter.wait(for: [on], timeout: 5), .completed)
+    tapWhenReady(app.buttons["download-prompt-dismiss"])
+    XCTAssertTrue(prompt.waitForNonExistence(timeout: 5))
+    reopenWidgets()
+    XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
+    XCTAssertFalse(prompt.waitForExistence(timeout: 3))
+    XCTAssertTrue(app.buttons["download-table"].exists)
     tapWhenReady(app.buttons["workspace-menu"])
-    tapWhenReady(app.buttons["Hub connection"])
-    tapWhenReady(app.buttons["hub-downloads"])
-    XCTAssertEqual(limit.value as? String, "0")
-    let widgetChoice = app.buttons["download-table-widgets"]
-    XCTAssertTrue(
-      widgetChoice.label.contains("Include") || widgetChoice.value as? String == "Include")
+    tapWhenReady(app.buttons["widget-settings"])
+    let show = app.buttons["show-download-prompt-widgets"]
+    for _ in 0..<6 where !show.isHittable { app.swipeUp() }
+    let settingsShot = XCTAttachment(screenshot: app.screenshot())
+    settingsShot.name = "native-download-prompt-settings"
+    settingsShot.lifetime = .keepAlways
+    add(settingsShot)
+    tapWhenReady(show)
+    XCTAssertTrue(show.waitForNonExistence(timeout: 5))
+    tapWhenReady(app.buttons["Done"])
+    reopenWidgets()
+    XCTAssertTrue(prompt.waitForExistence(timeout: 10))
+    // Approving the suggestion downloads the table and makes it editable.
+    tapWhenReady(app.buttons["download-prompt-approve"])
+    XCTAssertTrue(prompt.waitForNonExistence(timeout: 5))
+    XCTAssertTrue(notice.waitForNonExistence(timeout: 20))
+    XCTAssertTrue(newRecord.waitForExistence(timeout: 20), "Downloaded: editable again")
     let screenshot = XCTAttachment(screenshot: app.screenshot())
-    screenshot.name = "native-download-settings"
+    screenshot.name = "native-download-approved"
     screenshot.lifetime = .keepAlways
     add(screenshot)
   }
@@ -1434,8 +1494,11 @@ final class WorkspaceUITests: XCTestCase {
   }
 
   private func connectUsingFixtureToken(_ app: XCUIApplication) {
-    tapWhenReady(app.buttons["Use existing token"])
+    let manual = app.buttons["Use existing token"]
     let form = app.collectionViews.containing(.button, identifier: "Use existing token").firstMatch
+    // The endpoint field's keyboard can cover the manual section below it.
+    for _ in 0..<6 where !manual.isHittable { scrollFormUp(form) }
+    tapWhenReady(manual)
     let token = app.secureTextFields["hub-token"]
     // Expanding the manual section does not move focus away from the URL field.
     // Scroll the active form so the keyboard cannot cover the token or Save action.

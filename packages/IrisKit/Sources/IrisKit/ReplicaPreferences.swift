@@ -64,3 +64,30 @@ struct ReplicaPreferenceStore {
     }
   }
 }
+
+/// Tables whose download prompt this device hides, beside its download settings. A per-device
+/// convenience: never synced and never consulted for writes, which core refuses on its own.
+struct DownloadPromptStore {
+  let file: URL
+
+  init(root: URL, endpoint: String) {
+    file = ReplicaPreferenceStore(root: root, endpoint: endpoint).file
+      .deletingPathExtension().appendingPathExtension("hidden-prompts.json")
+  }
+
+  /// A missing or damaged file only means the prompts show again.
+  func load() -> [String] {
+    (try? JSONDecoder().decode([String].self, from: Data(contentsOf: file))) ?? []
+  }
+
+  func save(_ tables: [String]) throws {
+    do {
+      try FileManager.default.createDirectory(
+        at: file.deletingLastPathComponent(), withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700])
+      try JSONEncoder().encode(tables).write(to: file, options: .atomic)
+    } catch {
+      throw WorkspaceError(message: "Download prompt settings could not be saved.", violations: [])
+    }
+  }
+}

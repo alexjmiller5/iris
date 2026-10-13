@@ -256,7 +256,13 @@ final class WorkspaceModel {
     }
   }
   var table: String? {
-    didSet { if oldValue != table { resetView() } }
+    didSet {
+      if oldValue != table {
+        resetView()
+        promptVisit = nil
+        downloadPrompt = nil
+      }
+    }
   }
   var rows: [WorkspaceRow] = []
   var search = ""
@@ -490,7 +496,8 @@ final class WorkspaceModel {
         do { status = try await client.searchIndexStep(budgetMs: Self.searchIndexBudget) } catch {
           // A failed step rolls back and keeps its work; the next change retries it.
           // Until then nothing is catching up, so the UI stops saying so.
-          Self.log.error("Search index step failed: \(error.localizedDescription, privacy: .public)")
+          Self.log.error(
+            "Search index step failed: \(error.localizedDescription, privacy: .public)")
           if self.client === client { self.searchIndexing = 0 }
           break
         }
@@ -691,16 +698,66 @@ final class WorkspaceModel {
       workspace: client, endpoint: transport.endpoint, generation: workspaceGeneration)
   }
   var skippedTables: [String] { isReplica ? syncStatus?.skippedTables ?? [] : [] }
+  var skippedDetails: [CoreSkippedTableDetail] {
+    isReplica ? syncStatus?.skippedDetails ?? [] : []
+  }
+  var currentSkip: CoreSkippedTableDetail? {
+    table.flatMap { table in skippedDetails.first { $0.table == table } }
+  }
 
+  /// Core keeps a skipped table read-only; this says why, or that the next round downloads it.
   var partialTableNotice: String? {
     guard isReplica, let table, skippedTables.contains(table) else { return nil }
-    if downloadPreferences.tables[table] == false {
-      return
-        "This table is excluded from future sync. Existing local records are kept and may be incomplete."
+    if let detail = currentSkip, downloadPreferences.willDownload(detail) {
+      return "Downloading this table on this device. It becomes editable once its rows arrive."
     }
-    return downloadPreferences.tables[table] == true
-      ? "This table is included in the next sync. Its local records may still be incomplete."
-      : "This table was not downloaded in the last sync. Its local records may be incomplete."
+    return "Not synced on this device. Its records here are read-only and may be incomplete."
+  }
+
+  /// Tables whose download prompt this device hides, per hub endpoint; never synced.
+  private(set) var hiddenDownloadPrompts: [String] = []
+  private var promptStore: DownloadPromptStore?
+  /// The prompt for the skipped table just opened. Each visit decides once.
+  var downloadPrompt: DownloadPromptRequest?
+  private var promptVisit: String?
+
+  func makeDownloadPrompt() -> DownloadPromptRequest? {
+    guard let detail = currentSkip, let context = downloadContext else { return nil }
+    return DownloadPromptRequest(
+      detail: detail, choices: downloadPreferences.downloadChoices(for: detail), context: context)
+  }
+
+  /// Opening a skipped table asks unless this device hid its prompt; a table that becomes
+  /// skipped while open only shows its notice.
+  private func considerDownloadPrompt() {
+    guard let table, promptVisit != table else { return }
+    promptVisit = table
+    guard !hiddenDownloadPrompts.contains(table) else { return }
+    downloadPrompt = makeDownloadPrompt()
+  }
+
+  /// Not now keeps the table read-only; hiding stops the prompt for this table on this device.
+  func dismissDownloadPrompt(hide: Bool) {
+    if hide, let table = downloadPrompt?.detail.table, !hiddenDownloadPrompts.contains(table) {
+      hiddenDownloadPrompts.append(table)
+      // ponytail: an unsaved choice only means the prompt shows again after reopening.
+      try? promptStore?.save(hiddenDownloadPrompts)
+    }
+    downloadPrompt = nil
+  }
+
+  func showDownloadPrompt(for table: String) {
+    hiddenDownloadPrompts.removeAll { $0 == table }
+    try? promptStore?.save(hiddenDownloadPrompts)
+  }
+
+  /// Saves the approved setting and runs a round; the table turns editable once its rows arrive.
+  func approveDownload(_ choice: DownloadChoice, for prompt: DownloadPromptRequest) async throws {
+    while syncing { try await Task.sleep(for: .milliseconds(100)) }
+    try saveDownloads(
+      downloadPreferences.applying(choice, to: prompt.detail.table), context: prompt.context)
+    if downloadPrompt?.id == prompt.id { downloadPrompt = nil }
+    await synchronize()
   }
 
   func saveDownloads(_ preferences: ReplicaPreferences, context: ReplicaDownloadContext) throws {
@@ -922,7 +979,8 @@ final class WorkspaceModel {
     let system: Set<String> = ["id", "created_at", "updated_at", "deleted_at", "hub_at"]
     let title = titleProperty?.id ?? "id"
     let rest =
-      visibleRecordColumns ?? properties.compactMap { $0["col"]?.text }.filter {
+      visibleRecordColumns
+      ?? properties.compactMap { $0["col"]?.text }.filter {
         !system.contains($0)
       }
     return [title] + rest.filter { $0 != title }
@@ -1479,6 +1537,8 @@ final class WorkspaceModel {
     // it synchronously, including resetting settings for the same table.
     catalog = resolved.catalog
     if table == target { resetView() } else { table = target }
+    // An explicit open is a new visit, even of the current table (iPhone's sidebar).
+    promptVisit = nil
     let context = WorkspaceEditingContext(
       workspace: workspace, table: target, draftStore: draftStore)
     try applySavedView(resolved.view, context: context, definition: resolved.definition)
@@ -1634,6 +1694,9 @@ final class WorkspaceModel {
     services.configure(workspace: nil, transport: nil)
     isReplica = false
     downloadStore = nil
+    promptStore = nil
+    hiddenDownloadPrompts = []
+    downloadPrompt = nil
     downloadPreferences = ReplicaPreferences()
     syncResult = nil
     syncStatus = nil
@@ -1770,6 +1833,7 @@ final class WorkspaceModel {
       guard request == revision, self.client === client, query == queryKey else { return }
       error = nil
       syncStatus = status
+      if !append { considerDownloadPrompt() }
       undoAction = undo.action
       widgets?.scheduleRefresh(partial: isReplica)
       rows = append ? rows + result : result
@@ -2158,6 +2222,9 @@ final class WorkspaceModel {
       root: path.deletingLastPathComponent().appendingPathComponent("downloads"),
       endpoint: hub.endpoint)
     let preferences = try preferencesStore.load()
+    let prompts = DownloadPromptStore(
+      root: path.deletingLastPathComponent().appendingPathComponent("downloads"),
+      endpoint: hub.endpoint)
     try FileManager.default.createDirectory(
       at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
     let prepared = try await NativeWorkspace(path: path.path)
@@ -2210,6 +2277,10 @@ final class WorkspaceModel {
     connection = canonical
     downloadStore = preferencesStore
     downloadPreferences = preferences
+    promptStore = prompts
+    hiddenDownloadPrompts = prompts.load()
+    promptVisit = nil
+    downloadPrompt = nil
     syncResult = nil
     syncStatus = nil
     isReplica = true
@@ -2459,6 +2530,9 @@ final class WorkspaceModel {
     services.configure(workspace: nil, transport: nil)
     isReplica = false
     downloadStore = nil
+    promptStore = nil
+    hiddenDownloadPrompts = []
+    downloadPrompt = nil
     downloadPreferences = ReplicaPreferences()
   }
 
@@ -2493,6 +2567,9 @@ final class WorkspaceModel {
     transport = nil
     isReplica = false
     downloadStore = nil
+    promptStore = nil
+    hiddenDownloadPrompts = []
+    downloadPrompt = nil
     downloadPreferences = ReplicaPreferences()
     syncResult = nil
     syncStatus = nil

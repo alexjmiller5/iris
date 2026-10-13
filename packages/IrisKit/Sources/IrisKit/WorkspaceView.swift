@@ -294,6 +294,14 @@ public struct WorkspaceView: View {
       }
     #endif
     .sheet(isPresented: $showingStatus) { WorkspaceStatusSheet(model: model) }
+    // Opening a skipped table asks to download it; an open record editor goes first.
+    .sheet(
+      item: Binding(
+        get: { editor == nil ? model.downloadPrompt : nil },
+        set: { if $0 == nil { model.dismissDownloadPrompt(hide: false) } })
+    ) { prompt in
+      DownloadPromptView(model: model, prompt: prompt)
+    }
     .sheet(isPresented: $settings) { HubConnectionView(model: model) }
     .sheet(item: $catalogEditor) { CatalogEditorView(model: $0) }
     .sheet(isPresented: $widgetSettings) {
@@ -925,12 +933,10 @@ public struct WorkspaceView: View {
         Label("Issues", systemImage: "exclamationmark.bubble")
       }.disabled(!canFind).accessibilityIdentifier("workspace-issues")
     #else
-      if let message = model.partialTableNotice, let context = model.downloadContext,
-        let table = model.table
-      {
-        PartialReplicaNotice(model: model, context: context, table: table, message: message)
+      if let message = model.partialTableNotice {
+        PartialReplicaNotice(model: model, message: message)
       }
-      if let reason = model.editingRefusal {
+      if let reason = model.editingRefusal, model.writeability?.reason?.rule != "not_synced" {
         Text(reason).font(.caption).foregroundStyle(.secondary)
           .accessibilityIdentifier("editing-availability")
       }
@@ -1407,10 +1413,8 @@ public struct WorkspaceView: View {
         #if os(macOS)
           VStack(alignment: .leading, spacing: 8) {
             if model.isReplica { SyncSummary(model: model) }
-            if let message = model.partialTableNotice, let context = model.downloadContext,
-              let table = model.table
-            {
-              PartialReplicaNotice(model: model, context: context, table: table, message: message)
+            if let message = model.partialTableNotice {
+              PartialReplicaNotice(model: model, message: message)
             }
             if model.isReplica, model.table != nil {
               Button {
@@ -1421,7 +1425,7 @@ public struct WorkspaceView: View {
                 Label("Browse online", systemImage: "cloud")
               }.disabled(!canFind).accessibilityIdentifier("browse-online")
             }
-            if let reason = model.editingRefusal {
+            if let reason = model.editingRefusal, model.writeability?.reason?.rule != "not_synced" {
               Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 .accessibilityIdentifier("editing-availability")
             }

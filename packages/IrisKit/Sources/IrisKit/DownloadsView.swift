@@ -76,31 +76,20 @@ struct DownloadsView: View {
   }
 }
 
+/// A skipped current table: read-only until it downloads. Download… reopens its prompt.
 struct PartialReplicaNotice: View {
   let model: WorkspaceModel
-  let context: ReplicaDownloadContext
-  let table: String
   let message: String
-  @State private var failure: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(message).accessibilityIdentifier("partial-table-notice")
-      if model.downloadPreferences.tables[table] != true {
-        Button("Include in next sync") {
-          do {
-            var preferences = model.downloadPreferences
-            preferences.tables[table] = true
-            try model.saveDownloads(preferences, context: context)
-          } catch { failure = error.localizedDescription }
-        }
-        .frame(minHeight: 44, alignment: .leading)
-        .disabled(model.syncing)
-        .accessibilityIdentifier("include-table-next-sync")
+      if let detail = model.currentSkip, !model.downloadPreferences.willDownload(detail) {
+        Button("Download…") { model.downloadPrompt = model.makeDownloadPrompt() }
+          .frame(minHeight: 44, alignment: .leading)
+          .accessibilityIdentifier("download-table")
       }
-      if let failure { Text(failure).foregroundStyle(.red) }
     }
     .font(.caption)
-    .onChange(of: table) { failure = nil }
   }
 }
