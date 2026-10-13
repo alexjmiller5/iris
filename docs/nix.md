@@ -8,7 +8,7 @@ development prerequisite; the Nix app package does not build Swift.
 ## Signed macOS app
 
 `nix build .#iris` produces `result/Applications/Iris.app`. The default
-package pins the published universal **1.4.0** ZIP by SHA-256. It extracts and
+package pins the published universal **1.4.1** ZIP by SHA-256. It extracts and
 copies the bundle without fixup, stripping, patching or re-signing. The embedded
 profile, entitlements and stapled notarization ticket stay with the app.
 App packages support Apple Silicon and Intel macOS. Their Nixpkgs 26.05 pin
@@ -71,25 +71,12 @@ xcrun stapler validate '<output>/Applications/Iris.app'
 spctl --assess --type execute --verbose=2 '<output>/Applications/Iris.app'
 ```
 
-Verification on macOS, 2026-10-13 UTC, against published 1.4.0:
-
-| Check | Result |
-| --- | --- |
-| Archive SHA-256 | `180d8b2fb409e9ae51bf04189ebe952f5ecfded348b7d57b587b73ba609986c5` |
-| Nix build and synthetic preservation/module checks | Pass |
-| All source/output file hashes, symlink targets, executable bits | Identical |
-| arm64 and x86_64 entitlements and designated requirements | Identical |
-| Strict signature, stapled ticket, Gatekeeper | Pass; Notarized Developer ID |
-
-The [1.4.0 release CI](https://github.com/alexjmiller5/iris/actions/runs/38377452269)
-also records `Data Protection Keychain create/read/update/delete passed` from
-the separately signed production-adapter probe with a unique synthetic service.
-That is release evidence, not a fresh local Keychain probe of the Nix output.
-No user credentials were accessed and no application was installed for these
-packaging checks. Installed-app launch, enrollment and fresh Nix-output Keychain
-acceptance remain separate and unverified. A future release must retain the
-existing release CI Keychain gate; byte/signature preservation alone is not a
-substitute for it.
+The macOS release workflow verifies universal architectures, entitlements,
+strict signatures, the stapled notarization ticket and Gatekeeper acceptance.
+Its separately signed production-adapter probe also exercises Data Protection
+Keychain create/read/update/delete with a unique synthetic service. Keep that
+release gate: byte/signature preservation alone does not prove Keychain access.
+Installed-app launch and native enrollment remain separate checks.
 
 ## Darwin installation and Homebrew migration
 
