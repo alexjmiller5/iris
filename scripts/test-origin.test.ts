@@ -69,7 +69,8 @@ for (const script of scripts) {
 			const error = await new Response(child.stderr).text();
 			expect(await child.exited).not.toBe(0);
 			expect(error).toContain('Refusing reset outside a reserved Iris test origin');
-		});
+		// Real runner imports can exceed Bun's five-second default on Intel CI.
+		}, 15000);
 	}
 }
 
