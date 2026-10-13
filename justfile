@@ -28,3 +28,7 @@ fmt:
 gen:
     just --justfile apps/macos/justfile gen
     just --justfile apps/ios/justfile gen
+
+# Add a verified IPA to the shared tailnet install page.
+ota ipa:
+    python3 scripts/ota-install.py "{{ipa}}"

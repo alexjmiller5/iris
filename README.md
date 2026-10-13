@@ -922,7 +922,7 @@ never upload plaintext IPA/profile files or signing keys. Keep the temporary age
 identity locally, then delete it after successful decryption and verification.
 After verifying the downloaded app signature, profile and checksum, install the
 IPA on its enrolled phone or add it to the machine's shared tailnet install page
-with `scripts/ota-install.py <private-ipa-path>` (listed for 48 hours at
+with `just ota <private-ipa-path>` (listed for 48 hours at
 `https://<tailnet name>/install/`). Each CI dispatch and retry gets a distinct
 build number, and a newer build replaces the app's entry on that page. **Workspace status > App version** shows the
 installed version and build for acceptance checks. Install over the existing app

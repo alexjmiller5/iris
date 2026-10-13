@@ -272,8 +272,8 @@ An IPA embeds a profile containing enrolled device IDs, so plaintext IPA artifac
 are forbidden on this public repository. Each workflow run stamps and verifies
 the exported build number as run.attempt after project generation. OTA uses the
 machine's shared install page (`scripts/ota-install.py`, from the ios-app
-template): a newer build replaces the app's entry and its manifest URL carries a
-fresh version; the status sheet reads the installed app's version from
+template, `just ota <ipa>`): a newer build replaces the app's entry; manifest
+and IPA URLs have no query strings and entries expire after 48 hours; the status sheet reads the installed app's version from
 Bundle.main. Installation and OTA remain separate.
 
 The web grid labels a page's reference cells with one core `mentionLabels` read per
@@ -1171,3 +1171,5 @@ form. Only explicitly app-owned local/demo setup provisions the canonical audit
 manifest; imported replicas receive operator-provisioned logged schema through
 sync. Schema changes invalidate old coverage, and enforced record rules remain
 fail-closed until the ordinary sync establishes their validation dependencies.
+
+Ordinary check workflows run on main pushes and pull requests, with superseded runs canceled. Long UI and accessibility suites run only through manual workflow dispatch.

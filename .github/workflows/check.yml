@@ -1,7 +1,13 @@
 name: Check
 on:
   push:
+    branches: [main]
+  workflow_dispatch:
   pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
@@ -35,6 +41,7 @@ jobs:
       - run: bun run check
       - run: bun run --cwd apps/web lint
       - name: Keyboard and axe accessibility walk (light and dark)
+        if: github.event_name == 'workflow_dispatch'
         timeout-minutes: 10
         run: bun scripts/check-a11y.ts
       - run: bun run build
@@ -55,6 +62,7 @@ jobs:
         timeout-minutes: 2
         run: python3 scripts/test-attachment-staging.py
       - name: Catalog record XCUI acceptance (clean runner)
+        if: github.event_name == 'workflow_dispatch'
         timeout-minutes: 12
         run: |
           set -euo pipefail
@@ -107,14 +115,14 @@ jobs:
           print("Verified catalog, presentation, filter-bar, related-view, sidebar/menu-bar and reference-create XCUI tests; no skipped or zero-test success")
           PYVERIFY
       - name: Keep the synthetic Mac XCUI screenshots
-        if: success()
+        if: github.event_name == 'workflow_dispatch' && (success())
         uses: actions/upload-artifact@v4
         with:
           name: catalog-xcui-screens
           path: ${{ runner.temp }}/catalog-ui.xcresult
           retention-days: 3
       - name: Preserve synthetic catalog failure evidence
-        if: failure()
+        if: github.event_name == 'workflow_dispatch' && (failure())
         uses: actions/upload-artifact@v4
         with:
           name: catalog-xcui-failure
@@ -126,6 +134,7 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
       - name: Catalog record iOS XCUI acceptance (private simulator)
+        if: github.event_name == 'workflow_dispatch'
         timeout-minutes: 25
         run: |
           set -euo pipefail
@@ -202,14 +211,14 @@ jobs:
           PYVERIFY
           done
       - name: Keep the synthetic iOS due-time screenshots
-        if: success()
+        if: github.event_name == 'workflow_dispatch' && (success())
         uses: actions/upload-artifact@v4
         with:
           name: due-time-ios-screens
           path: ${{ runner.temp }}/catalog-ios-due-ui.xcresult
           retention-days: 3
       - name: Preserve synthetic iOS catalog failure evidence
-        if: failure()
+        if: github.event_name == 'workflow_dispatch' && (failure())
         uses: actions/upload-artifact@v4
         with:
           name: catalog-ios-xcui-failure
@@ -223,7 +232,7 @@ jobs:
       # Accessibility audits run even when a sibling XCUI step failed, so their
       # verdict and evidence (element trees, AX5 screenshots) are always reported.
       - name: Accessibility audit XCUI (Mac, keyboard)
-        if: ${{ !cancelled() }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
         timeout-minutes: 20
         run: |
           set -euo pipefail
@@ -237,7 +246,7 @@ jobs:
           xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/a11y-mac.xcresult" \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); c=(r.get("passedTests"),r.get("failedTests"),r.get("skippedTests")); sys.exit(f"Expected one passing Mac audit: {r}") if c!=(1,0,0) else print("Mac accessibility audit passed")'
       - name: Backup XCUI (Mac, synthetic files)
-        if: ${{ !cancelled() }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
         timeout-minutes: 20
         run: |
           set -euo pipefail
@@ -256,7 +265,7 @@ jobs:
           xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/backup-mac.xcresult" \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); c=(r.get("passedTests"),r.get("failedTests"),r.get("skippedTests")); sys.exit(f"Expected two passing Mac backup tests: {r}") if c!=(2,0,0) else print("Mac backup tests passed")'
       - name: Keep the Mac backup evidence
-        if: ${{ !cancelled() }}
+        if: github.event_name == 'workflow_dispatch' && !cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: backup-mac
@@ -266,7 +275,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
       - name: Accessibility audit XCUI (iPhone, AX5 text)
-        if: ${{ !cancelled() }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
         timeout-minutes: 30
         run: |
           set -euo pipefail
@@ -293,7 +302,7 @@ jobs:
           xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/a11y-ios.xcresult" \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); c=(r.get("passedTests"),r.get("failedTests"),r.get("skippedTests")); sys.exit(f"Expected two passing iPhone audits: {r}") if c!=(2,0,0) else print("iPhone accessibility audits passed")'
       - name: Keep the accessibility audit evidence
-        if: ${{ !cancelled() }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
         uses: actions/upload-artifact@v4
         with:
           name: accessibility-audit
