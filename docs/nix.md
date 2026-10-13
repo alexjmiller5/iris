@@ -8,7 +8,7 @@ development prerequisite; the Nix app package does not build Swift.
 ## Signed macOS app
 
 `nix build .#iris` produces `result/Applications/Iris.app`. The default
-package pins the published universal **1.4.1** ZIP by SHA-256. It extracts and
+package pins the published universal **1.4.2** ZIP by SHA-256. It extracts and
 copies the bundle without fixup, stripping, patching or re-signing. The embedded
 profile, entitlements and stapled notarization ticket stay with the app.
 App packages support Apple Silicon and Intel macOS. Their Nixpkgs 26.05 pin
