@@ -13,6 +13,7 @@ page.on("console", (m) => {
 try {
   await page.goto(url, { timeout: 180000 });
   const sample = page.getByRole("button", { name: "Try sample workspace" });
+  await expect(sample).toBeVisible({ timeout: 180000 });
   await sample.click();
   const status = page
     .locator('[role="gridcell"][data-column="status"]')
