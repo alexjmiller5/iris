@@ -835,6 +835,12 @@ while connected. Forgetting a known push-enabled connection requires confirmatio
 that its registration was revoked. System permission is requested only by
 **Enable alerts**. APNs acceptance does not mark a notification read.
 
+**Due-time alerts** (Hub connection settings on iPhone and Mac) choose saved views whose
+records notify this device at their specific due time; date-only values never notify.
+Each device keeps its own choices (none by default) and schedules at most 64 upcoming
+alerts. They need the permission granted by **Enable alerts**; tapping one offers the
+record in the open-link banner.
+
 Replacement machines enroll through the normal connection UI, approve their own
 push subscription and choose system permission independently. Provider keys and
 app-profile configuration remain service-side. A signed app must carry the
@@ -986,7 +992,11 @@ fields to Today in a chosen timezone and day boundary, and preserve multiple
 ordered sorts. A view with no timezone follows whichever timezone the device
 reading it is in; new views start that way. The default boundary is midnight; choosing 03:00 keeps early-morning
 records in the previous task day. A missing clock time advances to the next valid
-instant, and a repeated clock time uses its first occurrence.
+instant, and a repeated clock time uses its first occurrence. A mixed date property can
+hold a date, or a date with a time of day (that clock time wherever you are; add or
+remove it beside the date on web, with Add time on iPhone and Mac). Before/after filters
+can also compare with Now: a date-only value counts all day, a timed value once its time
+passes, and the view refreshes itself when the next one comes due.
 Option order follows the catalog. View options also define labeled buttons with
 literal property values and their position among visible columns. Save the view
 before using its actions; local edits retain the normal undo and sync behavior.

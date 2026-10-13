@@ -529,7 +529,9 @@ Cell values are presentation only (`cell-values.ts`, `NativePropertyValue`): a
 checkbox (and edited as one on web); `json` lists of plain values are chips,
 objects read `key: value` and lists of records as a count; Markdown previews drop
 Notion-flavored tags (callout, details, mention-*, file, empty-block) and link
-targets; dates and UTC timestamps use the native format. Whole JSON numbers read
+targets; dates and UTC timestamps use the native format, and a floating local time
+(`date_or_datetime` `YYYY-MM-DDTHH:MM`) reads as that wall-clock date and time with no
+zone (web `dateText`, native `NativePropertyValue.text`). Whole JSON numbers read
 as JavaScript writes them (`1`, never `1.0`). Unparseable source shows as stored.
 Chips wrap onto new lines (native `ChipFlow`) or clip at the cell edge (web, unless the
 column wraps) rather than all shrinking; web grid chips keep a word break between them so a
@@ -544,7 +546,8 @@ The native `FilterBar` (iPhone and Mac) sits above the records with Filter and S
 popovers and a chip row that scrolls edge to edge, its margin inside the scroll view
 so no chip clips at the bar's inset. Filter is a searchable property list (Add filter group
 inside) that adds a chip and pushes its type editor: select options as checkmarks,
-text, number, date with Today, Boolean and the existing reference picker. Chips edit
+text, number, date with Today or Now (Now only for before/after), Boolean and the
+existing reference picker. Chips edit
 on tap and remove with x; Sort holds ordered rules with direction toggles and drag
 reorder. Edits apply to the query at once; chips without a usable value neither
 filter nor save. Closing a popover or the Views sheet, or removing a chip, calls
@@ -579,7 +582,24 @@ options, the default for new views); calendar helpers take the optional zone, an
 widgets resolve it at read time. A missing local
 time advances to the next valid instant; repeated times use the first occurrence.
 The shared JSC core has no Intl.
-Calendar contexts are query arguments only, never persisted in definitions.
+Calendar contexts are query arguments only, never persisted in definitions. Hosts fill
+every slot: `today`, `start`/`end`, the same bounds as floating local times
+(`localStart`/`localEnd`) and the clock reading (`now`, `localNow`), so a relative Now
+filter (web chips and the native bar offer Now beside Today for before/after) compares a
+timed value with the clock while a date-only value counts all day. A view comparing with
+Now also re-runs when its next timed value comes due later in the policy day (web
+`nextDue` in `view-controls.ts`, native `DueTimes.nextDue` in `runCalendarRefresh`) and on
+focus/foreground; the widget publication carries each Now view's upcoming due values, so
+the Today widget timeline and the iOS daily section wake then too.
+Native due-time alerts (iPhone and Mac, per device): Hub connection > Due-time alerts lists
+saved views with a relative date filter or calendar date (default none, stored with the
+other integration identities). `NativeIntegrationSettings.reconcileDueAlerts` schedules one
+local notification per row and specific due time (floating or instant, never date-only)
+for rows those views select apart from their relative filters, nearest first up to 64,
+after sync, local edits and setting changes. A floating time in a view without a zone
+fires at its wall clock wherever the device is. It schedules only with permission granted
+by the explicit Enable alerts action. A tap fills the pending-link banner with the row's
+`iris://open/v1` link (`DueAlertLinks`). The web client has no due-time alerts.
 Actions use the generated runRowAction operation with the selected full row's
 post-save revision and the applied saved-view revision. Disable them during writes
 or while view settings are unsaved. Core
@@ -604,7 +624,11 @@ Native catalog choices load through `NativeWorkspace.options`; controls only
 change draft bindings. Keep selected unknown choices and exact UTF-8 option keys,
 and expose malformed multi-select source for explicit repair. Late option replies
 must not replace a closed editor's state. Date controls preserve untouched source
-and use explicit UTC for datetimes; invalid values never silently become today.
+and use explicit UTC for datetimes; invalid values never silently become today. A
+`date_or_datetime` field edits a date with an optional floating time (web: a time input
+beside the date and Remove time, `splitLocalTime`/`joinLocalTime`; native:
+`NativeMixedDateField` with an Add time toggle starting at 09:00). Removing the time
+returns to date-only; a stored UTC instant keeps its source text editing.
 Link actions require explicit taps and supported schemes. Core remains the only
 validator and writer.
 
@@ -925,7 +949,7 @@ Saved views can select Calendar, Gallery or a select-grouped Board. Keep these
 settings in the canonical v2 presentation object. Calendar and Board layout use
 shared core operations over loaded rows; hosts supply existing civil-day bounds
 and display pagination coverage. Date-only range ends are inclusive; timed ends
-are exclusive. Board moves use normal revision-checked writes and the same draft
+are exclusive. A floating local time lands on the day whose local bounds hold it. Board moves use normal revision-checked writes and the same draft
 and read-only guards as other edits. Gallery covers use the selected catalog
 property and the existing separate retained/public image credential paths.
 
