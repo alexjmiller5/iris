@@ -117,4 +117,36 @@ struct CalendarContextTests {
     }
     #expect(throws: (any Error).self) { try calendarContext(timeZone: "Unknown/Zone", now: Date()) }
   }
+
+  @Test func contextCarriesTheClockReadingAndLocalBounds() throws {
+    let actual = try calendarContext(
+      timeZone: "America/New_York", now: parse("2032-10-13T16:30:45.120Z"), dayStartMinutes: 180)
+    #expect(
+      actual
+        == CoreCalendarContext(
+          today: "2032-10-13", start: "2032-10-13T07:00:00.000Z", end: "2032-10-14T07:00:00.000Z",
+          now: "2032-10-13T16:30:45.120Z", localNow: "2032-10-13T12:30",
+          localStart: "2032-10-13T03:00", localEnd: "2032-10-14T03:00"))
+    let early = try calendarContext(
+      timeZone: "America/New_York", now: parse("2032-10-14T05:00:00Z"), dayStartMinutes: 180)
+    #expect(early.today == "2032-10-13")
+    #expect(early.localNow == "2032-10-14T01:00")
+  }
+
+  @Test func floatingLocalTimeNamesAnInstantInTheZone() throws {
+    let samples = [
+      ("2032-10-13T12:00", "America/New_York", "2032-10-13T16:00:00Z"),
+      ("2032-10-13T12:00", "Asia/Kathmandu", "2032-10-13T06:15:00Z"),
+      // Skipped by daylight saving: the first valid instant after the gap.
+      ("2026-03-08T02:30", "America/New_York", "2026-03-08T07:00:00Z"),
+      // Repeated: its first occurrence.
+      ("2026-11-01T01:30", "America/New_York", "2026-11-01T05:30:00Z"),
+    ]
+    for (value, zone, instant) in samples {
+      #expect(localTimeInstant(value, timeZone: zone) == (try parse(instant)))
+    }
+    for value in ["2032-10-13", "2032-02-30T12:00", "2032-10-13T24:00", "2032-10-13T12:00:00.000Z", ""] {
+      #expect(localTimeInstant(value, timeZone: "UTC") == nil)
+    }
+  }
 }

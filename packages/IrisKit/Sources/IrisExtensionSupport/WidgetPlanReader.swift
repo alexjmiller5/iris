@@ -106,6 +106,10 @@ public struct WidgetPlanReader: Sendable {
         case .today: return .string(calendar.today)
         case .start: return .string(calendar.start)
         case .end: return .string(calendar.end)
+        case .now: return calendar.now.map { .string($0) } ?? .null
+        case .localNow: return calendar.localNow.map { .string($0) } ?? .null
+        case .localStart: return calendar.localStart.map { .string($0) } ?? .null
+        case .localEnd: return calendar.localEnd.map { .string($0) } ?? .null
         }
       }
     }
