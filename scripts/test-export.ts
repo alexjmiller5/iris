@@ -97,12 +97,14 @@ try {
     name: "Export loaded rows",
     exact: true,
   });
-  const disclosure = page.getByRole("button", { name: "Export", exact: true });
+  // A native <summary> toggle: Chrome exposes it as a disclosure button, Playwright's
+  // role table gives it no role, so select it by element and text.
+  const disclosure = page.locator("summary", { hasText: /^Export$/ });
   await expect(disclosure).toBeVisible();
   expect((await disclosure.locator("..").boundingBox())?.width).toBeLessThan(
     160,
   );
-  await expect(action).toBeHidden();
+  await expect(action, "collapsed on open").toBeHidden();
   if (process.env.IRIS_TEST_SCREENSHOTS) {
     await page.screenshot({
       path: `${process.env.IRIS_TEST_SCREENSHOTS}/export-collapsed.png`,
@@ -131,7 +133,7 @@ try {
   }
   await formatControl.focus();
   await formatControl.press("Escape");
-  await expect(action).toBeHidden();
+  await expect(action, "Escape collapses").toBeHidden();
   await expect(disclosure).toBeFocused();
   await disclosure.press("Space");
   await expect(action).toBeVisible();
@@ -285,7 +287,9 @@ try {
     await page.evaluate(async () => await (window as any).exports.at(-1)),
   );
   expect(views.table).toBe("views");
-  expect(views.rows).toEqual([]);
+  // Opening a table creates its default saved view, so these are the views rows of
+  // the two tables opened so far, never the notes rows loaded before the switch.
+  expect(views.rows.map((row: any) => row.tbl).sort()).toEqual(["notes", "views"]);
   expect(views.properties.every((p: any) => p.tbl === "views")).toBe(true);
   console.log(
     "PASS: mounted export downloads exact stored Markdown and explicit metadata; loading blocks export; CSV sidecar retains its clicked capture.",
