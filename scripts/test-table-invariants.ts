@@ -83,7 +83,7 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await cdp.navigate("about:blank");
+  await cdp.navigate(new URL("/favicon.svg", url).href);
   await cdp.command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",
@@ -384,7 +384,7 @@ try {
   }
 } finally {
   if (page) {
-    await page.navigate("about:blank").catch(() => {});
+    await page.navigate(new URL("/favicon.svg", url).href).catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
       .catch(() => {});

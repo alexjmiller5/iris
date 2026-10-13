@@ -357,7 +357,7 @@ try {
     }
     console.log(JSON.stringify(results.at(-1)));
   }
-  await cdp.navigate("about:blank");
+  await cdp.navigate(new URL("/favicon.svg", address).href);
   await cdp.command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",
@@ -527,7 +527,7 @@ try {
 } finally {
   if (page) {
     await page.evaluate("globalThis.opfsFixture?.stop()").catch(() => {});
-    await page.navigate("about:blank").catch(() => {});
+    await page.navigate(new URL("/favicon.svg", address).href).catch(() => {});
     await page
       .command("Storage.clearDataForOrigin", { origin, storageTypes: "all" })
       .catch(() => {});

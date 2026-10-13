@@ -150,16 +150,14 @@ export async function sourceNavigationCDP(address: string) {
     await command("Input.insertText", { text: value });
   }
   async function navigate(url: string) {
-    // about:blank leaves the fixture without reopening its remembered workspace.
-    if (url !== "about:blank" && new URL(url).origin !== origin)
+    if (new URL(url).origin !== origin)
       throw Error("Refusing navigation outside owned fixture origin");
-    // A remembered workspace reopens at once and rewrites the query, so a marker on
-    // the old document and the path identify the newly loaded page.
-    await evaluate("window.__irisLeaving = true").catch(() => {});
+    // A remembered workspace reopens at once and rewrites the query, so the path
+    // and a document started after this call identify the loaded page.
+    const started = Date.now();
     await command("Page.navigate", { url });
-    const path = JSON.stringify(url.split("?")[0]);
     await until(
-      `!window.__irisLeaving && location.href.split('?')[0] === ${path} && document.readyState === 'complete'`,
+      `performance.timeOrigin >= ${started} && location.href.split('?')[0] === ${JSON.stringify(url.split("?")[0])} && document.readyState === 'complete'`,
     );
   }
   await command("Page.enable");

@@ -54,7 +54,7 @@ try {
     window.Worker=class extends WorkerBase {postMessage(request,...rest){add('request',request.method);return super.postMessage(request,...rest);}};
   `});
   await cdp.command('Page.bringToFront');
-  await cdp.navigate("about:blank");
+  await cdp.navigate(new URL("/favicon.svg", address).href);
   await cdp.command('Storage.clearDataForOrigin', { origin, storageTypes: 'all' });
   await cdp.navigate(address);
   await cdp.until("!!document.querySelector('#svelte-announcer')");
@@ -162,12 +162,14 @@ try {
   await cdp.click(element('[aria-label="Open pinned projects"]'));
   await cdp.until(`(document.querySelector('[data-last-sync]')?.getAttribute('data-last-sync') ?? '') > ${JSON.stringify(pinsResync)}`);
   await expect.poll(()=>hub.db.db.query('SELECT tbl FROM sidebar_pins WHERE deleted_at IS NULL ORDER BY position').all()).toEqual([{tbl:'projects'},{tbl:'widgets'}]);
-  // The workspace reopens by itself, its pins read from the local replica.
+  // The workspace reopens by itself, its pins read from the local replica. The
+  // discarded draft's table switch lands first, so no unload prompt races the reopening page.
+  await cdp.until("new URL(location.href).searchParams.get('table') === 'projects'");
   await cdp.navigate(address);
   await cdp.until("!!document.querySelector('#svelte-announcer')");
   await expect.poll(() => cdp.evaluate(pinned)).toEqual(['projects', 'widgets']);
   // Erase this synthetic replica, then recover the pins from the real service.
-  await cdp.navigate("about:blank");
+  await cdp.navigate(new URL("/favicon.svg", address).href);
   await cdp.command('Storage.clearDataForOrigin',{origin,storageTypes:'all'});
   await cdp.navigate(address);
   await cdp.until("!!document.querySelector('#svelte-announcer')");
@@ -190,7 +192,7 @@ try {
   if (page) {
     acceptDiscard=true;
     try {
-      await page.navigate("about:blank");
+      await page.navigate(new URL("/favicon.svg", address).href);
       await page.command('Storage.clearDataForOrigin', { origin, storageTypes: 'all' });
     } finally { page.close(); }
   }

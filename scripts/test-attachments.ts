@@ -116,7 +116,7 @@ try {
     behavior: "allow",
     downloadPath: downloads,
   });
-  await navigate("about:blank");
+  await navigate(new URL("/favicon.svg", url).href);
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await navigate(url);
   await click(button("Open my workspace"));
@@ -237,7 +237,7 @@ try {
   console.error(await evaluate("document.body.innerText"));
   throw error;
 } finally {
-  await navigate("about:blank").catch(() => {});
+  await navigate(new URL("/favicon.svg", url).href).catch(() => {});
   await command("Storage.clearDataForOrigin", {
     origin,
     storageTypes: "all",

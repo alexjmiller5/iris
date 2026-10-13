@@ -944,8 +944,9 @@ concurrent tasks inside tests and their assertions unchanged.
 Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
 `IRIS_DEV_NO_HMR=1` dev server; usage in the README). A reload or revisit reopens the
 remembered workspace by itself: a script that needs the welcome screen clicks Switch workspace
-(which forgets it) or clears the origin's storage from `about:blank`, never from a page of the
-app, which would reopen the workspace first.
+(which forgets it) or clears the origin's storage from a page that opens no workspace
+(`about:blank`, or `/favicon.svg` through `source-navigation-cdp.ts`, which stays on the fixture
+origin), never from a page of the app, which would reopen the workspace first.
 - `check-a11y.ts`: keyboard and axe walk of every view, light and dark (`just check`).
 - `test-filter-bar.ts`: filter chips, sorts, autosave (also across a view switch while a
   save is in flight) and Undo on the sample workspace.

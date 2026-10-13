@@ -163,7 +163,7 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await navigate("about:blank");
+  await navigate(new URL("/favicon.svg", url).href);
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   initScript = (
     await command("Page.addScriptToEvaluateOnNewDocument", {
@@ -417,7 +417,7 @@ try {
     await command("Page.removeScriptToEvaluateOnNewDocument", {
       identifier: initScript,
     });
-  await navigate("about:blank").catch(() => {});
+  await navigate(new URL("/favicon.svg", url).href).catch(() => {});
   await command("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   cdp.close();
   server.stop(true);

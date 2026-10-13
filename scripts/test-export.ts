@@ -12,7 +12,9 @@ if (
   !target.searchParams.has("review")
 )
   throw new Error("Export acceptance requires the reserved disposable origin.");
-const browser = await chromium.connectOverCDP("http://127.0.0.1:9222");
+const browser = await chromium.connectOverCDP(
+  process.env.IRIS_TEST_CDP ?? "http://127.0.0.1:9222",
+);
 let page: Page | undefined;
 const markdown = "# Exact source\r\n\r\n<tag> _雪_  \n";
 try {
