@@ -9,7 +9,8 @@ import Testing
 @MainActor struct DueTimesTests {
   static let now = ISO8601DateFormatter().date(from: "2032-10-13T16:30:00Z")!
   static let definition = CoreSavedViewDefinition(
-    version: 2, filters: [
+    version: 2,
+    filters: [
       CoreFilter(column: "status", op: .eq, value: .string("Draft")),
       CoreFilter(column: "due", op: .lte, relative: .now),
     ], timeZone: "America/New_York", dayStartMinutes: 180)
@@ -24,8 +25,10 @@ import Testing
           fields: ["label": .string("Due"), "type": .string("date_or_datetime")], addColumn: true))
       for (title, due, status) in [
         ("Anytime today", "2032-10-13", "Draft"), ("Past noon", "2032-10-13T12:00", "Draft"),
-        ("Evening", "2032-10-13T18:00", "Draft"), ("Instant soon", "2032-10-13T17:15:00.000Z", "Draft"),
-        ("After midnight", "2032-10-14T01:00", "Draft"), ("Tomorrow noon", "2032-10-14T12:00", "Draft"),
+        ("Evening", "2032-10-13T18:00", "Draft"),
+        ("Instant soon", "2032-10-13T17:15:00.000Z", "Draft"),
+        ("After midnight", "2032-10-14T01:00", "Draft"),
+        ("Tomorrow noon", "2032-10-14T12:00", "Draft"),
         ("Ready evening", "2032-10-13T17:00", "Ready"), ("Next week", "2032-10-25T09:00", "Draft"),
       ] {
         _ = try await workspace.write(
@@ -57,7 +60,8 @@ import Testing
       let upcoming = try await DueTimes.upcoming(
         workspace: workspace, table: "notes", definition: Self.definition, column: "due",
         now: Self.now, days: 2)
-      #expect(upcoming.map(\.label) == ["Instant soon", "Evening", "After midnight", "Tomorrow noon"])
+      #expect(
+        upcoming.map(\.label) == ["Instant soon", "Evening", "After midnight", "Tomorrow noon"])
       #expect(upcoming.first?.value == "2032-10-13T17:15:00.000Z")
       #expect(upcoming[1].at == ISO8601DateFormatter().date(from: "2032-10-13T22:00:00Z"))
       let week = try await DueTimes.upcoming(
@@ -87,8 +91,10 @@ import Testing
     #expect(!plan.add.contains { $0.title == "Row 64" })
     #expect(plan.remove == [prefix + "stale"])
     #expect(
-      DueAlerts.identifier(workspaceID: "workspace", table: "notes", rowID: "a", value: "2032-10-13T09:00")
-        != DueAlerts.identifier(workspaceID: "workspace", table: "notes", rowID: "a", value: "2032-10-13T10:00"))
+      DueAlerts.identifier(
+        workspaceID: "workspace", table: "notes", rowID: "a", value: "2032-10-13T09:00")
+        != DueAlerts.identifier(
+          workspaceID: "workspace", table: "notes", rowID: "a", value: "2032-10-13T10:00"))
   }
 
   @Test func chosenViewsScheduleOnlyWithPermissionAndForgetOnRemoval() async throws {
@@ -102,12 +108,17 @@ import Testing
         workspace: workspace, workspaceID: "local:workspace", binding: .local(UUID()),
         preferencesURL: root.appendingPathComponent("integrations.json"), alerts: center)
       center.allowed = false
-      #expect(await settings.setAlertViews([NativeWidgetSelection(table: "notes", viewID: view.id)]))
+      #expect(
+        await settings.setAlertViews([NativeWidgetSelection(table: "notes", viewID: view.id)]))
       #expect(center.pending.isEmpty)
       center.allowed = true
       await settings.reconcileDueAlerts(now: Self.now)
-      #expect(center.pending.map(\.title) == ["Instant soon", "Evening", "After midnight", "Tomorrow noon"])
-      #expect(center.pending.allSatisfy { $0.body.hasSuffix("· Due drafts") && $0.link.scheme == "iris" })
+      #expect(
+        center.pending.map(\.title) == [
+          "Instant soon", "Evening", "After midnight", "Tomorrow noon",
+        ])
+      #expect(
+        center.pending.allSatisfy { $0.body.hasSuffix("· Due drafts") && $0.link.scheme == "iris" })
       // The view pins a zone, so its local times fire at exact instants.
       #expect(center.pending.allSatisfy { !$0.floating })
       #expect(await settings.setAlertViews([]))

@@ -76,14 +76,19 @@ enum DueAlerts {
 }
 
 @MainActor final class SystemDueAlertCenter: DueAlertCenter {
-  private var center: UNUserNotificationCenter { .current() }
+  /// Nil outside an app bundle (SwiftPM tests), where the system center would trap.
+  private var center: UNUserNotificationCenter? {
+    Bundle.main.bundleIdentifier == nil ? nil : .current()
+  }
 
   func authorized() async -> Bool {
-    [.authorized, .provisional].contains(await center.notificationSettings().authorizationStatus)
+    guard let center else { return false }
+    return [.authorized, .provisional].contains(
+      await center.notificationSettings().authorizationStatus)
   }
 
   func pendingIdentifiers() async -> [String] {
-    await center.pendingNotificationRequests().map(\.identifier)
+    await center?.pendingNotificationRequests().map(\.identifier) ?? []
   }
 
   func add(_ request: DueAlertRequest) async throws {
@@ -98,7 +103,7 @@ enum DueAlerts {
       [.year, .month, .day, .hour, .minute, .second], from: request.at)
     // Without a zone the trigger follows the device's current wall clock.
     components.timeZone = request.floating ? nil : .gmt
-    try await center.add(
+    try await center?.add(
       UNNotificationRequest(
         identifier: request.identifier, content: content,
         trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)))
@@ -106,7 +111,7 @@ enum DueAlerts {
 
   func remove(_ identifiers: [String]) {
     guard !identifiers.isEmpty else { return }
-    center.removePendingNotificationRequests(withIdentifiers: identifiers)
+    center?.removePendingNotificationRequests(withIdentifiers: identifiers)
   }
 }
 
