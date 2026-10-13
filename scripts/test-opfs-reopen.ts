@@ -432,7 +432,9 @@ try {
         await second.click(named("button", "Switch workspace"));
         await second.until(`!!(${named("button", "Open my workspace")})`);
       } finally {
-        await second.navigate(new URL("/", address).href);
+        // "/" renders the workspace and reopens a remembered one; leave the second tab on
+        // a page that opens none, or its workspace keeps the database open into the next run.
+        await second.navigate(new URL("/favicon.svg", address).href);
         second.close();
       }
       await cdp.command("Page.bringToFront");
