@@ -100,6 +100,16 @@ struct NativePropertyValueTests {
       type: "datetime", value: "2024-02-29T00:04:00.000Z", locale: locale)
     #expect(instant.contains("29") && instant.contains("12:04") && instant.hasSuffix(" UTC"))
   }
+  @Test func mixedDatesShowDateOnlyFloatingTimesAndInstants() throws {
+    let locale = Locale(identifier: "en_US")
+    let mixed = { NativePropertyValue.text(type: "date_or_datetime", value: $0, locale: locale) }
+    #expect(mixed("2026-10-13") == NativePropertyValue.text(type: "date", value: "2026-10-13", locale: locale))
+    let local = mixed("2026-10-13T12:00")
+    #expect(local.contains("Oct") && local.contains("13") && local.contains("12:00"))
+    #expect(local.contains("PM") && !local.contains("UTC"))
+    #expect(mixed("2026-10-13T16:00:00.000Z").hasSuffix(" UTC"))
+    #expect(mixed("2026-02-30T12:00") == "2026-02-30T12:00")
+  }
   @Test @MainActor func referenceIdentityTracksContextAndExactValues() {
     let field = CatalogField(property: [
       "tbl": .string("source"), "col": .string("relation"), "type": .string("ref"),

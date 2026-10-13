@@ -48,11 +48,14 @@ struct NativePropertyValue: View {
     guard !value.isEmpty else { return "" }
     if type == "markdown" { return String(NativeMarkdownPreview.render(value).characters) }
     if ["ref", "multi_ref"].contains(type) { return "Unavailable" }
-    if let kind = NativeDateKind(rawValue: type),
+    if let kind = type == "date_or_datetime"
+      ? NativeDateValue.mixedKind(value) : ["date", "datetime"].contains(type)
+        ? NativeDateKind(rawValue: type) : nil,
       let date = NativeDateValue.parse(value, kind: kind)
     {
+      // A floating local time is its wall clock: shown in UTC arithmetic, with no zone label.
       let format = Date.FormatStyle(
-        date: .abbreviated, time: kind == .datetime ? .shortened : .omitted, locale: locale,
+        date: .abbreviated, time: kind == .date ? .omitted : .shortened, locale: locale,
         timeZone: TimeZone(secondsFromGMT: 0)!)
       return date.formatted(format) + (kind == .datetime ? " UTC" : "")
     }

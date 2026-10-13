@@ -34,6 +34,24 @@ struct NativeFieldValueTests {
     #expect(NativeDateValue.format(parsed, kind: .date) == "2024-02-29")
   }
 
+  @Test func floatingLocalTimeKeepsItsWallClockMinutes() throws {
+    let parsed = try #require(NativeDateValue.parse("2024-02-29T23:04", kind: .local))
+    #expect(NativeDateValue.format(parsed, kind: .local) == "2024-02-29T23:04")
+    #expect(NativeDateValue.format(parsed, kind: .date) == "2024-02-29")
+    for invalid in ["2024-02-29T24:00", "2024-02-30T10:00", "2024-02-29T10:00:00", "2024-02-29"] {
+      #expect(NativeDateValue.parse(invalid, kind: .local) == nil)
+    }
+    #expect(NativeDateValue.mixedKind("2024-02-29") == .date)
+    #expect(NativeDateValue.mixedKind("2024-02-29T09:30") == .local)
+    #expect(NativeDateValue.mixedKind("2024-02-29T09:30:00.000Z") == .datetime)
+    #expect(NativeDateValue.mixedKind("soon") == nil)
+    #expect(NativeDateValue.toggleTime("2024-02-29", on: true) == "2024-02-29T09:00")
+    #expect(NativeDateValue.toggleTime("2024-02-29T17:45", on: false) == "2024-02-29")
+    #expect(NativeDateValue.toggleTime("2024-02-29T17:45", on: true) == "2024-02-29T17:45")
+    #expect(
+      NativeDateValue.toggleTime("2024-02-29T17:45:00.000Z", on: false) == "2024-02-29T17:45:00.000Z")
+  }
+
   @Test func datetimeRetainsSecondsAndMillisecondsInUTC() throws {
     let raw = "2024-02-29T23:04:05.123Z"
     let parsed = try #require(NativeDateValue.parse(raw, kind: .datetime))
