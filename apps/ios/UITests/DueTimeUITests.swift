@@ -31,10 +31,6 @@ final class DueTimeUITests: XCTestCase {
     toggle.switches.firstMatch.tap()
     XCTAssertEqual(toggle.value as? String, "1")
     capture(app, "ios-due-add-time-on")
-    XCUIDevice.shared.appearance = .dark
-    RunLoop.current.run(until: Date().addingTimeInterval(2))  // the app redraws in dark
-    capture(app, "ios-due-add-time-on-dark")
-    XCUIDevice.shared.appearance = .light
     let source = app.buttons["date-source-due"]
     source.tap()
     let field = app.textFields["field-due"]
@@ -68,10 +64,6 @@ final class DueTimeUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["due-alerts-permission"].exists)
     XCTAssertFalse(app.alerts.firstMatch.exists)
     capture(app, "ios-due-time-alerts")
-    XCUIDevice.shared.appearance = .dark
-    RunLoop.current.run(until: Date().addingTimeInterval(2))
-    capture(app, "ios-due-time-alerts-dark")
-    XCUIDevice.shared.appearance = .light
   }
 
   private func capture(_ app: XCUIApplication, _ name: String) {
