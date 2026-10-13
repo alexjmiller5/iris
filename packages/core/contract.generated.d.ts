@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "a1a6b963da63bb7e9b5d5d4675da04c45e6442015099350a28e9ec683a99ed11";
+export declare const CORE_CONTRACT_HASH = "9430db740601ad29aa961e5ce961342793ef84100d38fd29902c9c6b550d8100";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -441,7 +441,7 @@ export type ScopedReplicaUnsupported = {
     message: string;
 };
 export type SortMode = "value" | "options";
-export type FilterRelative = "today";
+export type FilterRelative = "today" | "now";
 export type FilterGroup = {
     match: "all" | "any";
     filters: Filter[];
@@ -450,6 +450,10 @@ export type CalendarContext = {
     today: string;
     start: string;
     end: string;
+    now?: string;
+    localNow?: string;
+    localStart?: string;
+    localEnd?: string;
 };
 export type RowAction = {
     id: string;
@@ -1042,7 +1046,7 @@ export type CaptureReceipt = {
     item?: CaptureItem;
 };
 export type SQLScalar = string | number | null;
-export type CalendarSlot = "today" | "start" | "end";
+export type CalendarSlot = "today" | "start" | "end" | "now" | "localNow" | "localStart" | "localEnd";
 export type ReadPlanLiteral = {
     kind: "literal";
     value: SQLScalar;
