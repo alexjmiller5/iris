@@ -45,7 +45,9 @@ schema from the operator. Ordinary table defaults are unaffected.
   The share extension (IrisExtensionSupport only) puts one URL or text into a
   Quick Add source's display column; presenting a non-empty capture creates its row.
 - NativeIntegrationSettings holds per-workspace identities only: Spotlight tables,
-  the Shortcuts lookup table (default none) and the daily-section widget source.
+  the Shortcuts lookup table (default none), the daily-section widget source and the
+  due-time alert views. It needs only a saved workspace's private identity, never a
+  widget library (the Mac has none): `prepareIntegrations` creates it on first use.
   Spotlight indexes display titles of enabled tables in a protected Core Spotlight
   index; item IDs are `iris://open/v1` links handled by the pending-link banner.
   Disabling a table or forgetting the connection deletes its domains. Look Up and

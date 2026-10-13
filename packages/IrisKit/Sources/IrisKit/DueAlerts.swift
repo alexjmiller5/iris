@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import Observation
+import SwiftUI
 import UserNotifications
 
 /// One local notification at a row's specific due time.
@@ -115,8 +116,6 @@ enum DueAlerts {
   }
 }
 
-import SwiftUI
-
 /// Settings > Due-time alerts: the saved views whose rows notify this device.
 struct DueAlertsView: View {
   let model: WorkspaceModel
@@ -172,6 +171,8 @@ struct DueAlertsView: View {
     .navigationTitle("Due-time alerts")
     .task {
       authorized = await SystemDueAlertCenter().authorized()
+      // Creates this saved workspace's private identity on first use, as widgets do.
+      do { try model.prepareIntegrations() } catch { failure = error.localizedDescription }
       guard let workspace = model.client else { return }
       defer { loading = false }
       do {

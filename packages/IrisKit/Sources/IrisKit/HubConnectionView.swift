@@ -49,7 +49,7 @@ struct HubConnectionView: View {
             } label: {
               Label("Backup", systemImage: "externaldrive")
             }.accessibilityIdentifier("backup-settings")
-            if model.integrations != nil {
+            if model.canPrepareIntegrations {
               NavigationLink {
                 DueAlertsView(model: model)
               } label: {

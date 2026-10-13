@@ -65,22 +65,30 @@ final class WorkspaceModel {
   private var widgetWorkspaceURL: URL?
 
   func prepareWidgets() throws {
+    guard widgetLibrary != nil else {
+      throw WorkspaceError(
+        message: "Open a saved workspace in an app with widget support.", violations: [])
+    }
     try configureWidgets(createIdentity: true)
   }
 
+  /// Due-time alerts (and Spotlight and Shortcuts choices) need only a saved workspace,
+  /// on the Mac too, where there is no widget library.
+  var canPrepareIntegrations: Bool { client != nil && widgetWorkspaceURL != nil }
+  func prepareIntegrations() throws { try configureWidgets(createIdentity: true) }
+
   private func configureWidgets(createIdentity: Bool) throws {
-    guard widgets == nil else { return }
-    guard let client, let widgetLibrary, let file = widgetWorkspaceURL else {
+    guard integrations == nil else { return }
+    guard let client, let file = widgetWorkspaceURL else {
       if createIdentity {
-        throw WorkspaceError(
-          message: "Open a saved workspace in an app with widget support.", violations: [])
+        throw WorkspaceError(message: "Open a saved workspace first.", violations: [])
       }
       return
     }
     let root = try resolveLocalURL().deletingLastPathComponent()
     let identity = try NativeLinkIdentityStore(root: root, workspace: file).retainingOpenedFile()
     let loaded = try identity.load()
-    if let replaced = try identity.replacedBinding() {
+    if let replaced = try identity.replacedBinding(), let widgetLibrary {
       let priorWorkspaceID: String
       switch linkBinding ?? replaced {
       case .local(let id): priorWorkspaceID = "local:" + id.uuidString.lowercased()
@@ -99,14 +107,16 @@ final class WorkspaceModel {
     }
     let preferences = root.appendingPathComponent("widgets", isDirectory: true)
       .appendingPathComponent(replica.uuidString.lowercased() + ".json")
-    widgets = NativeWidgetSettings(
-      workspace: client, library: widgetLibrary, workspaceID: workspaceID,
-      replicaID: replica.uuidString.lowercased(), preferencesURL: preferences, binding: binding,
-      didChange: {
-        #if canImport(WidgetKit)
-          WidgetCenter.shared.reloadAllTimelines()
-        #endif
-      })
+    if let widgetLibrary {
+      widgets = NativeWidgetSettings(
+        workspace: client, library: widgetLibrary, workspaceID: workspaceID,
+        replicaID: replica.uuidString.lowercased(), preferencesURL: preferences, binding: binding,
+        didChange: {
+          #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+          #endif
+        })
+    }
     #if os(iOS)
       let spotlight: SpotlightIndexing? = CoreSpotlightIndex()
     #else
@@ -1343,7 +1353,8 @@ final class WorkspaceModel {
   }
   func removeFilter(_ id: UUID) { filters.removeAll { $0.id == id } }
   private func isFlag(_ filter: WorkspaceFilter, _ column: String) -> Bool {
-    filter.column == column && filter.operation == .eq && filter.value == "true" && filter.relative == nil
+    filter.column == column && filter.operation == .eq && filter.value == "true"
+      && filter.relative == nil
   }
   func flagIsOn(_ column: String) -> Bool { filters.contains { isFlag($0, column) } }
   func toggleFlag(_ column: String) {
