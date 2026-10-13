@@ -456,7 +456,7 @@ async function dispatch(request: DatabaseRequest) {
 			// its access handles, so the file can stay busy for a moment after it is ours.
 			// The VFS records each failure's cause on lastError (untyped upstream).
 			const cause = vfs as { lastError?: { name?: string } | null };
-			for (const started = Date.now(); ; ) {
+			for (const started = Date.now(); ;) {
 				try {
 					await connect(name);
 					break;
