@@ -127,12 +127,13 @@ function tools(page: Page, scheme: string) {
 async function sampleWalk(page: Page, scheme: string) {
   const { audit, ring, tabTo, expectFocus, role } = tools(page, scheme);
   await page.goto(url!);
-  await audit("landing");
+  // Pages render in the browser: audit the landing once the welcome screen is there.
   const sample = role("button", "Try sample workspace");
   await sample.waitFor();
   await page.waitForFunction(() =>
     [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("Try sample workspace") && !b.disabled),
   );
+  await audit("landing");
   await tabTo(sample);
   await page.keyboard.press("Enter");
   const grid = page.getByRole("grid", { name: "Records" });
