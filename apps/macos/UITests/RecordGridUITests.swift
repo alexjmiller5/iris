@@ -2,7 +2,7 @@ import XCTest
 
 @MainActor
 final class RecordGridUITests: XCTestCase {
-  func testDoubleClickEditsInlineAndCanStillExpandTheRecord() throws {
+  func testSingleClickEditsAndClickingAwaySavesWithoutActionButtons() throws {
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launchArguments = ["--demo", "-ApplePersistenceIgnoreState", "YES"]
@@ -16,30 +16,26 @@ final class RecordGridUITests: XCTestCase {
     let grid = app.descendants(matching: .any).matching(identifier: "record-grid").firstMatch
     XCTAssertTrue(grid.waitForExistence(timeout: 15))
     grid.staticTexts.matching(NSPredicate(format: "value == %@", "A place to start")).firstMatch
-      .doubleClick()
-    let field = grid.textFields["field-title"]
+      .click()
+    let field = app.textFields["field-title"]
     XCTAssertTrue(field.waitForExistence(timeout: 5))
-    XCTAssertEqual(app.sheets.count, 0)
-    XCTAssertFalse(app.buttons["new-record"].isEnabled)
-    XCTAssertTrue(
-      app.buttons["Close workspace"].isEnabled, "Close dismisses the inline editor itself")
-    field.click()
+    XCTAssertFalse(app.buttons["inline-done"].exists)
+    XCTAssertFalse(app.buttons["inline-open-record"].exists)
+    XCTAssertFalse(app.buttons["undo-inline"].exists)
     field.typeKey("a", modifierFlags: .command)
     field.typeText("Changed inside the table")
-    let selectedRow = grid.tableRows.matching(NSPredicate(format: "selected == true")).firstMatch
-    XCTAssertTrue(selectedRow.exists)
-    XCTAssertGreaterThanOrEqual(field.frame.minY, selectedRow.frame.minY)
-    XCTAssertLessThanOrEqual(grid.buttons["inline-done"].frame.maxY, selectedRow.frame.maxY)
-    capture(app, name: "inline-text-edit")
-    grid.buttons["inline-open-record"].click()
-    let fullField = app.sheets.textFields["field-title"]
-    XCTAssertTrue(fullField.waitForExistence(timeout: 5))
-    XCTAssertEqual(fullField.value as? String, "Changed inside the table")
-    app.buttons["done-record"].click()
-    XCTAssertTrue(grid.waitForExistence(timeout: 5))
+    grid.staticTexts.matching(NSPredicate(format: "value == %@", "Draft")).firstMatch.click()
     XCTAssertTrue(
       grid.staticTexts.matching(NSPredicate(format: "value == %@", "Changed inside the table"))
         .firstMatch.waitForExistence(timeout: 5))
+    let ready = app.buttons["choice-status-Ready"]
+    XCTAssertTrue(ready.waitForExistence(timeout: 5), "A single click exposes the actual choices")
+    ready.click()
+    XCTAssertTrue(
+      grid.staticTexts.matching(NSPredicate(format: "value == %@", "Ready"))
+        .firstMatch.waitForExistence(timeout: 5))
+    XCTAssertFalse(app.buttons["choice-status-Ready"].exists)
+    capture(app, name: "single-click-cell-editing")
   }
 
   func testPropertyHelpAppearsBesideItsButton() throws {

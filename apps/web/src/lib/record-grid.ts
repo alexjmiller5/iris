@@ -76,10 +76,16 @@ export function createCellEditor(publish: (state: CellState) => void) {
 			return state;
 		},
 		discard,
-		async begin(cell: CellKey, load: () => Promise<Row | false>) {
+		async begin(cell: CellKey, load: () => Promise<Row | false>, listed?: Row) {
 			if (state.phase === 'saving') return;
 			const request = ++generation;
-			set({ edit: null, phase: 'loading', error: '' });
+			set({
+				edit: listed
+					? { cell: { ...cell }, baseline: { ...listed }, raw: rawValue(listed[cell.column]) }
+					: null,
+				phase: 'loading',
+				error: ''
+			});
 			try {
 				const row = await load();
 				if (request !== generation) return;
@@ -107,12 +113,15 @@ export function createCellEditor(publish: (state: CellState) => void) {
 		},
 		// Keep the complete accepted row for an action that follows this save.
 		// true means no write was needed; false means the caller must stay put.
-		async commit(save: (edit: CellDraft) => Promise<Row>): Promise<Row | boolean> {
+		async commit(
+			save: (edit: CellDraft) => Promise<Row>,
+			keepOpen = false
+		): Promise<Row | boolean> {
 			if (state.phase === 'saving' || state.phase === 'loading') return false;
 			const edit = state.edit;
 			if (!edit) return true;
 			if (edit.raw === rawValue(edit.baseline[edit.cell.column])) {
-				discard();
+				if (!keepOpen) discard();
 				return true;
 			}
 			const request = generation;
@@ -120,7 +129,11 @@ export function createCellEditor(publish: (state: CellState) => void) {
 			try {
 				const stored = await save(edit);
 				if (request !== generation) return false;
-				set({ edit: null, phase: 'idle', error: '' });
+				set(
+					keepOpen
+						? { edit: { ...edit, baseline: stored }, phase: 'editing', error: '' }
+						: { edit: null, phase: 'idle', error: '' }
+				);
 				return stored;
 			} catch (error) {
 				if (request === generation)

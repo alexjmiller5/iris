@@ -70,11 +70,11 @@
           charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
       table.keyDown(with: key)
       for _ in 0..<100
-      where !hasTitleField(table)
+      where !hasTitleField(window)
         && window.sheets.isEmpty
       { try await Task.sleep(for: .milliseconds(20)) }
-      #expect(window.sheets.isEmpty, "Double-click must keep editing inside the grid")
-      #expect(hasTitleField(table))
+      #expect(window.sheets.isEmpty, "Cell editing must not open a record sheet")
+      #expect(hasTitleField(window))
       let catalog = try #require(model.catalog)
       model.catalog = try WorkspaceCatalog(
         CoreCatalog(
@@ -83,10 +83,10 @@
       try await Task.sleep(for: .milliseconds(100))
       let retained = try #require(
         table.tableColumns.firstIndex { $0.identifier.rawValue == "property:title" })
-      let cell = try #require(table.view(atColumn: retained, row: 0, makeIfNecessary: true))
+      #expect(retained >= 0)
       #expect(
-        cell.fittingSize.height > 44,
-        "The retained cell must include the inline editor's action row")
+        !(window.childWindows ?? []).isEmpty, "Catalog changes must preserve the open cell editor")
+      #expect(table.action != nil)
 
     }
 
@@ -174,10 +174,12 @@
       [view] + view.subviews.flatMap(descendants)
     }
 
-    private func hasTitleField(_ table: NSTableView) -> Bool {
-      descendants(table).contains {
-        ($0 as? NSTextField).map { $0.isEditable && $0.stringValue == "A place to start" } ?? false
-      }
+    private func hasTitleField(_ window: NSWindow) -> Bool {
+      ([window] + (window.childWindows ?? [])).compactMap(\.contentView).flatMap(descendants)
+        .contains {
+          ($0 as? NSTextField).map { $0.isEditable && $0.stringValue == "A place to start" }
+            ?? false
+        }
     }
   }
 #endif

@@ -4,6 +4,7 @@ import SwiftUI
 struct NativeChoiceField: View {
   let field: CatalogField
   let isNew: Bool
+  var direct = false
   let focus: FocusState<String?>.Binding
   @Binding var value: String
   @State private var model: NativeChoiceModel
@@ -12,10 +13,11 @@ struct NativeChoiceField: View {
   init(
     field: CatalogField, isNew: Bool, value: Binding<String>, workspace: NativeWorkspace?,
     focus: FocusState<String?>.Binding, isCurrent: @escaping () -> Bool,
-    choiceModel: NativeChoiceModel? = nil
+    choiceModel: NativeChoiceModel? = nil, direct: Bool = false
   ) {
     self.field = field
     self.isNew = isNew
+    self.direct = direct
     self.focus = focus
     _value = value
     _model = State(
@@ -43,7 +45,45 @@ struct NativeChoiceField: View {
         if let projected = try? NativeChoiceOptions(
           field: field, dynamic: model.options, value: value)
         {
-          if field.type == "multi_select" {
+          if direct && (!freeValues || field.type == "multi_select") {
+            ScrollView {
+              VStack(alignment: .leading, spacing: 2) {
+                if freeValues {
+                  HStack {
+                    TextField("New choice", text: $customValue).onSubmit { addCustomValue() }
+                    Button("Add", action: addCustomValue).disabled(customValue.isEmpty)
+                  }
+                }
+                if field.type == "select" && !field.required {
+                  Button("None") { value = "" }
+                    .buttonStyle(.plain).padding(8)
+                }
+                ForEach(projected.choices) { option in
+                  Button {
+                    if field.type == "multi_select", projected.selection.contains(option.value),
+                      var selection = try? ReferenceSelection(value: value, multiple: true)
+                    {
+                      selection.remove(option.value)
+                      value = selection.value
+                    } else {
+                      choose(option.value)
+                    }
+                  } label: {
+                    HStack {
+                      OptionChip(value: option.value, color: field.optionColor(option.value))
+                      Spacer()
+                      if projected.selection.contains(option.value) {
+                        Image(systemName: "checkmark").accessibilityHidden(true)
+                      }
+                    }.padding(8).contentShape(.rect)
+                  }
+                  .buttonStyle(.plain)
+                  .accessibilityIdentifier("choice-\(field.id)-\(option.value)")
+                }
+              }
+            }.frame(maxHeight: 300)
+              .fixedSize(horizontal: false, vertical: true)
+          } else if field.type == "multi_select" {
             multipleChoices(projected)
           } else if freeValues {
             TextField(field.label, text: $value, axis: .vertical)
@@ -90,7 +130,7 @@ struct NativeChoiceField: View {
         Button("Retry choices") { Task { await model.refresh() } }
           .disabled(model.loading)
       }
-      if field.type == "multi_select" {
+      if field.type == "multi_select" && !direct {
         DisclosureGroup("Edit JSON source") {
           TextEditor(text: $value)
             .font(.system(.body, design: .monospaced)).frame(minHeight: 100)
@@ -200,12 +240,40 @@ struct NativeChoiceField: View {
 struct NativeDateField: View {
   let field: CatalogField
   let kind: NativeDateKind
+  var direct = false
   let focus: FocusState<String?>.Binding
   @Binding var value: String
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      if let date = NativeDateValue.parse(value, kind: kind) {
+      if direct {
+        if field.type == "date_or_datetime" {
+          Toggle(
+            "Include time",
+            isOn: Binding(
+              get: { kind == .datetime },
+              set: { includeTime in
+                value = NativeDateValue.format(
+                  NativeDateValue.parse(value, kind: kind) ?? Date(),
+                  kind: includeTime ? .datetime : .date)
+              }))
+        }
+        DatePicker(
+          field.label,
+          selection: Binding(
+            get: { NativeDateValue.parse(value, kind: kind) ?? Date() },
+            set: { value = NativeDateValue.format($0, kind: kind) }),
+          displayedComponents: kind == .date ? [.date] : [.date, .hourAndMinute]
+        )
+        .datePickerStyle(.graphical)
+        .environment(\.calendar, Calendar(identifier: .gregorian))
+        .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
+        .accessibilityIdentifier("date-picker-\(field.id)")
+        if !value.isEmpty {
+          Button("Clear date") { value = "" }
+            .accessibilityIdentifier("clear-date-\(field.id)")
+        }
+      } else if let date = NativeDateValue.parse(value, kind: kind) {
         DatePicker(
           field.label,
           selection: Binding(

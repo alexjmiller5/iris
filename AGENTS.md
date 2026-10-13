@@ -781,12 +781,13 @@ same fresh-row navigation as the list. Saved columns affect presentation only; a
 still leaves the record-opening column. Keep notices and recovery actions bounded
 and scrollable so they cannot consume the grid. Native column resizing is temporary;
 persisted layout comes from the saved-view definition. The AppKit grid supports
-macOS 14 onward. Double-click edits the clicked property in the shared inline
-editor; Return edits the selected row's title. The explicit open action and row
+macOS 14 onward. One click opens the property editor directly; Return edits the
+selected row's title. Mac and web cell editors show choices immediately and save
+on selection or click-away, without Done, Undo or Open record controls. The explicit open action and row
 menu retain the full editor. Column header menus sort (saved like the Sort popover)
 or add a property's filter chip and open its editor, or toggle Wrap text.
-Keep active drafts and their action controls mounted through catalog/row refreshes;
-measure editor height before retiling the row. Disable workspace replacement and
+Keep active drafts mounted through catalog/row refreshes. The Mac table owns the
+editor popover independently of recycled cells; editing does not expand the row. Disable workspace replacement and
 new-record actions while an inline editor is active. Close workspace is always
 enabled and dismisses open surfaces itself; edits are already journaled. Property help popovers belong
 to their individual buttons.
@@ -1015,7 +1016,9 @@ bundle:editor` and `bun run bundle:graph` (CI diffs both resources).
 unrelated web files must not change native artifacts. Verify this with
 `bun scripts/test-island-builds.ts` before publishing regenerated resources.
 
-Accessibility is checked, not assumed. `scripts/check-a11y.ts` (in `just check`
+Accessibility is checked, not assumed. `scripts/test-cell-editing.ts` checks single-click editing and click-away saves
+in a disposable Chrome profile against a running web dev server.
+`scripts/check-a11y.ts` (in `just check`
 and CI) starts its own dev server and headless Chrome and walks every web view
 of the sample workspace with Tab/Enter/Space/Escape in light and dark (dark with
 reduced motion): each focus stop needs a visible ring, Escape returns focus to

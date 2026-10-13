@@ -20,20 +20,20 @@ final class InlineMarkdownUITests: XCTestCase {
       .firstMatch
     XCTAssertTrue(header.exists)
     header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-      .withOffset(CGVector(dx: 0, dy: title.frame.midY - header.frame.midY)).doubleClick()
-    let rich = grid.webViews.textViews["Body"]
+      .withOffset(CGVector(dx: 0, dy: title.frame.midY - header.frame.midY)).click()
+    let rich = app.webViews.textViews["Body"]
     XCTAssertTrue(
       rich.waitForExistence(timeout: 10), "Content must edit as rich Markdown inside the table")
     XCTAssertEqual(app.sheets.count, 0)
     rich.click()
     rich.typeKey("a", modifierFlags: .command)
     rich.typeText("# Inline heading\n\n- First item")
-    XCTAssertLessThanOrEqual(grid.buttons["inline-done"].frame.maxX, grid.frame.maxX)
+    XCTAssertFalse(app.buttons["inline-done"].exists)
     let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
     screenshot.name = "inline-markdown-cell"
     screenshot.lifetime = .keepAlways
     add(screenshot)
-    grid.buttons["inline-done"].click()
+    grid.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.9)).click()
     XCTAssertTrue(rich.waitForNonExistence(timeout: 5))
     let preview = grid.staticTexts.matching(
       NSPredicate(format: "value CONTAINS %@", "Inline heading")

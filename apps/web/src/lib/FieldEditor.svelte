@@ -5,13 +5,14 @@
 	import MarkdownEditor from './components/MarkdownEditor.svelte';
 	import { retainedFileKey, type RetainedFileResolver } from './retained-files';
 	import { onDestroy } from 'svelte';
-	import { IconPlus, IconX } from '@tabler/icons-svelte';
+	import { IconPlus, IconX, IconCheck } from '@tabler/icons-svelte';
 	import { creationOffer } from './reference-create';
 	import OptionChip from './OptionChip.svelte';
 	import { richSelect } from './option-colors';
 	import { isFlag } from './cell-values';
 	let {
 		id,
+		inline = false,
 		property,
 		value = $bindable(''),
 		disabled = false,
@@ -28,6 +29,7 @@
 		referencesLoading = false
 	}: {
 		id: string;
+		inline?: boolean;
 		property: Property;
 		value?: string;
 		disabled?: boolean;
@@ -176,7 +178,52 @@
 </script>
 
 <div class="field-control">
-	{#if property.type === 'ref' || property.type === 'multi_ref'}
+	{#if inline && ['select', 'multi_select', 'ref', 'multi_ref'].includes(property.type ?? '')}
+		{@const reference = property.type === 'ref' || property.type === 'multi_ref'}
+		{@const items = reference
+			? [
+					...references.map((r) => ({ value: r.id, label: r.label })),
+					...selected
+						.filter((id) => !references.some((r) => r.id === id))
+						.map((id) => ({
+							value: id,
+							label: referencesLoading ? 'Loading' : `${id} (not available locally)`
+						}))
+				]
+			: choices.map((v) => ({ value: v, label: v }))}
+		{@const chosen = multi ? list(value) : [value]}
+		{#if reference}<input
+				aria-label={`Search ${label}`}
+				placeholder="Search records"
+				{disabled}
+				oninput={(e) => onsearch?.(e.currentTarget.value)}
+			/>{/if}
+		<div class="choice-list" role="group" aria-label={label}>
+			{#if !multi && !property.required}<button type="button" {disabled} onclick={() => change('')}
+					>None</button
+				>{/if}
+			{#each items as item (item.value)}
+				<button
+					type="button"
+					{disabled}
+					aria-pressed={chosen.includes(item.value)}
+					onclick={() =>
+						change(
+							multi
+								? JSON.stringify(
+										chosen.includes(item.value)
+											? chosen.filter((v) => v !== item.value)
+											: [...chosen, item.value]
+									)
+								: item.value
+						)}
+				>
+					{#if reference}{item.label}{:else}<OptionChip {property} value={item.value} />{/if}
+					{#if chosen.includes(item.value)}<IconCheck size={16} aria-hidden="true" />{/if}
+				</button>
+			{/each}
+		</div>
+	{:else if property.type === 'ref' || property.type === 'multi_ref'}
 		<input
 			aria-label={`Search ${label}`}
 			placeholder="Search related records"
@@ -248,7 +295,7 @@
 				{disabled}
 				onchange={change}
 			/>{/if}
-	{:else if property.type === 'json'}
+	{:else if property.type === 'json' || (inline && (!property.type || property.type === 'text'))}
 		<textarea
 			{id}
 			aria-invalid={invalid ? true : undefined}
@@ -306,7 +353,7 @@
 					>{value === '1' || value === 'true' ? 'Yes' : 'No'}</span
 				>{/if}
 		</div>
-	{:else if property.type === 'datetime'}
+	{:else if property.type === 'datetime' || (property.type === 'date_or_datetime' && value.includes('T'))}
 		<input
 			{id}
 			aria-invalid={invalid ? true : undefined}
@@ -326,7 +373,7 @@
 			aria-describedby={invalid}
 			aria-label={label}
 			aria-required={!!property.required}
-			type={property.type === 'date'
+			type={property.type === 'date' || property.type === 'date_or_datetime'
 				? 'date'
 				: property.type === 'url'
 					? 'url'
@@ -354,7 +401,22 @@
 					: 'Open website'}</a
 		>
 	{/if}
-	{#if recordLink && onopenlink}
+	{#if property.type === 'date_or_datetime'}
+		<label class="boolean"
+			><input
+				type="checkbox"
+				aria-label="Include time"
+				{disabled}
+				checked={value.includes('T')}
+				onchange={(e) => {
+					const day = value.slice(0, 10) || new Date().toISOString().slice(0, 10);
+					change(e.currentTarget.checked ? day + 'T00:00:00.000Z' : day);
+				}}
+			/>Include time</label
+		>
+	{/if}
+
+	{#if !inline && recordLink && onopenlink}
 		<button class="field-link" type="button" disabled={opening} onclick={openRecord}
 			>{opening ? 'Opening record…' : 'Open record'}</button
 		>
@@ -385,6 +447,36 @@
 	/>{/if}
 
 <style>
+	textarea {
+		field-sizing: content;
+		min-height: 2.5rem;
+		max-height: 360px;
+	}
+	.choice-list {
+		display: grid;
+		max-height: 320px;
+		overflow: auto;
+		gap: 2px;
+	}
+	.choice-list button {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		text-align: left;
+		padding: 8px;
+		border: 0;
+		border-radius: 4px;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+	}
+	.choice-list button:hover,
+	.choice-list button:focus-visible {
+		background: var(--color-bone);
+	}
+
 	.field-control {
 		display: grid;
 		gap: 6px;

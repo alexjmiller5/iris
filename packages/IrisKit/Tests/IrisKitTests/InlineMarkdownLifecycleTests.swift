@@ -43,10 +43,10 @@
       window.makeKeyAndOrderFront(nil)
       defer { window.close() }
       try await waitFor("The initial editor must finish mounting") {
-        session.ready && descendants(host).contains(where: { $0 is WKWebView })
+        session.ready && editorViews(window).contains(where: { $0 is WKWebView })
       }
       try #require(session.ready)
-      let view = try #require(descendants(host).compactMap { $0 as? WKWebView }.first)
+      let view = try #require(editorViews(window).compactMap { $0 as? WKWebView }.first)
       view.configuration.userContentController.removeScriptMessageHandler(forName: "editor")
       _ = try await view.callAsyncJavaScript(
         """
@@ -72,9 +72,9 @@
           return false
         }
         return table.numberOfRows == updated.count && table.numberOfColumns == 2
-          && descendants(host).contains(where: { $0 is WKWebView })
+          && editorViews(window).contains(where: { $0 is WKWebView })
       }
-      let retained = try #require(descendants(host).compactMap { $0 as? WKWebView }.first)
+      let retained = try #require(editorViews(window).compactMap { $0 as? WKWebView }.first)
       #expect(retained === view, "A background refresh must retain the live cell editor")
       let table = try #require(descendants(host).compactMap { $0 as? NSTableView }.first)
       table.scrollRowToVisible(101)
@@ -85,9 +85,9 @@
       table.scrollRowToVisible(1)
       try await waitFor("Scrolling back must remount the visible editor") {
         NSLocationInRange(1, table.rows(in: table.visibleRect))
-          && descendants(host).contains(where: { $0 is WKWebView })
+          && editorViews(window).contains(where: { $0 is WKWebView })
       }
-      #expect(descendants(host).compactMap { $0 as? WKWebView }.first === view)
+      #expect(editorViews(window).compactMap { $0 as? WKWebView }.first === view)
       try await session.collectSnapshot(lock: true)
       #expect(session.document.value.contains("Undelivered final input!"))
     }
@@ -98,6 +98,10 @@
         try #require(ContinuousClock.now < deadline, "\(message)")
         try await Task.sleep(for: .milliseconds(20))
       }
+    }
+
+    private func editorViews(_ window: NSWindow) -> [NSView] {
+      ([window] + (window.childWindows ?? [])).compactMap(\.contentView).flatMap(descendants)
     }
 
     private func descendants(_ view: NSView) -> [NSView] {

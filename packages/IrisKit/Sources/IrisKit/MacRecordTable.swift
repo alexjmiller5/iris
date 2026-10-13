@@ -2,7 +2,7 @@
   import AppKit
   import SwiftUI
 
-  /// AppKit owns cell double-clicks and header menus. SwiftUI retains the shared
+  /// AppKit owns cell clicks and header menus. SwiftUI retains the shared
   /// field controls, validation, and recovery draft inside the selected cell.
   struct MacRecordTable<Editor: View>: NSViewRepresentable {
     let rows: [WorkspaceRow]
@@ -14,6 +14,7 @@
     let actionsEnabled: Bool
     let onOpen: (WorkspaceRow) -> Void
     let onEdit: (WorkspaceRow, String) -> Void
+    var onDismissEditor: () -> Void = {}
     let onSort: (String, Bool) -> Void
     let onFilter: (String) -> Void
     var workspace: NativeWorkspace? = nil
@@ -54,6 +55,7 @@
       scroll.hasHorizontalScroller = true
       scroll.autohidesScrollers = true
       let table = RecordTableView()
+      table.didAttach = { [weak coordinator = context.coordinator] in coordinator?.updateEditor() }
       table.style = .inset
       table.rowHeight = 28
       table.intercellSpacing = NSSize(width: 12, height: 4)
@@ -63,7 +65,7 @@
       table.dataSource = context.coordinator
       table.delegate = context.coordinator
       table.target = context.coordinator
-      table.doubleAction = #selector(Coordinator.editSelectedCell(_:))
+      table.action = #selector(Coordinator.editSelectedCell(_:))
       table.editSelection = { [weak coordinator = context.coordinator, weak table] in
         guard let coordinator, let table else { return }
         guard let title = coordinator.items.firstIndex(where: { coordinator.parent.isTitle($0) })
@@ -98,7 +100,6 @@
       coordinator.items = gridItems
       let items = coordinator.items
       table.selectionHighlightStyle = editorID == nil ? .regular : .none
-      if previous.editorID != editorID { coordinator.editorHeight = 28 }
       table.menu?.items.first?.isEnabled = actionsEnabled
       let identifiers = items.map(identifier)
       let columnsChanged = table.tableColumns.map { $0.identifier.rawValue } != identifiers
@@ -112,7 +113,10 @@
         || previous.actions != actions || previous.canRunAction != canRunAction
         || previous.wrapped != wrapped
       if previous.wrapped != wrapped || columnsChanged { coordinator.wrapHeights = [:] }
-      guard columnsChanged || rowsChanged || contentChanged else { return }
+      guard columnsChanged || rowsChanged || contentChanged else {
+        coordinator.updateEditor()
+        return
+      }
       let selected =
         previous.rows.indices.contains(table.selectedRow)
         ? previous.rows[table.selectedRow].byteExactID : nil
@@ -145,7 +149,7 @@
         for row in rows.indices {
           for column in table.tableColumns.indices {
             if let cell = table.view(atColumn: column, row: row, makeIfNecessary: false),
-              let host = cell.subviews.first as? NSHostingView<MacRecordCell<Editor>>
+              let host = cell.subviews.first as? NSHostingView<MacRecordCell>
             {
               host.rootView = coordinator.cell(row: row, column: column)
             }
@@ -153,6 +157,7 @@
         }
       }
       table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: rows.indices))
+      coordinator.updateEditor()
       if editorID != nil, previous.editorID != editorID,
         let column = table.tableColumns.firstIndex(where: {
           $0.identifier.rawValue == "property:" + (editingColumn ?? "")
@@ -162,10 +167,58 @@
       }
     }
 
-    @MainActor final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+    static func dismantleNSView(_ view: NSScrollView, coordinator: Coordinator) {
+      coordinator.closeEditor()
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSPopoverDelegate
+    {
       var parent: MacRecordTable
+      private let popover = NSPopover()
+      private var editorHost: NSHostingController<MacCellEditor<Editor>>?
+      private var presentedEditorID: UUID?
+
+      func popoverShouldClose(_ popover: NSPopover) -> Bool {
+        parent.onDismissEditor()
+        return false  // Flush pending input through the shared editor before closing.
+      }
+
+      func closeEditor() {
+        popover.close()
+        popover.contentViewController = nil
+        editorHost = nil
+        presentedEditorID = nil
+      }
+
+      func updateEditor() {
+        guard let id = parent.editorID, parent.editingColumn != nil else {
+          closeEditor()
+          return
+        }
+        let content = MacCellEditor(content: parent.editor())
+        if presentedEditorID == id, let editorHost {
+          editorHost.rootView = content
+          return
+        }
+        guard let table, table.window != nil,
+          let row = parent.rows.firstIndex(where: { $0.byteExactID == parent.editingRow }),
+          let column = items.firstIndex(where: { $0.column?.id == parent.editingColumn })
+        else { return }
+        popover.close()
+        let host = NSHostingController(rootView: content)
+        host.sizingOptions = [.preferredContentSize]
+        editorHost = host
+        presentedEditorID = id
+        popover.contentViewController = host
+        popover.behavior = .transient
+        popover.delegate = self
+        // Table ownership keeps the live editor stable through row recycling.
+        popover.show(
+          relativeTo: table.frameOfCell(atColumn: column, row: row), of: table, preferredEdge: .maxY
+        )
+      }
       weak var table: NSTableView?
-      var editorHeight: CGFloat = 28
       /// Measured heights of wrapped cells by row and property.
       var wrapHeights: [Data: [String: CGFloat]] = [:]
       var items: [NativeGridItem]
@@ -177,7 +230,6 @@
       func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         guard parent.rows.indices.contains(row) else { return 28 }
         let id = parent.rows[row].byteExactID
-        if id == parent.editingRow { return editorHeight }
         let wrapped = wrapHeights[id]?.filter { parent.wrapped.contains($0.key) }.values.max() ?? 0
         // Cells start 6 points down; keep the same space below the tallest wrapped value.
         return max(28, ceil(wrapped) + 12)
@@ -193,22 +245,6 @@
           table?.noteHeightOfRows(withIndexesChanged: IndexSet(integer: index))
         }
       }
-      func resizeEditor(_ height: CGFloat, id: UUID?) {
-        // SwiftUI measures its content after the representable update. Apply the
-        // measured height on the next turn so AppKit never clips that content.
-        Task { @MainActor [weak self] in
-          guard let self, id == parent.editorID,
-            let row = parent.rows.firstIndex(where: {
-              $0.byteExactID == parent.editingRow
-            })
-          else { return }
-          let next = max(28, ceil(height))
-          guard abs(editorHeight - next) > 0.5 else { return }
-          editorHeight = next
-          table?.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
-        }
-      }
-
       func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int)
         -> NSView?
       {
@@ -229,7 +265,7 @@
         return view
       }
 
-      fileprivate func cell(row: Int, column: Int) -> MacRecordCell<Editor> {
+      fileprivate func cell(row: Int, column: Int) -> MacRecordCell {
         let columnItem = items[column]
         let title = parent.isTitle(columnItem)
         let field = title ? parent.titleField : columnItem.column?.field
@@ -241,12 +277,8 @@
             self?.resizeWrapped(height, row: id, column: column)
           },
           action: columnItem.action, canRunAction: parent.canRunAction, onAction: parent.onAction,
-          editing: item.byteExactID == parent.editingRow && field?.id == parent.editingColumn,
-          editorID: parent.editorID, actionsEnabled: parent.actionsEnabled,
-          onOpen: parent.onOpen, workspace: parent.workspace, transport: parent.transport,
-          onHeight: { [weak self, id = parent.editorID] height in
-            self?.resizeEditor(height, id: id)
-          }, editor: parent.editor())
+          actionsEnabled: parent.actionsEnabled,
+          onOpen: parent.onOpen, workspace: parent.workspace, transport: parent.transport)
       }
 
       @objc func editSelectedCell(_ table: NSTableView) {
@@ -307,7 +339,14 @@
     }
   }
 
-  private struct MacRecordCell<Editor: View>: View {
+  private struct MacCellEditor<Content: View>: View {
+    let content: Content
+    var body: some View {
+      content.padding(10).frame(width: 340).fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private struct MacRecordCell: View {
     let row: WorkspaceRow
     let field: CatalogField?
     let isTitle: Bool
@@ -316,26 +355,14 @@
     let action: CoreRowAction?
     let canRunAction: Bool
     let onAction: (String, WorkspaceRow) -> Void
-    let editing: Bool
-    let editorID: UUID?
     let actionsEnabled: Bool
     let onOpen: (WorkspaceRow) -> Void
     let workspace: NativeWorkspace?
     let transport: HubTransport?
-    let onHeight: (CGFloat) -> Void
-    let editor: Editor
 
     var body: some View {
       Group {
-        if editing {
-          editor.id(editorID).padding(.vertical, 4)
-            .fixedSize(horizontal: false, vertical: true)
-            .onGeometryChange(for: CGFloat.self) {
-              $0.size.height
-            } action: {
-              onHeight($0)
-            }
-        } else if let action {
+        if let action {
           Button(action.label) { onAction(action.id, row) }
             .buttonStyle(.borderless)
             .disabled(!actionsEnabled || !canRunAction)
@@ -376,12 +403,18 @@
           }
         }
       }
-      .padding(.top, editing ? 0 : 6)
+      .padding(.top, 6)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
   }
 
   private final class RecordTableView: NSTableView {
+    var didAttach: (() -> Void)?
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      if window != nil { DispatchQueue.main.async { [weak self] in self?.didAttach?() } }
+    }
+
     var editSelection: (() -> Void)?
     override func keyDown(with event: NSEvent) {
       if event.charactersIgnoringModifiers == "\r" {

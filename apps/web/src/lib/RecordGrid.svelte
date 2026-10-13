@@ -5,6 +5,7 @@
 	import { Virtualizer } from 'virtua/svelte';
 	import {
 		IconPlus,
+		IconArrowsDiagonal,
 		IconCopy,
 		IconTrash,
 		IconRestore,
@@ -132,7 +133,8 @@
 		controller.discard();
 	});
 	$effect(() => {
-		if (!edit && cellState.edit && cellState.phase !== 'saving') controller.discard();
+		if (!edit && cellState.edit && cellState.phase !== 'saving' && cellState.phase !== 'loading')
+			controller.discard();
 	});
 	const gridItems = $derived.by(() => {
 		const candidates = [
@@ -203,11 +205,6 @@
 	const activeIndex = $derived(
 		rows.findIndex((row) => String(row.id) === (edit?.cell.rowId ?? cursor?.rowId))
 	);
-	const detached = $derived(
-		edit &&
-			(!columns.includes(edit.cell.column) ||
-				!rows.some((row) => String(row.id) === edit?.cell.rowId))
-	);
 	const label = (p: Property) =>
 		p.label || p.col.charAt(0).toUpperCase() + p.col.slice(1).replaceAll('_', ' ');
 	function cellElement(cell: CellKey) {
@@ -256,8 +253,16 @@
 		const index = stops.indexOf(anchor);
 		if (index >= 0) stops[index + (backwards ? -1 : 1)]?.focus();
 	}
-	async function commit() {
-		const saved = await controller.commit(oncommit);
+	let savingCell: Promise<Row | boolean> | null = null;
+	async function commit(keepOpen = false) {
+		if (savingCell) {
+			await savingCell;
+			if (cellState.error) return false;
+		}
+		const pending = controller.commit(oncommit, keepOpen);
+		savingCell = pending;
+		const saved = await pending;
+		if (savingCell === pending) savingCell = null;
 		if (!saved && cellState.phase === 'editing') {
 			await tick();
 			if (alive) focusEditor();
@@ -267,29 +272,44 @@
 	function focusEditor() {
 		root
 			.querySelector<HTMLElement>(
-				'[data-cell-editor] input, [data-cell-editor] select, [data-cell-editor] textarea, [data-cell-editor] [contenteditable="true"]'
+				'[data-cell-editor] input, [data-cell-editor] select, [data-cell-editor] textarea, [data-cell-editor] [contenteditable="true"], [data-cell-editor] button'
 			)
 			?.focus();
 	}
-	async function choose(cell: CellKey) {
-		if (busy || cellState.phase === 'saving') return;
-		if (
-			edit &&
-			(edit.cell.rowId !== cell.rowId || edit.cell.column !== cell.column) &&
-			!(await commit())
-		)
-			return;
-		await focus(cell);
-	}
 	async function begin(cell: CellKey) {
+		if (savingCell && !(await commit())) return;
 		if (busy || cellState.phase === 'saving') return;
 		const property = properties.find((p) => p.col === cell.column);
-		if (!property || !canEdit(property)) return;
+		if (!property || !canEdit(property)) {
+			if (edit && !(await commit())) return;
+			await focus(cell);
+			return;
+		}
+		if (edit?.cell.rowId === cell.rowId && edit.cell.column === cell.column) return;
 		if (edit && !(await commit())) return;
 		cursor = cell;
-		await controller.begin(cell, () => onbegin(cell));
+		await controller.begin(
+			cell,
+			() => onbegin(cell),
+			rows.find((row) => String(row.id) === cell.rowId)
+		);
 		await tick();
-		if (alive && edit?.cell.rowId === cell.rowId && edit.cell.column === cell.column) focusEditor();
+		if (alive && edit?.cell.rowId === cell.rowId && edit.cell.column === cell.column) {
+			if (isFlag(property)) {
+				controller.change(flagValue(edit.baseline[property.col]) ? '0' : '1');
+				await commit();
+				return;
+			}
+			focusEditor();
+			const date = root.querySelector<HTMLInputElement>(
+				'[data-cell-editor] input[type="date"], [data-cell-editor] input[type="datetime-local"]'
+			);
+			try {
+				date?.showPicker();
+			} catch {
+				/* The focused date input remains editable without picker support. */
+			}
+		}
 	}
 	async function open(id: string) {
 		if (!busy && (await commit())) await onopen(id);
@@ -305,8 +325,18 @@
 			return;
 		}
 		if (editing) {
+			const type = properties.find((p) => p.col === cell.column)?.type;
+			if (
+				event.key === 'Enter' &&
+				!event.shiftKey &&
+				['text', 'number', 'int', 'url', 'email', 'phone'].includes(type ?? 'text')
+			) {
+				event.preventDefault();
+				if (await commit()) await focus(cell);
+				return;
+			}
 			if (event.key !== 'Escape' && event.key !== 'Tab') return;
-			// After rejection, keep native focus traversal so Discard and Save are reachable.
+			// After rejection, keep native focus traversal so correction and discard stay reachable.
 			if (event.key === 'Tab' && cellState.error) return;
 			event.preventDefault();
 			const next =
@@ -342,37 +372,66 @@
 		const cell = edit?.cell;
 		if (controller.discard() && cell) await focus(cell);
 	}
+	function cellPopover(node: HTMLElement) {
+		const position = anchored(node, { anchor: () => edit && cellElement(edit.cell) });
+		node.showPopover();
+		return { destroy: () => position.destroy() };
+	}
+	function outside(event: PointerEvent) {
+		const target = event.target as HTMLElement;
+		if (!edit || target.closest('[data-cell-editor]') || target.closest('[data-row][data-column]'))
+			return;
+		void commit();
+	}
 </script>
 
+<svelte:window
+	onpointerdown={outside}
+	onkeydown={(event) => {
+		if (edit && event.target instanceof HTMLElement && event.target.closest('[data-cell-editor]'))
+			void keyboard(event, edit.cell);
+	}}
+/>
+
 {#snippet editor(property: Property, draft: CellDraft)}
-	<div data-cell-editor class="cell-editor" role="group" aria-label={`Edit ${label(property)}`}>
+	<div
+		data-cell-editor
+		popover="manual"
+		use:cellPopover
+		class="cell-editor"
+		role="group"
+		aria-label={`Edit ${label(property)}`}
+	>
 		<FieldEditor
 			id={`cell-${property.col}`}
 			{property}
 			value={draft.raw}
-			onchange={controller.change}
+			inline
+			onchange={(raw) => {
+				controller.change(raw);
+				if (['select', 'ref', 'bool'].includes(property.type ?? '') || isFlag(property))
+					void commit();
+				else if (
+					['multi_select', 'multi_ref', 'date', 'datetime', 'date_or_datetime'].includes(
+						property.type ?? ''
+					)
+				)
+					void commit(true);
+			}}
 			{resolveFile}
 			{attachments}
 			{onopenlink}
-			disabled={busy || cellState.phase === 'saving' || !canEdit(property)}
+			disabled={busy ||
+				cellState.phase === 'saving' ||
+				cellState.phase === 'loading' ||
+				!canEdit(property)}
 			options={options[property.col]}
 			references={referenceOptions(property)}
 			onsearch={(query) => onsearch(property, query)}
 		/>
-		{#if property.description}<small>{property.description}</small>{/if}
 		{#if cellState.error}<p role="alert">{cellState.error}</p>{/if}
-		<div class="edit-actions">
-			<button
-				type="button"
-				disabled={busy || cellState.phase === 'saving' || !canEdit(property)}
-				onclick={async () => {
-					const cell = draft.cell;
-					if (await commit()) await focus(cell);
-				}}>Save cell</button
-			><button type="button" disabled={busy || cellState.phase === 'saving'} onclick={discardCell}
-				>Discard</button
-			>
-		</div>
+		{#if cellState.error}<button type="button" onclick={discardCell}>Discard invalid change</button
+			>{/if}
 	</div>
 {/snippet}
 <div bind:this={root} class="record-grid">
@@ -526,25 +585,21 @@
 											'button,input,textarea,select,[contenteditable]'
 										)
 									)
-										void choose(cell);
-								}}
-								ondblclick={(event) => {
-									if (
-										!(event.target as HTMLElement).closest(
-											'button,input,textarea,select,[contenteditable]'
-										)
-									)
 										void begin(cell);
 								}}
 								onkeydown={(event) => keyboard(event, cell)}
 							>
-								{#if active && edit}{@render editor(property, edit)}
-								{:else if property.col === properties[0]?.col}<button
-										class="record-link"
-										tabindex="-1"
-										onclick={() => open(cell.rowId)}
-										>{format(property, row[property.col]) || cell.rowId}</button
-									>
+								{#if property.col === properties[0]?.col}<div class="title-cell">
+										<span class="cell-value record-link"
+											>{format(property, row[property.col]) || cell.rowId}</span
+										><button
+											class="record-open"
+											tabindex="-1"
+											aria-label={format(property, row[property.col]) || cell.rowId}
+											title="Open record"
+											onclick={() => open(cell.rowId)}><IconArrowsDiagonal size={14} /></button
+										>
+									</div>
 								{:else if isFlag(property) && flagValue(row[property.col]) !== null}{@const on =
 										flagValue(row[property.col])}<span class="cell-value cell-flag" class:on
 										>{#if on}<IconSquareCheckFilled
@@ -578,17 +633,12 @@
 				/>
 			</div>{/if}
 	</div>
-	{#if detached && edit}
+	{#if edit}
 		{@const property = properties.find((p) => p.col === edit?.cell.column)}
-		<div class="retained">
-			<p>
-				{property
-					? 'This record is no longer in the visible page. Your cell draft is kept.'
-					: 'This property is no longer available. Your cell draft is kept.'}
-			</p>
-			{#if property}{@render editor(property, edit)}{:else}<pre>{edit.raw}</pre>
-				<button onclick={discardCell}>Discard</button>{/if}
-		</div>
+		{#if property}{@render editor(property, edit)}{:else}<div class="retained">
+				<pre>{edit.raw}</pre>
+				<button onclick={discardCell}>Discard</button>
+			</div>{/if}
 	{/if}
 	{#if cellState.error && !edit}<p role="alert">{cellState.error}</p>{/if}
 	{#if cellState.phase === 'loading'}<p role="status">Opening cell…</p>{/if}
@@ -614,6 +664,20 @@
 </div>
 
 <style>
+	.cell-editor {
+		position: fixed;
+		inset: auto;
+		margin: 0;
+		width: min(360px, calc(100vw - 16px));
+		padding: 8px;
+		border: 1px solid var(--color-rule);
+		border-radius: 8px;
+		background: var(--color-paper);
+		color: var(--color-ink);
+		box-shadow: 0 8px 28px #0003;
+		overflow: auto;
+	}
+
 	.record-grid {
 		min-width: 0;
 		margin-top: 12px;
@@ -784,7 +848,17 @@
 	.cell-chips :global(.option-chip) {
 		flex: none;
 	}
-	.record-link {
+	.title-cell {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.title-cell .cell-value {
+		flex: 1;
+		min-width: 0;
+	}
+	.record-open {
+		flex: none;
 		color: var(--color-accent);
 		background: transparent;
 		border: 0;
@@ -797,7 +871,6 @@
 		display: grid;
 		gap: 6px;
 	}
-	.edit-actions,
 	.grid-actions {
 		display: flex;
 		gap: 8px;
@@ -824,7 +897,6 @@
 		opacity: 0.5;
 		cursor: default;
 	}
-	small,
 	p {
 		font-size: 12px;
 		color: var(--color-muted);

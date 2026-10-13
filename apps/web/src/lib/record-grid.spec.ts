@@ -256,3 +256,19 @@ test('copy serialization rechecks catalog exclusions without losing set-once cre
 		recordPatch(properties, draft, { id: 'saved', code: 'Before' }, new Set(), copied)
 	).toEqual({ id: 'saved' });
 });
+
+test('multi-value cell saves keep the picker open and use the accepted revision for the next choice', async () => {
+	const editor = createCellEditor(() => {});
+	await editor.begin({ rowId: 'a', column: 'tags' }, async () => ({ ...row, tags: '["one"]' }));
+	editor.change('["one","two"]');
+	const stored = { ...row, tags: '["one","two"]', updated_at: 'next' };
+	await editor.commit(async () => stored, true);
+	expect(editor.state.edit?.baseline).toEqual(stored);
+	expect(editor.state.phase).toBe('editing');
+	editor.change('["two"]');
+	await editor.commit(async (edit) => {
+		expect(edit.baseline.updated_at).toBe('next');
+		return { ...stored, tags: edit.raw };
+	});
+	expect(editor.state.edit).toBeNull();
+});

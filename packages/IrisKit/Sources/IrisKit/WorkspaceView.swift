@@ -321,7 +321,9 @@ public struct WorkspaceView: View {
         let context = try model.activateDestination(
           resolved, workspace: client, generation: generation)
         if let row = resolved.row {
-          pendingSearchEditor = (EditorTarget(row: row.record, context: context), generation, resolved)
+          pendingSearchEditor = (
+            EditorTarget(row: row.record, context: context), generation, resolved
+          )
         }
         tableSearchPresented = false
         showingGraph = false
@@ -383,11 +385,14 @@ public struct WorkspaceView: View {
     }
   }
 
+  @State private var inlineCloseRequest = 0
+  @State private var nextInlineCell: (WorkspaceRow, String)?
+
   private func recordEditor(_ target: EditorTarget) -> some View {
     RecordEditor(
       model: model, original: target.row, context: target.context, recovered: target.recovered,
       preparedEditor: target.preparedEditor, inlineField: target.inlineField,
-      provisional: target.provisional,
+      provisional: target.provisional, inlineCloseRequest: inlineCloseRequest,
       onExpand: { prepared in
         editor = EditorTarget(row: target.row, context: target.context, preparedEditor: prepared)
       }, linkWaiting: pendingLink.request != nil,
@@ -413,13 +418,20 @@ public struct WorkspaceView: View {
         guard editor?.id == target.id, target.context?.workspace === model.client else { return }
         pendingViewDestination = (destination, model.workspaceGeneration)
         closeEditor(target)
-      }, onSaved: { closeEditor(target) })
+      },
+      onSaved: {
+        let next = nextInlineCell
+        nextInlineCell = nil
+        closeEditor(target)
+        if let (row, column) = next { openListed(row, inlineField: column) }
+      })
   }
 
   /// Close is always available and dismisses every open surface itself. Edits are
   /// journaled as they happen, so an open draft stays recoverable after reopening.
   /// The workspace generation change resets navigation, Find and online state.
   private func closeWorkspace() {
+    nextInlineCell = nil
     editor?.preparedEditor?.endInlineMarkdown()
     editor = nil
     settings = false
@@ -523,7 +535,9 @@ public struct WorkspaceView: View {
     var label = label
     if label == nil, destination.rowID == nil {
       if let viewID = destination.viewID {
-        if let view = model.appliedView, view.id.utf8.elementsEqual(viewID.utf8) { label = view.name }
+        if let view = model.appliedView, view.id.utf8.elementsEqual(viewID.utf8) {
+          label = view.name
+        }
       } else {
         label = destination.table
       }
@@ -537,7 +551,8 @@ public struct WorkspaceView: View {
   }
 
   private func recordNavigationSucceeded(_ resolved: NativeResolvedDestination) {
-    recordNavigationSucceeded(resolved.destination, label: resolved.label, record: resolved.row?.record)
+    recordNavigationSucceeded(
+      resolved.destination, label: resolved.label, record: resolved.row?.record)
   }
 
   private func openRecord(_ row: WorkspaceRow) {
@@ -1217,8 +1232,19 @@ public struct WorkspaceView: View {
             editingRow: editor?.inlineField != nil
               ? editor?.row?["id"]?.text.data(using: .utf8) : nil,
             editingColumn: editor?.inlineField, editorID: editor?.id,
-            actionsEnabled: canFind, onOpen: openRecord,
-            onEdit: { row, column in openListed(row, inlineField: column) },
+            actionsEnabled: canFind || editor?.inlineField != nil, onOpen: openRecord,
+            onEdit: { row, column in
+              if let target = editor, target.inlineField != nil {
+                guard target.row?["id"]?.text != row.id || target.inlineField != column else {
+                  return
+                }
+                nextInlineCell = (row, column)
+                inlineCloseRequest += 1
+              } else {
+                openListed(row, inlineField: column)
+              }
+            },
+            onDismissEditor: { inlineCloseRequest += 1 },
             onSort: { column, ascending in
               guard canFind else { return }
               model.setSort(column: column, ascending: ascending)
@@ -1569,6 +1595,7 @@ private struct EditorTarget: Identifiable {
 
 private struct RecordEditor: View {
   let inlineField: String?
+  let inlineCloseRequest: Int
   let onExpand: (RecordEditorModel) -> Void
   let model: WorkspaceModel
   let context: WorkspaceEditingContext?
@@ -1607,7 +1634,7 @@ private struct RecordEditor: View {
   init(
     model: WorkspaceModel, original: WorkspaceRecord?, context: WorkspaceEditingContext?,
     recovered: StoredEditorDraft?, preparedEditor: RecordEditorModel? = nil,
-    inlineField: String? = nil, provisional: Bool = false,
+    inlineField: String? = nil, provisional: Bool = false, inlineCloseRequest: Int = 0,
     onExpand: @escaping (RecordEditorModel) -> Void = { _ in },
     linkWaiting: Bool = false, isCurrent: @escaping @MainActor () -> Bool,
     onReference: @escaping (ReferenceDestination) -> Void,
@@ -1617,6 +1644,7 @@ private struct RecordEditor: View {
   ) {
     self.onView = onView
     self.inlineField = inlineField
+    self.inlineCloseRequest = inlineCloseRequest
     self.onExpand = onExpand
     self.model = model
     self.context = context
@@ -1673,6 +1701,14 @@ private struct RecordEditor: View {
     #endif
   }
 
+  private var directCell: Bool {
+    #if os(macOS)
+      inlineField != nil
+    #else
+      false
+    #endif
+  }
+
   private var editorFields: some View {
     Group {
       if let inlineField, let field = presentedFields.first(where: { $0.id == inlineField }) {
@@ -1684,7 +1720,11 @@ private struct RecordEditor: View {
               Text(violation.message).font(.caption).foregroundStyle(.red)
             }
           } else {
-            presentedFieldRow(field)
+            #if os(macOS)
+              presentedFieldRow(field).labelsHidden()
+            #else
+              presentedFieldRow(field)
+            #endif
           }
           if let failure = actionFailure ?? editor.failure {
             Text(failure).font(.caption).foregroundStyle(.red)
@@ -1694,33 +1734,37 @@ private struct RecordEditor: View {
             violation in
             Text(violation.message).font(.caption).foregroundStyle(.red)
           }
-          HStack {
-            if let action = model.undoAction {
-              Button {
-                undoSavedChange(action)
-              } label: {
-                Label("Undo", systemImage: "arrow.uturn.backward")
-              }.disabled(
-                editor.recovery != nil || editor.needsReview || model.undoing
-              )
-              .accessibilityIdentifier("undo-inline")
-            }
-            Spacer()
-            Button("Open record") {
-              withMarkdownSnapshot {
-                focusedField = nil
-                onExpand(editor)
+          #if os(iOS)
+            HStack {
+              if let action = model.undoAction {
+                Button {
+                  undoSavedChange(action)
+                } label: {
+                  Label("Undo", systemImage: "arrow.uturn.backward")
+                }.disabled(
+                  editor.recovery != nil || editor.needsReview || model.undoing
+                )
+                .accessibilityIdentifier("undo-inline")
               }
-            }
-            .accessibilityIdentifier("inline-open-record")
-            Button("Done", action: done)
-              .buttonStyle(.borderedProminent).accessibilityIdentifier("inline-done")
-          }.font(.subheadline)
+              Spacer()
+              Button("Open record") {
+                withMarkdownSnapshot {
+                  focusedField = nil
+                  onExpand(editor)
+                }
+              }
+              .accessibilityIdentifier("inline-open-record")
+              Button("Done", action: done)
+                .buttonStyle(.borderedProminent).accessibilityIdentifier("inline-done")
+            }.font(.subheadline)
+          #endif
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inline-record-editor")
         .accessibilityValue(editor.status)
         .onAppear { focusedField = inlineField }
+        .onChange(of: editor.loaded) { _, loaded in if loaded { focusedField = inlineField } }
+        .onChange(of: inlineCloseRequest) { _, _ in if !saving { done() } }
       } else {
         Form {
           if editor.draft.original != nil, let context {
@@ -2120,8 +2164,9 @@ private struct RecordEditor: View {
         captureFailure = nil
       }
       .interactiveDismissDisabled(
-        saving || editor.saving || editor.dirty || editor.recovery != nil
-          || editor.draft.fields.contains(where: { $0.type == "markdown" })
+        inlineField == nil
+          && (saving || editor.saving || editor.dirty || editor.recovery != nil
+            || editor.draft.fields.contains(where: { $0.type == "markdown" }))
       )
       .confirmationDialog(
         "Discard unsaved changes and duplicate?", isPresented: $confirmDuplicate,
@@ -2274,7 +2319,7 @@ private struct RecordEditor: View {
           } else {
             FieldInput(
               field: field, workspace: context?.workspace, transport: model.imageTransport,
-              focus: $focusedField,
+              direct: directCell, focus: $focusedField,
               editor: editor, onOpenReference: openReference,
               isCurrent: editorIsCurrent,
               referenceAvailability: referenceAvailability(field),
@@ -2283,6 +2328,14 @@ private struct RecordEditor: View {
                 get: { editor.draft.values[field.id] ?? "" },
                 set: {
                   editor.setValue($0, for: field.id)
+                  if directCell
+                    && (["ref", "bool"].contains(field.type)
+                      || field.type == "select"
+                        && (!field.options.isEmpty
+                          || field.property["options_sql"]?.text.nonempty != nil))
+                  {
+                    done()
+                  }
                   if focusedField == field.id { typedInFocus = field.id }
                 })
             )
@@ -2636,6 +2689,7 @@ struct FieldInput: View {
   let field: CatalogField
   let workspace: NativeWorkspace?
   let transport: HubTransport?
+  var direct = false
   let focus: FocusState<String?>.Binding
   let editor: RecordEditorModel
   let onOpenReference: (String, String) -> Void
@@ -2655,7 +2709,7 @@ struct FieldInput: View {
           ReferenceField(
             field: field, value: $value, workspace: workspace, onOpen: { focus.wrappedValue = nil },
             availability: referenceAvailability,
-            creator: referenceCreator, onOpenRecord: onOpenReference)
+            creator: referenceCreator, onOpenRecord: direct ? nil : onOpenReference, direct: direct)
         } else {
           Text("Reference choices are unavailable. The original value has been preserved.")
             .foregroundStyle(.secondary)
@@ -2663,9 +2717,11 @@ struct FieldInput: View {
       } else if ["select", "multi_select"].contains(field.type) {
         NativeChoiceField(
           field: field, isNew: editor.isNew, value: $value, workspace: workspace,
-          focus: focus, isCurrent: isCurrent)
-      } else if let kind = NativeDateKind(rawValue: field.type) {
-        NativeDateField(field: field, kind: kind, focus: focus, value: $value)
+          focus: focus, isCurrent: isCurrent, direct: direct)
+      } else if let kind = NativeDateKind(rawValue: field.type)
+        ?? (field.type == "date_or_datetime" ? (value.contains("T") ? .datetime : .date) : nil)
+      {
+        NativeDateField(field: field, kind: kind, direct: direct, focus: focus, value: $value)
       } else if ["url", "email", "phone"].contains(field.type) {
         NativeLinkField(field: field, focus: focus, value: $value)
       } else if field.type == "json" {
@@ -2675,6 +2731,12 @@ struct FieldInput: View {
           TextEditor(text: $value).font(.system(.body, design: .monospaced)).frame(minHeight: 180)
             .focused(focus, equals: field.id)
             .accessibilityLabel(field.label).accessibilityIdentifier("field-\(field.id)")
+        }
+      } else if field.type == "bool" && direct {
+        HStack {
+          Button("Yes") { value = "true" }
+          Button("No") { value = "false" }
+          if !field.required { Button("Clear") { value = "" } }
         }
       } else if field.type == "bool" {
         Picker(field.label, selection: $value) {
@@ -2689,7 +2751,7 @@ struct FieldInput: View {
             .focused(focus, equals: field.id)
             .accessibilityIdentifier("field-\(field.id)")
             .autocorrectionDisabled(field.type != "text")
-          if field.type == "text", NativeFieldLink.isRecordReference(value) {
+          if !direct, field.type == "text", NativeFieldLink.isRecordReference(value) {
             Button(linkOpening ? "Opening record…" : "Open record") {
               openRecord()
             }

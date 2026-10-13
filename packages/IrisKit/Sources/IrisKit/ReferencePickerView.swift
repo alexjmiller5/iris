@@ -5,6 +5,7 @@ struct ReferenceField: View {
   @Binding var value: String
   @State private var picker: ReferencePickerModel?
   let onOpen: () -> Void
+  let direct: Bool
   let canEdit: Bool
   let canOpen: Bool
   let availability: String?
@@ -15,11 +16,12 @@ struct ReferenceField: View {
     onOpen: @escaping () -> Void = {}, canEdit: Bool = true,
     canOpen: Bool = true, availability: String? = nil,
     creator: ReferenceCreator? = nil,
-    onOpenRecord: ((String, String) -> Void)? = nil
+    onOpenRecord: ((String, String) -> Void)? = nil, direct: Bool = false
   ) {
     self.field = field
     _value = value
     self.onOpen = onOpen
+    self.direct = direct
     self.canEdit = canEdit
     self.canOpen = canOpen
     self.availability = availability
@@ -34,7 +36,10 @@ struct ReferenceField: View {
   var body: some View {
     if let picker {
       VStack(alignment: .leading, spacing: 10) {
-        if canEdit {
+        if canEdit && direct {
+          ReferencePickerView(field: field, model: picker, value: $value, direct: true)
+            .frame(minHeight: 200, maxHeight: 320)
+        } else if canEdit {
           NavigationLink {
             ReferencePickerView(field: field, model: picker, value: $value)
               .onAppear(perform: onOpen)
@@ -88,99 +93,104 @@ private struct ReferencePickerView: View {
   let field: CatalogField
   @Bindable var model: ReferencePickerModel
   @Binding var value: String
+  var direct = false
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
-    List {
-      if !model.selection.ids.isEmpty {
-        Section("Selected") {
-          ForEach(Array(model.selection.ids.enumerated()), id: \.offset) { _, id in
-            HStack {
-              if model.labelLoading(for: id) {
-                Text("Selected record").skeleton()
-              } else {
-                Text(model.label(for: id))
+    VStack(spacing: 4) {
+      if direct { TextField("Search records", text: $model.search) }
+      List {
+        if !model.selection.ids.isEmpty {
+          Section("Selected") {
+            ForEach(Array(model.selection.ids.enumerated()), id: \.offset) { _, id in
+              HStack {
+                if model.labelLoading(for: id) {
+                  Text("Selected record").skeleton()
+                } else {
+                  Text(model.label(for: id))
+                }
+                Spacer()
+                Button {
+                  model.remove(id)
+                  value = model.selection.value
+                } label: {
+                  Image(systemName: "minus.circle").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Remove \(model.label(for: id))")
               }
-              Spacer()
-              Button {
-                model.remove(id)
-                value = model.selection.value
-              } label: {
-                Image(systemName: "minus.circle").foregroundStyle(.secondary)
-              }
-              .buttonStyle(.borderless)
-              .accessibilityLabel("Remove \(model.label(for: id))")
+            }
+            if model.selection.ids.contains(where: { model.label(for: $0) == "Unavailable" }) {
+              Text("Unavailable records remain selected until you remove them.")
+                .font(.caption).foregroundStyle(.secondary)
             }
           }
-          if model.selection.ids.contains(where: { model.label(for: $0) == "Unavailable" }) {
-            Text("Unavailable records remain selected until you remove them.")
-              .font(.caption).foregroundStyle(.secondary)
-          }
         }
-      }
-      Section("Records") {
-        if let text = model.creationOffer {
-          Button {
-            Task {
-              await model.create(text)
-              finishCreation()
-            }
-          } label: {
-            Label("Create “\(text)”", systemImage: "plus")
-          }
-          .accessibilityIdentifier("create-reference-\(field.id)")
-        }
-        ForEach(model.rows, id: \.byteExactID) { row in
-          Button {
-            model.choose(row)
-            value = model.selection.value
-            if !model.selection.multiple { dismiss() }
-          } label: {
-            HStack {
-              Text(row.label).foregroundStyle(.primary)
-              Spacer()
-              if model.selection.contains(row.id) {
-                Image(systemName: "checkmark").accessibilityHidden(true)
+        Section("Records") {
+          if let text = model.creationOffer {
+            Button {
+              Task {
+                await model.create(text)
+                finishCreation()
               }
-            }.contentShape(.rect)
-          }
-          .accessibilityAddTraits(model.selection.contains(row.id) ? [.isSelected] : [])
-        }
-        if model.rows.isEmpty && !model.loading {
-          Text("No matching records").foregroundStyle(.secondary)
-        }
-        if model.canLoadMore {
-          Button("Load more") { Task { await model.reload(more: true) } }.disabled(model.loading)
-        }
-        if model.loading {
-          SkeletonRows(count: model.rows.isEmpty ? 5 : 2, label: "Loading records")
-        }
-        if let error = model.error { Text(error).foregroundStyle(.red) }
-      }
-    }
-    .navigationTitle(field.label)
-    .searchable(text: $model.search, prompt: "Search records")
-    .toolbar {
-      ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-    }
-    .task(id: model.search) { await model.reload() }
-    .task { await model.resolveSelected() }
-    .onDisappear { model.invalidateSearch() }
-    .sheet(
-      isPresented: Binding(
-        get: { model.creation != nil }, set: { if !$0 { model.cancelCreation() } })
-    ) {
-      if let editor = model.creation, let creator = model.creator {
-        ReferenceCreationSheet(
-          creator: creator, editor: editor, saving: model.creating,
-          onSave: {
-            Task {
-              await model.save(editor)
-              finishCreation()
+            } label: {
+              Label("Create “\(text)”", systemImage: "plus")
             }
-          }, onCancel: model.cancelCreation)
+            .accessibilityIdentifier("create-reference-\(field.id)")
+          }
+          ForEach(model.rows, id: \.byteExactID) { row in
+            Button {
+              model.choose(row)
+              value = model.selection.value
+              if !direct && !model.selection.multiple { dismiss() }
+            } label: {
+              HStack {
+                Text(row.label).foregroundStyle(.primary)
+                Spacer()
+                if model.selection.contains(row.id) {
+                  Image(systemName: "checkmark").accessibilityHidden(true)
+                }
+              }.contentShape(.rect)
+            }
+            .accessibilityAddTraits(model.selection.contains(row.id) ? [.isSelected] : [])
+          }
+          if model.rows.isEmpty && !model.loading {
+            Text("No matching records").foregroundStyle(.secondary)
+          }
+          if model.canLoadMore {
+            Button("Load more") { Task { await model.reload(more: true) } }.disabled(model.loading)
+          }
+          if model.loading {
+            SkeletonRows(count: model.rows.isEmpty ? 5 : 2, label: "Loading records")
+          }
+          if let error = model.error { Text(error).foregroundStyle(.red) }
+        }
+      }
+      .navigationTitle(field.label)
+      .searchable(text: $model.search, prompt: "Search records")
+      .toolbar {
+        ToolbarItem(placement: .confirmationAction) { if !direct { Button("Done") { dismiss() } } }
+      }
+      .task(id: model.search) { await model.reload() }
+      .task { await model.resolveSelected() }
+      .onDisappear { model.invalidateSearch() }
+      .sheet(
+        isPresented: Binding(
+          get: { model.creation != nil }, set: { if !$0 { model.cancelCreation() } })
+      ) {
+        if let editor = model.creation, let creator = model.creator {
+          ReferenceCreationSheet(
+            creator: creator, editor: editor, saving: model.creating,
+            onSave: {
+              Task {
+                await model.save(editor)
+                finishCreation()
+              }
+            }, onCancel: model.cancelCreation)
+        }
       }
     }
+
   }
 
   /// Publish a created record to the source draft; a single reference is then complete.
@@ -189,7 +199,7 @@ private struct ReferencePickerView: View {
       return
     }
     value = model.selection.value
-    if !model.selection.multiple { dismiss() }
+    if !direct && !model.selection.multiple { dismiss() }
   }
 }
 

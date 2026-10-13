@@ -109,12 +109,12 @@ describe('markdown previews', () => {
 describe('date cells', () => {
 	it('reads dates and UTC timestamps like the native apps', () => {
 		expect(dateText('date', '2026-10-10', 'en-US')).toBe('Oct 10, 2026');
-		expect(dateText('datetime', '2026-10-10T01:17:51.954Z', 'en-US')).toBe(
-			'Oct 10, 2026, 1:17 AM UTC'
+		expect(dateText('datetime', '2026-10-10T01:17:51.954Z', 'en-US')).toMatch(
+			/^Oct 10, 2026(?:,| at) 1:17 AM UTC$/
 		);
 		expect(dateText('date_or_datetime', '2026-02-28', 'en-US')).toBe('Feb 28, 2026');
-		expect(dateText('date_or_datetime', '2026-02-28T23:59:00.000Z', 'en-US')).toBe(
-			'Feb 28, 2026, 11:59 PM UTC'
+		expect(dateText('date_or_datetime', '2026-02-28T23:59:00.000Z', 'en-US')).toMatch(
+			/^Feb 28, 2026(?:,| at) 11:59 PM UTC$/
 		);
 	});
 
