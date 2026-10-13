@@ -95,6 +95,20 @@ describe('chips apply edits in place', () => {
 			placeRule(empty, null, { column: 'due', op: 'lt', values: [], relative: 'today' }, typeOf)
 				.state.filters
 		).toEqual([{ column: 'due', op: 'lt', relative: 'today' }]);
+		expect(
+			placeRule(empty, null, { column: 'due', op: 'lte', values: [], relative: 'now' }, typeOf)
+				.state.filters
+		).toEqual([{ column: 'due', op: 'lte', relative: 'now' }]);
+	});
+
+	test('a saved Now rule reads back as a Now chip', () => {
+		const filters = [{ column: 'due', op: 'lte' as const, relative: 'now' as const }];
+		expect(chipsOf({ filters, groups: [] })[0].rule).toEqual({
+			column: 'due',
+			op: 'lte',
+			values: [],
+			relative: 'now'
+		});
 	});
 
 	test('removing a chip removes exactly its clause', () => {
@@ -226,6 +240,9 @@ test('chip labels read like sentences', () => {
 	expect(
 		describeRule({ column: 'due', op: 'lt', values: [], relative: 'today' }, 'date', label)
 	).toBe('Due: before Today');
+	expect(
+		describeRule({ column: 'due', op: 'lte', values: [], relative: 'now' }, 'date', label)
+	).toBe('Due: on or before Now');
 	expect(describeRule({ column: 'done', op: 'eq', values: ['false'] }, 'bool', label)).toBe(
 		'Done: unchecked'
 	);

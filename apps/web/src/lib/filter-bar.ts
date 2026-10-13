@@ -2,7 +2,12 @@ import type { Filter, FilterGroup } from 'iris-core/client';
 
 /** One filter chip as the person edits it. Values stay raw text until they
  * parse; several values are "any of" (or "none of" for `ne`). */
-export type Rule = { column: string; op: Filter['op']; values: string[]; relative?: 'today' };
+export type Rule = {
+	column: string;
+	op: Filter['op'];
+	values: string[];
+	relative?: Filter['relative'];
+};
 export type FilterState = { filters: Filter[]; groups: FilterGroup[] };
 export type ChipRef = { kind: 'filter' | 'group'; index: number };
 /** A null rule is an advanced group, edited rule by rule. */
@@ -11,6 +16,8 @@ export type GroupDraft = { match: FilterGroup['match']; rules: Rule[] };
 
 export const DATE_TYPES = ['date', 'datetime', 'date_or_datetime'];
 const ORDERED: Filter['op'][] = ['eq', 'ne', 'lt', 'gt', 'lte', 'gte', 'empty', 'not_empty'];
+/** Relative Now (the host clock) compares only before/after. */
+export const NOW_OPS: Filter['op'][] = ['lt', 'gt', 'lte', 'gte'];
 
 export function operatorsFor(type: string): Filter['op'][] {
 	if (type === 'bool') return ['eq'];
@@ -63,7 +70,7 @@ export function ruleClause(
 		return {
 			clause:
 				rule.relative && op !== 'empty' && op !== 'not_empty'
-					? { column, op, relative: 'today' }
+					? { column, op, relative: rule.relative }
 					: { column, op },
 			error: ''
 		};
@@ -198,7 +205,7 @@ export function describeRule(
 	if (!needsValue(rule)) {
 		if (rule.op === 'empty' || rule.op === 'not_empty') return `${name}: ${opLabel(rule.op, type)}`;
 		const op = opLabel(rule.op, type).replace(/^is /, '');
-		return `${name}: ${op === 'is' ? '' : op + ' '}Today`;
+		return `${name}: ${op === 'is' ? '' : op + ' '}${rule.relative === 'now' ? 'Now' : 'Today'}`;
 	}
 	const values = rule.values.filter((v) => v.trim() !== '');
 	if (!values.length) return name;

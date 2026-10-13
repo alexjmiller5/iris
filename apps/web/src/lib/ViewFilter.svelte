@@ -2,7 +2,7 @@
 	import OptionChip from './OptionChip.svelte';
 	import type { Property } from 'iris-core/client';
 	import { IconX } from '@tabler/icons-svelte';
-	import { DATE_TYPES, defaultRule, operatorsFor, opLabel, type Rule } from './filter-bar';
+	import { DATE_TYPES, NOW_OPS, defaultRule, operatorsFor, opLabel, type Rule } from './filter-bar';
 
 	// Edits one filter rule. Every change is reported at once; the parent decides
 	// whether the rule is complete enough to apply and save.
@@ -78,8 +78,12 @@
 		onchange({ ...rule, values });
 	}
 	function setOp(op: Rule['op']) {
-		const relative =
-			rule.relative && !['empty', 'not_empty'].includes(op) ? rule.relative : undefined;
+		// Now compares only before/after; is/is not fall back to Today.
+		const relative = ['empty', 'not_empty'].includes(op)
+			? undefined
+			: rule.relative === 'now' && !NOW_OPS.includes(op)
+				? 'today'
+				: rule.relative;
 		onchange({ column: rule.column, op, values: rule.values, ...(relative ? { relative } : {}) });
 	}
 	const dateValue = (value: string) =>
@@ -155,6 +159,16 @@
 						onchange={() => onchange({ ...rule, values: [], relative: 'today' })}
 					/>Today</label
 				>
+				{#if NOW_OPS.includes(rule.op)}
+					<label
+						><input
+							type="radio"
+							name={`${id}-date`}
+							checked={rule.relative === 'now'}
+							onchange={() => onchange({ ...rule, values: [], relative: 'now' })}
+						/>Now</label
+					>
+				{/if}
 			</div>
 			{#if !rule.relative}
 				<input

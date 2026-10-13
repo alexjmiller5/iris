@@ -14,6 +14,20 @@ test('mixed date fields offer ordered comparisons and Today', () => {
 	expect(html).toContain('Today');
 	expect(html).toContain('is on or before');
 	expect(html).toContain('value="2026-03-08"');
+	expect(html).toContain('>Now</label');
+});
+
+test('Now is offered only for before/after comparisons', () => {
+	const html = (op: 'eq' | 'lte') =>
+		render(ViewFilter, {
+			props: {
+				rule: { column: 'due', op, values: [], relative: 'now' as const },
+				properties: [{ tbl: 'items', col: 'due', type: 'date_or_datetime', label: 'Due' }],
+				onchange: () => {}
+			}
+		}).body;
+	expect(html('lte')).toMatch(/checked[^>]*\/?>Now<\/label/);
+	expect(html('eq')).not.toContain('>Now</label');
 });
 
 test('select values are a checkbox list with the chosen options checked', () => {
