@@ -993,14 +993,18 @@
 		const created = !selected;
 		// Sent fields take their stored form unless typing continued; unsent ones (a
 		// refused value, an edit made during the write) stay drafts; untouched ones
-		// take stored values such as creation defaults.
+		// take stored values such as creation defaults. A new record has no stored
+		// baseline: its untouched fields showed previews, as captured with the write;
+		// a refused input stays explicit and stays in the draft.
 		const baseline = rowDraft(selected);
 		const merged = mergeRemote(
 			draft,
 			Object.fromEntries(
 				Object.keys(draft).map((col) => [
 					col,
-					Object.hasOwn(patch, col) ? values[col] : baseline[col]
+					Object.hasOwn(patch, col) || (created && !explicitCreation.has(col))
+						? values[col]
+						: baseline[col]
 				])
 			),
 			rowDraft(stored),
