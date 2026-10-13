@@ -378,7 +378,9 @@ Manual Resolve uses the core's revision-checked `resolveDerived` operation on th
 bound hub, followed by ordinary replica sync and a fresh full-row readback.
 HTTP-derived fields remain read-only. Require a saved, clean record before the
 request, collect retained native Markdown first, and preserve late input against
-the readback baseline. Display provider failures without claiming success.
+the readback baseline. Web Resolve saves pending edits and syncs before the request
+(`resolve-derived.ts`): the hub checks the revision shown, which an edit saved
+moments before has not reached yet. Display provider failures without claiming success.
 Never write provider results directly into the replica or implicitly save a draft.
 
 Saved views use the core contract and the canonical `core/schema/saved-views.json`
@@ -514,7 +516,10 @@ workspace forgets it; a workspace is remembered as soon as it is open. Leaving t
 workspace opens never prompts (`beforeNavigate` skips its busy guard for `leave`); unsaved edits
 still do. Pages render in the browser only (`ssr = false` in `routes/+layout.ts`; `app.html`
 carries a static title until a route sets its own), so no server-rendered welcome frame
-precedes the reopen. A hub-connected workspace reopens its
+precedes the reopen. A page entering the back/forward cache stops its database worker unless a
+save is still landing (Chrome can crash the tab evicting a page whose frozen worker is mid-write
+to OPFS, and a cached page keeps the database's file handles from the next one) and reloads if
+restored; the worker's `open` retries for 5 s while a page that just left still holds the file. A hub-connected workspace reopens its
 local replica offline: tokens are session-only, so the pill reads Not connected and Connect to
 a hub takes the token again. The web shell shows placeholders until the
 opened workspace's first catalog read (`workspaceReady`) and a page's first rows read
@@ -1001,6 +1006,22 @@ origin), never from a page of the app, which would reopen the workspace first.
 - `test-editor-links.ts`: /person mention and /view embed through the slash menu,
   synced Markdown links, render-time labels, click-through, Linked from, Open view
   and an unavailable target. Navigate in-app: a reload drops the session token.
+- `test-export.ts`: the Export disclosure (Escape, narrow width), exact JSON/CSV downloads,
+  loading blocks export, CSV metadata from the clicked capture, table switches.
+- `test-related-view-defaults.ts`: related-record view chosen apart from the table default,
+  synced, filtering incoming links.
+- `test-resolve-derived.ts`: Resolve refuses an unsaveable draft, pushes an edit saved just
+  before, writes provider values with provenance, reports failures and stale revisions.
+- `test-retained-files.ts`: retained images and retry, exact source, downloads aborted on
+  close or switch, source links.
+- `test-source-navigation.ts`: explicit identities and source links, held and superseded
+  lookups, leave prompts for refused edits.
+- `test-creation-intent.ts`: creation previews and defaults, Duplicate storing its copy at once,
+  explicit clears and references; `test-creation-mutations.ts [--browser]` breaks each.
+- `test-grid-undo.ts`: Undo over grid cell drafts and creation; `test-grid-undo-mutations.ts`
+  breaks each.
+- `test-opfs-reopen.ts`: reload with an open replica (two tabs, an abruptly stopped worker) and
+  OPFS temporary-file cleanup; `--verify-patch` (CI) checks the installed VFS patch only.
 
 `project.yml` is authoritative; generated Xcode projects and Info.plists are
 ignored. Child justfiles expose platform run/test/check/build. Caches and derived
