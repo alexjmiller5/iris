@@ -643,6 +643,8 @@ bun scripts/test-search.ts
 bun scripts/test-search-sync.ts /path/to/soma
 bun scripts/test-saved-views.ts /path/to/soma
 bun scripts/test-view-options.ts /path/to/soma   # optional: rollover|options|actions
+# Open http://iris-due-times.localhost:5297/workspace?review in its own page.
+bun scripts/test-due-times.ts /path/to/soma
 bun scripts/test-table-invariants.ts /path/to/soma
 bun scripts/test-read-dependencies.ts /path/to/soma
 bun scripts/test-remote-browse.ts /path/to/soma

@@ -989,6 +989,8 @@ origin), never from a page of the app, which would reopen the workspace first.
 - `test-view-defaults.ts`: preferred view, explicit view links, deleted-preference notice.
 - `test-view-options.ts`: Today boundary/timezone, group rule types, row actions guard.
 - `test-view-presentations.ts`: Calendar, Gallery and Board layouts with synced moves.
+- `test-due-times.ts`: a relative-Now view re-running by itself when a floating time comes
+  due, the optional time beside a mixed date (Remove time) and its axe audit, light and dark.
 - `test-grid-presentation.ts`: placeholders while a workspace and its rows load (never the
   empty-workspace guidance), a reload reopening the sample with no welcome frame (screencast
   frames under `IRIS_TEST_SHOTS/reopen-frames`), Switch workspace forgetting it, a removed
