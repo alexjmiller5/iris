@@ -55,6 +55,7 @@ final class WorkspaceModel {
     }
   }
   private(set) var workspaceGeneration = 0
+  var quickFindRequest = 0
   private(set) var linkBinding: NativeWorkspaceBinding?
   private(set) var linkError: String?
   private var linkIdentityStore: NativeLinkIdentityStore?

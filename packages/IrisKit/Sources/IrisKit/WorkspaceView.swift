@@ -129,7 +129,6 @@ public struct WorkspaceView: View {
             Button(action: showQuickFind) {
               Label("Find records", systemImage: "magnifyingglass")
             }
-            .keyboardShortcut("k", modifiers: .command)
             .disabled(!canFind)
             .accessibilityIdentifier("quick-find-sidebar")
             Button {
@@ -190,6 +189,8 @@ public struct WorkspaceView: View {
         }
         .onChange(of: model.table) { showingGraph = false }
         .focusedSceneValue(\.toggleSidebar, sidebarToggle)
+        .focusedSceneValue(\.quickFindWorkspace, canFind ? model : nil)
+        .onChange(of: model.quickFindRequest) { showQuickFind() }
       }
     }
     .task { await model.restoreAtLaunch(demo: demo) }

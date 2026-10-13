@@ -1055,6 +1055,11 @@ table), Offline · N pending, N rejected (opens Issues), Paused: cap reached (hu
 Sync failures reach the pill and status sheet, never `model.error`. Ordinary saves
 show no progress text. `SyncStatusUITests` drives `navigation-hub.py`'s
 accept/reject/offline modes through those states and retains screenshots.
+Cmd+K (`WorkspaceCommands`, Edit > Find records) opens Quick Find for the active
+workspace even when the sidebar starts hidden. The scene publishes its stable
+workspace model while navigation is allowed; the sidebar button has no separate
+keyboard shortcut. `SidebarMenuBarUITests` checks hidden-sidebar relaunch, query
+focus and visible-sidebar access.
 Cmd+\ (`WorkspaceCommands`, View > Toggle Sidebar) toggles the sidebar column with
 a 0.2 s ease-out animation (none under Reduce Motion), persisted as
 `iris.sidebarHidden`; compact iPhone switches sidebar and detail with the system push.

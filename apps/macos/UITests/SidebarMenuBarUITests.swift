@@ -15,6 +15,10 @@ final class SidebarMenuBarUITests: XCTestCase {
     XCTAssertTrue(wait(sidebar, visible: true))
     app.typeKey("\\", modifierFlags: .command)
     XCTAssertTrue(wait(sidebar, visible: false))
+    app.terminate()
+    app.launch()
+    XCTAssertTrue(app.buttons["new-record"].waitForExistence(timeout: 15))
+    XCTAssertTrue(wait(sidebar, visible: false), "Start with the persisted hidden sidebar")
 
     app.typeKey("k", modifierFlags: .command)
     let query = app.textFields["quick-find-query"]

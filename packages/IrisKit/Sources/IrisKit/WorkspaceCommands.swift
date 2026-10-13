@@ -13,8 +13,14 @@ struct SidebarToggle: Equatable {
 }
 
 private struct ToggleSidebarKey: FocusedValueKey { typealias Value = SidebarToggle }
+private struct QuickFindWorkspaceKey: FocusedValueKey { typealias Value = WorkspaceModel }
 
 extension FocusedValues {
+  var quickFindWorkspace: WorkspaceModel? {
+    get { self[QuickFindWorkspaceKey.self] }
+    set { self[QuickFindWorkspaceKey.self] = newValue }
+  }
+
   var toggleSidebar: SidebarToggle? {
     get { self[ToggleSidebarKey.self] }
     set { self[ToggleSidebarKey.self] = newValue }
@@ -24,9 +30,15 @@ extension FocusedValues {
 /// Menu commands for the iOS and macOS scenes. Cmd+\ also works from a hardware keyboard.
 public struct WorkspaceCommands: Commands {
   @FocusedValue(\.toggleSidebar) private var toggleSidebar
+  @FocusedValue(\.quickFindWorkspace) private var quickFindWorkspace
   public init() {}
 
   public var body: some Commands {
+    CommandGroup(after: .textEditing) {
+      Button("Find records") { quickFindWorkspace?.quickFindRequest += 1 }
+        .keyboardShortcut("k", modifiers: .command)
+        .disabled(quickFindWorkspace == nil)
+    }
     CommandGroup(replacing: .sidebar) {
       Button("Toggle Sidebar") { toggleSidebar?.perform() }
         .keyboardShortcut("\\", modifiers: .command)
