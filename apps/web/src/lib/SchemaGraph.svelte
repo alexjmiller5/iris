@@ -240,7 +240,10 @@
 		border: 1px solid var(--color-rule);
 		border-radius: 24px;
 		background-color: color-mix(in srgb, var(--color-ink) 3.5%, var(--color-paper));
-		background-image: radial-gradient(color-mix(in srgb, var(--color-muted) 22%, transparent) .7px, transparent .7px);
+		background-image: radial-gradient(
+			color-mix(in srgb, var(--color-muted) 22%, transparent) 0.7px,
+			transparent 0.7px
+		);
 		background-size: 24px 24px;
 	}
 	.canvas > svg {
