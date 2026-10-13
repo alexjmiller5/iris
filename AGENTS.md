@@ -1072,6 +1072,10 @@ items minutes after indexing), the Home Screen widget gallery and the Lock Scree
 editor (`com.apple.PosterBoard`). `TEST_RUNNER_IRIS_TEST_DAILY_AFTER_BOUNDARY`
 checks the daily section after the fixture view's 03:00 boundary passed. Erase the
 simulator before a run; Home and Lock Screen edits persist between runs.
+`DueTimeUIFixtureTests` (with `TEST_RUNNER_IRIS_TEST_DUE_TIME_SIMULATOR`) replaces that
+simulator's local workspace with a fresh sample plus a mixed `due` date and a Now view;
+`DueTimeUITests` then drives Add time and Due-time alerts (CI keeps its light and dark
+screenshots as `due-time-ios-screens`). Without notification permission nothing schedules.
 `TableNavigationUIFixtureTests` seeds 50,000 synthetic provenance rows on the
 explicit `TEST_RUNNER_IRIS_TEST_TABLE_NAV_SIMULATOR` only. Its local mode tests
 repeated table navigation; the optional loopback `navigation-hub.py` mode holds
