@@ -438,6 +438,12 @@ async function dispatch(request: DatabaseRequest) {
 				'Persistent storage (OPFS) is unavailable in this browser. No workspace was opened.'
 			);
 		}
+		if (args.existing !== undefined && typeof args.existing !== 'boolean')
+			throw new Error('existing must be a boolean.');
+		if (args.existing)
+			await (await navigator.storage.getDirectory()).getFileHandle(name).catch(() => {
+				throw new Error('This workspace is no longer stored in this browser.');
+			});
 		const module = await SQLiteFactory({ locateFile: () => wasmUrl });
 		sqlite = SQLite.Factory(module);
 		// Exported by this WASM build, but not wrapped in wa-sqlite's typed API.

@@ -31,6 +31,11 @@ prepare it automatically. A same-name unrelated table is left untouched.
 
 Open the app, then choose **Open my workspace** or **Try sample workspace**.
 The sample has its own persistent database and cannot sync to an account.
+Later visits reopen the workspace this browser last opened, at the link's table,
+view or record when the address names one. **Switch workspace** returns to this
+choice and forgets it. A connected workspace reopens offline with its local
+records; connect it again in **Connect to a hub**, since the token lasts only
+for one browser session.
 In **Connect to a hub**, enter its address and choose **Approve this browser**.
 Open the approval page, compare the displayed code, and approve through the hub's
 owner sign-in. Return to Iris while it waits for approval. The browser creates

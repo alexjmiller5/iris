@@ -325,11 +325,23 @@
 	}
 
 	let database = $state<WorkspaceDatabase | null>(null);
+	// The workspace this browser last opened ('mine' or 'sample') reopens on the next
+	// visit, straight to the shell's placeholders; Switch workspace forgets it.
+	const remembered = (() => {
+		try {
+			const kind = localStorage.getItem('iris:workspace');
+			return kind === 'mine' || kind === 'sample' ? kind : null;
+		} catch {
+			return null;
+		}
+	})();
 	let ready = $state(false),
-		online = $state(true);
+		online = $state(true),
+		restoring = $state(remembered !== null);
 	onMount(() => {
 		ready = true;
 		online = navigator.onLine;
+		if (remembered) void openWorkspace(remembered === 'sample', true);
 	});
 	let opened = $state(false),
 		// The opened workspace's first catalog read has finished; until then the shell shows
@@ -337,7 +349,7 @@
 		workspaceReady = $state(false),
 		// The current page's first rows read has finished; until then the grid shows placeholders.
 		rowsLoaded = $state(false),
-		demo = $state(false),
+		demo = $state(remembered === 'sample'),
 		busy = $state(false),
 		error = $state('');
 	$effect(() => {
@@ -1599,7 +1611,8 @@
 		notice = '';
 		rowsLoaded = false;
 	}
-	async function openWorkspace(sample: boolean) {
+	/** existing: reopen the remembered workspace, failing if it is no longer stored. */
+	async function openWorkspace(sample: boolean, existing = false) {
 		if (busy) return;
 		showFind(false);
 		busy = true;
@@ -1617,11 +1630,11 @@
 				unpin: (args) => pinWorkspace.request('unpinTable', args),
 				move: (args) => pinWorkspace.request('moveTablePin', args)
 			});
-			await database.request('open', { demo: sample });
 			demo = sample;
 			readRecents();
 			hiddenPromptTables = prompts.read();
 			promptVisit = null;
+			await database.request('open', { demo: sample, existing });
 			try {
 				const prefs = JSON.parse(localStorage.getItem('iris:replica') ?? '{}');
 				maxRows = Number.isSafeInteger(prefs.maxRows) && prefs.maxRows >= 0 ? prefs.maxRows : 50000;
@@ -1667,11 +1680,19 @@
 				await reflectLocation(true);
 				recordRecent();
 			}
+			// A Switch workspace while this open was finishing keeps it forgotten.
+			if (database === pinWorkspace)
+				try {
+					localStorage.setItem('iris:workspace', sample ? 'sample' : 'mine');
+				} catch {
+					/* The next visit starts on the welcome screen. */
+				}
 		} catch (e) {
 			error = message(e);
 			opened = false;
 		} finally {
 			busy = false;
+			restoring = false;
 		}
 	}
 	async function changeTable(name: string) {
@@ -2850,7 +2871,7 @@
 	}}
 />
 
-{#if !opened}
+{#if !opened && !restoring}
 	<main class="start">
 		<a class="back" href="/"><IconArrowLeft size={18} /> Iris</a>
 		<h1>Your data, within reach.</h1>
@@ -3065,6 +3086,11 @@
 							showFind(false);
 							resetView();
 							token = '';
+							try {
+								localStorage.removeItem('iris:workspace');
+							} catch {
+								/* Nothing was remembered. */
+							}
 						}}>Switch workspace</button
 					>
 					<div class="pill-dock">
@@ -3806,6 +3832,11 @@
 	.start p {
 		color: var(--color-muted);
 		line-height: 1.7;
+	}
+	/* A failed open keeps its alert color and stands apart from the hint above it. */
+	.start .failure {
+		margin-top: 16px;
+		color: var(--color-violation);
 	}
 	.back,
 	.wordmark {

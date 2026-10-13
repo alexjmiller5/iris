@@ -505,7 +505,15 @@ a single accessibility element with its label. Operation progress (saving, expor
 staging) and the sync pill are not content loading. A launching native window stays on the
 workspace shell's placeholders while `WorkspaceModel.restoring` (until `restoreAtLaunch`
 resolves) or an open is running; the welcome screen appears only when nothing is
-remembered or the restore failed, with its error. The web shell shows placeholders until the
+remembered or the restore failed, with its error. The web app remembers the workspace this
+browser last opened (localStorage `iris:workspace`: `mine` or `sample`) and reopens it on the
+next visit straight to the shell (`restoring`), honoring the URL's table/view/row. The reopen
+passes `existing` to the worker's `open`, which refuses a database no longer in OPFS; the welcome
+screen appears only when nothing is remembered or the reopen failed, with its error. Switch
+workspace forgets it. Pages render in the browser only (`ssr = false` in `routes/+layout.ts`),
+so no server-rendered welcome frame precedes the reopen. A hub-connected workspace reopens its
+local replica offline: tokens are session-only, so the pill reads Not connected and Connect to
+a hub takes the token again. The web shell shows placeholders until the
 opened workspace's first catalog read (`workspaceReady`) and a page's first rows read
 (`rowsLoaded`); the empty-workspace guidance and empty-table messages wait for those reads.
 
@@ -934,7 +942,10 @@ deadline), never a count of main-actor yields or a fixed sleep: CI runners are s
 concurrent tasks inside tests and their assertions unchanged.
 
 Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
-`IRIS_DEV_NO_HMR=1` dev server; usage in the README):
+`IRIS_DEV_NO_HMR=1` dev server; usage in the README). A reload or revisit reopens the
+remembered workspace by itself: a script that needs the welcome screen clicks Switch workspace
+(which forgets it) or clears the origin's storage from `about:blank`, never from a page of the
+app, which would reopen the workspace first.
 - `check-a11y.ts`: keyboard and axe walk of every view, light and dark (`just check`).
 - `test-filter-bar.ts`: filter chips, sorts, autosave (also across a view switch while a
   save is in flight) and Undo on the sample workspace.
@@ -951,7 +962,10 @@ Workspace browser scripts (`scripts/`, synthetic data, a disposable Chrome and a
 - `test-view-options.ts`: Today boundary/timezone, group rule types, row actions guard.
 - `test-view-presentations.ts`: Calendar, Gallery and Board layouts with synced moves.
 - `test-grid-presentation.ts`: placeholders while a workspace and its rows load (never the
-  empty-workspace guidance), blank empty cells, Wrap text and Wrap all columns with Undo.
+  empty-workspace guidance), a reload reopening the sample with no welcome frame (screencast
+  frames under `IRIS_TEST_SHOTS/reopen-frames`), Switch workspace forgetting it, a removed
+  database showing the welcome screen with its error, blank empty cells, Wrap text and Wrap all
+  columns with Undo.
 - `test-workflow-views.ts`: any-of groups, Today across midnight, row actions through
   sync, Save as new view preserving actions, groups and timezone.
 - `test-editor-links.ts`: /person mention and /view embed through the slash menu,
