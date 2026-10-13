@@ -4,6 +4,35 @@ import XCTest
 /// the choice survives relaunch, and the menu-bar item mirrors the sync pill.
 @MainActor
 final class SidebarMenuBarUITests: XCTestCase {
+  func testCommandKFindsRecordsWithTheSidebarHidden() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    defer { app.terminate() }
+    XCTAssertTrue(app.buttons["new-record"].waitForExistence(timeout: 15))
+    let sidebar = app.buttons["quick-find-sidebar"]
+    if !visible(sidebar) { app.typeKey("\\", modifierFlags: .command) }
+    XCTAssertTrue(wait(sidebar, visible: true))
+    app.typeKey("\\", modifierFlags: .command)
+    XCTAssertTrue(wait(sidebar, visible: false))
+
+    app.typeKey("k", modifierFlags: .command)
+    let query = app.textFields["quick-find-query"]
+    XCTAssertTrue(query.waitForExistence(timeout: 5), "Cmd+K works without the sidebar button")
+    query.typeText("people")
+    XCTAssertEqual(query.value as? String, "people", "Quick Find receives keyboard focus")
+    capture("mac-quick-find-hidden-sidebar")
+    app.typeKey(.escape, modifierFlags: [])
+    XCTAssertTrue(wait(query, visible: false))
+    XCTAssertTrue(wait(sidebar, visible: false), "Searching does not reopen the sidebar")
+
+    app.typeKey("\\", modifierFlags: .command)
+    XCTAssertTrue(wait(sidebar, visible: true))
+    app.typeKey("k", modifierFlags: .command)
+    XCTAssertTrue(query.waitForExistence(timeout: 5), "Cmd+K also works with the sidebar visible")
+    app.typeKey(.escape, modifierFlags: [])
+  }
+
   func testCommandBackslashTogglesPersistedSidebarAndMenuBarItemOpensQuickFind() throws {
     continueAfterFailure = false
     var app = XCUIApplication()
