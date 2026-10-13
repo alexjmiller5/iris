@@ -178,6 +178,7 @@
       private let popover = NSPopover()
       private var editorHost: NSHostingController<MacCellEditor<Editor>>?
       private var presentedEditorID: UUID?
+      private var outsideClickMonitor: Any?
 
       func popoverShouldClose(_ popover: NSPopover) -> Bool {
         parent.onDismissEditor()
@@ -185,6 +186,8 @@
       }
 
       func closeEditor() {
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        outsideClickMonitor = nil
         popover.close()
         popover.contentViewController = nil
         editorHost = nil
@@ -205,7 +208,7 @@
           let row = parent.rows.firstIndex(where: { $0.byteExactID == parent.editingRow }),
           let column = items.firstIndex(where: { $0.column?.id == parent.editingColumn })
         else { return }
-        popover.close()
+        closeEditor()
         let host = NSHostingController(rootView: content)
         host.sizingOptions = [.preferredContentSize]
         editorHost = host
@@ -217,6 +220,20 @@
         popover.show(
           relativeTo: table.frameOfCell(atColumn: column, row: row), of: table, preferredEdge: .maxY
         )
+        outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [
+          .leftMouseDown, .rightMouseDown, .otherMouseDown,
+        ]) {
+          [weak self] event in
+          guard let self, let editorWindow = self.editorHost?.view.window else { return event }
+          // Child windows include native pickers and property-help popovers.
+          var window = event.window
+          while let candidate = window {
+            if candidate === editorWindow { return event }
+            window = candidate.parent
+          }
+          self.parent.onDismissEditor()
+          return nil  // Dismiss only; the underlying control must not receive this click.
+        }
       }
       weak var table: NSTableView?
       /// Measured heights of wrapped cells by row and property.

@@ -32,9 +32,29 @@ try {
   const input = page.getByRole("textbox", { name: "Title", exact: true });
   await expect(input).toBeFocused();
   await input.fill("A single click title");
-  // Selecting the next field commits text and opens that editor in the same click.
+  // Attachment downloads click a body-mounted anchor programmatically.
+  const downloadAllowed = await page.evaluate(() => {
+    const anchor = document.createElement("a");
+    anchor.href = "data:text/plain,synthetic";
+    anchor.download = "synthetic.txt";
+    document.body.append(anchor);
+    let allowed = false;
+    anchor.onclick = (event) => {
+      allowed = !event.defaultPrevented;
+      event.preventDefault();
+    };
+    anchor.click();
+    anchor.remove();
+    return allowed;
+  });
+  expect(downloadAllowed).toBe(true);
+  await expect(input).toBeVisible();
+  // The first outside click only saves and dismisses, even over another cell.
   await status.click();
   await expect(title).toContainText("A single click title");
+  await expect(page.locator("[data-cell-editor]")).toHaveCount(0);
+  await expect(status).toContainText("Ready");
+  await status.click();
   await expect(
     page.getByRole("button", { name: "Draft", exact: true }),
   ).toBeVisible();
@@ -46,8 +66,18 @@ try {
   await page.getByRole("heading").first().click();
   await expect(title).toContainText("Click away saves");
   await expect(page.locator("[data-cell-editor]")).toHaveCount(0);
+  await status.click();
+  await title.click({ button: "middle" });
+  await expect(page.locator("[data-cell-editor]")).toHaveCount(0);
+  await status.click();
+  const open = title.getByTitle("Open record");
+  await open.click();
+  await expect(page.locator("[data-cell-editor]")).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Title", exact: true })).toHaveCount(0);
+  await open.click();
+  await expect(page.getByRole("textbox", { name: "Title", exact: true })).toBeVisible();
   console.log(
-    "PASS: one click choices, immediate save, text focus, next-cell and outside-click commit",
+    "PASS: one click choices, immediate save, text focus, dismissal-only outside clicks, second-click record opening",
   );
 } catch (error) {
   console.error(await page.locator("body").innerText());

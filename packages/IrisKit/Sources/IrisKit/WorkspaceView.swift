@@ -397,7 +397,6 @@ public struct WorkspaceView: View {
   }
 
   @State private var inlineCloseRequest = 0
-  @State private var nextInlineCell: (WorkspaceRow, String)?
 
   private func recordEditor(_ target: EditorTarget) -> some View {
     RecordEditor(
@@ -431,10 +430,7 @@ public struct WorkspaceView: View {
         closeEditor(target)
       },
       onSaved: {
-        let next = nextInlineCell
-        nextInlineCell = nil
         closeEditor(target)
-        if let (row, column) = next { openListed(row, inlineField: column) }
       })
   }
 
@@ -442,7 +438,6 @@ public struct WorkspaceView: View {
   /// journaled as they happen, so an open draft stays recoverable after reopening.
   /// The workspace generation change resets navigation, Find and online state.
   private func closeWorkspace() {
-    nextInlineCell = nil
     editor?.preparedEditor?.endInlineMarkdown()
     editor = nil
     settings = false
@@ -1247,7 +1242,6 @@ public struct WorkspaceView: View {
                 guard target.row?["id"]?.text != row.id || target.inlineField != column else {
                   return
                 }
-                nextInlineCell = (row, column)
                 inlineCloseRequest += 1
               } else {
                 openListed(row, inlineField: column)

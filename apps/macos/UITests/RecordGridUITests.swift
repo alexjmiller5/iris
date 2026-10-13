@@ -29,12 +29,23 @@ final class RecordGridUITests: XCTestCase {
       grid.staticTexts.matching(NSPredicate(format: "value == %@", "Changed inside the table"))
         .firstMatch.waitForExistence(timeout: 5))
     let ready = app.buttons["choice-status-Ready"]
-    XCTAssertTrue(ready.waitForExistence(timeout: 5), "A single click exposes the actual choices")
+    XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+    XCTAssertFalse(ready.exists, "Clicking away must not open the clicked cell")
+    grid.staticTexts.matching(NSPredicate(format: "value == %@", "Draft")).firstMatch.click()
+    XCTAssertTrue(ready.waitForExistence(timeout: 5), "The next click exposes the actual choices")
     ready.click()
     XCTAssertTrue(
       grid.staticTexts.matching(NSPredicate(format: "value == %@", "Ready"))
         .firstMatch.waitForExistence(timeout: 5))
     XCTAssertFalse(app.buttons["choice-status-Ready"].exists)
+    grid.staticTexts.matching(NSPredicate(format: "value == %@", "Ready")).firstMatch.click()
+    XCTAssertTrue(ready.waitForExistence(timeout: 5))
+    let open = grid.buttons["Open Changed inside the table"]
+    open.click()
+    XCTAssertTrue(ready.waitForNonExistence(timeout: 5))
+    XCTAssertFalse(field.exists, "Dismissal must not open the record underneath")
+    open.click()
+    XCTAssertTrue(field.waitForExistence(timeout: 5), "The next click can open the full record")
     capture(app, name: "single-click-cell-editing")
   }
 

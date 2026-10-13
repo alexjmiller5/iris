@@ -832,7 +832,8 @@ and scrollable so they cannot consume the grid. Native column resizing is tempor
 persisted layout comes from the saved-view definition. The AppKit grid supports
 macOS 14 onward. One click opens the property editor directly; Return edits the
 selected row's title. Mac and web cell editors show choices immediately and save
-on selection or click-away, without Done, Undo or Open record controls. The explicit open action and row
+on selection or click-away, without Done, Undo or Open record controls. An outside
+click only saves and dismisses; it never activates the control underneath. The explicit open action and row
 menu retain the full editor. Column header menus sort (saved like the Sort popover)
 or add a property's filter chip and open its editor, or toggle Wrap text.
 Keep active drafts mounted through catalog/row refreshes. The Mac table owns the

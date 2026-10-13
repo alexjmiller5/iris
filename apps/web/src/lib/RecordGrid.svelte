@@ -374,19 +374,31 @@
 	}
 	function cellPopover(node: HTMLElement) {
 		const position = anchored(node, { anchor: () => edit && cellElement(edit.cell) });
+		// Consume the whole outside click before the underlying control can act.
+		function dismiss(event: MouseEvent) {
+			if (!event.isTrusted || event.composedPath().includes(node)) return;
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			if (event.type !== 'pointerdown') void commit();
+		}
+		window.addEventListener('pointerdown', dismiss, true);
+		window.addEventListener('click', dismiss, true);
+		window.addEventListener('contextmenu', dismiss, true);
+		window.addEventListener('auxclick', dismiss, true);
 		node.showPopover();
-		return { destroy: () => position.destroy() };
-	}
-	function outside(event: PointerEvent) {
-		const target = event.target as HTMLElement;
-		if (!edit || target.closest('[data-cell-editor]') || target.closest('[data-row][data-column]'))
-			return;
-		void commit();
+		return {
+			destroy() {
+				window.removeEventListener('pointerdown', dismiss, true);
+				window.removeEventListener('click', dismiss, true);
+				window.removeEventListener('contextmenu', dismiss, true);
+				window.removeEventListener('auxclick', dismiss, true);
+				position.destroy();
+			}
+		};
 	}
 </script>
 
 <svelte:window
-	onpointerdown={outside}
 	onkeydown={(event) => {
 		if (edit && event.target instanceof HTMLElement && event.target.closest('[data-cell-editor]'))
 			void keyboard(event, edit.cell);
