@@ -2845,7 +2845,8 @@
 			void undoLastSavedChange();
 			return;
 		}
-		if ((event.metaKey || event.ctrlKey) && event.key === '\\' && opened) {
+		// The shell, and with it the sidebar, also shows while a remembered workspace reopens.
+		if ((event.metaKey || event.ctrlKey) && event.key === '\\' && (opened || restoring)) {
 			event.preventDefault();
 			toggleSidebar();
 			return;
