@@ -11,7 +11,6 @@
 		disabled?: boolean;
 		selectedIds?: readonly string[];
 	} = $props();
-	let expanded = $state(false);
 	let disclosure: HTMLDetailsElement;
 	let trigger: HTMLElement;
 	let format = $state<'json' | 'csv'>('json');
@@ -61,16 +60,17 @@
 
 <svelte:window
 	onkeydown={(event) => {
-		if (event.key === 'Escape' && expanded && disclosure.contains(event.target as Node)) {
+		// Read the element, not a toggle-event copy: input can land before its toggle event.
+		if (event.key === 'Escape' && disclosure.open && disclosure.contains(event.target as Node)) {
 			event.preventDefault();
 			event.stopPropagation();
-			expanded = false;
+			disclosure.open = false;
 			trigger.focus();
 		}
 	}}
 />
 
-<details class="export-control" bind:open={expanded} bind:this={disclosure}>
+<details class="export-control" bind:this={disclosure}>
 	<summary bind:this={trigger}>Export</summary>
 	<div class="panel" role="group" aria-label="Export records">
 		<div class="actions">
