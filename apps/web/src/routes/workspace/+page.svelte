@@ -392,6 +392,8 @@
 		revision: null
 	};
 	let autosaveChain: Promise<unknown> = Promise.resolve();
+	/** The database worker was stopped as this page entered the back/forward cache. */
+	let stoppedForCache = false;
 	let editorVersion = $state(0);
 	let relationOpening = $state<number | null>(null);
 	let gridActionOpening = $state<number | null>(null);
@@ -2879,9 +2881,20 @@
 	}}
 	ononline={() => (online = true)}
 	onoffline={() => (online = false)}
-	onpagehide={() => {
+	onpagehide={(event) => {
 		flushAutosave();
 		void viewAutosave.flush();
+		// Chrome can crash the tab when it evicts a page from the back/forward cache while
+		// its frozen database worker is mid-write to OPFS, and a cached page keeps the
+		// database's file handles from the next one. Stop the worker unless a save is still
+		// landing; a page restored without it reloads, which reopens the workspace.
+		if (event.persisted && database && !writing && !autosaving && !$viewAutosave.pending) {
+			database.terminate();
+			stoppedForCache = true;
+		}
+	}}
+	onpageshow={(event) => {
+		if (event.persisted && stoppedForCache) location.reload();
 	}}
 	onbeforeunload={(e) => {
 		if (dirty || writing || autosaving || $viewAutosave.pending) {

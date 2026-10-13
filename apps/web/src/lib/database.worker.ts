@@ -452,7 +452,21 @@ async function dispatch(request: DatabaseRequest) {
 			const vfs = await OPFSCoopSyncVFS.create('iris', module);
 			sqlite.vfs_register(vfs, true);
 			vfsName = vfs.name;
-			await connect(name);
+			// A page that just left releases its lock on the file before the browser closes
+			// its access handles, so the file can stay busy for a moment after it is ours.
+			// The VFS records each failure's cause on lastError (untyped upstream).
+			const cause = vfs as { lastError?: { name?: string } | null };
+			for (const started = Date.now(); ; ) {
+				try {
+					await connect(name);
+					break;
+				} catch (error) {
+					if (cause.lastError?.name !== 'NoModificationAllowedError' || Date.now() - started > 5000)
+						throw error;
+					cause.lastError = null;
+					await new Promise((resolve) => setTimeout(resolve, 50));
+				}
+			}
 			await db.transaction(async () => {
 				const isNew = !(await db.all("SELECT name FROM sqlite_master WHERE type='table' LIMIT 1"))
 					.length;
