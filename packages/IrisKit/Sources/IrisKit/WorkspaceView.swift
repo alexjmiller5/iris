@@ -1294,8 +1294,8 @@ public struct WorkspaceView: View {
 
   /// The one sync status: rejected edits open the inbox, everything else the details.
   private var statusPill: some View {
-    SyncStatusPill(pill: model.syncPill) {
-      if model.syncPill.kind == .rejected && canFind {
+    WorkspaceSyncPill(model: model) { kind in
+      if kind == .rejected && canFind {
         showRejections()
       } else {
         showingStatus = true

@@ -52,6 +52,30 @@ struct SyncStatusPillTests {
     #expect(titled(.live, online: false) == "Offline")
   }
 
+  @Test func pillStateRedrawsOnlyThePill() async {
+    let model = WorkspaceModel(credentialStore: MemoryHubCredentials(nil))
+    await model.open(demo: true)
+    #expect(model.client != nil)
+    final class Changed: @unchecked Sendable { var value = false }
+    let workspace = Changed()
+    let pill = Changed()
+    // Search indexing steps and sync progress move the pill many times a second.
+    withObservationTracking {
+      _ = WorkspaceView(model: model).body
+    } onChange: {
+      workspace.value = true
+    }
+    withObservationTracking {
+      _ = WorkspaceSyncPill(model: model) { _ in }.body
+    } onChange: {
+      pill.value = true
+    }
+    model.backupActivity = "Backing up"
+    #expect(pill.value)
+    #expect(!workspace.value, "The workspace and its rows must not redraw for the pill")
+    await model.close()
+  }
+
   @Test func quietPeriodicRoundsDoNotFlickerToSyncing() {
     // A 2-second catch-up that moves nothing keeps the steady state.
     #expect(pill(syncing: true) == "Synced")

@@ -99,6 +99,17 @@ func networkReachability() -> AsyncStream<Bool> {
   }
 }
 
+/// The workspace's pill. Sync progress and search indexing move it many times a second;
+/// reading them in this body redraws only the pill, not the workspace and its rows.
+struct WorkspaceSyncPill: View {
+  let model: WorkspaceModel
+  let action: (SyncPill.Kind) -> Void
+
+  var body: some View {
+    SyncStatusPill(pill: model.syncPill) { action(model.syncPill.kind) }
+  }
+}
+
 /// Read-only status; tapping opens details (or the rejection inbox). No sync action.
 struct SyncStatusPill: View {
   let pill: SyncPill
