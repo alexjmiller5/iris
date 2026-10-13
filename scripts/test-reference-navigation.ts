@@ -241,6 +241,8 @@ try {
 			await expect(page.getByRole('alert')).toContainText('not available locally');
 			await expect(editor.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Fixture record');
 			await open().click();
+			// Opening a record in a skipped table asks to download it; Not now keeps it read-only.
+			await page.getByRole('dialog', { name: 'Not synced on this device' }).getByRole('button', { name: 'Not now', exact: true }).click();
 			await expect(editor.getByLabel('Headline', { exact: true })).toHaveValue('Target project');
 		} finally {
 			await page.getByLabel('Automatic sync row limit', { exact: true }).fill('50000');

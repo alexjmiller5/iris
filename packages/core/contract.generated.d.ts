@@ -1,4 +1,4 @@
-export declare const CORE_CONTRACT_HASH = "ee2008c4c2f4636c941b6e2de8db8f047a5d0410616981e5d4731614f4fd9b9c";
+export declare const CORE_CONTRACT_HASH = "a1a6b963da63bb7e9b5d5d4675da04c45e6442015099350a28e9ec683a99ed11";
 export type JSONValue = unknown;
 export type Row = Record<string, JSONValue>;
 export type Count = number;
@@ -95,6 +95,13 @@ export type SyncStatus = {
     pendingUiEdits: Count;
     rejected: Count;
     skippedTables: string[];
+    skippedDetails?: SkippedTableDetail[];
+};
+export type SkippedTableDetail = {
+    table: string;
+    rows: Count | null;
+    estimatedBytes: Count | null;
+    waitingEdits: Count;
 };
 export type UsagePeriod = {
     start: string;

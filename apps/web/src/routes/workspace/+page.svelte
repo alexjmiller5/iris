@@ -258,6 +258,10 @@
 		}
 	}
 	import RemoteBrowser from '$lib/RemoteBrowser.svelte';
+	import DownloadPrompt from '$lib/DownloadPrompt.svelte';
+	import BreakName from '$lib/BreakName.svelte';
+	import { hiddenPrompts, willDownload } from '$lib/skipped-tables';
+	import type { SkippedTableDetail } from 'iris-core/client';
 	let onlineBrowser = $state<{
 		workspace: WorkspaceDatabase;
 		table: string;
@@ -542,8 +546,38 @@
 		rejectedCount = $state(0),
 		notice = $state('');
 	let skipped = $state<string[]>([]),
+		skippedDetails = $state<SkippedTableDetail[]>([]),
 		maxRows = $state(50000),
 		included = $state<Record<string, boolean>>({});
+	// Opening a table this device skips asks to download it, once per visit, unless this
+	// device hid that table's prompt. A table that becomes skipped while open only shows
+	// its notice. Until it downloads, core keeps the table read-only.
+	const prompts = hiddenPrompts({
+		getItem: (key) => localStorage.getItem(key),
+		setItem: (key, value) => localStorage.setItem(key, value)
+	});
+	let hiddenPromptTables = $state<string[]>([]),
+		downloadPrompt = $state<SkippedTableDetail | null>(null);
+	let promptVisit: string | null = null;
+	const currentSkip = $derived(skippedDetails.find((d) => d.table === table) ?? null);
+	$effect(() => {
+		const t = table,
+			detail = currentSkip;
+		if (!workspaceReady || !t || promptVisit === t) return;
+		promptVisit = t;
+		if (detail && !demo && !untrack(() => hiddenPromptTables).includes(t))
+			untrack(() => (downloadPrompt = detail));
+	});
+	function approveDownload(next: { maxRows: number; tables: Record<string, boolean> }) {
+		maxRows = next.maxRows;
+		included = next.tables;
+		downloadPrompt = null;
+		wakeSync();
+	}
+	function dismissDownload(hide: boolean) {
+		if (hide && downloadPrompt) hiddenPromptTables = prompts.hide(downloadPrompt.table);
+		downloadPrompt = null;
+	}
 	let offset = $state(0);
 	let columns = $state<string[] | null>(null),
 		widths = $state<Record<string, number>>({}),
@@ -1497,6 +1531,7 @@
 			rejected = state.rejected;
 			rejectedCount = state.status.rejected;
 			skipped = state.skipped ?? [];
+			skippedDetails = state.status.skippedDetails ?? [];
 			if (!table && catalog.tables.length) {
 				table = tableName(catalog.tables.find((t) => !t.readOnly) ?? catalog.tables[0]);
 				const target = table,
@@ -1585,6 +1620,8 @@
 			await database.request('open', { demo: sample });
 			demo = sample;
 			readRecents();
+			hiddenPromptTables = prompts.read();
+			promptVisit = null;
 			try {
 				const prefs = JSON.parse(localStorage.getItem('iris:replica') ?? '{}');
 				maxRows = Number.isSafeInteger(prefs.maxRows) && prefs.maxRows >= 0 ? prefs.maxRows : 50000;
@@ -2343,6 +2380,7 @@
 			lastSync = status.lastSuccessfulSync;
 			pendingEdits = status.pendingUiEdits;
 			rejectedCount = status.rejected;
+			skippedDetails = status.skippedDetails ?? [];
 			if (status.skippedTables.join('\n') !== skipped.join('\n')) await refresh();
 			syncRevision++;
 		} catch (e) {
@@ -2872,6 +2910,14 @@
 			onsave={(plan) => createReference(creation.property, '', plan)}
 		/>
 	{/if}
+	{#if downloadPrompt}
+		{#key downloadPrompt}<DownloadPrompt
+				detail={downloadPrompt}
+				prefs={{ maxRows, tables: included }}
+				onapprove={approveDownload}
+				ondismiss={dismissDownload}
+			/>{/key}
+	{/if}
 	{#if catalogEditing}
 		<CatalogEditor
 			{table}
@@ -2973,6 +3019,19 @@
 								Larger tables stay out of automatic sync. Catalogs always sync. Local rows are
 								retained.
 							</p>
+							{#if hiddenPromptTables.length}<div class="hidden-prompts">
+									<p id="hidden-prompts-label">Download prompts turned off</p>
+									<ul aria-labelledby="hidden-prompts-label">
+										{#each hiddenPromptTables as hidden (hidden)}<li>
+												<span><BreakName name={hidden} /></span><button
+													class="secondary"
+													aria-label={`Show prompt for ${hidden}`}
+													onclick={() => (hiddenPromptTables = prompts.show(hidden))}
+													>Show prompt</button
+												>
+											</li>{/each}
+									</ul>
+								</div>{/if}
 						</details>
 					{/if}
 					{#if database}<SearchSettings {database} />{/if}
@@ -3022,6 +3081,7 @@
 							activity={backupActivity}
 							{liveness}
 							indexing={searchIndexing}
+							waiting={skippedDetails}
 							onaction={syncAction}
 						/>
 					</div>
@@ -3049,8 +3109,12 @@
 						bind:groups
 						onSelect={changeTable}
 					/>{:else}
-					{#if skipped.includes(table)}<div class="notice">
-							<p>This table is excluded from sync. Its local records may be incomplete.</p>
+					{#if skipped.includes(table)}<div class="notice" data-testid="skipped-notice">
+							<p>
+								{currentSkip && willDownload(currentSkip, { maxRows, tables: included })
+									? 'Downloading this table on this device. It becomes editable once its rows arrive.'
+									: 'Not synced on this device. Its records here are read-only and may be incomplete.'}
+							</p>
 							<button
 								class="secondary"
 								disabled={busy || writing || !connectedHub || !online}
@@ -3059,13 +3123,10 @@
 										onlineBrowser = { workspace: database, table, connection: connectedHub };
 								}}>Browse online</button
 							>
-							<button
-								class="secondary"
-								onclick={() => {
-									included = { ...included, [table]: true };
-									wakeSync();
-								}}>Include this table</button
-							>
+							{#if currentSkip && !willDownload(currentSkip, { maxRows, tables: included })}<button
+									class="secondary"
+									onclick={() => (downloadPrompt = currentSkip)}>Download…</button
+								>{/if}
 						</div>{/if}
 					{#if included[table]}<button
 							class="secondary"
@@ -3331,7 +3392,11 @@
 										changeWrap(on ? [...new Set([...wrap, ...gridColumns.map((p) => p.col)])] : [])
 								: undefined}
 						/>
-						{#if blocked}<p role="status" aria-label="Editing availability" class="notice">
+						{#if blocked && writePermission?.reason?.rule !== 'not_synced'}<p
+								role="status"
+								aria-label="Editing availability"
+								class="notice"
+							>
 								{writePermission?.reason?.message ?? 'Checking editing rules…'}
 							</p>{/if}
 						{#key database}
@@ -3856,6 +3921,30 @@
 	}
 	.connect summary {
 		cursor: pointer;
+	}
+	.hidden-prompts p {
+		margin: 12px 0 4px;
+	}
+	.hidden-prompts ul {
+		display: grid;
+		gap: 4px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.hidden-prompts li {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		min-width: 0;
+	}
+	.hidden-prompts span {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.hidden-prompts button {
+		flex: none;
 	}
 	.leave {
 		width: 100%;

@@ -8,6 +8,8 @@ let network: CDPSession | undefined;
 try{
   const page=workspacePage(browser.contexts().flatMap(c => c.pages()), url);
   if(!page)throw new Error(`Open this dedicated test page first: ${url}`);
+  // The record panel overlays the records below desktop widths.
+  await page.setViewportSize({width:1440,height:1000});
   // A plain workspace URL: an earlier run's record link would reopen that record.
   await page.goto(url);
   await page.getByRole('button',{name:'Open my workspace',exact:true}).click();
@@ -65,10 +67,13 @@ try{
   if(await page.getByRole('button',{name:'Use automatic size rule',exact:true}).count())await page.getByRole('button',{name:'Use automatic size rule',exact:true}).click();
   await page.getByLabel('Automatic sync row limit').fill('0');
   await synced(page);
-  await expect(page.getByText(/This table is excluded from sync/)).toBeVisible();
-  await page.getByRole('button',{name:'Include this table',exact:true}).click();
+  await expect(page.getByText(/Not synced on this device/)).toBeVisible();
+  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'Download…',exact:true}).click();
+  await page.getByRole('dialog',{name:'Not synced on this device'}).getByRole('button',{name:'Download',exact:true}).click();
   await synced(page);
-  await expect(page.getByText(/This table is excluded from sync/)).toHaveCount(0);
+  await expect(page.getByText(/Not synced on this device/)).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'New record',exact:true})).toBeEnabled();
   console.log('PASS: browser OPFS pulled the real Worker schema/catalog, autosaved a typed row offline, synced it back, and a rename typed just before a reload reached the hub');
 }finally{
   if(network){

@@ -11,6 +11,7 @@
 //   IRIS_TEST_URL=<origin>/workspace  uses an already running dev server
 import { chromium, type Locator, type Page } from "@playwright/test";
 import { servicesHub } from "./services-hub";
+import { logDDL } from "./workspace-regression-hub";
 import { mkdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 
@@ -390,7 +391,13 @@ async function hubWalk(page: Page, scheme: string) {
     fixture.db.db
       .query("UPDATE catalog_properties SET type='file',updated_at=?,hub_at=? WHERE tbl='widgets' AND col='quantity'")
       .run(stamp, stamp);
+    // A table this device skips, for its download prompt.
+    logDDL(fixture.db, "CREATE TABLE wiki_archive (id TEXT PRIMARY KEY NOT NULL, created_at TEXT, updated_at TEXT, deleted_at TEXT, hub_at TEXT, title TEXT)");
+    fixture.db.db.exec(`INSERT INTO catalog_tables(id,kind,display,purpose) VALUES ('wiki_archive','table','title','Synthetic archive');
+      INSERT INTO catalog_properties(id,tbl,col,label,type) VALUES ('wiki_archive.title','wiki_archive','title','Title','text');
+      INSERT INTO wiki_archive(id,title,updated_at) VALUES ('a','Archived','${stamp}');`);
     await page.goto(url!);
+    await page.evaluate(() => localStorage.setItem("iris:replica", JSON.stringify({ maxRows: 50000, tables: { wiki_archive: false } })));
     const mine = role("button", "Open my workspace");
     await page.waitForFunction(() =>
       [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("Open my workspace") && !b.disabled),
@@ -414,6 +421,21 @@ async function hubWalk(page: Page, scheme: string) {
     const pill = page.getByLabel(/^Sync status:/);
     await page.waitForFunction(() => document.querySelector('[aria-label="Sync status: Live"]'), null, { timeout: 30_000 });
     await audit("hub-synced");
+
+    // Opening the skipped table asks to download it; Escape keeps it read-only and returns focus.
+    const tables = page.getByRole("navigation", { name: "Tables" });
+    const archive = tables.getByRole("button", { name: "wiki_archive", exact: true });
+    await tabTo(archive, true);
+    await page.keyboard.press("Enter");
+    await page.getByRole("dialog", { name: "Not synced on this device" }).waitFor();
+    await audit("download-prompt");
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog", { name: "Not synced on this device" }).waitFor({ state: "detached" });
+    await expectFocus([archive], "download prompt");
+    const widgets = tables.getByRole("button", { name: "widgets", exact: true });
+    await tabTo(widgets);
+    await page.keyboard.press("Enter");
+    await page.getByRole("heading", { name: "widgets", exact: true }).waitFor();
 
     for (const [name, state] of [[/^Notifications/, "notifications"], ["Settings", "settings-usage"]] as const) {
       const button = role("button", name);

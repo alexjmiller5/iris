@@ -1,6 +1,6 @@
 import { chromium, expect, type Page } from '@playwright/test';
 import { regressionHub } from './workspace-regression-hub';
-import { disposableOrigin, recordSaved, workspacePage } from './test-origin';
+import { disposableOrigin, workspacePage } from './test-origin';
 
 const source = process.argv[2];
 if (!source) throw Error('Provide the soma checkout');
@@ -62,12 +62,13 @@ try {
   await sync.click(); await expect(sync).toBeEnabled({timeout:30000});
   await expect(page.getByRole('alert')).toHaveCount(0);
   console.log('PASS: the first sync failure is visible before any tables exist and explicit retry recovers');
-  await expect(page.getByText('This table is excluded from sync. Its local records may be incomplete.',{exact:true})).toBeVisible();
+  const notice = page.getByText('Not synced on this device. Its records here are read-only and may be incomplete.',{exact:true});
+  await expect(notice).toBeVisible();
   expect(pulls).toHaveLength(0);
-  await page.getByRole('button',{name:'New record',exact:true}).click();
-  await page.getByRole('textbox',{name:'Title',exact:true}).fill('Keep this local draft');
-  // The draft creates its record locally; the table is skipped, so it stays pending.
-  await recordSaved(page);
+  // Opening the skipped table asks to download it; declining keeps it read-only.
+  await page.getByRole('dialog',{name:'Not synced on this device'}).getByRole('button',{name:'Not now',exact:true}).click();
+  const newRecord = page.getByRole('button',{name:'New record',exact:true});
+  await expect(newRecord).toBeDisabled();
   const pending = await page.locator('[data-pending]').getAttribute('data-pending');
   await page.getByRole('button',{name:'Browse online',exact:true}).click();
   const dialog = page.getByRole('dialog',{name:'Online widgets',exact:true});
@@ -109,12 +110,12 @@ try {
   await page.waitForFunction(()=>(window as any).heldOnline.length===1);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Keep this local draft');
+  await expect(newRecord).toBeDisabled();
   await page.getByRole('button',{name:'Browse online',exact:true}).click();
   await expect(dialog.getByRole('status')).toContainText('50 records loaded');
   await page.evaluate(()=>(window as any).releaseOnline());
   await expect(dialog.getByRole('heading',{name:'Fresh online title',exact:true})).toHaveCount(0);
-  console.log('PASS: closing and reopening ignores a delayed online record without losing the local draft');
+  console.log('PASS: closing and reopening ignores a delayed online record; the table stays read-only');
 
   capped=true; const beforeCap=pulls.length;
   await dialog.getByRole('button',{name:'Close online browsing',exact:true}).click();
@@ -143,9 +144,9 @@ try {
   }
   await dialog.getByRole('button',{name:'Close online browsing',exact:true}).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Keep this local draft');
+  await expect(newRecord).toBeDisabled();
   await expect(page.locator('[data-pending]')).toHaveAttribute('data-pending', pending!);
-  await expect(page.getByText('This table is excluded from sync. Its local records may be incomplete.',{exact:true})).toBeVisible();
+  await expect(notice).toBeVisible();
   await expect(page.getByRole('button',{name:'Fresh online title',exact:true})).toHaveCount(0);
   await page.reload();
   await page.getByRole('button',{name:'Open my workspace',exact:true}).click();

@@ -1,3 +1,5 @@
+import type { SkippedTableDetail } from 'iris-core/client';
+import { waitingFor } from './skipped-tables';
 /** Background sync cadence: push shortly after writes; between hub wake signals, check
  * every `pullInterval` (2 s while the socket is down, 60 s while it is live). */
 export class SyncScheduler {
@@ -214,6 +216,8 @@ export interface PillInput {
 	liveness?: Liveness;
 	/** Records the search index step has yet to index (0 when caught up). */
 	indexing?: number;
+	/** Core's skipped tables: their pending edits wait for the table to sync. */
+	waiting?: readonly SkippedTableDetail[];
 }
 export interface Pill {
 	label: string;
@@ -265,7 +269,20 @@ export function syncPill(s: PillInput): Pill {
 	if (s.error === 'hub HTTP 429')
 		return pill('Paused · usage cap', 'warn', null, 'Hub usage cap reached; sync retries later');
 	if (s.error) return pill('Sync error', 'error', null, s.error);
-	if (s.pending) return pill('Syncing', 'busy');
+	const waiting = waitingFor(s.waiting);
+	if (s.pending > waiting.count) return pill('Syncing', 'busy');
+	if (waiting.count) {
+		const [one] = waiting.tables;
+		const names = waiting.tables.length === 1 ? one : `${waiting.tables.length} tables`;
+		return pill(
+			`${waiting.count} waiting for ${names} to sync`,
+			'warn',
+			null,
+			waiting.tables.length === 1
+				? `These edits upload once this device downloads ${one}. Open it to change its download setting.`
+				: `These edits upload once this device downloads ${waiting.tables.join(', ')}. Open each to change its download setting.`
+		);
+	}
 	if (s.indexing)
 		return pill(
 			'Indexing search…',
