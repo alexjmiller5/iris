@@ -4,6 +4,9 @@ Local-first web and native Apple clients for catalogued Soma databases.
 Title: Iris; slug: iris; Apple product: Iris. No PWA or analytics.
 
 Preferred table views are synced IDs through canonical `getViewDefault`/`setViewDefault`.
+Native row refreshes adopt the current saved-view definition and action revision
+together when the displayed view has no local changes or pending writes.
+Refreshing only the saved-view picker retains the displayed revision.
 Plain table and record links open the table through canonical `ensureDefaultView`
 (the table's default saved view, created when it has none, with no Undo receipt);
 explicit view links win. Unavailable preferences keep their notice without rewriting

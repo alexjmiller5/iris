@@ -1952,7 +1952,31 @@ final class WorkspaceModel {
     loading = false
   }
 
+  private func refreshAppliedView() async throws {
+    guard let context = editingContext, let applied = appliedView,
+      !viewModified, !savingView, !writingRecord, !undoing, !hasPendingViewSave
+    else { return }
+    let generation = viewGeneration
+    let workspace = workspaceGeneration
+    let result = try await context.workspace.listViews(table: context.table)
+    guard context.workspace === client, context.table == table,
+      workspace == workspaceGeneration, generation == viewGeneration,
+      !viewModified, !savingView, !writingRecord, !undoing, !hasPendingViewSave,
+      let latest = result.views.first(where: { $0.byteExactID == applied.byteExactID }),
+      latest.updatedAt != applied.updatedAt, latest.unavailable == nil,
+      latest.definition != nil, latest.view != nil
+    else { return }
+    // Install the entire displayed definition together with its action revision.
+    try installSavedView(latest, context: context)
+  }
+
   func reload(more: Bool = false) async {
+    if !more {
+      do { try await refreshAppliedView() } catch {
+        self.error = error.localizedDescription
+        return
+      }
+    }
     // A retained prefix is usable only while its successful read context is current.
     // A stale or in-flight prefix requires an ordinary first-page replacement.
     let append =

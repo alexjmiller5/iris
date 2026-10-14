@@ -6,6 +6,36 @@ import Testing
 
 @MainActor
 struct SavedViewsTests {
+  @Test func rowRefreshAppliesRemoteViewSettingsButPreservesLocalChanges() async throws {
+    let model = WorkspaceModel()
+    await model.open(demo: true)
+    let context = try #require(model.editingContext)
+    let definition = CoreSavedViewDefinition(version: 1, search: "")
+    let original = try await context.workspace.saveView(
+      CoreSaveViewArgs(table: "notes", name: "Synced view", definition: definition))
+    try model.applySavedView(original, context: context)
+    await model.reload()
+    #expect(!model.rows.isEmpty)
+    let latest = try await context.workspace.saveView(
+      CoreSaveViewArgs(
+        table: "notes", name: "Synced view",
+        definition: CoreSavedViewDefinition(version: 1, search: "absent fixture"),
+        id: original.id, expectedUpdatedAt: original.updatedAt))
+    await model.reload()
+    #expect(model.appliedView?.updatedAt == latest.updatedAt)
+    #expect(model.search == "absent fixture")
+    #expect(model.rows.isEmpty)
+    model.search = "local search"
+    _ = try await context.workspace.saveView(
+      CoreSaveViewArgs(
+        table: "notes", name: "Synced view",
+        definition: definition, id: latest.id, expectedUpdatedAt: latest.updatedAt))
+    await model.reload()
+    #expect(model.search == "local search")
+    #expect(model.appliedView?.updatedAt == latest.updatedAt)
+    await model.close()
+  }
+
   #if os(iOS)
     @Test(
       .enabled(if: ProcessInfo.processInfo.environment["IRIS_TEST_SAVED_VIEWS_SIMULATOR"] != nil)
