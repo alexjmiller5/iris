@@ -7,6 +7,39 @@ import Testing
 
 @Suite(.serialized) @MainActor
 struct HubSyncTests {
+  @Test func absentViewDropDoesNotBlockReplicaSync() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let runtime = try await IrisCoreRuntime.onCore()
+    let path = directory.appendingPathComponent("hub.sqlite").path
+    let seed = try await NativeWorkspace(path: path, runtime: runtime)
+    try await seed.createSample()
+    await runtime.evaluateOnCore(
+      #"""
+      IrisSql.run('INSERT INTO _schema_log(ddl) VALUES (?)', ['DROP VIEW "rollup"']);
+      IrisSql.run('INSERT INTO _schema_log(ddl) VALUES (?)', ['CREATE VIEW "rollup" AS SELECT 42 AS total']);
+      IrisSql.run('CREATE VIEW "rollup" AS SELECT 42 AS total');
+      """#)
+    try #require(runtime.context.exception == nil)
+    try await seed.close()
+    try await HubFixture.state.load(path: path)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [HubFixture.self]
+    let hub = try HubTransport(
+      endpoint: "https://fixture.invalid", token: "fixture-scoped-token",
+      configuration: configuration)
+    let viewerRuntime = try await IrisCoreRuntime.onCore()
+    let viewer = try await NativeWorkspace(path: ":memory:", runtime: viewerRuntime)
+    _ = try await viewer.sync(using: hub)
+    _ = try await viewer.sync(using: hub)
+    await viewerRuntime.evaluateOnCore(
+      "if (IrisSql.all('SELECT total FROM rollup')[0].total !== 42) throw new Error('View replacement missing');"
+    )
+    #expect(viewerRuntime.context.exception == nil)
+    try await viewer.close()
+  }
+
   @Test func exactOnlineLookupUsesRealSQLiteCollationWithoutTrimmingTheID() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
