@@ -737,13 +737,18 @@ private final class FixtureState: @unchecked Sendable {
           let limit = Int(body["limit"]?.text ?? "1000") ?? 1000
           let requestedID: String? =
             if case .object(let predicate) = body["where"] { predicate["id"]?.text } else { nil }
-          let rows = Array(
-            (tables[table] ?? []).filter { row in
-              (requestedID == nil || row["id"]?.text == requestedID
-                || (table == "collated"
-                  && row["id"]?.text.lowercased() == requestedID?.lowercased()))
-                && (body["after"] == nil || (row["id"]?.text ?? "") > (body["after"]?.text ?? ""))
-            }.sorted { ($0["id"]?.text ?? "") < ($1["id"]?.text ?? "") }.prefix(limit))
+          let matching: [WorkspaceRecord] = (tables[table] ?? []).filter { row in
+            let id = row["id"]?.text
+            let matchesID =
+              requestedID == nil || id == requestedID
+              || (table == "collated" && id?.lowercased() == requestedID?.lowercased())
+            let afterCursor =
+              body["after"] == nil
+              || (id ?? "") > (body["after"]?.text ?? "")
+            return matchesID && afterCursor
+          }
+          let ordered = matching.sorted { ($0["id"]?.text ?? "") < ($1["id"]?.text ?? "") }
+          let rows = Array(ordered.prefix(limit))
           return .object([
             "rows": .array(rows.map(JSONValue.object)),
             "next_cursor": rows.count == limit ? (rows.last?["id"] ?? .null) : .null,
