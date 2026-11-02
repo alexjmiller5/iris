@@ -132,26 +132,37 @@ struct ReferenceAdmissionPerformanceTests {
         model.table = "notes"
         await model.reload()
         try #require(model.rows.count == 100)
+        let topic = try #require(
+          try await workspace.rows(table: "topics").first { $0.id == "reference-topic" })
+        let expectedTopic = try #require(topic.record["title"]?.text)
+        // Every case measures queued reads rather than an earlier case's cache.
+        workspace.clearReferenceLabelCache()
         await runtime.evaluateOnCore("referenceTrace = []; holdReferenceOwner = true")
         let blocker = Task { try await workspace.catalog() }
         defer { runtime.evaluateOnCoreSoon("releaseReferenceOwner?.()") }
         try await waitUntil {
           runtime.context.evaluateScript("releaseReferenceOwner !== null")?.toBool() == true
         }
+        var finishedLabels = Set<Int>()
         let labels = (0..<count).map { index in
           Task {
             let field = CatalogField(property: [
               "type": .string("ref"),
               "ref_table": .string(index.isMultiple(of: 2) ? "notes" : "topics"),
             ])
-            return await NativePropertyValue.referenceLabels(
+            let value = await NativePropertyValue.referenceLabels(
               field: field,
               value: index.isMultiple(of: 2) ? "reference-note-000" : "reference-topic",
               workspace: workspace)
+            finishedLabels.insert(index)
+            return value
           }
         }
         // The cells' shared label read is queued once its rendering pass settles.
         try await Task.sleep(for: .milliseconds(50))
+        #expect(finishedLabels.isEmpty, "The held owner must keep cold-cache label reads pending")
+        var cancelledWhilePending = Set(
+          (0..<cancelledCount).filter { !finishedLabels.contains($0) })
         for label in labels.prefix(cancelledCount) { label.cancel() }
         let queuedAt = ContinuousClock.now
         let navigation = Task {
@@ -179,7 +190,10 @@ struct ReferenceAdmissionPerformanceTests {
         let context = try model.activateDestination(
           resolved, workspace: workspace, generation: model.workspaceGeneration)
         // Exercise both prompt teardown and delayed SwiftUI task cancellation.
-        if cancelOnActivation { labels.forEach { $0.cancel() } }
+        if cancelOnActivation {
+          cancelledWhilePending.formUnion(labels.indices.filter { !finishedLabels.contains($0) })
+          for label in labels { label.cancel() }
+        }
         await model.reload()
         let visibleMilliseconds = milliseconds(queuedAt.duration(to: .now))
         try #require(!model.loading && model.error == nil && !model.rows.isEmpty)
@@ -196,10 +210,11 @@ struct ReferenceAdmissionPerformanceTests {
         #expect(resolved.destination == NativeDestination(table: "topics"))
         for (index, label) in labels.enumerated() {
           let value = await label.value
-          if cancelOnActivation || index < cancelledCount {
+          // Cancellation cannot replace a task result that already completed.
+          if cancelledWhilePending.contains(index) {
             #expect(value == "Unavailable")
           } else {
-            #expect(value.hasPrefix("Synthetic"))
+            #expect(value == (index.isMultiple(of: 2) ? "Synthetic note 0" : expectedTopic))
           }
         }
         let counts =
