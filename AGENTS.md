@@ -1051,6 +1051,15 @@ open Xcode on a headless build host. Simulator tests can use local signing;
 unsigned builds need no Apple account. Ad Hoc, phone installation, Developer ID,
 notarization and installed distribution are separate verification steps.
 
+When changing a user-facing workflow, review macOS, web and iOS together. Keep
+macOS and web equivalent in supported actions, saved settings and data semantics;
+use each platform's controls without silently leaving a capability behind. Adapt
+the same intent to iPhone's smaller screen rather than copying desktop geometry.
+Document deliberate platform differences beside the affected behavior here,
+including the available alternative and its reason. Verify each affected host
+with its own component and interaction tests; shared-core tests alone do not
+establish UI parity.
+
 Test behavior before implementation, then verify real SQLite, JSC and browser
 flows. Run the full applicable suites after the final source change. Use an
 isolated simulator if another project is driving the shared default device.
