@@ -129,7 +129,7 @@
 							references={actionReferences[JSON.stringify([a.id, p.col])] ?? []}
 							onsearch={(query) => onactionsearch?.(a, p, query)}
 							onchange={(raw) => actionValue(index, p, raw)}
-						/>{:else}<p role="alert">Unavailable property: {col}</p>{/if}
+						/>{:else}<p role="alert">Unavailable column: {col}</p>{/if}
 					<button
 						type="button"
 						onclick={() => {
@@ -147,7 +147,7 @@
 							action(index, { values: { ...a.values, [e.currentTarget.value]: null } });
 						e.currentTarget.value = '';
 					}}
-					><option value="">Add property value</option
+					><option value="">Add column value</option
 					>{#each writable.filter((p) => !Object.hasOwn(a.values, p.col)) as p}<option value={p.col}
 							>{p.label || p.col}</option
 						>{/each}</select

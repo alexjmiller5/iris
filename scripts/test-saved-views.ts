@@ -66,7 +66,7 @@ try{
  await page.getByRole('button',{name:'Close record',exact:true}).click();
  console.log('PASS: synced saved view applies filters and layout while keeping hidden edit values');
  await page.getByRole('button',{name:/^Sort/}).click();
- await page.getByRole('dialog',{name:'Sort'}).getByLabel('Sort 1 property').selectOption('id');
+ await page.getByRole('dialog',{name:'Sort'}).getByLabel('Sort 1 column').selectOption('id');
  await page.keyboard.press('Escape');
  await page.getByText('Columns',{exact:true}).click();
  await expect(page.getByLabel('Width Body',{exact:true})).toHaveValue('430');

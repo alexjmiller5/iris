@@ -120,8 +120,8 @@ try {
   );
   await closeMenu();
   await choose("View layout", "calendar");
-  await choose("Calendar date property", "starts");
-  await choose("Calendar end date property", "ends");
+  await choose("Calendar date column", "starts");
+  await choose("Calendar end date column", "ends");
   await cdp.evaluate(
     `(()=>{const e=document.querySelector('input[aria-label="Calendar month"]');e.value='2026-03';e.dispatchEvent(new Event('input',{bubbles:true}));})()`,
   );
@@ -148,7 +148,7 @@ try {
   // Layout edits save into whichever view is applied; the copy keeps its own.
   await choose("View", catalogDefault);
   await choose("View layout", "gallery");
-  await choose("Gallery cover property", "cover");
+  await choose("Gallery cover column", "cover");
   await cdp.until(
     `document.querySelectorAll('[aria-label="Gallery view"] button').length===3`,
   );
@@ -172,13 +172,13 @@ try {
     .toBe("gallery");
   await choose("View", savedID);
   await cdp.until(
-    `(${select("View layout")})?.value==='calendar' && (${select("Calendar end date property")})?.value==='ends'`,
+    `(${select("View layout")})?.value==='calendar' && (${select("Calendar end date column")})?.value==='ends'`,
   );
   await choose("View", catalogDefault);
   await cdp.until(`(${select("View layout")})?.value==='gallery'`);
   // Board moves reuse the ordinary writer; both drag and accessible menu persist.
   await choose("View layout", "board");
-  await choose("Board group property", "status");
+  await choose("Board group column", "status");
   const column = (value: string) =>
     element(`section[aria-label="Column ${value}"]`);
   await cdp.until(

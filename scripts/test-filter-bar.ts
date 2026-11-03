@@ -157,7 +157,7 @@ try {
     await menu.getByLabel("Add sort").selectOption("status");
     await menu.getByRole("button", { name: /Reorder Status sort/ }).focus();
     await page.keyboard.press("ArrowUp");
-    await expect(menu.getByLabel("Sort 1 property")).toHaveValue("status");
+    await expect(menu.getByLabel("Sort 1 column")).toHaveValue("status");
     await shot("05-sort-menu");
     await page.keyboard.press("Escape");
     await expect
@@ -199,7 +199,7 @@ try {
     await page.getByRole("button", { name: /^Filter/ }).first().click();
     await page.getByRole("button", { name: "Add filter group" }).click();
     await expect(editor().getByLabel("Group match")).toBeVisible();
-    await editor().getByLabel("Property").first().selectOption("title");
+    await editor().getByLabel("Column").first().selectOption("title");
     await editor().getByLabel("Value").first().fill("one");
     await expect(rows()).toHaveCount(1);
     await page.keyboard.press("Escape");

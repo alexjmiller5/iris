@@ -107,11 +107,11 @@ try {
     const editor = page.getByRole("dialog", { name: "Edit filter", exact: true });
     await page.getByRole("button", { name: /^Filter( \d+ active)?$/ }).click();
     await page.getByRole("button", { name: "Add filter group", exact: true }).click();
-    await editor.getByLabel("Property", { exact: true }).selectOption("quantity");
+    await editor.getByLabel("Column", { exact: true }).selectOption("quantity");
     await editor.getByLabel("Condition", { exact: true }).selectOption("eq");
     await editor.getByLabel("Value", { exact: true }).fill("42");
     await rows(["Fixture record", "Legacy record", "Second record"]);
-    await editor.getByLabel("Property", { exact: true }).selectOption("done");
+    await editor.getByLabel("Column", { exact: true }).selectOption("done");
     await expect(editor.getByRole("radio", { name: "Checked", exact: true })).toBeChecked();
     await editor.getByText("Unchecked", { exact: true }).click();
     await expect(editor.getByRole("radio", { name: "Unchecked", exact: true })).toBeChecked();

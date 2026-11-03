@@ -66,7 +66,7 @@
 	{#if value.kind === 'calendar'}
 		<span class="select"
 			><IconCalendar size={16} aria-hidden="true" /><select
-				aria-label="Calendar date property"
+				aria-label="Calendar date column"
 				{disabled}
 				value={value.dateColumn}
 				onchange={(e) => onchange({ ...value, dateColumn: e.currentTarget.value })}
@@ -75,7 +75,7 @@
 		>
 		<span class="select"
 			><IconCalendarDue size={16} aria-hidden="true" /><select
-				aria-label="Calendar end date property"
+				aria-label="Calendar end date column"
 				{disabled}
 				value={value.endDateColumn ?? ''}
 				onchange={(e) => {
@@ -93,7 +93,7 @@
 	{:else if value.kind === 'gallery'}
 		<span class="select"
 			><IconPhoto size={16} aria-hidden="true" /><select
-				aria-label="Gallery cover property"
+				aria-label="Gallery cover column"
 				{disabled}
 				value={value.coverColumn ?? ''}
 				onchange={(e) => {
@@ -109,7 +109,7 @@
 	{:else if value.kind === 'board'}
 		<span class="select"
 			><IconLayoutColumns size={16} aria-hidden="true" /><select
-				aria-label="Board group property"
+				aria-label="Board group column"
 				{disabled}
 				value={value.groupColumn}
 				onchange={(e) => onchange({ ...value, groupColumn: e.currentTarget.value })}

@@ -113,7 +113,7 @@
 						><IconGripVertical size={16} aria-hidden="true" /></button
 					>
 					<select
-						aria-label={`Sort ${index + 1} property`}
+						aria-label={`Sort ${index + 1} column`}
 						value={sort.column}
 						onchange={(e) =>
 							onchange(editSort(sorts, index, { column: e.currentTarget.value, mode: undefined }))}

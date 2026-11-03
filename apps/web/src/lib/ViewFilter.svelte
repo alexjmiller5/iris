@@ -99,7 +99,7 @@
 	<div class="line">
 		{#if pick}
 			<select
-				aria-label="Property"
+				aria-label="Column"
 				value={rule.column}
 				onchange={(e) => {
 					const next = properties.find((p) => p.col === e.currentTarget.value);
