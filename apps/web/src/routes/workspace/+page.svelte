@@ -1,5 +1,7 @@
 <script lang="ts">
 	import CatalogEditor from '$lib/CatalogEditor.svelte';
+	import RecordFields from '$lib/RecordFields.svelte';
+	import { copyRowIds } from '$lib/copy-row-ids';
 	import type { SaveCatalogPropertyArgs, SaveCatalogRuleArgs } from 'iris-core/client';
 	import PresentationControls from '$lib/PresentationControls.svelte';
 	import RecordPresentations from '$lib/RecordPresentations.svelte';
@@ -532,6 +534,16 @@
 			if (request === locationRequest) navigationLoading = false;
 		}
 	}
+	async function copyIds(ids: string[]) {
+		if (navigationLoading || !ids.length) return;
+		try {
+			await copyRowIds(ids);
+			notice = ids.length === 1 ? 'Row ID copied' : 'Row IDs copied';
+		} catch (cause) {
+			error = message(cause);
+		}
+	}
+
 	async function copyLink() {
 		try {
 			await navigator.clipboard.writeText(
@@ -2863,6 +2875,30 @@
 <svelte:window
 	onkeydown={(event) => {
 		if (
+			opened &&
+			!catalogEditing &&
+			!findVisible &&
+			!onlineBrowser &&
+			!event.defaultPrevented &&
+			!event.isComposing &&
+			(event.metaKey || event.ctrlKey) &&
+			event.shiftKey &&
+			event.key.toLowerCase() === 'c'
+		) {
+			const target = event.target;
+			if (
+				!(target instanceof HTMLElement) ||
+				target.closest('input, textarea, select, [contenteditable="true"]')
+			)
+				return;
+			const ids = editing && selected ? [String(selected.id)] : selectedRowIds;
+			if (ids.length) {
+				event.preventDefault();
+				void copyIds(ids);
+			}
+			return;
+		}
+		if (
 			savedUndoShortcut(event) &&
 			(undoAction || $viewAutosave.pending) &&
 			!busy &&
@@ -3420,6 +3456,11 @@
 									exportRefreshes > 0 ||
 									exportContext !== currentExportContext}
 							/>
+							<button
+								class="secondary"
+								disabled={navigationLoading || !selectedRowIds.length}
+								onclick={() => copyIds(selectedRowIds)}>Copy row IDs</button
+							>
 							<BulkActions
 								selectedIds={selectedRowIds}
 								properties={properties.filter((p) => canEditCell(p))}
@@ -3548,6 +3589,7 @@
 										})}
 									onnew={newGridRecord}
 									onduplicate={duplicateRecord}
+									oncopy={copyIds}
 									ontrash={trashGridRecord}
 									options={optionValues}
 									referenceOptions={(p) =>
@@ -3601,6 +3643,11 @@
 						</div>
 						<div class="record-navigation">
 							<button
+								class="secondary"
+								disabled={navigationLoading || !selected}
+								onclick={() => selected && copyIds([String(selected.id)])}>Copy row ID</button
+							>
+							<button
 								class="icon-button secondary"
 								aria-label="Copy link"
 								title="Copy link"
@@ -3633,7 +3680,7 @@
 						{announcement}
 					</p>
 					{#if draftProperties.length !== properties.length}
-						<p class="hint">Properties changed. Reopen this record to edit newly added fields.</p>
+						<p class="hint">Columns changed. Reopen this record to edit newly added fields.</p>
 					{/if}
 					<form
 						onsubmit={(e) => {
@@ -3654,7 +3701,7 @@
 						inert={provisional}
 						novalidate
 					>
-						{#each draftProperties as p (p.col)}
+						{#snippet recordField(p: Property)}
 							{@const refusal =
 								blockedFields[p.col]?.value === draft[p.col] ? blockedFields[p.col].message : ''}
 							<div class="field" data-col={p.col}>
@@ -3768,7 +3815,8 @@
 										: ''}
 								</p>
 							</div>
-						{/each}
+						{/snippet}
+						<RecordFields properties={draftProperties} field={recordField} />
 						{#if error}<p role="status" class="failure">{error}</p>{/if}
 						<div class="editor-actions">
 							{#if selected}{#key `${editorVersion}:${selected.id}:${connectedHub?.endpoint}:${connectedHub?.token}`}<PageCaptureViewer

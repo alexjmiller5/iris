@@ -250,7 +250,7 @@
 	<input
 		bind:this={search}
 		type="search"
-		aria-label="Filter by property"
+		aria-label="Filter by column"
 		placeholder="Filter by…"
 		bind:value={query}
 		onkeydown={(e) => {
@@ -260,14 +260,14 @@
 			}
 		}}
 	/>
-	<div class="list" role="group" aria-label="Properties">
+	<div class="list" role="group" aria-label="Columns">
 		{#each matches as p (p.col)}
 			{@const Icon = propertyIcon(p.type)}
 			<button type="button" class="item" onclick={() => add(p)}
 				><Icon size={16} aria-hidden="true" /><span>{label(p.col)}</span></button
 			>
 		{:else}
-			<p class="hint">No matching properties</p>
+			<p class="hint">No matching columns</p>
 		{/each}
 	</div>
 	<hr />

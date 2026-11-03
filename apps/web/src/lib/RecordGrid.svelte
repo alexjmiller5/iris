@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowCopyIds } from './copy-row-ids';
 	import { onDestroy, tick } from 'svelte';
 	// virtua keeps an ssrCount range until the first scroll, so only server renders use one.
 	import { browser } from '$app/environment';
@@ -49,6 +50,7 @@
 		onopen,
 		onnew,
 		onduplicate,
+		oncopy,
 		ontrash = async () => false,
 		edit = $bindable(null),
 		options = {},
@@ -87,6 +89,7 @@
 		onopen(id: string): Promise<boolean>;
 		onnew(): Promise<boolean>;
 		onduplicate(id: string): Promise<boolean>;
+		oncopy?(ids: string[]): Promise<void>;
 		ontrash?(id: string): Promise<boolean>;
 		edit?: CellDraft | null;
 		options?: Record<string, string[]>;
@@ -109,6 +112,25 @@
 	let headerMenu = $state<HTMLElement>(),
 		headerAnchor = $state<HTMLElement>(),
 		headerColumn = $state('');
+	let rowMenu = $state<HTMLDivElement>();
+	let rowAnchor = $state<HTMLElement>();
+	let copyIds = $state<string[]>([]);
+	async function rowContext(event: MouseEvent, rowId: string) {
+		if (
+			!oncopy ||
+			busy ||
+			edit ||
+			(event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')
+		)
+			return;
+		event.preventDefault();
+		copyIds = rowCopyIds(rowId, selectedIds ?? []);
+		rowAnchor = (event.target as HTMLElement).closest<HTMLElement>('[role="row"]') ?? undefined;
+		await tick();
+		rowMenu?.showPopover();
+		rowMenu?.querySelector('button')?.focus();
+	}
+
 	function sortBy(direction: 'asc' | 'desc') {
 		headerMenu?.hidePopover();
 		onsort?.(headerColumn, direction);
@@ -447,6 +469,23 @@
 	</div>
 {/snippet}
 <div bind:this={root} class="record-grid">
+	{#if oncopy}<div
+			bind:this={rowMenu}
+			popover="auto"
+			role="menu"
+			aria-label="Row actions"
+			class="header-menu"
+			use:anchored={{ anchor: () => rowAnchor }}
+		>
+			<button
+				type="button"
+				role="menuitem"
+				onclick={() => {
+					rowMenu?.hidePopover();
+					void oncopy?.([...copyIds]);
+				}}>Copy row IDs</button
+			>
+		</div>{/if}
 	{#if columnMenu}<div
 			id={`${gridId}-header-menu`}
 			popover="auto"
@@ -539,6 +578,7 @@
 				keepMounted={activeIndex < 0 ? [] : [activeIndex]}
 				itemProps={({ index }) => ({
 					role: 'row',
+					oncontextmenu: (event: MouseEvent) => rowContext(event, String(rows[index]?.id)),
 					'aria-rowindex': index + 2,
 					'aria-selected': selectionEnabled
 						? selectedIds!.includes(String(rows[index]?.id))

@@ -85,7 +85,7 @@
 			stops remaining rows.
 		</p>
 		<select
-			aria-label="Bulk property"
+			aria-label="Bulk column"
 			bind:value={column}
 			disabled={disabled || running || !selectedIds.length}
 			onchange={(event) => {
@@ -96,7 +96,7 @@
 				if (selected) onsearch(selected, '');
 			}}
 		>
-			<option value="">Choose a property</option>
+			<option value="">Choose a column</option>
 			{#each properties as p}<option value={p.col}>{p.label || p.col}</option>{/each}
 		</select>
 		{#if property}

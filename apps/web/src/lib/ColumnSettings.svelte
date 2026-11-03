@@ -7,7 +7,13 @@
 		IconColumns
 	} from '@tabler/icons-svelte';
 	import type { Property } from 'iris-core/client';
-	import { visibleColumns, toggleColumn, moveColumn, changeWidth } from './column-settings';
+	import {
+		visibleColumns,
+		toggleColumn,
+		moveColumn,
+		changeWidth,
+		retainDeprecatedColumns
+	} from './column-settings';
 
 	let {
 		properties,
@@ -31,17 +37,20 @@
 	} = $props();
 
 	const id = $props.id();
-	const available = $derived(new Map(properties.map((property) => [property.col, property])));
-	const selected = $derived(visibleColumns(properties, columns));
+	const active = $derived(properties.filter((property) => !property.deprecated));
+	const available = $derived(new Map(active.map((property) => [property.col, property])));
+	const selected = $derived(visibleColumns(active, columns));
 	let message = $state('');
 	const label = (property: Property) => property.label || property.col;
 
 	function toggle(col: string, shown: boolean) {
-		onChange(toggleColumn(selected, col, shown), { ...widths });
+		onChange(retainDeprecatedColumns(properties, columns, toggleColumn(selected, col, shown)), {
+			...widths
+		});
 	}
 	async function move(col: string, direction: -1 | 1, button: HTMLButtonElement) {
 		const next = moveColumn(selected, col, direction);
-		onChange(next, { ...widths });
+		onChange(retainDeprecatedColumns(properties, columns, next), { ...widths });
 		message = `${label(available.get(col)!)} moved to position ${next.indexOf(col) + 1} after Record.`;
 		await tick();
 		// A boundary move disables the pressed button. Keep keyboard focus on this column.
@@ -55,7 +64,7 @@
 	function resize(property: Property, input: HTMLInputElement) {
 		const next = input.validity.badInput ? null : changeWidth(widths, property.col, input.value);
 		if (next) {
-			onChange([...selected], next);
+			onChange([...columns], next);
 			message =
 				next[property.col] === undefined
 					? `${label(property)} width set to automatic.`
@@ -86,7 +95,7 @@
 				<span>Wrap all columns</span>
 			</label>{/if}
 		<fieldset class="choices">
-			<legend>Show properties</legend>
+			<legend>Show columns</legend>
 			{#each [...available.values()] as property (property.col)}
 				<label class="choice">
 					<input
@@ -98,7 +107,7 @@
 					<span>{label(property)}</span>
 				</label>
 			{:else}
-				<p class="hint">No additional properties.</p>
+				<p class="hint">No additional columns.</p>
 			{/each}
 		</fieldset>
 		{#if selected.length}

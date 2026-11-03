@@ -180,13 +180,13 @@
 			</div>
 			<button type="button" onclick={close} disabled={saving}>Close catalog</button>
 		</header>
-		<p class="hint">Define properties, choices and rules. Existing records are kept unchanged.</p>
+		<p class="hint">Define columns, choices and rules. Existing records are kept unchanged.</p>
 		<nav aria-label="Catalog sections">
 			<button
 				type="button"
 				aria-pressed={mode === 'property'}
 				onclick={() => load(properties[0] ?? null, 'property')}
-				disabled={saving}>Properties</button
+				disabled={saving}>Columns</button
 			><button
 				type="button"
 				aria-pressed={mode === 'rule'}
@@ -209,27 +209,29 @@
 						)}</button
 					>
 				{/each}
-				<button type="button" onclick={() => load(null)} disabled={saving}>Add {mode}</button>
+				<button type="button" onclick={() => load(null)} disabled={saving}
+					>Add {mode === 'property' ? 'column' : mode}</button
+				>
 			</aside>
 			<form onsubmit={save} oninput={() => (dirty = true)} onchange={() => (dirty = true)}>
 				<fieldset disabled={saving}>
 					<label
-						>{mode === 'property' ? 'Property ID' : 'Rule ID'}<input
-							aria-label={mode === 'property' ? 'Property ID' : 'Rule ID'}
+						>{mode === 'property' ? 'Column ID' : 'Rule ID'}<input
+							aria-label={mode === 'property' ? 'Column ID' : 'Rule ID'}
 							bind:value={form.key}
 							required
 							readonly={original !== null}
 						/></label
 					>
 					{#if mode === 'property'}
-						<label>Label<input aria-label="Property label" bind:value={form.label} /></label>
+						<label>Label<input aria-label="Column label" bind:value={form.label} /></label>
 						<label
-							>Type<select aria-label="Property type" bind:value={form.type}
+							>Type<select aria-label="Column type" bind:value={form.type}
 								>{#each types as type}<option value={type}>{type}</option>{/each}</select
 							></label
 						>
 						<label
-							>Description<textarea aria-label="Property description" bind:value={form.description}
+							>Description<textarea aria-label="Column description" bind:value={form.description}
 							></textarea></label
 						>
 						<label class="check"
@@ -324,7 +326,7 @@
 							>{/if}
 						<details>
 							<summary>Validation</summary><label
-								>Pattern<input aria-label="Property pattern" bind:value={form.pattern} /></label
+								>Pattern<input aria-label="Column pattern" bind:value={form.pattern} /></label
 							>{#if original?.derived_by}<p>
 									Derived by {String(original.derived_by)}. Values remain read-only.
 								</p>{/if}
@@ -349,7 +351,7 @@
 							></label
 						>
 						<label
-							>Property<select aria-label="Rule property" bind:value={form.ruleColumn}
+							>Column<select aria-label="Rule column" bind:value={form.ruleColumn}
 								><option value="">Whole table</option>{#each properties as p}<option value={p.col}
 										>{p.label ?? p.col}</option
 									>{/each}</select
@@ -370,7 +372,9 @@
 							violate this invariant</label
 						>
 					{/if}
-					<button type="submit" disabled={saving}>Save {mode}</button>
+					<button type="submit" disabled={saving}
+						>Save {mode === 'property' ? 'column' : mode}</button
+					>
 				</fieldset>
 				{#if failure}<p role="alert">{failure}</p>{/if}{#if receipt}<p role="status">
 						{receipt}

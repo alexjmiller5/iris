@@ -28,8 +28,8 @@ test('catalog editor shows editable option descriptions and preserves the stable
 	}).body;
 	expect(html).toContain('Work in progress');
 	expect(html).toContain('Draft');
-	expect(html).toContain('Property ID');
-	expect(html).toContain('Save property');
+	expect(html).toContain('Column ID');
+	expect(html).toContain('Save column');
 	expect(html).toContain('Existing records are kept unchanged');
 });
 

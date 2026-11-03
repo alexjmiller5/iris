@@ -36,3 +36,12 @@ export function changeWidth(
 	if (!Number.isFinite(number)) return null;
 	return { ...widths, [col]: Math.min(800, Math.max(96, Math.round(number))) };
 }
+
+export function retainDeprecatedColumns(
+	properties: readonly Property[],
+	previous: readonly string[],
+	next: readonly string[]
+): string[] {
+	const deprecated = new Set(properties.filter((p) => p.deprecated).map((p) => p.col));
+	return [...new Set([...next, ...previous.filter((col) => deprecated.has(col))])];
+}

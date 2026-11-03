@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Property } from 'iris-core/client';
-import { visibleColumns, toggleColumn, moveColumn, changeWidth } from './column-settings';
+import {
+	visibleColumns,
+	toggleColumn,
+	moveColumn,
+	changeWidth,
+	retainDeprecatedColumns
+} from './column-settings';
 
 const properties: Property[] = [
 	{ col: 'status', label: 'Status', type: 'select' },
@@ -78,4 +84,16 @@ describe('column widths', () => {
 			expect(widths).toEqual({ status: 160, notes: 300 });
 		}
 	);
+});
+
+it('editing active layout preserves hidden deprecated saved columns', () => {
+	const properties = [{ col: 'active' }, { col: 'old', deprecated: 1 }];
+	const previous = Object.freeze(['old', 'active']);
+	expect(retainDeprecatedColumns(properties, previous, ['active', 'new'])).toEqual([
+		'active',
+		'new',
+		'old'
+	]);
+	expect(retainDeprecatedColumns(properties, previous, [])).toEqual(['old']);
+	expect(previous).toEqual(['old', 'active']);
 });

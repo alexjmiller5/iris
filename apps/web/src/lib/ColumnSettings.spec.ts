@@ -29,3 +29,29 @@ test('without a saved view there is no wrap control to change', () => {
 	expect(window.document.querySelector('input[aria-label="Wrap all columns"]')).toBeNull();
 	window.close();
 });
+
+test('column settings use column vocabulary', () => {
+	const body = render(ColumnSettings, {
+		props: { properties: [], columns: [], widths: {}, onChange: () => {} } as never
+	}).body;
+	expect(body).toContain('Show columns');
+	expect(body).toContain('No additional columns.');
+	expect(body).not.toContain('properties');
+});
+
+test('deprecated columns are absent from layout choices without mutating saved layout', () => {
+	const columns = ['old', 'active'];
+	const props = {
+		properties: [
+			{ col: 'old', label: 'Historical', deprecated: 1 },
+			{ col: 'active', label: 'Active' }
+		],
+		columns,
+		widths: {},
+		onChange: () => {}
+	};
+	const body = render(ColumnSettings, { props: props as never }).body;
+	expect(body).not.toContain('Show Historical');
+	expect(body).toContain('Show Active');
+	expect(columns).toEqual(['old', 'active']);
+});
