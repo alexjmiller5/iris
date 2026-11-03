@@ -204,3 +204,77 @@ test('closing locally rejects late delivery even without a durable revision chan
 	held.resolve('private');
 	await rejected;
 });
+
+test.each([NaN, 0, -1, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+	'advance result %s cannot acknowledge peer revocation without a changed durable revision',
+	async (advanced) => {
+		const store = { read: async () => 0, advance: async () => advanced, subscribe: () => () => {} };
+		const a = fixture(store),
+			b = fixture(store);
+		await a.open();
+		await b.open();
+		await expect(a.gate.lock()).rejects.toThrow();
+		await expect(a.gate.run(async () => true)).rejects.toThrow('locked');
+		// A broken durable store can leave peers readable; the lock must report failure.
+		expect(await b.gate.run(async () => true)).toBe(true);
+	}
+);
+test('valid-looking advance cannot acknowledge a write the durable read does not observe', async () => {
+	const store = { read: async () => 0, advance: async () => 1, subscribe: () => () => {} };
+	const { gate, open } = fixture(store);
+	await open();
+	await expect(gate.lock()).rejects.toThrow();
+	await expect(gate.run(async () => true)).rejects.toThrow('locked');
+});
+test('concurrent monotonic advances may be observed beyond the returned revision', async () => {
+	let value = 0;
+	const store = {
+		read: async () => value,
+		advance: async () => {
+			value = 2;
+			return 1;
+		},
+		subscribe: () => () => {}
+	};
+	const { gate, open } = fixture(store);
+	await open();
+	await expect(gate.lock()).resolves.toBeUndefined();
+	expect(gate.state).toBe('locked');
+});
+
+test.each([NaN, 0, -1, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+	'invalid observed revision %s refuses lock completion',
+	async (observed) => {
+		let value = 0;
+		const store = {
+			read: async () => value,
+			advance: async () => {
+				value = observed;
+				return 1;
+			},
+			subscribe: () => () => {}
+		};
+		const { gate, open } = fixture(store);
+		await open();
+		await expect(gate.lock()).rejects.toThrow();
+		await expect(gate.run(async () => true)).rejects.toThrow('locked');
+	}
+);
+test('a durable revision rollback cannot acknowledge revocation', async () => {
+	let value = 2,
+		advanced = false;
+	const store = {
+		read: async () => value,
+		advance: async () => {
+			advanced = true;
+			return ++value;
+		},
+		subscribe: () => () => {}
+	};
+	const { gate, open } = fixture(store);
+	await open();
+	value = 1;
+	await expect(gate.lock()).rejects.toThrow();
+	expect(advanced).toBe(false);
+	await expect(gate.run(async () => true)).rejects.toThrow('locked');
+});

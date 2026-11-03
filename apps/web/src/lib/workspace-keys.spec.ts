@@ -114,3 +114,29 @@ test('malformed public envelopes reject before password import or KDF allocation
 		derived.mockRestore();
 	}
 });
+
+test('malformed root inputs reject before import instead of coercing to an empty HKDF key', async () => {
+	const imported = vi.spyOn(crypto.subtle, 'importKey');
+	try {
+		for (const value of [
+			'x'.repeat(32),
+			'y'.repeat(32),
+			Array(32).fill(1),
+			Array(32).fill('x'),
+			{ length: 32 },
+			new ArrayBuffer(32),
+			new DataView(new ArrayBuffer(32)),
+			new Uint16Array(32),
+			new Uint8Array(31),
+			new Uint8Array(33),
+			null
+		]) {
+			await expect(
+				deriveWorkspaceKey(value as unknown as Uint8Array, workspace, 'metadata')
+			).rejects.toThrow();
+		}
+		expect(imported).not.toHaveBeenCalled();
+	} finally {
+		imported.mockRestore();
+	}
+});

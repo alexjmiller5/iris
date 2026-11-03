@@ -145,7 +145,15 @@ export function createWorkspaceAdmission<T>(options: {
 		async lock() {
 			// Revoke local admission synchronously, even if advancing durable state fails.
 			const stopped = invalidate();
-			const advanced = options.revisions.advance();
+			const advanced = (async () => {
+				const before = await readRevision();
+				if (before < revision) throw new Error('Cannot establish workspace revocation.');
+				const changed = await options.revisions.advance();
+				if (!Number.isSafeInteger(changed) || changed <= before)
+					throw new Error('Cannot establish workspace revocation.');
+				const observed = await readRevision();
+				if (observed < changed) throw new Error('Cannot establish workspace revocation.');
+			})();
 			const results = await Promise.allSettled([stopped, advanced]);
 			for (const result of results) if (result.status === 'rejected') throw result.reason;
 		},

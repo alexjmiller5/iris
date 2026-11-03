@@ -179,7 +179,12 @@ export async function deriveWorkspaceKey(
 	purpose: 'database' | 'files' | 'metadata'
 ): Promise<Uint8Array<ArrayBuffer>> {
 	workspaceId(workspace);
-	if (key.length !== 32 || !['database', 'files', 'metadata'].includes(purpose)) throw invalid();
+	if (
+		!(key instanceof Uint8Array) ||
+		key.byteLength !== 32 ||
+		!['database', 'files', 'metadata'].includes(purpose)
+	)
+		throw invalid();
 	const root = await crypto.subtle.importKey('raw', new Uint8Array(key), 'HKDF', false, [
 		'deriveBits'
 	]);
