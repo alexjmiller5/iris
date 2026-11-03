@@ -52,10 +52,16 @@ struct WorkspaceFilter: Identifiable, Equatable {
   static func operations(for type: String) -> [CoreFilterOp] {
     switch type {
     case "int", "number": [.eq, .ne, .gt, .gte, .lt, .lte, .empty, .notEmpty]
-    case "bool", "ref": [.eq, .ne, .empty, .notEmpty]
+    case "bool", "ref", "select": [.eq, .ne, .empty, .notEmpty]
     case "multi_ref", "multi_select": [.contains, .empty, .notEmpty]
     default: Array(CoreFilterOp.allCases)
     }
+  }
+
+  /// Keep a saved advanced condition selectable without offering it on a new filter.
+  func operationChoices(for type: String) -> [CoreFilterOp] {
+    let choices = Self.operations(for: type)
+    return choices.contains(operation) ? choices : choices + [operation]
   }
 
   func coreFilter(field: CatalogField?) throws -> CoreFilter {
@@ -68,7 +74,8 @@ struct WorkspaceFilter: Identifiable, Equatable {
       return CoreFilter(column: column, op: operation)
     }
     if let relative {
-      guard ["date", "datetime", "date_or_datetime"].contains(field?.type ?? ""), operation != .contains,
+      guard ["date", "datetime", "date_or_datetime"].contains(field?.type ?? ""),
+        operation != .contains,
         relative == .today || Self.nowOperations.contains(operation)
       else {
         throw WorkspaceError(
@@ -148,7 +155,8 @@ extension CatalogField {
   /// is a flag with a reason: it gets a quick filter and its reason shows inline.
   /// Same rule as the web `flag-filters.ts`; nothing here knows a table's schema.
   // ponytail: description word match; a bool naming a text column for another purpose pairs with it.
-  static func flagFilters(_ fields: [CatalogField]) -> [(flag: CatalogField, reason: CatalogField)] {
+  static func flagFilters(_ fields: [CatalogField]) -> [(flag: CatalogField, reason: CatalogField)]
+  {
     fields.compactMap { flag in
       guard flag.type == "bool" else { return nil }
       let words = Set(

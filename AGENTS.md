@@ -565,9 +565,10 @@ popovers and a chip row that scrolls edge to edge, its margin inside the scroll 
 so no chip clips at the bar's inset. Filter is a searchable property list (Add filter group
 inside) that adds a chip and pushes its type editor: select options as checkmarks,
 text, number, date with Today or Now (Now only for before/after), Boolean and the
-existing reference picker. Chips edit
-on tap and remove with x; Sort holds ordered rules with direction toggles and drag
-reorder. Edits apply to the query at once; chips without a usable value neither
+existing reference picker. Select conditions offer equality, inequality and
+empty/not-empty; an imported advanced condition stays visible and retains its
+stored meaning. Chips edit on tap and remove with x; Sort holds ordered rules with
+direction toggles and drag reorder. Edits apply to the query at once; chips without a usable value neither
 filter nor save. Closing a popover or the Views sheet, or removing a chip, calls
 `WorkspaceModel.scheduleViewSave` (400 ms). It captures the request, so navigating
 away still saves the view it was made in, uses the applied revision and ordinary

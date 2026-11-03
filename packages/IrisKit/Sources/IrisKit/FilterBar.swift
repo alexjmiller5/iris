@@ -362,7 +362,7 @@ private struct FilterRuleForm: View {
     Form {
       Section {
         Picker("Condition", selection: $filter.operation) {
-          ForEach(WorkspaceFilter.operations(for: type), id: \.self) { Text($0.label).tag($0) }
+          ForEach(filter.operationChoices(for: type), id: \.self) { Text($0.label).tag($0) }
         }
         .accessibilityIdentifier("filter-operation")
         if needsValue, isDate {

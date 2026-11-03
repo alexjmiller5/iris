@@ -40,7 +40,8 @@ struct WorkspaceQueryTests {
     let field = CatalogField(property: ["col": .string("due"), "type": .string("date_or_datetime")])
     var filter = WorkspaceFilter(column: "due", operation: .lte)
     filter.today = true
-    #expect(try filter.coreFilter(field: field) == CoreFilter(column: "due", op: .lte, relative: .today))
+    #expect(
+      try filter.coreFilter(field: field) == CoreFilter(column: "due", op: .lte, relative: .today))
   }
 
   @Test func nowFilterRoundTripsAndComparesOnlyBeforeOrAfter() throws {
@@ -88,6 +89,22 @@ struct WorkspaceQueryTests {
       try WorkspaceFilter(column: "related", operation: .contains, value: "chosen-id").coreFilter(
         field: reference
       ).value == .string("chosen-id"))
+  }
+
+  @Test func selectFiltersOfferCategoricalConditions() {
+    #expect(WorkspaceFilter.operations(for: "select") == [.eq, .ne, .empty, .notEmpty])
+    #expect(
+      WorkspaceFilter(column: "status").operationChoices(for: "select")
+        == [.eq, .ne, .empty, .notEmpty])
+  }
+
+  @Test func savedAdvancedSelectComparisonKeepsItsOriginalMeaning() throws {
+    let field = CatalogField(property: ["col": .string("status"), "type": .string("select")])
+    let saved = CoreFilter(column: "status", op: .gte, value: .string("Queued"))
+    let filter = WorkspaceFilter(saved, field: field)
+    #expect(filter.operation == .gte)
+    #expect(filter.operationChoices(for: field.type) == [.eq, .ne, .empty, .notEmpty, .gte])
+    #expect(try filter.coreFilter(field: field) == saved)
   }
 
   @Test func foregroundCalendarChangeInvalidatesTheQueryAndTodaySurvivesImport() throws {
