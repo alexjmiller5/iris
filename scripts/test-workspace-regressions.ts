@@ -119,7 +119,7 @@ try {
 	}
 	/** Filter, search the property list, Enter: the new chip's editor opens. */
 	async function addFilter(property: string) {
-		const search = page.getByLabel('Filter by property');
+		const search = page.getByLabel('Filter by column');
 		// A sync refresh can land on the opening click; open until the list shows.
 		await expect(async () => {
 			if (!(await search.isVisible())) await page.getByRole('button', { name: /^Filter( \d+ active)?$/ }).click();

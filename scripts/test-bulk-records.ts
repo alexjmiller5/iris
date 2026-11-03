@@ -94,7 +94,7 @@ try {
   await cdp.click(element('input[aria-label="Select loaded rows"]'));
   await cdp.click(named("summary", "Selection (3)"));
   await cdp.evaluate(
-    `(()=>{const e=document.querySelector('select[aria-label="Bulk property"]');e.value='quantity';e.dispatchEvent(new Event('change',{bubbles:true}));})()`,
+    `(()=>{const e=document.querySelector('select[aria-label="Bulk column"]');e.value='quantity';e.dispatchEvent(new Event('change',{bubbles:true}));})()`,
   );
   await cdp.fill(element("#bulk-value"), "7");
   await click("Apply to selected");

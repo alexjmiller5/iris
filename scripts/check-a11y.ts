@@ -172,7 +172,7 @@ async function sampleWalk(page: Page, scheme: string) {
   await page.locator("body").focus();
   await tabTo(filter);
   await page.keyboard.press("Enter");
-  await page.getByLabel("Filter by property").waitFor();
+  await page.getByLabel("Filter by column").waitFor();
   await audit("filter-properties");
   await page.keyboard.type("Stat");
   await page.keyboard.press("Enter");
@@ -184,8 +184,8 @@ async function sampleWalk(page: Page, scheme: string) {
   await editor.waitFor({ state: "hidden" });
   await expectFocus([filter], "Filter after dropping an empty chip");
   await page.keyboard.press("Enter");
-  await page.getByLabel("Filter by property").waitFor();
-  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Filter by property");
+  await page.getByLabel("Filter by column").waitFor();
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Filter by column");
   await page.keyboard.type("Stat");
   await page.keyboard.press("Enter");
   await editor.waitFor();

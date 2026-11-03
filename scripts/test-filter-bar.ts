@@ -123,7 +123,7 @@ try {
 
   await check("Filter, property, value: the grid narrows with no Apply", async () => {
     await page.getByRole("button", { name: "Filter", exact: true }).click();
-    await expect(page.getByLabel("Filter by property")).toBeFocused();
+    await expect(page.getByLabel("Filter by column")).toBeFocused();
     await page.keyboard.type("Stat");
     await page.keyboard.press("Enter");
     await expect(editor()).toBeVisible();
@@ -248,7 +248,7 @@ try {
       state.holdSaves = true;
     });
     await page.getByRole("button", { name: /^Filter/ }).first().click();
-    await page.getByLabel("Filter by property").fill("Title");
+    await page.getByLabel("Filter by column").fill("Title");
     await page.keyboard.press("Enter");
     await editor().getByLabel("Value").fill("one");
     await page.keyboard.press("Escape");
@@ -276,7 +276,7 @@ try {
     await page.setViewportSize({ width: 390, height: 844 });
     for (const text of ["e", "o", "a"]) {
       await page.getByRole("button", { name: "Add filter" }).click();
-      await page.getByLabel("Filter by property").fill("Title");
+      await page.getByLabel("Filter by column").fill("Title");
       await page.keyboard.press("Enter");
       await editor().getByLabel("Value").fill(text);
       await page.keyboard.press("Escape");

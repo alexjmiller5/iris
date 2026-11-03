@@ -40,8 +40,8 @@ try {
  await click('Edit catalog');await click('Status');await click('Add option');
  await cdp.fill(field('Option 1 value'),'Ready');await cdp.fill(field('Option 1 description'),'Reviewed and ready');
  expect(await cdp.evaluate(`(${field('Option 1 gray color')}).checked`)).toBe(true);
- await cdp.click(field('Option 1 blue color'));await cdp.until(`document.querySelector('.option .option-chip')?.dataset.color==='blue'`);await click('Save property');await has('Saved to the catalog and its change log.');
- await click('Add property');await cdp.fill(field('Property ID'),'review_score');await select('Property type','number');await cdp.fill(field('Property description'),'Synthetic review score');await click('Save property');await has('Saved to the catalog and its change log.');
+ await cdp.click(field('Option 1 blue color'));await cdp.until(`document.querySelector('.option .option-chip')?.dataset.color==='blue'`);await click('Save column');await has('Saved to the catalog and its change log.');
+ await click('Add column');await cdp.fill(field('Column ID'),'review_score');await select('Column type','number');await cdp.fill(field('Column description'),'Synthetic review score');await click('Save column');await has('Saved to the catalog and its change log.');
  await click('Close catalog');await sync();await click('Edit catalog');await click('Rules');await click('Add rule');await cdp.fill(field('Rule ID'),'nonnegative');await cdp.fill(field('Rule guidance'),'Quantity cannot be negative.');await select('Rule kind','invariant');await cdp.fill(field('Rule SQL'),'SELECT * FROM missing_table');
  await cdp.click(`Array.from(document.querySelectorAll('label')).find(e=>e.textContent.replace(/\\s+/g,' ').includes('Reject record writes that violate this invariant'))?.querySelector('input')`);
  await click('Save rule');await cdp.until(`!!(${element('[role="alert"]')})`);
