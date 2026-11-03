@@ -36,7 +36,7 @@ function contextBytes(workspace: string, purpose: string, value: WorkspaceRecord
 		])
 	);
 }
-function record(value: unknown): EncryptedWorkspaceRecord {
+export function readEncryptedWorkspaceRecord(value: unknown): EncryptedWorkspaceRecord {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid();
 	const v = value as Record<string, unknown>;
 	if (
@@ -83,7 +83,7 @@ export async function createWorkspaceRecords(
 		},
 		async open(context: WorkspaceRecordContext, value: unknown): Promise<Uint8Array<ArrayBuffer>> {
 			const additionalData = contextBytes(workspace, purpose, context);
-			const v = record(value);
+			const v = readEncryptedWorkspaceRecord(value);
 			// Snapshot untrusted structured-clone data before yielding to WebCrypto.
 			const iv = new Uint8Array(v.iv),
 				ciphertext = new Uint8Array(v.ciphertext);

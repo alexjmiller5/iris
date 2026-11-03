@@ -131,7 +131,11 @@ export interface DurableJournal<T> {
 /** Shared strict IndexedDB persistence; each protocol owns its exact codec/key. */
 export async function openScopedJournal<T>(
 	key: string,
-	codec: { encode(entry: T): string; decode(raw: unknown): T },
+	codec: {
+		encode(entry: T): unknown;
+		decode(raw: unknown): T;
+		equal?(left: unknown, right: unknown): boolean;
+	},
 	options: { indexedDB?: IDBFactory; databaseName?: string } = {}
 ): Promise<DurableJournal<T>> {
 	if (!key) throw new Error('Missing journal scope.');
@@ -248,7 +252,11 @@ export async function openScopedJournal<T>(
 					try {
 						if (request.result !== null) {
 							codec.decode(request.result.value);
-							if (request.result.value !== encoded)
+							if (
+								!(codec.equal
+									? codec.equal(request.result.value, encoded)
+									: request.result.value === encoded)
+							)
 								throw new Error('Resolve the existing approval before replacing it.');
 						} else store.add(encoded, key);
 						done();
@@ -266,7 +274,11 @@ export async function openScopedJournal<T>(
 					try {
 						if (request.result !== null) {
 							codec.decode(request.result.value);
-							if (request.result.value !== encoded)
+							if (
+								!(codec.equal
+									? codec.equal(request.result.value, encoded)
+									: request.result.value === encoded)
+							)
 								throw new Error('Retained approval changed; it was not removed.');
 							store.delete(key);
 						}
