@@ -58,7 +58,9 @@ export async function createJournalProtection(
 	};
 }
 type Protection = Awaited<ReturnType<typeof createJournalProtection>>;
-type Admission = { run<T>(work: (signal: AbortSignal) => Promise<T>): Promise<T> };
+type Admission = {
+	run<T>(work: (resource: unknown, signal: AbortSignal) => Promise<T>): Promise<T>;
+};
 function copyRecord(value: unknown): EncryptedWorkspaceRecord {
 	const record = readEncryptedWorkspaceRecord(value);
 	return {
@@ -98,7 +100,7 @@ export async function openProtectedJournal<T>(
 	const { protection, admission } = options;
 	const acquired: { store?: DurableJournal<EncryptedWorkspaceRecord> } = {};
 	try {
-		await admission.run(async (signal) => {
+		await admission.run(async (_resource, signal) => {
 			signal.throwIfAborted();
 			acquired.store = await (options.openStore ?? openScopedJournal)(
 				protection.key,
@@ -122,7 +124,7 @@ export async function openProtectedJournal<T>(
 		if (closed) throw new Error('Protected journal is closed.');
 	};
 	async function run<R>(work: (signal: AbortSignal) => Promise<R>) {
-		return admission.run(async (signal) => {
+		return admission.run(async (_resource, signal) => {
 			guard(signal);
 			const value = await work(signal);
 			guard(signal);

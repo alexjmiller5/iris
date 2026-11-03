@@ -1,3 +1,4 @@
+import { createWorkspaceAdmission } from '../apps/web/src/lib/workspace-admission';
 import { expect, test } from 'bun:test';
 const { createJournalProtection, openProtectedJournal } = (await import(
 	process.env.IRIS_TEST_PROTECTED_JOURNAL || '../apps/web/src/lib/governance/protected-journal'
@@ -56,9 +57,9 @@ function fixture() {
 			return store;
 		},
 		admission: {
-			run: async <T,>(work: (signal: AbortSignal) => Promise<T>) => {
+			run: async <T,>(work: (resource: unknown, signal: AbortSignal) => Promise<T>) => {
 				controller.signal.throwIfAborted();
-				const value = await work(controller.signal);
+				const value = await work({}, controller.signal);
 				controller.signal.throwIfAborted();
 				return value;
 			}
@@ -236,4 +237,29 @@ test('strict storage codec survives structured clone, rejects plaintext and comp
 			return f.store;
 		}
 	});
+});
+
+test('actual workspace admission supplies its abort signal while enforcing durable peer revocation', async () => {
+	const f = fixture();
+	let revision = 0;
+	const admission = createWorkspaceAdmission({
+		revisions: {
+			read: async () => revision,
+			advance: async () => ++revision,
+			subscribe: () => () => {}
+		},
+		close: async () => {
+			f.store.close();
+		}
+	});
+	await admission.unlock(async () => ({ worker: 'synthetic-vault' }));
+	const protection = await createJournalProtection(root, 'workspace-1', 1, 'governance', scope);
+	const journal = await openProtectedJournal(codec, { ...f, admission, protection });
+	await journal.retain(entry);
+	expect(await journal.load()).toEqual(entry);
+	revision++;
+	await expect(journal.load()).rejects.toThrow();
+	expect(f.closed).toBe(true);
+	expect(f.retained).not.toBeNull();
+	await admission.close();
 });
