@@ -36,7 +36,8 @@ export function createJournalChannel(
 	let state: 'open' | 'closing' | 'stopped' = 'open',
 		nextId = 0,
 		closing: Promise<void> | undefined,
-		cleanupError: unknown;
+		terminationFailed = false,
+		cleanupError: Error | undefined;
 	const pending = new Map<number, Pending>();
 	function stop(reason: Error) {
 		if (state === 'stopped') return;
@@ -47,8 +48,11 @@ export function createJournalChannel(
 		port.close();
 		try {
 			options.terminate();
-		} catch (error) {
-			cleanupError = error;
+		} catch {
+			terminationFailed = true;
+			// Thrown values can be undefined, primitives or noncoercible objects.
+			// Do not inspect or reflect them into the page-facing failure.
+			cleanupError = new Error('Journal worker termination failed.');
 		}
 		for (const entry of pending.values()) {
 			clearTimeout(entry.timer);
@@ -114,7 +118,7 @@ export function createJournalChannel(
 		clearTimeout(entry.timer);
 		if (entry.method === 'shutdown') {
 			stop(unavailable());
-			if (cleanupError !== undefined) {
+			if (terminationFailed) {
 				entry.reject(new Error('Journal worker termination failed.'));
 				return;
 			}
@@ -196,31 +200,36 @@ export function serveJournalChannel(
 		port.removeEventListener('messageerror', lost);
 		options.signal.removeEventListener('abort', lost);
 		closing = (async () => {
-			const failures: unknown[] = [];
+			const failures: Error[] = [];
+			let failed = false;
+			const fail = (message: string) => {
+				failed = true;
+				failures.push(new Error(message));
+			};
 			try {
 				host.close();
-			} catch (error) {
-				failures.push(error);
+			} catch {
+				fail('Journal host close failed.');
 			}
 			try {
 				await options.dispose(reply ? 'shutdown' : 'loss');
-			} catch (error) {
-				failures.push(error);
+			} catch {
+				fail('Journal worker resource disposal failed.');
 			}
 			try {
-				if (reply) reply(failures.length > 0);
+				if (reply) reply(failed);
 				else
 					port.postMessage({
 						protocol: JOURNAL_CHANNEL_PROTOCOL,
 						contractHash: CORE_CONTRACT_HASH,
 						type: 'closed'
 					});
-			} catch (error) {
-				failures.push(error);
+			} catch {
+				fail('Journal worker reply failed.');
 			} finally {
 				port.close();
 			}
-			if (failures.length) {
+			if (failed) {
 				cleanupError = new AggregateError(failures, 'Journal worker disposal failed.');
 				throw cleanupError;
 			}

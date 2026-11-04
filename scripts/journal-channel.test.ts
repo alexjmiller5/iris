@@ -694,3 +694,173 @@ test('mismatched page core contract never dispatches into the worker host', asyn
 		pair.port2.close();
 	}
 });
+
+const cleanupFailures: readonly (readonly [string, unknown])[] = [
+	['undefined', undefined],
+	['null', null],
+	['false', false],
+	['zero', 0],
+	['string', 'synthetic-private-failure'],
+	['symbol', Symbol('synthetic-private-failure')],
+	[
+		'noncoercible-object',
+		{
+			[Symbol.toPrimitive]() {
+				throw Error('Failure must not be coerced');
+			}
+		}
+	],
+	['Error', new Error('synthetic-private-failure')]
+];
+for (const [label, value] of cleanupFailures)
+	test(`termination failure ${label} denies shutdown acknowledgement with a defined safe Error`, async () => {
+		const pair = new MessageChannel(),
+			controller = new AbortController();
+		let terminated = 0,
+			disposed = 0;
+		const server = serveJournalChannel(
+			pair.port2,
+			{ request: async () => null, close: () => {} },
+			{
+				signal: controller.signal,
+				dispose: () => {
+					disposed++;
+				}
+			}
+		);
+		const client = createJournalChannel(pair.port1, {
+			signal: controller.signal,
+			timeoutMs: 100,
+			terminate: () => {
+				terminated++;
+				throw value;
+			}
+		});
+		try {
+			let rejected = false,
+				error: unknown;
+			try {
+				await client.close();
+			} catch (caught) {
+				rejected = true;
+				error = caught;
+			}
+			expect(rejected).toBe(true);
+			expect(error).toBeInstanceOf(Error);
+			expect(client.cleanupError).toBeInstanceOf(Error);
+			expect((client.cleanupError as Error).message).toBe('Journal worker termination failed.');
+			expect(terminated).toBe(1);
+			expect(disposed).toBe(1);
+			await expect(client.request({ method: 'load', handle: 'closed' })).rejects.toThrow();
+		} finally {
+			await server.close();
+			pair.port1.close();
+			pair.port2.close();
+		}
+	});
+for (const [label, value] of cleanupFailures)
+	test(`resource disposal failure ${label} denies acknowledgement and still attempts owner termination`, async () => {
+		const pair = new MessageChannel(),
+			controller = new AbortController();
+		let disposed = 0,
+			terminated = 0;
+		const server = serveJournalChannel(
+			pair.port2,
+			{ request: async () => null, close: () => {} },
+			{
+				signal: controller.signal,
+				dispose: async () => {
+					disposed++;
+					throw value;
+				}
+			}
+		);
+		const client = createJournalChannel(pair.port1, {
+			signal: controller.signal,
+			timeoutMs: 100,
+			terminate: () => {
+				terminated++;
+			}
+		});
+		try {
+			let rejected = false,
+				error: unknown;
+			try {
+				await client.close();
+			} catch (caught) {
+				rejected = true;
+				error = caught;
+			}
+			expect(rejected).toBe(true);
+			expect(error).toBeInstanceOf(Error);
+			expect(server.cleanupError).toBeInstanceOf(AggregateError);
+			const failures = (server.cleanupError as AggregateError).errors;
+			expect(failures).toHaveLength(1);
+			expect(failures[0]).toBeInstanceOf(Error);
+			expect(failures[0].message).toBe('Journal worker resource disposal failed.');
+			expect(disposed).toBe(1);
+			expect(terminated).toBe(1);
+		} finally {
+			try {
+				await server.close();
+			} catch {}
+			pair.port1.close();
+			pair.port2.close();
+		}
+	});
+test('host close, resource disposal and owner termination failures are all attempted and safely retained', async () => {
+	const pair = new MessageChannel(),
+		controller = new AbortController();
+	let closed = 0,
+		disposed = 0,
+		terminated = 0;
+	const server = serveJournalChannel(
+		pair.port2,
+		{
+			request: async () => null,
+			close: () => {
+				closed++;
+				throw undefined;
+			}
+		},
+		{
+			signal: controller.signal,
+			dispose: async () => {
+				disposed++;
+				throw null;
+			}
+		}
+	);
+	const client = createJournalChannel(pair.port1, {
+		signal: controller.signal,
+		timeoutMs: 100,
+		terminate: () => {
+			terminated++;
+			throw 0;
+		}
+	});
+	try {
+		let rejected = false;
+		try {
+			await client.close();
+		} catch {
+			rejected = true;
+		}
+		expect(rejected).toBe(true);
+		expect([closed, disposed, terminated]).toEqual([1, 1, 1]);
+		expect(client.cleanupError).toBeInstanceOf(Error);
+		const errors = (server.cleanupError as AggregateError).errors;
+		expect(errors).toHaveLength(2);
+		expect(errors.every((error) => error instanceof Error)).toBe(true);
+		expect(errors.map((error) => error.message)).toEqual([
+			'Journal host close failed.',
+			'Journal worker resource disposal failed.'
+		]);
+	} finally {
+		try {
+			await server.close();
+		} catch {}
+		pair.port1.close();
+		pair.port2.close();
+	}
+});
