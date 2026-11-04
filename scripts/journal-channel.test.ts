@@ -227,7 +227,6 @@ test('malformed worker reply fails the whole channel rather than resolving a pen
 		pair.port2.postMessage({
 			protocol: 'wrong',
 			contractHash: CORE_CONTRACT_HASH,
-			contractHash: CORE_CONTRACT_HASH,
 			id: 1,
 			ok: true,
 			result: 'forged'

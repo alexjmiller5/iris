@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-const { openWorkspaceControlStore } = (await import(
+const { openWorkspaceControlStore, openEncryptedWorkspaceCell } = (await import(
 	process.env.IRIS_TEST_CONTROL_STORE || '../apps/web/src/lib/workspace-control-store'
 )) as typeof import('../apps/web/src/lib/workspace-control-store');
 import type { EncryptedWorkspaceRecord } from '../apps/web/src/lib/workspace-records';
@@ -194,4 +194,30 @@ test('version change closes cached control connection and no unavailable backend
 		openWorkspaceControlStore('workspace-1', { indexedDB: undefined })
 	).rejects.toThrow();
 	expect(f.closed).toBe(1);
+});
+
+test('opaque encrypted cells share the strict database without aliasing the control state or each other', async () => {
+	const f = fixture(),
+		control = await openWorkspaceControlStore('workspace-1', { indexedDB: f.factory });
+	const a = await openEncryptedWorkspaceCell('workspace-1', 'a'.repeat(64), {
+			indexedDB: f.factory
+		}),
+		b = await openEncryptedWorkspaceCell('workspace-1', 'b'.repeat(64), { indexedDB: f.factory });
+	try {
+		await control.compareAndSwap(null, record(1));
+		await a.compareAndSwap(null, record(2));
+		expect(await control.read()).toEqual(record(1));
+		expect(await a.read()).toEqual(record(2));
+		expect(await b.read()).toBeNull();
+		await b.compareAndSwap(null, record(3));
+		expect(await a.read()).toEqual(record(2));
+		expect(await b.read()).toEqual(record(3));
+		await expect(
+			openEncryptedWorkspaceCell('workspace-1', 'state', { indexedDB: f.factory })
+		).rejects.toThrow();
+	} finally {
+		control.close();
+		a.close();
+		b.close();
+	}
 });

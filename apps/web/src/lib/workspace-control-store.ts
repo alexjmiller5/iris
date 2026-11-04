@@ -23,10 +23,11 @@ function equal(a: EncryptedWorkspaceRecord | null, b: EncryptedWorkspaceRecord |
 		a.ciphertext.every((v, i) => v === b.ciphertext[i])
 	);
 }
-/** Dedicated strict-IDB control cell; no other app store is opened or rewritten.
+/** Shared strict encrypted-cell database; no legacy app store is opened or rewritten.
  * Existing-only is the default. New setup must explicitly request create. */
-export async function openWorkspaceControlStore(
+async function openCell(
 	workspace: string,
+	cellId: string,
 	options: { indexedDB?: IDBFactory; create?: boolean } = {}
 ): Promise<WorkspaceControlStore> {
 	if (
@@ -137,7 +138,7 @@ export async function openWorkspaceControlStore(
 	return {
 		read: () =>
 			transaction<EncryptedWorkspaceRecord | null>('readonly', (store, done, fail) => {
-				const request = store.openCursor('state');
+				const request = store.openCursor(cellId);
 				request.onsuccess = () => {
 					try {
 						done(request.result === null ? null : copy(request.result.value));
@@ -150,7 +151,7 @@ export async function openWorkspaceControlStore(
 			const expected = before === null ? null : copy(before),
 				replacement = copy(next);
 			return transaction<boolean>('readwrite', (store, done, fail) => {
-				const request = store.openCursor('state');
+				const request = store.openCursor(cellId);
 				request.onsuccess = () => {
 					try {
 						const current = request.result === null ? null : copy(request.result.value);
@@ -158,7 +159,7 @@ export async function openWorkspaceControlStore(
 							done(false);
 							return;
 						}
-						store.put(replacement, 'state');
+						store.put(replacement, cellId);
 						done(true);
 					} catch (error) {
 						fail(error);
@@ -171,4 +172,21 @@ export async function openWorkspaceControlStore(
 			db.close();
 		}
 	};
+}
+
+/** Fixed control state remains separate from opaque host records. */
+export function openWorkspaceControlStore(
+	workspace: string,
+	options: { indexedDB?: IDBFactory; create?: boolean } = {}
+) {
+	return openCell(workspace, 'state', options);
+}
+export async function openEncryptedWorkspaceCell(
+	workspace: string,
+	opaqueId: string,
+	options: { indexedDB?: IDBFactory; create?: boolean } = {}
+): Promise<WorkspaceControlStore> {
+	if (typeof opaqueId !== 'string' || !/^[a-f0-9]{64}$/.test(opaqueId))
+		throw new Error('Invalid opaque workspace cell identifier.');
+	return openCell(workspace, opaqueId, options);
 }
