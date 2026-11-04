@@ -185,3 +185,64 @@ export function collectConsumerCredentialInventory(
 	if (bytes.length > 65536) throw unavailable();
 	return [{ key: 'consumer', value: bytes }];
 }
+
+export type OpfsOwnerEntry = {
+	name: string;
+	kind: 'file' | 'directory';
+	owner: string;
+};
+/** Exact host-supplied ownership, never prefix inference. Include SQLite/VFS
+ * sidecars explicitly. This proves namespace coverage, not file preservation:
+ * legacy writers must be retired and each declared owner must collect its values.
+ */
+export async function collectOpfsOwnerInventory(
+	root: FileSystemDirectoryHandle,
+	declarations: readonly OpfsOwnerEntry[],
+	signal?: AbortSignal
+): Promise<OpfsOwnerEntry[]> {
+	const validName = (value: unknown): value is string =>
+		typeof value === 'string' &&
+		value.length > 0 &&
+		value.length <= 4096 &&
+		value !== '.' &&
+		value !== '..' &&
+		!value.includes('/') &&
+		!value.includes('\0');
+	if (!Array.isArray(declarations) || declarations.length > 100000) throw unavailable();
+	const expected = new Map<string, OpfsOwnerEntry>();
+	for (const entry of declarations) {
+		if (
+			!entry ||
+			!validName(entry.name) ||
+			!validName(entry.owner) ||
+			!['file', 'directory'].includes(entry.kind) ||
+			expected.has(entry.name)
+		)
+			throw unavailable();
+		expected.set(entry.name, { name: entry.name, kind: entry.kind, owner: entry.owner });
+	}
+	async function capture() {
+		signal?.throwIfAborted();
+		const seen = new Set<string>();
+		for await (const [name, handle] of root as unknown as AsyncIterable<
+			[string, FileSystemHandle]
+		>) {
+			signal?.throwIfAborted();
+			const declared = expected.get(name);
+			if (
+				!declared ||
+				seen.has(name) ||
+				!handle ||
+				handle.name !== name ||
+				handle.kind !== declared.kind
+			)
+				throw unavailable();
+			seen.add(name);
+		}
+		signal?.throwIfAborted();
+		if (seen.size !== expected.size) throw unavailable();
+	}
+	await capture();
+	await capture();
+	return [...expected.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}

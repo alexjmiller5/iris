@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test';
 const {
 	collectLegacyFileInventory,
 	collectWebStorageInventory,
-	collectConsumerCredentialInventory
+	collectConsumerCredentialInventory,
+	collectOpfsOwnerInventory
 } = (await import(
 	process.env.IRIS_TEST_AUXILIARY_INVENTORY || '../apps/web/src/lib/workspace-auxiliary-inventory'
 )) as typeof import('../apps/web/src/lib/workspace-auxiliary-inventory');
@@ -228,4 +229,68 @@ test('unknown file kinds or mismatched names fail instead of silently dropping r
 			collectLegacyFileInventory(root as unknown as FileSystemDirectoryHandle)
 		).rejects.toThrow();
 	}
+});
+
+test('OPFS ownership requires exact declared names and kinds; unknown database sidecars cannot disappear', async () => {
+	const root = directory(
+		'',
+		new Map<string, unknown>([
+			['iris-attachments', directory('iris-attachments')],
+			['replica', file('replica', 'db')],
+			['replica-journal', file('replica-journal', 'unsynced')]
+		])
+	);
+	const owners = [
+		{ name: 'iris-attachments', kind: 'directory' as const, owner: 'attachments' },
+		{ name: 'replica', kind: 'file' as const, owner: 'sqlite' }
+	];
+	await expect(
+		collectOpfsOwnerInventory(root as unknown as FileSystemDirectoryHandle, owners)
+	).rejects.toThrow();
+	const complete = [...owners, { name: 'replica-journal', kind: 'file' as const, owner: 'sqlite' }];
+	const rows = await collectOpfsOwnerInventory(
+		root as unknown as FileSystemDirectoryHandle,
+		complete
+	);
+	expect(rows.map((row) => row.name)).toEqual(['iris-attachments', 'replica', 'replica-journal']);
+	expect(rows.find((row) => row.name === 'replica-journal')?.owner).toBe('sqlite');
+	await expect(
+		collectOpfsOwnerInventory(root as unknown as FileSystemDirectoryHandle, [
+			...complete,
+			{ ...complete[0] }
+		])
+	).rejects.toThrow();
+	await expect(
+		collectOpfsOwnerInventory(
+			root as unknown as FileSystemDirectoryHandle,
+			complete.map((row) => ({ ...row, kind: 'directory' as const }))
+		)
+	).rejects.toThrow();
+	await expect(
+		collectOpfsOwnerInventory(root as unknown as FileSystemDirectoryHandle, [
+			...complete,
+			{ name: 'missing', kind: 'file' as const, owner: 'sqlite' }
+		])
+	).rejects.toThrow();
+});
+
+test('OPFS ownership capture rejects a late namespace or cancellation without certifying partial coverage', async () => {
+	let captures = 0;
+	const root = {
+		async *[Symbol.asyncIterator]() {
+			if (++captures === 2) yield ['late', file('late', 'retained')];
+		}
+	};
+	await expect(
+		collectOpfsOwnerInventory(root as unknown as FileSystemDirectoryHandle, [])
+	).rejects.toThrow();
+	const abort = new AbortController();
+	abort.abort();
+	await expect(
+		collectOpfsOwnerInventory(
+			directory('') as unknown as FileSystemDirectoryHandle,
+			[],
+			abort.signal
+		)
+	).rejects.toThrow();
 });
