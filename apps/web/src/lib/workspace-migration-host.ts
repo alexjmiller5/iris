@@ -78,8 +78,18 @@ const safeName = (name: unknown): name is string =>
 	name !== '..' &&
 	!name.includes('/') &&
 	!name.includes('\0');
-const empty = () =>
-	Object.fromEntries(domains.map((key) => [key, []])) as WorkspaceMigrationSnapshot;
+const empty = (): WorkspaceMigrationSnapshot => ({
+	'database-schema': [],
+	'database-values': [],
+	'pending-intents': [],
+	'governance-journal': [],
+	'changeset-journal': [],
+	files: [],
+	backups: [],
+	recents: [],
+	preferences: [],
+	credential: []
+});
 function wipe(value: WorkspaceMigrationSnapshot) {
 	for (const rows of Object.values(value)) for (const row of rows) row.value.fill(0);
 }
