@@ -237,3 +237,69 @@ test('failure after a staged chunk leaves prior manifest readable and never dele
 		await f.admission.close();
 	}
 });
+
+for (const exit of ['return', 'throw', 'break'] as const) {
+	test(`consumer-owned chunk survives early iterator ${exit} and consumer wiping leaves source unchanged`, async () => {
+		const f = await fixture(),
+			source = new File(['retained'], 'file');
+		let delivered: Uint8Array | undefined;
+		try {
+			await f.store.replace(null, source);
+			if (exit === 'break') {
+				for await (const chunk of f.store.read()) {
+					delivered = chunk;
+					break;
+				}
+			} else {
+				const reader = f.store.read();
+				delivered = (await reader.next()).value as Uint8Array;
+				if (exit === 'return') await reader.return(undefined);
+				else
+					await expect(reader.throw(new Error('consumer stopped'))).rejects.toThrow(
+						'consumer stopped'
+					);
+			}
+			expect(new TextDecoder().decode(delivered)).toBe('retained');
+			delivered!.fill(0);
+			expect(await source.text()).toBe('retained');
+			const reopened = await f.reopen();
+			try {
+				const chunks = [];
+				for await (const chunk of reopened.read()) chunks.push(chunk);
+				expect(await new Blob(chunks).text()).toBe('retained');
+				for (const chunk of chunks) chunk.fill(0);
+			} finally {
+				reopened.close();
+			}
+		} finally {
+			delivered?.fill(0);
+			f.store.close();
+			await f.admission.close();
+		}
+	});
+}
+test('decrypted chunk not yet transferred is wiped when closure prevents publication', async () => {
+	const f = await fixture();
+	const decrypt = crypto.subtle.decrypt;
+	let privateBuffer: Uint8Array | undefined;
+	try {
+		await f.store.replace(null, new File(['retained'], 'file'));
+		crypto.subtle.decrypt = async function (...args: Parameters<typeof decrypt>) {
+			const result = await decrypt.apply(crypto.subtle, args);
+			const bytes = new Uint8Array(result);
+			if (new TextDecoder().decode(bytes) === 'retained') {
+				privateBuffer = bytes;
+				f.store.close();
+			}
+			return result;
+		} as typeof decrypt;
+		await expect(f.store.read().next()).rejects.toThrow();
+		expect(privateBuffer).toBeDefined();
+		expect([...privateBuffer!]).toEqual(new Array(8).fill(0));
+	} finally {
+		crypto.subtle.decrypt = decrypt;
+		privateBuffer?.fill(0);
+		f.store.close();
+		await f.admission.close();
+	}
+});

@@ -47,7 +47,8 @@ function equal(a: Uint8Array, b: Uint8Array) {
 }
 /** Worker-only bounded copy/readback over the existing authenticated record seam.
  * Each fresh revision stages opaque chunks before publishing one CAS manifest.
- * Failure retains prior publication and encrypted staging; garbage collection is
+ * Pre-publication failure retains prior publication and encrypted staging; a lost
+ * post-CAS acknowledgement requires rereading the durable revision. Garbage collection is
  * deliberately separate from preservation. No plaintext OPFS writes or deletion.
  */
 export async function createWorkerFileStore(
@@ -171,6 +172,8 @@ export async function createWorkerFileStore(
 				raw?.fill(0);
 			}
 		},
+		/** Caller owns/wipes each yielded chunk. Stage until successful exhaustion:
+		 * a later missing/tampered chunk can reject after an authenticated prefix. */
 		async *read(): AsyncGenerator<Uint8Array> {
 			const { raw, value } = await current();
 			if (!raw || !value) {
@@ -187,10 +190,10 @@ export async function createWorkerFileStore(
 						if (!bytes || bytes.length !== Math.min(CHUNK, value.size - index * CHUNK))
 							throw denied();
 						await unchanged(raw);
-						yield bytes;
-						// Ownership of yielded bytes passes to the worker consumer, which must wipe
-						// them after use; a generator cannot retract bytes already consumed.
+						// Transfer before suspending: return/throw/break skips code after yield.
+						const delivered = bytes;
 						bytes = null;
+						yield delivered;
 					} finally {
 						bytes?.fill(0);
 						cell.close();
