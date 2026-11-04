@@ -1,3 +1,4 @@
+import { CORE_CONTRACT_HASH } from 'iris-core/contract';
 import { expect, test } from 'bun:test';
 const { createJournalChannel, serveJournalChannel } = (await import(
 	process.env.IRIS_TEST_JOURNAL_CHANNEL || '../apps/web/src/lib/governance/journal-channel'
@@ -223,7 +224,14 @@ test('malformed worker reply fails the whole channel rather than resolving a pen
 		controller = new AbortController();
 	let terminated = 0;
 	pair.port2.onmessage = () =>
-		pair.port2.postMessage({ protocol: 'wrong', id: 1, ok: true, result: 'forged' });
+		pair.port2.postMessage({
+			protocol: 'wrong',
+			contractHash: CORE_CONTRACT_HASH,
+			contractHash: CORE_CONTRACT_HASH,
+			id: 1,
+			ok: true,
+			result: 'forged'
+		});
 	const client = createJournalChannel(pair.port1, {
 		signal: controller.signal,
 		timeoutMs: 100,
@@ -301,6 +309,7 @@ test('replayed request sequence closes the host instead of dispatching a duplica
 	);
 	const frame = {
 		protocol: JOURNAL_CHANNEL_PROTOCOL,
+		contractHash: CORE_CONTRACT_HASH,
 		id: 1,
 		type: 'request',
 		request: { method: 'load', handle: 'opaque-handle' }
@@ -323,7 +332,9 @@ test('replayed request sequence closes the host instead of dispatching a duplica
 		expect(calls).toBe(1);
 		expect(closed).toBe(1);
 		expect(disposed).toBe(1);
-		expect(frames).toEqual([{ protocol: JOURNAL_CHANNEL_PROTOCOL, type: 'closed' }]);
+		expect(frames).toEqual([
+			{ protocol: JOURNAL_CHANNEL_PROTOCOL, contractHash: CORE_CONTRACT_HASH, type: 'closed' }
+		]);
 	} finally {
 		release?.();
 		await server.close();
@@ -583,6 +594,102 @@ test('failed asynchronous owner disposal is never acknowledged as successful shu
 		try {
 			await server.close();
 		} catch {}
+		pair.port1.close();
+		pair.port2.close();
+	}
+});
+
+test('channel compatibility frames bind the existing canonical core contract hash', async () => {
+	const f = fixture();
+	const hashes: unknown[] = [];
+	f.pair.port2.addEventListener('message', (event) => hashes.push(event.data.contractHash));
+	try {
+		await f.client.request({ method: 'open', kind: 'governance' });
+		expect(hashes).toEqual([CORE_CONTRACT_HASH]);
+		await f.client.close();
+		expect(hashes[1]).toBe(CORE_CONTRACT_HASH);
+	} finally {
+		await f.cleanup();
+	}
+});
+
+test('mismatched worker core contract cannot acknowledge a correctly shaped reply', async () => {
+	const { JOURNAL_CHANNEL_PROTOCOL } =
+		await import('../apps/web/src/lib/governance/journal-channel');
+	const pair = new MessageChannel(),
+		controller = new AbortController();
+	let terminated = 0;
+	pair.port2.onmessage = (event) =>
+		pair.port2.postMessage({
+			protocol: JOURNAL_CHANNEL_PROTOCOL,
+			contractHash: 'different-core',
+			id: event.data.id,
+			ok: true,
+			result: 'forged-handle'
+		});
+	const client = createJournalChannel(pair.port1, {
+		signal: controller.signal,
+		timeoutMs: 100,
+		terminate: () => {
+			terminated++;
+		}
+	});
+	try {
+		let error: unknown;
+		try {
+			await client.request({ method: 'open', kind: 'governance' });
+		} catch (value) {
+			error = value;
+		}
+		expect(error).toBeInstanceOf(Error);
+		expect(terminated).toBe(1);
+	} finally {
+		try {
+			await client.close();
+		} catch {}
+		pair.port1.close();
+		pair.port2.close();
+	}
+});
+test('mismatched page core contract never dispatches into the worker host', async () => {
+	const { JOURNAL_CHANNEL_PROTOCOL } =
+		await import('../apps/web/src/lib/governance/journal-channel');
+	const pair = new MessageChannel(),
+		controller = new AbortController();
+	let calls = 0,
+		disposed = 0,
+		received!: () => void;
+	const closed = new Promise<void>((res) => (received = res));
+	pair.port1.onmessage = () => received();
+	const server = serveJournalChannel(
+		pair.port2,
+		{
+			request: async () => {
+				calls++;
+				return null;
+			},
+			close: () => {}
+		},
+		{
+			signal: controller.signal,
+			dispose: () => {
+				disposed++;
+			}
+		}
+	);
+	try {
+		pair.port1.postMessage({
+			protocol: JOURNAL_CHANNEL_PROTOCOL,
+			contractHash: 'different-core',
+			id: 1,
+			type: 'request',
+			request: { method: 'open', kind: 'governance' }
+		});
+		await closed;
+		expect(calls).toBe(0);
+		expect(disposed).toBe(1);
+	} finally {
+		await server.close();
 		pair.port1.close();
 		pair.port2.close();
 	}

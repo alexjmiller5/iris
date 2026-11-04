@@ -1,3 +1,4 @@
+import { CORE_CONTRACT_HASH } from 'iris-core/contract';
 import type { JournalRequest, JournalReply, JournalTransport } from './journal-protocol';
 export const JOURNAL_CHANNEL_PROTOCOL = 'iris-journal-channel-v1';
 const unavailable = () =>
@@ -60,11 +61,15 @@ export function createJournalChannel(
 	}
 	function message(event: MessageEvent) {
 		const frame: unknown = event.data;
-		if (!object(frame) || frame.protocol !== JOURNAL_CHANNEL_PROTOCOL) {
+		if (
+			!object(frame) ||
+			frame.protocol !== JOURNAL_CHANNEL_PROTOCOL ||
+			frame.contractHash !== CORE_CONTRACT_HASH
+		) {
 			lost();
 			return;
 		}
-		if (frame.type === 'closed' && keys(frame, ['protocol', 'type'])) {
+		if (frame.type === 'closed' && keys(frame, ['protocol', 'contractHash', 'type'])) {
 			lost();
 			return;
 		}
@@ -73,7 +78,9 @@ export function createJournalChannel(
 			typeof frame.ok !== 'boolean' ||
 			!keys(
 				frame,
-				frame.ok ? ['protocol', 'id', 'ok', 'result'] : ['protocol', 'id', 'ok', 'error']
+				frame.ok
+					? ['protocol', 'contractHash', 'id', 'ok', 'result']
+					: ['protocol', 'contractHash', 'id', 'ok', 'error']
 			) ||
 			(!frame.ok && frame.error !== 'request-failed')
 		) {
@@ -128,8 +135,19 @@ export function createJournalChannel(
 			try {
 				port.postMessage(
 					request === undefined
-						? { protocol: JOURNAL_CHANNEL_PROTOCOL, id, type: 'shutdown' }
-						: { protocol: JOURNAL_CHANNEL_PROTOCOL, id, type: 'request', request }
+						? {
+								protocol: JOURNAL_CHANNEL_PROTOCOL,
+								contractHash: CORE_CONTRACT_HASH,
+								id,
+								type: 'shutdown'
+							}
+						: {
+								protocol: JOURNAL_CHANNEL_PROTOCOL,
+								contractHash: CORE_CONTRACT_HASH,
+								id,
+								type: 'request',
+								request
+							}
 				);
 			} catch {
 				lost();
@@ -191,7 +209,12 @@ export function serveJournalChannel(
 			}
 			try {
 				if (reply) reply(failures.length > 0);
-				else port.postMessage({ protocol: JOURNAL_CHANNEL_PROTOCOL, type: 'closed' });
+				else
+					port.postMessage({
+						protocol: JOURNAL_CHANNEL_PROTOCOL,
+						contractHash: CORE_CONTRACT_HASH,
+						type: 'closed'
+					});
 			} catch (error) {
 				failures.push(error);
 			} finally {
@@ -213,14 +236,15 @@ export function serveJournalChannel(
 		if (
 			!object(frame) ||
 			frame.protocol !== JOURNAL_CHANNEL_PROTOCOL ||
+			frame.contractHash !== CORE_CONTRACT_HASH ||
 			!identifier(frame.id) ||
 			frame.id <= lastId ||
 			(frame.type !== 'request' && frame.type !== 'shutdown') ||
 			!keys(
 				frame,
 				frame.type === 'request'
-					? ['protocol', 'id', 'type', 'request']
-					: ['protocol', 'id', 'type']
+					? ['protocol', 'contractHash', 'id', 'type', 'request']
+					: ['protocol', 'contractHash', 'id', 'type']
 			)
 		) {
 			lost();
@@ -235,8 +259,20 @@ export function serveJournalChannel(
 					await finish((failed) =>
 						port.postMessage(
 							failed
-								? { protocol: JOURNAL_CHANNEL_PROTOCOL, id, ok: false, error: 'request-failed' }
-								: { protocol: JOURNAL_CHANNEL_PROTOCOL, id, ok: true, result: null }
+								? {
+										protocol: JOURNAL_CHANNEL_PROTOCOL,
+										contractHash: CORE_CONTRACT_HASH,
+										id,
+										ok: false,
+										error: 'request-failed'
+									}
+								: {
+										protocol: JOURNAL_CHANNEL_PROTOCOL,
+										contractHash: CORE_CONTRACT_HASH,
+										id,
+										ok: true,
+										result: null
+									}
 						)
 					);
 					return;
@@ -248,6 +284,7 @@ export function serveJournalChannel(
 					if (!stopped)
 						port.postMessage({
 							protocol: JOURNAL_CHANNEL_PROTOCOL,
+							contractHash: CORE_CONTRACT_HASH,
 							id,
 							ok: false,
 							error: 'request-failed'
@@ -255,7 +292,13 @@ export function serveJournalChannel(
 					return;
 				}
 				if (!stopped)
-					port.postMessage({ protocol: JOURNAL_CHANNEL_PROTOCOL, id, ok: true, result });
+					port.postMessage({
+						protocol: JOURNAL_CHANNEL_PROTOCOL,
+						contractHash: CORE_CONTRACT_HASH,
+						id,
+						ok: true,
+						result
+					});
 			})
 			.catch(lost);
 	}
