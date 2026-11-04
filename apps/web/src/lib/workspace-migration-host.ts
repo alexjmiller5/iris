@@ -43,6 +43,9 @@ type Options = {
 		 * runtime acceptance separately; the production vendor is not promoted here. */
 		copyIntoTarget(): Promise<void>;
 		assertTargetEncrypted(): Promise<void>;
+		/** Open existing source read-only for cleanup revalidation, including after an
+		 * earlier close. Never create a missing source or initialize/rewrite core. */
+		inspectSourceForCleanup(): Promise<SQLiteInventoryDriver>;
 		closeSource(): Promise<void>;
 		/** First entry is the engine main filename, followed by its known sidecars. */
 		sourceFiles: readonly string[];
@@ -194,6 +197,7 @@ export async function createWorkerMigrationHost(
 			copyIntoTarget: options.database.copyIntoTarget.bind(options.database),
 			assertTargetEncrypted: options.database.assertTargetEncrypted.bind(options.database),
 			closeSource: options.database.closeSource.bind(options.database),
+			inspectSourceForCleanup: options.database.inspectSourceForCleanup.bind(options.database),
 			sourceFiles: [...options.database.sourceFiles],
 			targetFiles: [...options.database.targetFiles]
 		};
@@ -242,6 +246,13 @@ export async function createWorkerMigrationHost(
 			context: { store: 'migration-source-proof', id: sourceId }
 		});
 		disposers.push(() => proofCell.close());
+		const progressCell = await createWorkerEncryptedCell({
+			admission,
+			openStore,
+			purpose: 'metadata',
+			context: { store: 'migration-cleanup-progress', id: sourceId }
+		});
+		disposers.push(() => progressCell.close());
 		const credentials = await createWorkerCredentialStore({ admission, openStore });
 		disposers.push(() => credentials.close());
 		const preferences = await createWorkerWebStorageStore({ admission, openStore });
@@ -258,8 +269,8 @@ export async function createWorkerMigrationHost(
 		disposers.push(() => journal.close());
 		let closed = false,
 			leased = false;
-		async function guard() {
-			if (closed || !leased) throw unavailable();
+		async function epoch() {
+			if (closed) throw unavailable();
 			source.signal?.throwIfAborted();
 			await admission.run(async (resource, signal) => {
 				if (
@@ -270,6 +281,10 @@ export async function createWorkerMigrationHost(
 					throw unavailable();
 				signal.throwIfAborted();
 			});
+		}
+		async function guard() {
+			if (!leased) throw unavailable();
+			await epoch();
 		}
 		function bound(manifest: WorkspaceMigrationManifest) {
 			if (
@@ -287,6 +302,53 @@ export async function createWorkerMigrationHost(
 				return decode(raw);
 			} finally {
 				raw.fill(0);
+			}
+		}
+		async function proofHash(value: WorkspaceMigrationSnapshot) {
+			const bytes = encode(value);
+			try {
+				return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (byte) =>
+					byte.toString(16).padStart(2, '0')
+				).join('');
+			} finally {
+				bytes.fill(0);
+			}
+		}
+		function progressValue(raw: Uint8Array, hash: string) {
+			if (raw.length > 1024) throw unavailable();
+			const value = JSON.parse(decoder.decode(raw));
+			if (
+				!value ||
+				typeof value !== 'object' ||
+				Array.isArray(value) ||
+				Object.keys(value).sort().join(',') !== 'mainRemoval,proofHash,version' ||
+				value.version !== 1 ||
+				value.proofHash !== hash ||
+				!['authorized', 'absent'].includes(value.mainRemoval)
+			)
+				throw unavailable();
+			return value as { version: 1; proofHash: string; mainRemoval: 'authorized' | 'absent' };
+		}
+		async function readProgress(hash: string) {
+			await guard();
+			const raw = await progressCell.read();
+			if (!raw) return null;
+			try {
+				return progressValue(raw, hash);
+			} finally {
+				raw.fill(0);
+			}
+		}
+		async function writeProgress(hash: string, mainRemoval: 'authorized' | 'absent') {
+			await guard();
+			const raw = await progressCell.read();
+			const next = encoder.encode(JSON.stringify({ version: 1, proofHash: hash, mainRemoval }));
+			try {
+				if (raw) progressValue(raw, hash);
+				await progressCell.replace(raw, next);
+			} finally {
+				raw?.fill(0);
+				next.fill(0);
 			}
 		}
 		async function directory(domain: keyof typeof trees) {
@@ -443,29 +505,28 @@ export async function createWorkerMigrationHost(
 					`iris:migration:${owner.workspace}`,
 					{ mode: 'exclusive', signal: source.signal },
 					async () => {
-						if (closed || leased) throw unavailable();
-						leased = true;
-						try {
-							await guard();
-							// Match the existing worker dispatch ABI while old handles retire.
-							return await locks.request(
-								`iris:dispatch:${database.sourceFiles[0]}`,
-								{ mode: 'exclusive', signal: source.signal },
-								() =>
-									locks.request(
-										`iris:dispatch:${database.targetFiles[0]}`,
-										{ mode: 'exclusive', signal: source.signal },
-										async () => {
-											await guard();
+						await epoch();
+						return locks.request(
+							`iris:dispatch:${database.sourceFiles[0]}`,
+							{ mode: 'exclusive', signal: source.signal },
+							() =>
+								locks.request(
+									`iris:dispatch:${database.targetFiles[0]}`,
+									{ mode: 'exclusive', signal: source.signal },
+									async () => {
+										await epoch();
+										if (leased) throw unavailable();
+										leased = true;
+										try {
 											const result = await work();
 											await guard();
 											return result;
+										} finally {
+											leased = false;
 										}
-									)
-							);
-						} finally {
-							leased = false;
-						}
+									}
+								)
+						);
 					}
 				);
 			},
@@ -506,6 +567,22 @@ export async function createWorkerMigrationHost(
 			async copyToEncryptedTarget(manifest) {
 				await guard();
 				bound(manifest);
+				const current = await host.readManifest();
+				if (
+					!current ||
+					current.phase !== 'copying' ||
+					manifest.phase !== 'copying' ||
+					!(['version', 'workspace', 'source', 'target', 'phase'] as const).every(
+						(key) => current[key] === manifest[key]
+					)
+				)
+					throw unavailable();
+				const cleanup = await progressCell.read();
+				try {
+					if (cleanup !== null) throw new Error('Cleanup progress forbids recopying source.');
+				} finally {
+					cleanup?.fill(0);
+				}
 				await database.assertTargetEncrypted();
 				const captured = await host.captureLegacy(manifest);
 				try {
@@ -605,6 +682,46 @@ export async function createWorkerMigrationHost(
 					}
 					// Check remaining source metadata before any irreversible store removal.
 					const expectedStorage = storageMap(expected);
+					const remainingStorage = collectWebStorageInventory(source.storage);
+					try {
+						for (const [key, value] of storageMap(remainingStorage)) {
+							if (!expectedStorage.has(key) || expectedStorage.get(key) !== value)
+								throw new Error('Legacy storage contains unpreserved values.');
+						}
+					} finally {
+						for (const rows of Object.values(remainingStorage))
+							for (const row of rows) row.value.fill(0);
+					}
+					let mainPresent = false;
+					for await (const [name] of source.root as unknown as AsyncIterable<
+						[string, FileSystemHandle]
+					>)
+						if (name === database.sourceFiles[0]) mainPresent = true;
+					const hash = await proofHash(expected),
+						progress = await readProgress(hash);
+					if (!mainPresent && !progress)
+						throw new Error('Legacy SQLite removal is not established.');
+					if (mainPresent) {
+						const inspected = await collectSQLiteInventory(
+							await database.inspectSourceForCleanup()
+						);
+						try {
+							const before = empty(),
+								after = empty();
+							for (const domain of [
+								'database-schema',
+								'database-values',
+								'pending-intents'
+							] as const) {
+								before[domain] = expected[domain];
+								after[domain] = inspected[domain];
+							}
+							assertMigrationPreserved(before, after);
+						} finally {
+							for (const rows of Object.values(inspected))
+								for (const row of rows) row.value.fill(0);
+						}
+					}
 					for (const [key, value] of expectedStorage) {
 						const current = source.storage.getItem(key);
 						if (current !== null && current !== value)
@@ -618,6 +735,9 @@ export async function createWorkerMigrationHost(
 					} finally {
 						credentialCheck.fill(0);
 					}
+					// Durable intent before unlink; on resume an existing main is always
+					// reopened read-only and revalidated, never trusted from this receipt alone.
+					await writeProgress(hash, 'authorized');
 					await database.closeSource();
 					await guard();
 					for (const name of legacyNames) {
@@ -630,6 +750,13 @@ export async function createWorkerMigrationHost(
 						}
 						await guard();
 					}
+					let mainRemains = false;
+					for await (const [name] of source.root as unknown as AsyncIterable<
+						[string, FileSystemHandle]
+					>)
+						if (name === database.sourceFiles[0]) mainRemains = true;
+					if (mainRemains) throw new Error('Legacy SQLite removal was not observed.');
+					await writeProgress(hash, 'absent');
 					for (const name of ['iris-governance', 'iris-changesets'])
 						await new Promise<void>((resolve, reject) => {
 							const request = source.journals.deleteDatabase(name);
@@ -666,8 +793,16 @@ export async function createWorkerMigrationHost(
 					return false;
 				const expected = await proof();
 				try {
-					for (const key of storageMap(expected).keys())
-						if (source.storage.getItem(key) !== null) return false;
+					if ((await readProgress(await proofHash(expected)))?.mainRemoval !== 'absent')
+						return false;
+					const remainingStorage = collectWebStorageInventory(source.storage);
+					try {
+						if (storageMap(remainingStorage).size !== 0) return false;
+					} finally {
+						for (const rows of Object.values(remainingStorage))
+							for (const row of rows) row.value.fill(0);
+					}
+
 					if (source.readConnection() !== null) return false;
 					await guard();
 					return true;

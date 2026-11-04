@@ -214,6 +214,9 @@ test('real engine-owner prototype methods retain their receiver when installed i
 				if (this.copies < 0) throw Error('receiver lost');
 				return original.assertTargetEncrypted();
 			}
+			inspectSourceForCleanup() {
+				return original.inspectSourceForCleanup();
+			}
 			closeSource() {
 				return original.closeSource();
 			}
@@ -238,6 +241,268 @@ test('even a fully copied target cannot authorize cleanup while the authenticate
 			expect(f.root.entries.has('iris')).toBe(true);
 			expect(f.journalData.size).toBe(2);
 		});
+	} finally {
+		await f.close();
+	}
+});
+test('new unknown plaintext preference blocks resumed cleanup before any source deletion', async () => {
+	const f = await migrationHostFixture(createWorkerMigrationHost);
+	try {
+		f.flags.lostAck = true;
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		f.flags.lostAck = false;
+		f.storage.set('new-unknown-private-key', 'new-unpreserved-value');
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		expect(f.root.entries.has('iris')).toBe(true);
+		expect(f.journalData.size).toBe(2);
+		expect(f.storage.get('new-unknown-private-key')).toBe('new-unpreserved-value');
+	} finally {
+		await f.close();
+	}
+});
+test('changed durable SQL pending row blocks resumed cleanup without erasing newer delta', async () => {
+	let source: Parameters<typeof createWorkerMigrationHost>[0]['database']['source'] | undefined;
+	const f = await migrationHostFixture(async (options) => {
+		source = options.database.source;
+		return createWorkerMigrationHost(options);
+	});
+	try {
+		f.flags.lostAck = true;
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		f.flags.lostAck = false;
+		await source!.all("UPDATE _core_pending SET updated_at='changed-after-publish'");
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		expect(f.root.entries.has('iris')).toBe(true);
+		expect(f.journalData.size).toBe(2);
+		expect((await source!.all('SELECT updated_at FROM _core_pending'))[0].updated_at).toBe(
+			'changed-after-publish'
+		);
+	} finally {
+		await f.close();
+	}
+});
+for (const pendingLock of ['iris:dispatch:iris', 'iris:dispatch:encrypted-1'])
+	test(`guarded host methods deny access while ${pendingLock} acquisition is pending`, async () => {
+		let release!: () => void, started!: () => void;
+		const gate = new Promise<void>((resolve) => (release = resolve)),
+			ready = new Promise<void>((resolve) => (started = resolve));
+		const f = await migrationHostFixture(async (options) =>
+			createWorkerMigrationHost({
+				...options,
+				locks: {
+					request: async (name: string, _options: unknown, work: () => Promise<unknown>) => {
+						if (name === pendingLock) {
+							started();
+							await gate;
+						}
+						return work();
+					}
+				} as unknown as LockManager
+			})
+		);
+		let running: Promise<unknown> | undefined;
+		try {
+			running = f.host.exclusive(async () => true);
+			await ready;
+			await expect(f.host.prepare()).rejects.toThrow();
+			await expect(f.host.readManifest()).rejects.toThrow();
+		} finally {
+			release();
+			await running;
+			await f.close();
+		}
+	});
+test('authenticated cleanup progress resumes after own main removal without recreating or recopying source', async () => {
+	const f = await migrationHostFixture(createWorkerMigrationHost);
+	try {
+		f.flags.failRemoveName = 'iris-attachments';
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		expect(f.root.entries.has('iris')).toBe(false);
+		expect((await f.control.readManifest())?.phase).toBe('cleanup');
+		const count = f.backups();
+		f.flags.failRemoveName = null;
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).resolves.toMatchObject({
+			phase: 'complete'
+		});
+		expect(f.backups()).toBe(count);
+	} finally {
+		await f.close();
+	}
+});
+test('missing source main without an authenticated removal receipt remains uncertain', async () => {
+	const f = await migrationHostFixture(createWorkerMigrationHost);
+	try {
+		f.flags.lostAck = true;
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		f.flags.lostAck = false;
+		f.root.entries.delete('iris');
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		expect(f.journalData.size).toBe(2);
+		expect(f.storage.size).toBe(2);
+	} finally {
+		await f.close();
+	}
+});
+test('unavailable read-only SQL reinspection after close fails closed and can safely retry', async () => {
+	const f = await migrationHostFixture(createWorkerMigrationHost);
+	try {
+		f.flags.failRemove = true;
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		f.flags.failRemove = false;
+		f.flags.failInspect = true;
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		expect(f.root.entries.has('iris')).toBe(true);
+		expect(f.journalData.size).toBe(2);
+		f.flags.failInspect = false;
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).resolves.toMatchObject({
+			phase: 'complete'
+		});
+		expect(f.backups()).toBe(1);
+	} finally {
+		await f.close();
+	}
+});
+test('late plaintext additions during removal prevent completion instead of becoming an exception', async () => {
+	let storage: Map<string, string>;
+	let inserted = false;
+	const f = await migrationHostFixture(async (options) => {
+		const original = options.source.storage;
+		return createWorkerMigrationHost({
+			...options,
+			source: {
+				...options.source,
+				storage: {
+					get length() {
+						return original.length;
+					},
+					key: (index) => original.key(index),
+					getItem: (key) => original.getItem(key),
+					removeItem: (key) => {
+						original.removeItem(key);
+						if (!inserted) {
+							inserted = true;
+							storage.set('late-unknown', 'preserved plaintext delta');
+						}
+					}
+				}
+			}
+		});
+	});
+	storage = f.storage;
+	try {
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		expect((await f.control.readManifest())?.phase).toBe('cleanup');
+		expect(f.storage.get('late-unknown')).toBe('preserved plaintext delta');
+	} finally {
+		await f.close();
+	}
+});
+test('lease admission is cleared before dispatch-lock unwind finishes', async () => {
+	let release!: () => void, started!: () => void;
+	const gate = new Promise<void>((resolve) => (release = resolve)),
+		ready = new Promise<void>((resolve) => (started = resolve));
+	const f = await migrationHostFixture(async (options) =>
+		createWorkerMigrationHost({
+			...options,
+			locks: {
+				request: async (name: string, _options: unknown, work: () => Promise<unknown>) => {
+					const value = await work();
+					if (name === 'iris:dispatch:encrypted-1') {
+						started();
+						await gate;
+					}
+					return value;
+				}
+			} as unknown as LockManager
+		})
+	);
+	let running: Promise<unknown> | undefined;
+	try {
+		running = f.host.exclusive(async () => true);
+		await ready;
+		await expect(f.host.prepare()).rejects.toThrow();
+		await expect(f.host.readManifest()).rejects.toThrow();
+	} finally {
+		release();
+		await running;
+		await f.close();
+	}
+});
+test('a removal intent never skips fresh SQL revalidation when the legacy main still exists', async () => {
+	const f = await migrationHostFixture(createWorkerMigrationHost);
+	try {
+		f.flags.failRemove = true;
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		f.flags.failRemove = false;
+		f.mutateSource("UPDATE _core_pending SET updated_at='newer-after-close'");
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		expect(f.root.entries.has('iris')).toBe(true);
+		expect(f.journalData.size).toBe(2);
+		expect(f.backups()).toBe(1);
+	} finally {
+		await f.close();
+	}
+});
+for (const sql of [
+	'UPDATE records SET amount=17',
+	"INSERT INTO records VALUES('new-row',42,x'80FF')",
+	'ALTER TABLE records ADD COLUMN retained TEXT'
+]) {
+	test(`cleanup compares full SQLite logical state: ${sql}`, async () => {
+		const f = await migrationHostFixture(createWorkerMigrationHost);
+		try {
+			f.flags.lostAck = true;
+			await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+			f.flags.lostAck = false;
+			f.mutateSource(sql);
+			await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+			expect(f.root.entries.has('iris')).toBe(true);
+			expect(f.journalData.size).toBe(2);
+		} finally {
+			await f.close();
+		}
+	});
+}
+test('owning engine cleanup inspection is actually read-only and never initializes source', async () => {
+	let inspected = false;
+	const f = await migrationHostFixture(async (options) =>
+		createWorkerMigrationHost({
+			...options,
+			database: {
+				...options.database,
+				inspectSourceForCleanup: async () => {
+					const driver = await options.database.inspectSourceForCleanup();
+					await expect(
+						driver.all('UPDATE _core_pending SET updated_at=updated_at')
+					).rejects.toThrow();
+					inspected = true;
+					return driver;
+				}
+			}
+		})
+	);
+	try {
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).resolves.toMatchObject({
+			phase: 'complete'
+		});
+		expect(inspected).toBe(true);
+	} finally {
+		await f.close();
+	}
+});
+test('copy API refuses cleanup generation even while its source remains available', async () => {
+	const f = await migrationHostFixture(createWorkerMigrationHost);
+	try {
+		f.flags.lostAck = true;
+		await expect(runWorkspaceMigration('synthetic-host', f.host)).rejects.toThrow();
+		f.flags.lostAck = false;
+		const copied = f.backups();
+		await f.host.exclusive(async () => {
+			const manifest = await f.host.readManifest();
+			await expect(f.host.copyToEncryptedTarget(manifest!)).rejects.toThrow();
+		});
+		expect(f.backups()).toBe(copied);
+		expect(f.root.entries.has('iris')).toBe(true);
 	} finally {
 		await f.close();
 	}

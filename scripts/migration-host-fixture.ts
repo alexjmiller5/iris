@@ -246,11 +246,14 @@ export async function migrationHostFixture(
 		lostAck: false,
 		encrypted: true,
 		corruptPending: false,
-		retired: true
+		retired: true,
+		failRemoveName: null as string | null,
+		failInspect: false
 	};
 	const scratch = mkdtempSync(join(tmpdir(), 'iris-migration-host-'));
 	const sourcePath = join(scratch, 'source.sqlite'),
 		targetPath = join(scratch, 'target.sqlite');
+	let cleanupReader: Database | undefined;
 	let source: Database | undefined = new Database(sourcePath),
 		target: Database | undefined;
 	const getTarget = () => (target ??= new Database(targetPath));
@@ -351,7 +354,7 @@ export async function migrationHostFixture(
 			return value;
 		},
 		removeEntry: async (name: string) => {
-			if (flags.failRemove) throw Error('Cleanup interrupted');
+			if (flags.failRemove || flags.failRemoveName === name) throw Error('Cleanup interrupted');
 			if (!root.entries.delete(name)) throw new DOMException('Missing', 'NotFoundError');
 		}
 	});
@@ -474,8 +477,19 @@ export async function migrationHostFixture(
 					);
 					if (flags.corruptPending) getTarget().exec('DELETE FROM _core_pending');
 				},
+				inspectSourceForCleanup: async () => {
+					if (flags.failInspect) throw Error('Read-only source inspection unavailable');
+					cleanupReader?.close();
+					cleanupReader = new Database(sourcePath, { readonly: true, create: false });
+					return driver(() => {
+						if (!cleanupReader) throw Error('Cleanup source reader unavailable');
+						return cleanupReader;
+					});
+				},
 				closeSource: async () => {
 					source?.close();
+					cleanupReader?.close();
+					cleanupReader = undefined;
 					source = undefined;
 				}
 			},
@@ -497,6 +511,8 @@ export async function migrationHostFixture(
 		control.close();
 		resource.root.fill(0);
 		source?.close();
+		cleanupReader?.close();
+		cleanupReader = undefined;
 		target?.close();
 		rmSync(scratch, { recursive: true, force: true });
 		throw error;
@@ -509,6 +525,14 @@ export async function migrationHostFixture(
 		journalData: journals.data,
 		storage,
 		backups: () => copies,
+		mutateSource: (sql: string) => {
+			const db = new Database(sourcePath);
+			try {
+				db.exec(sql);
+			} finally {
+				db.close();
+			}
+		},
 		target: getTarget,
 		close: async () => {
 			host.close();
@@ -516,6 +540,8 @@ export async function migrationHostFixture(
 			control.close();
 			resource.root.fill(0);
 			source?.close();
+			cleanupReader?.close();
+			cleanupReader = undefined;
 			target?.close();
 			rmSync(scratch, { recursive: true, force: true });
 		}
