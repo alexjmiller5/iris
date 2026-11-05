@@ -28,6 +28,12 @@ import Observation
   init(
     alerts: NotificationAlerts? = nil,
     pushDevice: any PushNotificationDevice = NativePushNotifications.shared,
+    defaultAlertsDirectory: () -> URL = {
+      ((try? ApplicationSupport.root())
+        ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("iris", isDirectory: true))
+        .appendingPathComponent("alerts", isDirectory: true)
+    },
     pushSession: @escaping (HubTransport) async throws -> CoreSessionInfo? = {
       hub in
       let reply = try await hub.sessionReply(maxResponseBytes: 65536)
@@ -41,13 +47,10 @@ import Observation
   ) {
     self.pushDevice = pushDevice
     self.pushSession = pushSession
-    let directory =
-      ((try? ApplicationSupport.root())
-      ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-      .appendingPathComponent("iris", isDirectory: true))
-      .appendingPathComponent("alerts", isDirectory: true)
     self.alerts =
-      alerts ?? NotificationAlerts(directory: directory, delivery: SystemNotificationDelivery())
+      alerts
+      ?? NotificationAlerts(
+        directory: defaultAlertsDirectory(), delivery: SystemNotificationDelivery())
   }
   var connected: Bool { transport != nil }
   var unreadCount: Int? { feed?.unreadCount }

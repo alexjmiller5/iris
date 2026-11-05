@@ -668,7 +668,7 @@ final class WorkspaceModel {
   private(set) var recents: NativeRecentsModel?
   private(set) var pins: NativePinsModel?
   private var draftStore: EditorDraftStore?
-  let services = HubServicesModel()
+  let services: HubServicesModel
   private var groupsURL: URL?
   var imageTransport: HubTransport? { transport }
   private(set) var attachments: AttachmentController?
@@ -829,6 +829,7 @@ final class WorkspaceModel {
     },
     credentialStore: any HubCredentialStorage = HubCredentialStore(),
     widgetLibrary: WidgetLibrary? = WidgetLibrary.installed(),
+    services: HubServicesModel? = nil,
     changeSignal: @escaping @MainActor (HubTransport) -> HubChangeSignal? = {
       HubChangeSignal(transport: $0)
     }
@@ -838,6 +839,7 @@ final class WorkspaceModel {
     makeChangeSignal = changeSignal
     self.credentialStore = credentialStore
     self.widgetLibrary = widgetLibrary
+    self.services = services ?? HubServicesModel()
   }
 
   var queryKey: [String] {

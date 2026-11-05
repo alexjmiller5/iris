@@ -1067,6 +1067,10 @@ establish UI parity.
 Test behavior before implementation, then verify real SQLite, JSC and browser
 flows. Run the full applicable suites after the final source change. Use an
 isolated simulator if another project is driving the shared default device.
+Native synthetic hosts inject the workspace URL, credential store and services;
+injected alert stores bypass installed-directory resolution. Use a fresh named
+UserDefaults suite for both workspace and menu-bar scenes. Require its read guard
+before test gestures; demo mode alone does not isolate device preferences or stores.
 iOS record screens use inline navigation titles and no extra top list content
 margin; keep title, controls and first list row separate and compact.
 iOS uses native bottom toolbar actions for Views, Find and Schema graph (Filter and
