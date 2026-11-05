@@ -24,6 +24,7 @@
       let owner = id.uuidString.lowercased()
       let marker = canonical.appendingPathComponent(".native-ui-profile")
       if FileManager.default.fileExists(atPath: marker.path) {
+        try Self.validateContents(canonical)
         guard !(try marker.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink ?? false),
           try Data(contentsOf: marker) == Data(owner.utf8)
         else { throw CocoaError(.fileReadNoPermission) }
@@ -49,10 +50,35 @@
           preconditionFailure("Synthetic profile reached installed alert storage")
         })
       model = WorkspaceModel(
-        localURL: { canonical.appendingPathComponent("local.sqlite") },
+        localURL: {
+          try Self.validateContents(canonical)
+          return canonical.appendingPathComponent("local.sqlite")
+        },
         makeTransport: { _ in throw CocoaError(.featureUnsupported) },
         credentialStore: SyntheticCredentials(), widgetLibrary: nil, services: services,
         changeSignal: { _ in nil })
+    }
+
+    private static func validateContents(_ root: URL) throws {
+      var traversalError: Error?
+      guard
+        let entries = FileManager.default.enumerator(
+          at: root, includingPropertiesForKeys: [], options: [],
+          errorHandler: { _, error in
+            traversalError = error
+            return false
+          })
+      else { throw CocoaError(.fileReadNoPermission) }
+      for case let entry as URL in entries {
+        let attributes = try FileManager.default.attributesOfItem(atPath: entry.path)
+        let type = attributes[.type] as? FileAttributeType
+        guard
+          type == .typeDirectory
+            || (type == .typeRegular && (attributes[.referenceCount] as? NSNumber)?.intValue == 1),
+          entry.resolvingSymlinksInPath().path.hasPrefix(root.path + "/")
+        else { throw CocoaError(.fileReadNoPermission) }
+      }
+      if let traversalError { throw traversalError }
     }
 
     public static func configured(environment: [String: String]) throws -> NativeUITestProfile? {

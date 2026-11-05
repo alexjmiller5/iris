@@ -1074,7 +1074,9 @@ before test gestures; demo mode alone does not isolate device preferences or sto
 Debug Mac builds accept `IRIS_UI_TEST_PROFILE_ROOT` only for a direct temporary
 directory named `iris-ui-<UUID>`. The profile validates ownership before resolving
 its `iris.synthetic.<UUID>` suite, rejects unowned data, and injects local-only
-workspace/device stores. Both scenes share that suite. Supply the environment
+workspace/device stores. Reopened trees reject symlinks, multiply linked files
+and escaped children before storage resolution; workspace URL resolution checks
+the tree again. Both scenes share that suite. Supply the environment
 through the generated xctestrun's documented `UITargetAppEnvironmentVariables`;
 runtime still requires an explicitly admitted synthetic instance.
 iOS record screens use inline navigation titles and no extra top list content
