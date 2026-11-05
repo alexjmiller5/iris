@@ -164,6 +164,12 @@ test('native SQL oracle materializes the complete canonical plan with exact rows
 			);
 		};
 		target.db.exec('PRAGMA foreign_keys=ON;BEGIN;PRAGMA defer_foreign_keys=ON');
+		if (plan.sequenceBootstrap) {
+			const name = q(plan.sequenceBootstrap);
+			target.db.exec(
+				`CREATE TABLE ${name}(id INTEGER PRIMARY KEY AUTOINCREMENT);DROP TABLE ${name}`
+			);
+		}
 		for (const sql of plan.creates) target.db.exec(sql);
 		for (const entry of plan.copies.filter((entry) => entry.kind !== 'statistics')) copy(entry);
 		for (const sql of plan.deferred) target.db.exec(sql);
@@ -327,6 +333,34 @@ test('quoted FTS identifiers retain exact names instead of confusing punctuation
 			expect(db.serialize()).toEqual(before);
 		} finally {
 			db.close();
+		}
+	}
+});
+
+test('orphan sequence state has an explicit collision-safe native initialization path', async () => {
+	for (const collision of [false, true]) {
+		const source = fixture(),
+			target = fixture();
+		try {
+			source.db.exec('CREATE TABLE gone(id INTEGER PRIMARY KEY AUTOINCREMENT);DROP TABLE gone');
+			if (collision) source.db.exec('CREATE TABLE "__IRIS_COPY_SEQUENCE_SEED"(value TEXT)');
+			const before = source.db.serialize();
+			const plan = await planSQLiteLogicalCopy(source.driver);
+			expect(typeof plan.sequenceBootstrap).toBe('string');
+			expect(plan.sequenceBootstrap?.toLowerCase()).not.toBe(
+				collision ? '__iris_copy_sequence_seed' : ''
+			);
+			const q = (name: string) => '"' + name.replaceAll('"', '""') + '"';
+			target.db.exec(
+				`CREATE TABLE ${q(plan.sequenceBootstrap!)}(id INTEGER PRIMARY KEY AUTOINCREMENT);DROP TABLE ${q(plan.sequenceBootstrap!)}`
+			);
+			for (const sql of plan.creates) target.db.exec(sql);
+			target.db.exec('DELETE FROM sqlite_sequence');
+			expect(await collectSQLiteInventory(target.driver)).toEqual(plan.snapshot);
+			expect(source.db.serialize()).toEqual(before);
+		} finally {
+			source.db.close();
+			target.db.close();
 		}
 	}
 });

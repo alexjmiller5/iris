@@ -14,6 +14,8 @@ export type SQLiteLogicalCopyPlan = {
 	}[];
 	deferred: string[];
 	initializeStatistics: boolean;
+	/** Create/drop this empty AUTOINCREMENT table before source schema creation. */
+	sequenceBootstrap: string | null;
 	/** Target must permit native shadow writes already; never disable defensive mode. */
 	requiresShadowWrites: boolean;
 	snapshot: Awaited<ReturnType<typeof collectSQLiteInventory>>;
@@ -163,6 +165,13 @@ export async function planSQLiteLogicalCopy(
 			if (!['index', 'view', 'trigger'].includes(entry.type)) throw fail();
 			deferred.push(entry.sql);
 		}
+		let sequenceBootstrap: string | null = null;
+		if (tables.has('sqlite_sequence')) {
+			const names = new Set(definitions.map((entry) => fold(entry.name)));
+			sequenceBootstrap = '__iris_copy_sequence_seed';
+			for (let suffix = 1; names.has(fold(sequenceBootstrap)); suffix++)
+				sequenceBootstrap = `__iris_copy_sequence_seed_${suffix}`;
+		}
 		// Inserts update sequence state; restore its exact original values after every table.
 		const rank = { table: 0, shadow: 0, sequence: 1, statistics: 2 };
 		copies.sort((a, b) => rank[a.kind] - rank[b.kind]);
@@ -172,6 +181,7 @@ export async function planSQLiteLogicalCopy(
 			copies,
 			deferred,
 			initializeStatistics,
+			sequenceBootstrap,
 			requiresShadowWrites: shadows.size > 0,
 			snapshot
 		};
