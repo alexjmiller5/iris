@@ -27,7 +27,7 @@ struct PropertyLayoutView: View {
         if let title = model.titleProperty {
           LabeledContent("Title", value: title.label)
         }
-        Button("Show all properties") {
+        Button("Show all columns") {
           fields = model.properties.map(CatalogField.init)
             .filter { $0.id != model.titleProperty?.id }
           selected = Set(fields.map(\.id))
@@ -39,10 +39,10 @@ struct PropertyLayoutView: View {
         }.accessibilityIdentifier("properties-title-only")
       } footer: {
         Text(
-          "The title stays visible. Reorder properties and choose which to show. Hidden values are kept in More properties when you open a record."
+          "The title stays visible. Reorder columns and choose which to show. Hidden values are kept in More columns when you open a row."
         )
       }
-      Section("Properties") {
+      Section("Columns") {
         ForEach(fields) { field in
           Toggle(
             field.label,
@@ -75,7 +75,7 @@ struct PropertyLayoutView: View {
     #if os(iOS)
       .environment(\.editMode, .constant(.active))
     #endif
-    .navigationTitle("Properties")
+    .navigationTitle("Columns")
     .toolbar {
       ToolbarItem(placement: .confirmationAction) {
         Button("Apply") {

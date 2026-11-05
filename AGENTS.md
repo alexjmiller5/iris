@@ -401,7 +401,7 @@ The core bundle source hash includes the manifest. Keep the applied view's
 revision until the user reopens it, even when a refreshed list has a newer one.
 Definitions control layout; edit queries must return full rows, not the
 saved definition's SQL column projection. Preserve imported multi-column sorts.
-Native Properties controls and Mac header menus edit ordered visibility through that same definition.
+Native Columns controls and Mac header menus edit ordered visibility through that same definition.
 Mac headers drag to reorder columns and actions; right-click offers sorting, filtering,
 wrapping, Hide column and Show columns. Divider resizing and double-click fitting autosave
 widths with the applied view. Fitting scans every matching local page, including rows not
@@ -411,7 +411,7 @@ do not trigger header edits; moved columns retain their property/action identity
 Startup reopens the most recently visited table from the workspace's device-local recents,
 falling back to the normal initial table if it no longer exists. Demo launches stay temporary.
 The configured table display column stays prominent, while hidden fields remain
-in the editor draft and are reachable through More properties. New required
+in the editor draft and are reachable through More columns. New required
 fields and validation failures stay visible. A title-only saved view keeps a
 catalog-valid title or ID column because core rejects empty projections. Resetting
 layout removes the projection; it never removes record values or resets widths.

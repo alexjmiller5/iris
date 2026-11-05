@@ -284,8 +284,8 @@ struct PropertyPicker<Footer: View>: View {
     List {
       Section {
         // Wraps instead of clipping at large text sizes.
-        TextField("Search properties", text: $query, axis: .vertical)
-          .accessibilityLabel("Search properties")
+        TextField("Search columns", text: $query, axis: .vertical)
+          .accessibilityLabel("Search columns")
           .accessibilityIdentifier("\(identifier)-search")
           #if os(iOS)
             .textInputAutocapitalization(.never)
@@ -308,11 +308,11 @@ struct PropertyPicker<Footer: View>: View {
           #endif
           .accessibilityIdentifier("\(identifier)-\(field.id)")
         }
-        if matches.isEmpty { Text("No matching properties").foregroundStyle(.secondary) }
+        if matches.isEmpty { Text("No matching columns").foregroundStyle(.secondary) }
       }
       Section { footer() }
     }
-    .accessibilityLabel("Properties")
+    .accessibilityLabel("Columns")
     .navigationTitle(title)
     #if os(iOS)
       .navigationBarTitleDisplayMode(.inline)

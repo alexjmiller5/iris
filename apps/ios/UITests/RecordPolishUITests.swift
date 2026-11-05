@@ -73,7 +73,7 @@ final class RecordPolishUITests: XCTestCase {
     ).firstMatch
     record.tap()
     XCTAssertTrue(app.textFields["field-title"].waitForExistence(timeout: 5))
-    let empty = app.collectionViews["record-form"].staticTexts["Empty properties"]
+    let empty = app.collectionViews["record-form"].staticTexts["Empty columns"]
     XCTAssertTrue(empty.waitForExistence(timeout: 5))
     XCTAssertFalse(app.buttons["field-topic"].exists)
     capture(app, "empty-properties-collapsed")

@@ -63,13 +63,13 @@ struct WorkspaceOptionsView: View {
                   value: Binding(
                     get: { action.values[column] ?? .null }, set: { action.values[column] = $0 }))
               } else {
-                Text("Unavailable property: \(column)").foregroundStyle(.red)
+                Text("Unavailable column: \(column)").foregroundStyle(.red)
               }
               Button("Remove value", role: .destructive) {
                 action.values.removeValue(forKey: column)
               }
             }
-            Menu("Add property value") {
+            Menu("Add column value") {
               ForEach(writable.filter { action.values[$0.id] == nil }) { field in
                 Button(field.label) { action.values[field.id] = .null }
               }

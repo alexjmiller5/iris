@@ -1079,7 +1079,7 @@ public struct WorkspaceView: View {
                 DisclosureGroup {
                   ForEach(emptyFields) { field in propertyButton(field, row: row) }
                 } label: {
-                  Text("Empty properties").frame(minHeight: 44)
+                  Text("Empty columns").frame(minHeight: 44)
                 }.font(.caption).foregroundStyle(.secondary)
               }
             }
@@ -1918,14 +1918,14 @@ private struct RecordEditor: View {
             presentedFieldRow(field)
           }
           if layout.empty.contains(where: { $0.type != "markdown" }) {
-            DisclosureGroup("Empty properties") {
+            DisclosureGroup("Empty columns") {
               ForEach(layout.empty.filter { $0.type != "markdown" }) { field in
                 presentedFieldRow(field)
               }
             }
           }
           if !layout.additional.isEmpty {
-            DisclosureGroup("More properties") {
+            DisclosureGroup("More columns") {
               ForEach(layout.additional) { field in presentedFieldRow(field) }
             }
           }

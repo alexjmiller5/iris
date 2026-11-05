@@ -71,7 +71,7 @@ final class BulkRecordModel {
       !values.isEmpty,
       !values.keys.contains(where: { ["id", "created_at", "updated_at", "hub_at"].contains($0) })
     else {
-      error = "Choose unique records and an editable property."
+      error = "Choose unique rows and an editable column."
       return nil
     }
     results = ids.map { BulkRecordResult(recordID: $0) }

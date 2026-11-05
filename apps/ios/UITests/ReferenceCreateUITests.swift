@@ -88,7 +88,7 @@ final class ReferenceCreateUITests: XCTestCase {
     let form = app.collectionViews["record-form"]
     let field = form.buttons["field-\(column)"]
     // Empty optional properties start collapsed on saved records.
-    let empty = form.buttons["Empty properties"]
+    let empty = form.buttons["Empty columns"]
     if !field.exists && empty.exists {
       for _ in 0..<6 where !empty.isHittable { form.swipeUp() }
       tap(empty)

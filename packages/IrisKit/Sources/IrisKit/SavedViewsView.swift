@@ -45,7 +45,7 @@ struct SavedViewsView: View {
           NavigationLink {
             PropertyLayoutView(model: model)
           } label: {
-            Label("Properties", systemImage: "slider.horizontal.3")
+            Label("Columns", systemImage: "slider.horizontal.3")
           }.accessibilityIdentifier("view-properties")
           NavigationLink {
             WorkspaceOptionsView(model: model)

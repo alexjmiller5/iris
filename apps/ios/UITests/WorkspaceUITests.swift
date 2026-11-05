@@ -335,7 +335,7 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertTrue(done.waitForNonExistence(timeout: 10))
     openRecord(app, title: name)
     // A saved record keeps its empty status under Empty properties.
-    let empty = app.collectionViews["record-form"].buttons["Empty properties"]
+    let empty = app.collectionViews["record-form"].buttons["Empty columns"]
     for _ in 0..<10 where !empty.isHittable { scrollRecordFormUp(app) }
     tapWhenReady(empty)
     let status = app.buttons["field-status"]
@@ -463,7 +463,8 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertFalse(newRecord.exists, "A skipped table is read-only: no New record")
     // Its local records stay readable.
     openRecord(app, title: "Fixture record")
-    XCTAssertFalse(app.textFields["field-title"].exists, "Read-only records show no editable fields")
+    XCTAssertFalse(
+      app.textFields["field-title"].exists, "Read-only records show no editable fields")
     tapWhenReady(app.navigationBars["Record"].buttons["done-record"])
     XCTAssertTrue(app.navigationBars["widgets"].waitForExistence(timeout: 5))
 
@@ -645,7 +646,7 @@ final class WorkspaceUITests: XCTestCase {
     XCTAssertLessThan(zulu.frame.minY, alpha.frame.minY)
     tapWhenReady(zulu)
     XCTAssertEqual(app.textFields["field-title"].value as? String, "Viewfixture Zulu")
-    let more = app.staticTexts["More properties"]
+    let more = app.staticTexts["More columns"]
     revealRecordControl(more, in: app)
     tapWhenReady(more)
     revealMarkdown(app)

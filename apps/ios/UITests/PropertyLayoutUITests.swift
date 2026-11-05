@@ -63,7 +63,7 @@ final class PropertyLayoutUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["notes"].waitForExistence(timeout: 15))
     app.buttons["saved-views"].tap()
     app.buttons["view-properties"].tap()
-    XCTAssertTrue(app.navigationBars["Properties"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.navigationBars["Columns"].waitForExistence(timeout: 5))
     let settings = XCTAttachment(screenshot: app.screenshot())
     settings.name = "record-property-settings"
     settings.lifetime = .keepAlways
@@ -88,7 +88,7 @@ final class PropertyLayoutUITests: XCTestCase {
       .firstMatch.tap()
     XCTAssertTrue(app.textFields["field-title"].waitForExistence(timeout: 5))
     XCTAssertFalse(app.buttons["field-status"].exists)
-    let more = app.staticTexts["More properties"]
+    let more = app.staticTexts["More columns"]
     XCTAssertTrue(more.waitForExistence(timeout: 5))
     more.tap()
     let status = app.buttons["field-status"]
@@ -99,7 +99,7 @@ final class PropertyLayoutUITests: XCTestCase {
     app.buttons["done-record"].tap()
     app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "A place to start"))
       .firstMatch.tap()
-    app.staticTexts["More properties"].tap()
+    app.staticTexts["More columns"].tap()
     XCTAssertTrue(app.buttons["field-status"].label.contains("Ready"))
     let screenshot = XCTAttachment(screenshot: app.screenshot())
     screenshot.name = "title-view-hidden-property-preserved"

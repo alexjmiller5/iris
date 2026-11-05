@@ -1104,7 +1104,7 @@ final class WorkspaceModel {
       let selected = columns.map { Data($0.utf8) }
       guard Set(selected).count == selected.count, selected.allSatisfy(available.contains) else {
         throw WorkspaceError(
-          message: "The properties changed. Reopen Properties and try again.", violations: [])
+          message: "The columns changed. Reopen Columns and try again.", violations: [])
       }
     }
     visibleRecordColumns = columns

@@ -67,7 +67,7 @@ final class NativeControlsUITests: XCTestCase {
     ).firstMatch
     XCTAssertTrue(row.waitForExistence(timeout: 10), app.debugDescription)
     let clipped = row.frame.height
-    app.buttons["Empty properties"].firstMatch.tap()
+    app.buttons["Empty columns"].firstMatch.tap()
     let related = app.buttons["inline-property-related"].firstMatch
     XCTAssertTrue(related.waitForExistence(timeout: 5))
     // Blank on screen; VoiceOver hears the label and "Empty".

@@ -4,7 +4,7 @@ import Observation
 @MainActor @Observable
 final class CatalogEditorModel: Identifiable {
   enum Mode: String, CaseIterable {
-    case property = "Properties"
+    case property = "Columns"
     case rule = "Rules"
   }
   struct Option: Identifiable {

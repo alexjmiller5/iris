@@ -119,7 +119,7 @@ final class TypedFieldsUITests: XCTestCase {
     app.launch()
     tap(app.buttons["open-local"])
     findRecord(app, record: "dates")
-    let empty = app.collectionViews["record-form"].staticTexts["Empty properties"]
+    let empty = app.collectionViews["record-form"].staticTexts["Empty columns"]
     reveal(empty, in: app)
     tap(empty)
     let choose = app.buttons["choose-date-day"]

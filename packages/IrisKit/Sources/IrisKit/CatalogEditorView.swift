@@ -85,7 +85,7 @@ struct CatalogEditorView: View {
 
   private var propertyFields: some View {
     Group {
-      Section("Property") {
+      Section("Column") {
         TextField("Label", text: text("label")).accessibilityIdentifier("catalog-label")
         Picker("Type", selection: text("type")) {
           ForEach(CatalogEditorModel.types, id: \.self) { Text($0).tag($0) }

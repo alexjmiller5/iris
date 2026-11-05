@@ -98,7 +98,7 @@ final class InlineMarkdownUITests: XCTestCase {
     hierarchy.name = "empty-content-row"
     hierarchy.lifetime = .keepAlways
     add(hierarchy)
-    row.staticTexts["Empty properties"].tap()
+    row.staticTexts["Empty columns"].tap()
     let content = row.buttons["inline-property-body"]
     XCTAssertTrue(content.waitForExistence(timeout: 5))
     content.tap()

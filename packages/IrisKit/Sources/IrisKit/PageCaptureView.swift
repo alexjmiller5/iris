@@ -342,7 +342,7 @@ private struct PageCaptureDetails: View {
         LabeledContent("Attempt ID", value: attempt.id).textSelection(.enabled)
         LabeledContent("Source table", value: attempt.sourceTable)
         LabeledContent("Source record", value: attempt.sourceRowID).textSelection(.enabled)
-        LabeledContent("Source property", value: attempt.sourceColumn)
+        LabeledContent("Source column", value: attempt.sourceColumn)
       }
     }
   }
