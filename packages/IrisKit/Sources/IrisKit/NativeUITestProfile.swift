@@ -6,7 +6,7 @@
   @MainActor public final class NativeUITestProfile {
     public let preferences: UserDefaults
     public let suiteName: String
-    let model: WorkspaceModel
+    private let root: URL
 
     public convenience init(root: URL) throws {
       try self.init(root: root, preferencesFactory: { UserDefaults(suiteName: $0) })
@@ -42,6 +42,11 @@
         throw CocoaError(.fileReadUnknown)
       }
       self.preferences = preferences
+      self.root = canonical
+    }
+
+    func makeWorkspaceModel() -> WorkspaceModel {
+      let canonical = root
       let services = HubServicesModel(
         alerts: NotificationAlerts(
           directory: canonical.appendingPathComponent("alerts"), delivery: SyntheticDelivery()),
@@ -49,7 +54,7 @@
         defaultAlertsDirectory: {
           preconditionFailure("Synthetic profile reached installed alert storage")
         })
-      model = WorkspaceModel(
+      return WorkspaceModel(
         localURL: {
           try Self.validateContents(canonical)
           return canonical.appendingPathComponent("local.sqlite")
@@ -88,7 +93,7 @@
     }
 
     public func workspace(demo: Bool) -> some View {
-      WorkspaceView(model: model, demo: demo).defaultAppStorage(preferences)
+      WorkspaceView(model: makeWorkspaceModel(), demo: demo).defaultAppStorage(preferences)
     }
   }
 

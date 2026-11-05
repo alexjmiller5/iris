@@ -1085,7 +1085,9 @@ directory named `iris-ui-<UUID>`. The profile validates ownership before resolvi
 its `iris.synthetic.<UUID>` suite, rejects unowned data, and injects local-only
 workspace/device stores. Reopened trees reject symlinks, multiply linked files
 and escaped children before storage resolution; workspace URL resolution checks
-the tree again. Both scenes share that suite. Supply the environment
+the tree again. Each synthetic workspace window owns a fresh model and services;
+windows share only the profile storage root and named preferences. Both scenes
+share that suite. Supply the environment
 through the generated xctestrun's documented `UITargetAppEnvironmentVariables`;
 runtime still requires an explicitly admitted synthetic instance.
 iOS record screens use inline navigation titles and no extra top list content

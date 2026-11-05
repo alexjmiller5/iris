@@ -86,7 +86,7 @@
         profile.preferences.removePersistentDomain(forName: profile.suiteName)
         try? FileManager.default.removeItem(at: root)
       }
-      let model = profile.model
+      let model = profile.makeWorkspaceModel()
       await model.open()
       do {
         try #require(model.error == nil)

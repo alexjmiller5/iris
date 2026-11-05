@@ -61,16 +61,18 @@
       let reopened = try NativeUITestProfile(root: root)
       #expect(reopened.suiteName == profile.suiteName)
       #expect(reopened.preferences.bool(forKey: "iris.sidebarHidden"))
-      await profile.model.open()
-      #expect(profile.model.error == nil && profile.model.canWrite && !profile.model.isReplica)
+      let model = profile.makeWorkspaceModel()
+      await model.open()
+      #expect(model.error == nil && model.canWrite && !model.isReplica)
       #expect(
         FileManager.default.fileExists(atPath: root.appendingPathComponent("local.sqlite").path))
-      await profile.model.close()
+      await model.close()
       let afterSave = try NativeUITestProfile(root: root)
       #expect(afterSave.preferences.bool(forKey: "iris.sidebarHidden"))
-      await afterSave.model.open()
-      #expect(afterSave.model.error == nil && afterSave.model.canWrite)
-      await afterSave.model.close()
+      let afterSaveModel = afterSave.makeWorkspaceModel()
+      await afterSaveModel.open()
+      #expect(afterSaveModel.error == nil && afterSaveModel.canWrite)
+      await afterSaveModel.close()
     }
 
     @Test func explicitInvalidInputCannotBecomeNormalStartup() throws {
@@ -116,9 +118,10 @@
       }
       try FileManager.default.createSymbolicLink(
         at: root.appendingPathComponent("local.sqlite"), withDestinationURL: externalFile)
-      await profile.model.open()
-      #expect(profile.model.error != nil)
-      await profile.model.close()
+      let model = profile.makeWorkspaceModel()
+      await model.open()
+      #expect(model.error != nil)
+      await model.close()
       #expect(try Data(contentsOf: externalFile) == before)
     }
 
@@ -138,9 +141,10 @@
       }
       try FileManager.default.moveItem(at: root, to: displaced)
       try FileManager.default.createSymbolicLink(at: root, withDestinationURL: outside)
-      await profile.model.open()
-      #expect(profile.model.error != nil)
-      await profile.model.close()
+      let model = profile.makeWorkspaceModel()
+      await model.open()
+      #expect(model.error != nil)
+      await model.close()
       #expect(try FileManager.default.contentsOfDirectory(atPath: outside.path).isEmpty)
     }
 
