@@ -402,7 +402,7 @@ revision until the user reopens it, even when a refreshed list has a newer one.
 Definitions control layout; edit queries must return full rows, not the
 saved definition's SQL column projection. Preserve imported multi-column sorts.
 Native Columns controls and Mac header menus edit ordered visibility through that same definition.
-Mac headers drag to reorder columns and actions; right-click offers sorting, filtering,
+Mac headers drag to reorder columns and actions; primary and right-click share sorting, filtering,
 wrapping, Hide column and Show columns. Divider resizing and double-click fitting autosave
 widths with the applied view. Fitting scans every matching local page, including rows not
 loaded into the grid, and resolves reference labels. Hidden properties retain their layout positions and widths when shown again.
@@ -1084,8 +1084,8 @@ workspace even when the sidebar starts hidden. The scene publishes its stable
 workspace model while navigation is allowed; the sidebar button has no separate
 keyboard shortcut. `SidebarMenuBarUITests` checks hidden-sidebar relaunch, query
 focus and visible-sidebar access.
-Cmd+\ (`WorkspaceCommands`, View > Toggle Sidebar) toggles the sidebar column with
-a 0.2 s ease-out animation (none under Reduce Motion), persisted as
+The sidebar control and Cmd+\ (`WorkspaceCommands`, View > Toggle Sidebar) share
+one visibility binding with a 0.2 s ease-out animation (none under Reduce Motion), persisted as
 `iris.sidebarHidden`; compact iPhone switches sidebar and detail with the system push.
 The Mac status item (`WorkspaceMenuBar`, opt-out in Settings) mirrors the most
 recently active window: Open, Quick Find, five recents (their stored snapshot

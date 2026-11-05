@@ -91,6 +91,11 @@
       header.fitColumn = { [weak coordinator = context.coordinator] index in
         Task { await coordinator?.fitColumn(index) }
       }
+      context.coordinator.presentHeaderMenu = { [weak header] menu, column in
+        guard let header, header.window != nil else { return }
+        let rect = header.headerRect(ofColumn: column)
+        menu.popUp(positioning: nil, at: NSPoint(x: rect.minX, y: rect.maxY), in: header)
+      }
       table.headerView = header
       let menu = NSMenu()
       menu.autoenablesItems = false
@@ -254,6 +259,7 @@
         }
       }
       weak var table: NSTableView?
+      var presentHeaderMenu: ((NSMenu, Int) -> Void)?
       /// Measured heights of wrapped cells by row and property.
       var wrapHeights: [Data: [String: CGFloat]] = [:]
       var applyingColumns = false
@@ -261,6 +267,13 @@
       init(_ parent: MacRecordTable) {
         self.parent = parent
         items = parent.gridItems
+      }
+      func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
+        guard tableView === table,
+          let column = tableView.tableColumns.firstIndex(of: tableColumn),
+          let menu = columnMenu(column)
+        else { return }
+        presentHeaderMenu?(menu, column)
       }
       func tableViewColumnDidMove(_ notification: Notification) {
         guard !applyingColumns, let table = notification.object as? NSTableView else { return }

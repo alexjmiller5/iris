@@ -120,9 +120,7 @@ public struct WorkspaceView: View {
         }
       } else {
         NavigationSplitView(
-          columnVisibility: Binding(
-            get: { sidebarHidden ? .detailOnly : .all },
-            set: { sidebarHidden = $0 == .detailOnly }),
+          columnVisibility: sidebarVisibility,
           preferredCompactColumn: $preferredColumn
         ) {
           List {
@@ -1364,6 +1362,10 @@ public struct WorkspaceView: View {
     }
   }
 
+  private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
+    SidebarToggle.visibility(hidden: $sidebarHidden, reduceMotion: reduceMotion)
+  }
+
   private var sidebarToggle: SidebarToggle {
     #if os(iOS)
       let compact = sizeClass == .compact
@@ -1382,7 +1384,7 @@ public struct WorkspaceView: View {
       }
     #endif
     // The column slides; Reduce Motion switches it at once.
-    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { sidebarHidden.toggle() }
+    sidebarVisibility.wrappedValue = sidebarHidden ? .all : .detailOnly
   }
 
   #if os(macOS)

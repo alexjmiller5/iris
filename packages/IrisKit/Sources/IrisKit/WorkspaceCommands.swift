@@ -7,6 +7,17 @@ struct SidebarToggle: Equatable {
   let window: ObjectIdentifier
   let compact: Bool
   let perform: () -> Void
+  static func visibility(
+    hidden: Binding<Bool>, reduceMotion: Bool
+  ) -> Binding<NavigationSplitViewVisibility> {
+    Binding(
+      get: { hidden.wrappedValue ? .detailOnly : .all },
+      set: { value, transaction in
+        hidden.transaction(transaction).wrappedValue = value == .detailOnly
+      }
+    ).animation(reduceMotion ? nil : .easeOut(duration: 0.2))
+  }
+
   static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.window == rhs.window && lhs.compact == rhs.compact
   }
