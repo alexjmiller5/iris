@@ -187,6 +187,9 @@ admission, while the batch's own row-refresh broadcasts retain its frozen IDs.
 Selected exports reuse the loaded-row serializer and its coverage metadata.
 Native selection lives in the existing workspace menu's loaded-row sheet. Freeze
 the displayed capture before presentation; selected exports retain that capture.
+The editor can copy a saved row ID; the selection sheet copies exact IDs in loaded
+row order, deduplicated by UTF-8 bytes and separated by newlines. Empty or stale
+selections cannot copy. These actions use the existing native clipboard button.
 BulkRecordModel checks exact UTF-8 identities and revisions, and ordinary model
 saves own reconciliation and sync scheduling. Keep cancellation separate from an
 admitted write's receipt; closing the sheet stops only remaining work. Do not

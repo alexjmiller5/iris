@@ -55,7 +55,7 @@ struct RecordSelectionView: View {
           Section {
             if let field {
               Picker(
-                "Property",
+                "Column",
                 selection: Binding(
                   get: { Data(field.id.utf8) },
                   set: {
@@ -113,6 +113,9 @@ struct RecordSelectionView: View {
         }
         if let error { Text(error).foregroundStyle(.red) }
         Section {
+          CopyDraftButton(title: "Copy row IDs", value: NativeRecordIDCopy.text(ids) ?? "")
+            .disabled(ids.isEmpty || running || !isCurrent())
+            .accessibilityIdentifier("copy-selected-row-ids")
           Button("Export selection") { export = SelectedExport(ids: ids) }
             .disabled(ids.isEmpty || running).accessibilityIdentifier("bulk-export")
         } footer: {

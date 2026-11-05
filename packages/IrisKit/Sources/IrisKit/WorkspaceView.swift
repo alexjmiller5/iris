@@ -1998,6 +1998,10 @@ private struct RecordEditor: View {
               ])
             }
             Section {
+              if let id = original["id"]?.text {
+                CopyDraftButton(title: "Copy row ID", value: id)
+                  .accessibilityIdentifier("copy-row-id")
+              }
               DisclosureGroup("Record details") {
                 ForEach(original.keys.filter(Self.metadataKeys.contains).sorted(), id: \.self) {
                   key in
