@@ -16,6 +16,7 @@
     let onEdit: (WorkspaceRow, String) -> Void
     var onDuplicate: ((WorkspaceRow) -> Bool)? = nil
     var duplicatedRow: Data? = nil
+    var selection: Binding<Set<Data>>? = nil
     var onDismissEditor: () -> Void = {}
     let onSort: (String, Bool) -> Void
     let onFilter: (String) -> Void
@@ -84,7 +85,8 @@
         guard let coordinator, let table else { return }
         guard let title = coordinator.items.firstIndex(where: { coordinator.parent.isTitle($0) })
         else { return }
-        coordinator.edit(row: table.selectedRow, column: title)
+        guard table.selectedRowIndexes.count == 1 else { return }
+        coordinator.edit(row: table.selectedRow, column: title + coordinator.columnOffset)
       }
       table.setAccessibilityIdentifier("record-grid")
       table.setAccessibilityLabel("Records")
@@ -125,7 +127,8 @@
       let items = coordinator.items
       table.selectionHighlightStyle = editorID == nil ? .regular : .none
       table.menu?.items.first?.isEnabled = actionsEnabled
-      let identifiers = items.map(identifier)
+      table.allowsMultipleSelection = selection != nil
+      let identifiers = (selection == nil ? [] : ["selection"]) + items.map(identifier)
       let columnsChanged = table.tableColumns.map { $0.identifier.rawValue } != identifiers
       let rowsChanged = previous.rows.map(\.byteExactID) != rows.map(\.byteExactID)
       let contentChanged =
@@ -142,6 +145,7 @@
         || previous.columns.map(\.width) != columns.map(\.width)
       if previous.wrapped != wrapped || columnsChanged { coordinator.wrapHeights = [:] }
       guard columnsChanged || rowsChanged || contentChanged else {
+        coordinator.restoreSelection()
         coordinator.updateEditor()
         return
       }
@@ -156,6 +160,15 @@
         for column in table.tableColumns { table.removeTableColumn(column) }
         for (index, id) in identifiers.enumerated() {
           let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
+          if selection != nil && index == 0 {
+            column.title = ""
+            column.minWidth = 32
+            column.maxWidth = 32
+            column.width = 32
+            table.addTableColumn(column)
+            continue
+          }
+          let index = index - coordinator.columnOffset
           column.title = items[index].label
           column.minWidth = isTitle(items[index]) ? 100 : 48
           column.maxWidth = .greatestFiniteMagnitude
@@ -165,12 +178,15 @@
         table.dataSource = coordinator
       }
       for (index, column) in table.tableColumns.enumerated() {
+        guard let index = coordinator.itemIndex(index) else { continue }
         column.title = items[index].label
         if abs(column.width - items[index].width) > 0.5 { column.width = items[index].width }
       }
       if columnsChanged || rowsChanged {
         table.reloadData()
-        if let selected, let index = rows.firstIndex(where: { $0.byteExactID == selected }) {
+        if selection == nil, let selected,
+          let index = rows.firstIndex(where: { $0.byteExactID == selected })
+        {
           table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         }
       } else {
@@ -185,6 +201,7 @@
           }
         }
       }
+      coordinator.restoreSelection()
       table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: rows.indices))
       coordinator.updateEditor()
       if editorID != nil, previous.editorID != editorID,
@@ -247,7 +264,8 @@
         popover.delegate = self
         // Table ownership keeps the live editor stable through row recycling.
         popover.show(
-          relativeTo: table.frameOfCell(atColumn: column, row: row), of: table, preferredEdge: .maxY
+          relativeTo: table.frameOfCell(atColumn: column + columnOffset, row: row), of: table,
+          preferredEdge: .maxY
         )
         outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [
           .leftMouseDown, .rightMouseDown, .otherMouseDown,
@@ -270,6 +288,57 @@
       var wrapHeights: [Data: [String: CGFloat]] = [:]
       var applyingColumns = false
       var items: [NativeGridItem]
+      var columnOffset: Int { parent.selection == nil ? 0 : 1 }
+      func itemIndex(_ column: Int) -> Int? {
+        let index = column - columnOffset
+        return items.indices.contains(index) ? index : nil
+      }
+      var selectedIDs: Set<Data> {
+        (parent.selection?.wrappedValue ?? []).intersection(Set(parent.rows.map(\.byteExactID)))
+      }
+      func restoreSelection() {
+        guard parent.selection != nil, let table else { return }
+        let indices = IndexSet(
+          parent.rows.indices.filter { selectedIDs.contains(parent.rows[$0].byteExactID) })
+        let previous = applyingColumns
+        applyingColumns = true
+        defer { applyingColumns = previous }
+        if table.selectedRowIndexes != indices {
+          table.selectRowIndexes(indices, byExtendingSelection: false)
+        }
+        for row in parent.rows.indices {
+          if let button = table.view(atColumn: 0, row: row, makeIfNecessary: false) as? NSButton {
+            button.state = selectedIDs.contains(parent.rows[row].byteExactID) ? .on : .off
+            button.isEnabled = parent.actionsEnabled
+          }
+        }
+      }
+      func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !applyingColumns, let table, notification.object as? NSTableView === table,
+          let selection = parent.selection
+        else { return }
+        let ids = Set(
+          table.selectedRowIndexes.compactMap {
+            parent.rows.indices.contains($0) ? parent.rows[$0].byteExactID : nil
+          })
+        if selection.wrappedValue != ids { selection.wrappedValue = ids }
+        restoreSelection()
+      }
+      func tableView(
+        _ tableView: NSTableView, shouldReorderColumn column: Int, toColumn newColumn: Int
+      ) -> Bool {
+        parent.selection == nil || (column > 0 && newColumn > 0)
+      }
+      @objc func toggleSelectedRow(_ sender: NSButton) {
+        guard parent.actionsEnabled, let selection = parent.selection,
+          let id = sender.cell?.representedObject as? Data,
+          parent.rows.contains(where: { $0.byteExactID == id })
+        else { return }
+        var ids = selectedIDs
+        if !ids.insert(id).inserted { ids.remove(id) }
+        selection.wrappedValue = ids
+        restoreSelection()
+      }
       init(_ parent: MacRecordTable) {
         self.parent = parent
         items = parent.gridItems
@@ -317,8 +386,8 @@
       }
 
       func fitColumn(_ index: Int) async {
-        guard items.indices.contains(index), let table else { return }
-        if let action = items[index].action {
+        guard let itemIndex = itemIndex(index), let table else { return }
+        if let action = items[itemIndex].action {
           let width =
             (action.label as NSString).size(withAttributes: [
               .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
@@ -327,7 +396,7 @@
           parent.onActionColumnWidth(action.id, table.tableColumns[index].width)
           return
         }
-        guard let field = items[index].column?.field,
+        guard let field = items[itemIndex].column?.field,
           let fit = parent.onFitColumn
         else { return }
         let workspace = parent.workspace
@@ -372,6 +441,17 @@
         guard let tableColumn, let column = tableView.tableColumns.firstIndex(of: tableColumn),
           parent.rows.indices.contains(row)
         else { return nil }
+        if parent.selection != nil && column == 0 {
+          let item = parent.rows[row]
+          let button = NSButton(
+            checkboxWithTitle: "", target: self, action: #selector(toggleSelectedRow(_:)))
+          button.cell?.representedObject = item.byteExactID
+          button.state = selectedIDs.contains(item.byteExactID) ? .on : .off
+          button.isEnabled = parent.actionsEnabled
+          button.setAccessibilityLabel("Select " + item.label)
+          button.setAccessibilityIdentifier("select-row-" + item.id)
+          return button
+        }
         // A cell scrolled out serves the row scrolled in: a new root costs about a third of
         // a new hosting view. The root's row identity keeps SwiftUI state per row.
         if let view = tableView.makeView(withIdentifier: tableColumn.identifier, owner: nil),
@@ -396,7 +476,7 @@
       }
 
       func cell(row: Int, column: Int) -> MacRecordCell {
-        let columnItem = items[column]
+        let columnItem = items[itemIndex(column)!]
         let title = parent.isTitle(columnItem)
         let field = title ? parent.titleField : columnItem.column?.field
         let item = parent.rows[row]
@@ -420,7 +500,7 @@
 
       func edit(row: Int, column: Int) {
         guard parent.actionsEnabled, parent.rows.indices.contains(row),
-          items.indices.contains(column), items[column].action == nil
+          let column = itemIndex(column), items[column].action == nil
         else { return }
         let field = parent.isTitle(items[column]) ? parent.titleField : items[column].column?.field
         if let field {
@@ -438,14 +518,14 @@
       }
 
       @objc func openSelectedRecord(_ sender: NSMenuItem) {
-        guard parent.actionsEnabled, let table,
+        guard parent.actionsEnabled, let table, table.selectedRowIndexes.count == 1,
           parent.rows.indices.contains(table.selectedRow)
         else { return }
         parent.onOpen(parent.rows[table.selectedRow])
       }
 
       func columnMenu(_ column: Int) -> NSMenu? {
-        guard items.indices.contains(column), items[column].action == nil else { return nil }
+        guard let column = itemIndex(column), items[column].action == nil else { return nil }
         let field = parent.isTitle(items[column]) ? parent.titleField : items[column].column?.field
         guard let field else { return nil }
         let menu = NSMenu()
