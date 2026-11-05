@@ -13,6 +13,8 @@ public struct WorkspaceView: View {
   @State private var settings = false
   @State private var recordExport: RecordExportTarget?
   @State private var rowSelection: RecordSelectionTarget?
+  @State private var duplicateMarker:
+    (workspace: ObjectIdentifier, generation: Int, table: Data, row: Data)?
   @State private var catalogEditor: CatalogEditorModel?
   @State private var filterEditing: FilterBarTarget?
   @State private var savedViews = false
@@ -398,7 +400,8 @@ public struct WorkspaceView: View {
   @State private var inlineCloseRequest = 0
 
   private func recordEditor(_ target: EditorTarget) -> some View {
-    RecordEditor(
+    let generation = model.workspaceGeneration
+    return RecordEditor(
       model: model, original: target.row, context: target.context, recovered: target.recovered,
       preparedEditor: target.preparedEditor, inlineField: target.inlineField,
       provisional: target.provisional, inlineCloseRequest: inlineCloseRequest,
@@ -427,6 +430,9 @@ public struct WorkspaceView: View {
         guard editor?.id == target.id, target.context?.workspace === model.client else { return }
         pendingViewDestination = (destination, model.workspaceGeneration)
         closeEditor(target)
+      },
+      onCreatedDuplicate: { id in
+        markDuplicate(id, context: target.context, generation: generation)
       },
       onSaved: {
         closeEditor(target)
@@ -558,6 +564,52 @@ public struct WorkspaceView: View {
   private func recordNavigationSucceeded(_ resolved: NativeResolvedDestination) {
     recordNavigationSucceeded(
       resolved.destination, label: resolved.label, record: resolved.row?.record)
+  }
+
+  private var duplicatedRow: Data? {
+    guard let marker = duplicateMarker, let client = model.client, let table = model.table,
+      marker.workspace == ObjectIdentifier(client), marker.generation == model.workspaceGeneration,
+      marker.table == Data(table.utf8)
+    else { return nil }
+    return marker.row
+  }
+
+  private func markDuplicate(_ id: String, context: WorkspaceEditingContext?, generation: Int) {
+    guard let context, context.workspace === model.client, let table = model.table,
+      generation == model.workspaceGeneration, Data(table.utf8) == Data(context.table.utf8)
+    else { return }
+    duplicateMarker = (
+      ObjectIdentifier(context.workspace), generation, Data(context.table.utf8), Data(id.utf8)
+    )
+  }
+
+  private func duplicateListed(_ row: WorkspaceRow) -> Bool {
+    guard canFind, model.canWrite, let context = model.editingContext else { return false }
+    navigationRequest += 1
+    let request = navigationRequest
+    let generation = model.workspaceGeneration
+    openingDestination = true
+    navigationError = nil
+    let current: @MainActor () -> Bool = {
+      navigationRequest == request && editor == nil && model.client === context.workspace
+        && model.workspaceGeneration == generation
+        && model.table.map({ Data($0.utf8) }) == Data(context.table.utf8)
+    }
+    Task {
+      defer { if navigationRequest == request { openingDestination = false } }
+      do {
+        let copy = try await model.prepareDuplicate(
+          rowID: row.id, context: context, isCurrent: current,
+          onCreated: { markDuplicate($0, context: context, generation: generation) })
+        guard current() else {
+          try copy.discardDraft()
+          return
+        }
+        editor = EditorTarget(row: nil, context: context, preparedEditor: copy)
+      } catch is CancellationError {
+      } catch { if current() { navigationError = error.localizedDescription } }
+    }
+    return true
   }
 
   private func openRecord(_ row: WorkspaceRow) {
@@ -1246,6 +1298,7 @@ public struct WorkspaceView: View {
                 openListed(row, inlineField: column)
               }
             },
+            onDuplicate: duplicateListed, duplicatedRow: duplicatedRow,
             onDismissEditor: { inlineCloseRequest += 1 },
             onSort: { column, ascending in
               guard canFind else { return }
@@ -1652,6 +1705,7 @@ private struct RecordEditor: View {
   let recordFields: [CatalogField]
   let linkWaiting: Bool
   let onDuplicate: (RecordEditorModel) -> Void
+  let onCreatedDuplicate: @MainActor (String) -> Void
   let onView: (NativeDestination) -> Void
   let isCurrent: @MainActor () -> Bool
   @Environment(\.scenePhase) private var scenePhase
@@ -1691,6 +1745,7 @@ private struct RecordEditor: View {
     onReference: @escaping (ReferenceDestination) -> Void,
     onDuplicate: @escaping (RecordEditorModel) -> Void = { _ in },
     onView: @escaping (NativeDestination) -> Void = { _ in },
+    onCreatedDuplicate: @escaping @MainActor (String) -> Void = { _ in },
     onSaved: @escaping () -> Void
   ) {
     self.onView = onView
@@ -1703,6 +1758,7 @@ private struct RecordEditor: View {
     self.isCurrent = isCurrent
     self.linkWaiting = linkWaiting
     self.onDuplicate = onDuplicate
+    self.onCreatedDuplicate = onCreatedDuplicate
     recordFields = model.properties.map(CatalogField.init)
     let source =
       preparedEditor
@@ -2568,24 +2624,9 @@ private struct RecordEditor: View {
       }
       do {
         try await collectMarkdown(lock: true)
-        // Copy a fresh full row, never the possibly stale or projected editor baseline.
-        let resolved = try await NativeDestinationResolver(workspace: context.workspace).resolve(
-          NativeDestination(table: context.table, rowID: id), isCurrent: editorIsCurrent)
-        guard let row = resolved.row?.record, row["deleted_at"]?.text.nonempty == nil else {
-          throw WorkspaceError(
-            message: "This record is no longer available locally.", violations: [])
-        }
-        guard model.canWrite else {
-          throw WorkspaceError(
-            message: model.editingUnavailable ?? "This table is read-only.", violations: [])
-        }
-        let copy = RecordEditorModel(
-          properties: model.properties, original: nil, table: context.table,
-          store: context.draftStore, recovered: nil
-        ) { patch, baseline in
-          try await model.save(patch, original: baseline, context: context)
-        }
-        try copy.installDuplicateDraft(from: row, isCurrent: editorIsCurrent)
+        let copy = try await model.prepareDuplicate(
+          rowID: id, context: context, isCurrent: editorIsCurrent,
+          onCreated: onCreatedDuplicate)
         guard editorIsCurrent() else {
           discardPreparedCopy(copy)
           return

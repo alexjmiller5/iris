@@ -2116,6 +2116,43 @@ final class WorkspaceModel {
     return RecordResolution(record: record, failures: result.failed)
   }
 
+  func prepareDuplicate(
+    rowID: String, context: WorkspaceEditingContext,
+    isCurrent: @escaping @MainActor () -> Bool,
+    onCreated: @escaping @MainActor (String) -> Void = { _ in }
+  ) async throws -> RecordEditorModel {
+    let generation = workspaceGeneration
+    let current: @MainActor () -> Bool = { [self] in
+      isCurrent() && context.workspace === client && generation == workspaceGeneration
+        && table.map({ Data($0.utf8) }) == Data(context.table.utf8)
+    }
+    guard current(), !Task.isCancelled else { throw CancellationError() }
+    guard canWrite else {
+      throw WorkspaceError(
+        message: editingUnavailable ?? "This table is read-only.", violations: [])
+    }
+    let resolved = try await NativeDestinationResolver(workspace: context.workspace).resolve(
+      NativeDestination(table: context.table, rowID: rowID), isCurrent: current)
+    guard current(), !Task.isCancelled else { throw CancellationError() }
+    guard let row = resolved.row?.record, row["deleted_at"]?.text.nonempty == nil else {
+      throw WorkspaceError(message: "This record is no longer available locally.", violations: [])
+    }
+    guard canWrite else {
+      throw WorkspaceError(
+        message: editingUnavailable ?? "This table is read-only.", violations: [])
+    }
+    let copy = RecordEditorModel(
+      properties: properties, original: nil, table: context.table, store: context.draftStore,
+      recovered: nil
+    ) { [self] patch, baseline in
+      let saved = try await save(patch, original: baseline, context: context)
+      if baseline == nil, let id = saved["id"]?.text, !id.isEmpty { onCreated(id) }
+      return saved
+    }
+    try copy.installDuplicateDraft(from: row, isCurrent: current)
+    return copy
+  }
+
   /// The stored full row by exact id, active or trashed: what an open editor merges.
   func storedRow(id: String, context: WorkspaceEditingContext) async throws -> WorkspaceRecord? {
     for trash in [false, true] {

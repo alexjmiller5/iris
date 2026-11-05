@@ -381,6 +381,10 @@ installs, and keep it with its error otherwise. Copy only after encoding and
 identity persistence succeed. Native Duplicate reads a fresh full active row into
 a new prepared editor, confirms discard only for a dirty source, and removes the
 unused copy's journal when the user keeps editing.
+Mac grid Cmd+D prepares a copy of one selected row while the grid owns keyboard
+focus; text editors retain their shortcuts. The grid and record editor share
+fresh full-row preparation and the ordinary validated writer. A successful first
+creation marks the exact new row's title cell as Duplicated within that workspace/table.
 
 Manual Resolve uses the core's revision-checked `resolveDerived` operation on the
 bound hub, followed by ordinary replica sync and a fresh full-row readback.

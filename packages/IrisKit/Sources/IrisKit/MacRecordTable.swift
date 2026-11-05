@@ -14,6 +14,8 @@
     let actionsEnabled: Bool
     let onOpen: (WorkspaceRow) -> Void
     let onEdit: (WorkspaceRow, String) -> Void
+    var onDuplicate: ((WorkspaceRow) -> Bool)? = nil
+    var duplicatedRow: Data? = nil
     var onDismissEditor: () -> Void = {}
     let onSort: (String, Bool) -> Void
     let onFilter: (String) -> Void
@@ -75,6 +77,9 @@
       table.delegate = context.coordinator
       table.target = context.coordinator
       table.action = #selector(Coordinator.editSelectedCell(_:))
+      table.duplicateSelection = { [weak coordinator = context.coordinator] in
+        coordinator?.duplicateSelectedRecord() ?? false
+      }
       table.editSelection = { [weak coordinator = context.coordinator, weak table] in
         guard let coordinator, let table else { return }
         guard let title = coordinator.items.firstIndex(where: { coordinator.parent.isTitle($0) })
@@ -127,6 +132,7 @@
         previous.rows.map(\.record) != rows.map(\.record)
         || previous.rows.map(\.label) != rows.map(\.label)
         || previous.editorID != editorID || previous.actionsEnabled != actionsEnabled
+        || previous.duplicatedRow != duplicatedRow
         || previous.columns.map { $0.field.property } != columns.map { $0.field.property }
         || previous.titleField?.property != titleField?.property
         || previous.actions != actions || previous.canRunAction != canRunAction
@@ -389,14 +395,15 @@
         return view
       }
 
-      fileprivate func cell(row: Int, column: Int) -> MacRecordCell {
+      func cell(row: Int, column: Int) -> MacRecordCell {
         let columnItem = items[column]
         let title = parent.isTitle(columnItem)
         let field = title ? parent.titleField : columnItem.column?.field
         let item = parent.rows[row]
         let wraps = field.map { parent.wrapped.contains($0.id) } ?? false
         return MacRecordCell(
-          row: item, field: field, isTitle: title, wraps: wraps,
+          row: item, field: field, isTitle: title,
+          duplicated: title && parent.duplicatedRow == item.byteExactID, wraps: wraps,
           onWrapHeight: { [weak self, id = item.byteExactID, column = field?.id ?? ""] height in
             self?.resizeWrapped(height, row: id, column: column)
           },
@@ -421,6 +428,13 @@
         } else {
           parent.onOpen(parent.rows[row])
         }
+      }
+
+      func duplicateSelectedRecord() -> Bool {
+        guard parent.actionsEnabled, let table, table.selectedRowIndexes.count == 1,
+          parent.rows.indices.contains(table.selectedRow), let duplicate = parent.onDuplicate
+        else { return false }
+        return duplicate(parent.rows[table.selectedRow])
       }
 
       @objc func openSelectedRecord(_ sender: NSMenuItem) {
@@ -501,6 +515,7 @@
     let row: WorkspaceRow
     let field: CatalogField?
     let isTitle: Bool
+    var duplicated = false
     let wraps: Bool
     let onWrapHeight: (CGFloat) -> Void
     let action: CoreRowAction?
@@ -542,6 +557,10 @@
               if wraps { onWrapHeight($0) }
             }
             if isTitle {
+              if duplicated {
+                Text("Duplicated").font(.caption).foregroundStyle(.secondary)
+                  .accessibilityIdentifier("duplicated-row-" + row.id)
+              }
               Button {
                 onOpen(row)
               } label: {
@@ -560,15 +579,29 @@
     }
   }
 
-  private final class RecordTableView: NSTableView {
+  final class RecordTableView: NSTableView {
     var didAttach: (() -> Void)?
     override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
       if window != nil { DispatchQueue.main.async { [weak self] in self?.didAttach?() } }
     }
 
+    var duplicateSelection: (() -> Bool)?
+    static func acceptsDuplicate(_ event: NSEvent) -> Bool {
+      !event.isARepeat && event.charactersIgnoringModifiers?.lowercased() == "d"
+        && event.modifierFlags.intersection([.command, .control, .shift, .option]) == .command
+    }
+    func handleDuplicateShortcut(_ event: NSEvent, responder: NSResponder?) -> Bool {
+      guard responder === self, Self.acceptsDuplicate(event) else { return false }
+      return duplicateSelection?() ?? false
+    }
     var editSelection: (() -> Void)?
     override func keyDown(with event: NSEvent) {
+      if let window, window.isKeyWindow, event.window === window,
+        handleDuplicateShortcut(event, responder: window.firstResponder)
+      {
+        return
+      }
       if event.charactersIgnoringModifiers == "\r" {
         editSelection?()
       } else {
