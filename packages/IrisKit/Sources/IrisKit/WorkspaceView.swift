@@ -13,6 +13,7 @@ public struct WorkspaceView: View {
   @State private var settings = false
   @State private var recordExport: RecordExportTarget?
   @State private var rowSelection: RecordSelectionTarget?
+  @State private var nativeSelection = NativeRowSelection()
   @State private var duplicateMarker:
     (workspace: ObjectIdentifier, generation: Int, table: Data, row: Data)?
   @State private var catalogEditor: CatalogEditorModel?
@@ -258,6 +259,12 @@ public struct WorkspaceView: View {
     ) { browser in
       OnlineBrowseView(model: browser, fields: model.properties.map(CatalogField.init))
     }
+    .onChange(of: selectionScope) {
+      nativeSelection.retain(in: selectionScope, rows: model.rows)
+    }
+    .onChange(of: model.rows.map(\.byteExactID)) {
+      nativeSelection.retain(in: selectionScope, rows: model.rows)
+    }
     .onChange(of: model.table) {
       online?.cancel()
       online = nil
@@ -317,7 +324,8 @@ public struct WorkspaceView: View {
     .sheet(item: $rowSelection) { target in
       RecordSelectionView(
         snapshot: target.snapshot, rows: target.rows, workspace: target.workspace,
-        writable: target.writable, isCurrent: target.isCurrent, prepare: target.prepare)
+        writable: target.writable, isCurrent: target.isCurrent, prepare: target.prepare,
+        onSelectionChanged: target.onSelectionChanged, selection: target.selectedIDs)
     }
     .sheet(isPresented: $savedViews) {
       SavedViewsView(model: model) { recordNavigationSucceeded($0) }
@@ -522,6 +530,11 @@ public struct WorkspaceView: View {
         rowSelection = RecordSelectionTarget(
           snapshot: snapshot, rows: model.rows, workspace: workspace,
           writable: model.canWrite && !model.trash, isCurrent: current,
+          selectedIDs: gridSelection.wrappedValue,
+          onSelectionChanged: { ids in
+            guard current() else { return }
+            gridSelection.wrappedValue = ids
+          },
           prepare: { ids in
             guard current() else {
               throw WorkspaceError(
@@ -531,7 +544,10 @@ public struct WorkspaceView: View {
           })
       } catch { model.error = error.localizedDescription }
     } label: {
-      Label("Select loaded rows", systemImage: "checklist")
+      Label(
+        gridSelection.wrappedValue.isEmpty
+          ? "Select loaded rows" : "Selected rows (\(gridSelection.wrappedValue.count))",
+        systemImage: "checklist")
     }.disabled(!canExportLoadedRows || model.rows.isEmpty).accessibilityIdentifier(
       "select-loaded-rows")
   }
@@ -564,6 +580,23 @@ public struct WorkspaceView: View {
   private func recordNavigationSucceeded(_ resolved: NativeResolvedDestination) {
     recordNavigationSucceeded(
       resolved.destination, label: resolved.label, record: resolved.row?.record)
+  }
+
+  private var selectionScope: NativeRowSelection.Scope? {
+    guard let client = model.client, let table = model.table else { return nil }
+    return .init(
+      workspace: ObjectIdentifier(client), generation: model.workspaceGeneration,
+      table: Data(table.utf8))
+  }
+
+  private var gridSelection: Binding<Set<Data>> {
+    let scope = selectionScope
+    return Binding(
+      get: { nativeSelection.selected(in: scope, rows: model.rows) },
+      set: { ids in
+        guard scope == selectionScope else { return }
+        nativeSelection.set(ids, in: scope, rows: model.rows)
+      })
   }
 
   private var duplicatedRow: Data? {
@@ -1298,7 +1331,7 @@ public struct WorkspaceView: View {
                 openListed(row, inlineField: column)
               }
             },
-            onDuplicate: duplicateListed, duplicatedRow: duplicatedRow,
+            onDuplicate: duplicateListed, duplicatedRow: duplicatedRow, selection: gridSelection,
             onDismissEditor: { inlineCloseRequest += 1 },
             onSort: { column, ascending in
               guard canFind else { return }
@@ -1680,6 +1713,8 @@ private struct RecordSelectionTarget: Identifiable {
   let workspace: NativeWorkspace
   let writable: Bool
   let isCurrent: () -> Bool
+  let selectedIDs: Set<Data>
+  let onSelectionChanged: (Set<Data>) -> Void
   let prepare: ([String]) throws -> BulkRecordModel
 }
 

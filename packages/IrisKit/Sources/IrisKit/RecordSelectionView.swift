@@ -7,8 +7,9 @@ struct RecordSelectionView: View {
   let writable: Bool
   let isCurrent: () -> Bool
   let prepare: ([String]) throws -> BulkRecordModel
+  var onSelectionChanged: (Set<Data>) -> Void = { _ in }
   @Environment(\.dismiss) private var dismiss
-  @State private var selection = Set<Data>()
+  @State var selection = Set<Data>()
   @State private var column = Data()
   @State private var value = ""
   @State private var clear = false
@@ -141,6 +142,9 @@ struct RecordSelectionView: View {
     #if os(macOS)
       .frame(minWidth: 480, idealWidth: 560, minHeight: 480, idealHeight: 640)
     #endif
+    .onChange(of: selection) {
+      if isCurrent() { onSelectionChanged(selection) }
+    }
     .onDisappear { batch?.cancelRemaining() }
   }
 

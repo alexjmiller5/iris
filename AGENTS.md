@@ -185,8 +185,13 @@ new work but cannot revoke a committed receipt. Do not flush active drafts or
 describe this as atomic/whole-batch undo. Workspace/query/catalog changes stop
 admission, while the batch's own row-refresh broadcasts retain its frozen IDs.
 Selected exports reuse the loaded-row serializer and its coverage metadata.
-Native selection lives in the existing workspace menu's loaded-row sheet. Freeze
-the displayed capture before presentation; selected exports retain that capture.
+Native Mac grid checkboxes hold exact loaded-row IDs per window, workspace generation
+and table. Sorting preserves selection; filtering removes departed IDs. The pinned
+checkbox column is UI state, never catalog layout. Right-clicking a selected row
+preserves the selected group; another row becomes the sole context target.
+The existing workspace menu's loaded-row sheet starts with the grid selection and
+returns changes only while its workspace/query/catalog capture remains current.
+Freeze the displayed capture before presentation; selected exports retain it.
 The editor can copy a saved row ID; the selection sheet copies exact IDs in loaded
 row order, deduplicated by UTF-8 bytes and separated by newlines. Empty or stale
 selections cannot copy. These actions use the existing native clipboard button.

@@ -298,8 +298,9 @@
       }
       func restoreSelection() {
         guard parent.selection != nil, let table else { return }
+        let selected = selectedIDs
         let indices = IndexSet(
-          parent.rows.indices.filter { selectedIDs.contains(parent.rows[$0].byteExactID) })
+          parent.rows.indices.filter { selected.contains(parent.rows[$0].byteExactID) })
         let previous = applyingColumns
         applyingColumns = true
         defer { applyingColumns = previous }
@@ -308,7 +309,7 @@
         }
         for row in parent.rows.indices {
           if let button = table.view(atColumn: 0, row: row, makeIfNecessary: false) as? NSButton {
-            button.state = selectedIDs.contains(parent.rows[row].byteExactID) ? .on : .off
+            button.state = selected.contains(parent.rows[row].byteExactID) ? .on : .off
             button.isEnabled = parent.actionsEnabled
           }
         }
@@ -446,7 +447,8 @@
           let button = NSButton(
             checkboxWithTitle: "", target: self, action: #selector(toggleSelectedRow(_:)))
           button.cell?.representedObject = item.byteExactID
-          button.state = selectedIDs.contains(item.byteExactID) ? .on : .off
+          button.state =
+            parent.selection?.wrappedValue.contains(item.byteExactID) == true ? .on : .off
           button.isEnabled = parent.actionsEnabled
           button.setAccessibilityLabel("Select " + item.label)
           button.setAccessibilityIdentifier("select-row-" + item.id)
@@ -493,6 +495,7 @@
       }
 
       @objc func editSelectedCell(_ table: NSTableView) {
+        guard table.selectedRowIndexes.count <= 1 else { return }
         let row = table.clickedRow
         let column = table.clickedColumn >= 0 ? table.clickedColumn : 0
         edit(row: row, column: column)
@@ -691,7 +694,9 @@
     override func menu(for event: NSEvent) -> NSMenu? {
       let row = row(at: convert(event.locationInWindow, from: nil))
       guard row >= 0 else { return nil }
-      selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+      if !selectedRowIndexes.contains(row) {
+        selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+      }
       return super.menu(for: event)
     }
   }
