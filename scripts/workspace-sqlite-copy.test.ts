@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test';
-import { Database } from 'bun:sqlite';
+import { Database, constants } from 'bun:sqlite';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { collectSQLiteInventory } from '../apps/web/src/lib/workspace-sqlite-inventory';
 import { assertMigrationPreserved } from '../apps/web/src/lib/workspace-migration';
 import { initCore, openSearchIndex } from 'iris-core/client';
@@ -10,7 +11,10 @@ const { planSQLiteLogicalCopy } = (await import(
 	process.env.IRIS_TEST_SQLITE_COPY || '../apps/web/src/lib/workspace-sqlite-copy'
 )) as typeof import('../apps/web/src/lib/workspace-sqlite-copy');
 function fixture(path = ':memory:') {
-	const db = new Database(path);
+	const db = new Database(
+		path,
+		constants.SQLITE_OPEN_READWRITE | constants.SQLITE_OPEN_CREATE | constants.SQLITE_OPEN_URI
+	);
 	const driver = {
 		all: async (sql: string, params: unknown[] = []) =>
 			db.query(sql).all(...(params as never[])) as Record<string, unknown>[],
@@ -119,8 +123,8 @@ test('unknown FTS variants refuse planning and retain the complete original', as
 
 test('native SQL oracle materializes the complete canonical plan with exact rows/schema/metadata and unchanged readonly source', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'iris-copy-plan-'));
-	const sourcePath = join(dir, 'source.db'),
-		targetPath = join(dir, 'target.db');
+	const sourcePath = join(dir, 'source ?#.db'),
+		targetPath = join(dir, 'target ?#.db');
 	const source = fixture(sourcePath);
 	let target: ReturnType<typeof fixture> | undefined;
 	try {
@@ -142,8 +146,15 @@ test('native SQL oracle materializes the complete canonical plan with exact rows
 		target = fixture(targetPath);
 		for (const [name, value] of Object.entries(plan.metadata))
 			target.db.exec(`PRAGMA ${name}=${typeof value === 'string' ? `'${value}'` : value}`);
-		target.db.run('ATTACH DATABASE ? AS legacy', [`file:${sourcePath}?mode=ro`]);
-		expect(() => target!.db.exec('UPDATE legacy.records SET body=body')).toThrow();
+		target.db.run('ATTACH DATABASE ? AS legacy', [pathToFileURL(sourcePath).href + '?mode=ro']);
+		let readonly = false;
+		try {
+			target.db.exec('UPDATE legacy.records SET body=body');
+		} catch (error) {
+			expect((error as { code: string }).code).toBe('SQLITE_READONLY');
+			readonly = true;
+		}
+		expect(readonly).toBe(true);
 		const q = (name: string) => '"' + name.replaceAll('"', '""') + '"';
 		const copy = (entry: (typeof plan.copies)[number]) => {
 			const names = [...(entry.rowid ? [entry.rowid] : []), ...entry.columns].map(q).join(',');
