@@ -66,6 +66,23 @@ export async function collectSQLiteInventory(
 				throw new Error('SQLite inventory requires a streaming host for this workspace.');
 			out[domain].push({ key, value: bytes });
 		};
+		// Preserve logical header metadata; cipher page size/reserve are target geometry.
+		for (const name of ['user_version', 'application_id', 'encoding', 'auto_vacuum']) {
+			const rows = await driver.all(`PRAGMA main.${name}`);
+			if (rows.length !== 1 || Object.keys(rows[0]).join(',') !== name) throw fail();
+			const value = rows[0][name];
+			if (name === 'encoding') {
+				if (typeof value !== 'string' || !['UTF-8', 'UTF-16le', 'UTF-16be'].includes(value))
+					throw fail();
+			} else if (
+				!integer(value) ||
+				(name === 'auto_vacuum'
+					? value < 0 || value > 2
+					: value < -2147483648 || value > 2147483647)
+			)
+				throw fail();
+			add('database-schema', JSON.stringify(['metadata', name]), value);
+		}
 		const databases = await driver.all('PRAGMA database_list');
 		if (databases.some((r) => r.name !== 'main' && r.name !== 'temp')) throw fail();
 		const tables = await driver.all('PRAGMA main.table_list');

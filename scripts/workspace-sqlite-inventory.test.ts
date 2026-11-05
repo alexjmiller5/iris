@@ -232,3 +232,80 @@ test('malformed bridge metadata and scalar types cannot certify a complete inven
 		}
 	}
 });
+
+test('persistent user/application versions and auto-vacuum changes cannot pass preservation', async () => {
+	for (const [name, value] of [
+		['user_version', -17],
+		['application_id', 2147483647],
+		['auto_vacuum', 2],
+	] as const) {
+		const { db, driver } = fixture();
+		try {
+			const before = await collectSQLiteInventory(driver);
+			const key = JSON.stringify(['metadata', name]);
+			expect(
+				before['database-schema'].find((row) => row.key === key),
+			).toBeDefined();
+			db.exec(
+				`PRAGMA ${name}=${value}${name === 'auto_vacuum' ? ';VACUUM' : ''}`,
+			);
+			const after = await collectSQLiteInventory(driver);
+			const captured = after['database-schema'].find((row) => row.key === key)!;
+			expect(JSON.parse(new TextDecoder().decode(captured.value))).toBe(value);
+			expect(() =>
+				assertMigrationPreserved(full(before), full(after)),
+			).toThrow();
+		} finally {
+			db.close();
+		}
+	}
+});
+
+test('persistent encoding is explicit preservation evidence even for an empty database', async () => {
+	for (const encoding of ['UTF-8', 'UTF-16le', 'UTF-16be']) {
+		const db = new Database(':memory:');
+		try {
+			db.exec(`PRAGMA encoding='${encoding}'`);
+			const driver = {
+				all: async (sql: string) =>
+					db.query(sql).all() as Record<string, unknown>[],
+				transaction: async <T>(work: () => Promise<T>) => work(),
+			};
+			const snapshot = await collectSQLiteInventory(driver);
+			const captured = snapshot['database-schema'].find(
+				(row) => row.key === JSON.stringify(['metadata', 'encoding']),
+			);
+			expect(captured).toBeDefined();
+			expect(JSON.parse(new TextDecoder().decode(captured!.value))).toBe(
+				encoding,
+			);
+		} finally {
+			db.close();
+		}
+	}
+});
+
+test('malformed persistent header metadata refuses a complete preservation certificate', async () => {
+	const { db, driver } = fixture();
+	try {
+		for (const [name, rows] of [
+			['user_version', [{ user_version: '1' }]],
+			['user_version', [{ user_version: 2147483648 }]],
+			['application_id', [{ application_id: -2147483649 }]],
+			['auto_vacuum', [{ auto_vacuum: 3 }]],
+			['encoding', [{ encoding: 'unknown' }]],
+			['encoding', []],
+			['encoding', [{ encoding: 'UTF-8', extra: 1 }]],
+		] as [string, Record<string, unknown>[]][]) {
+			await expect(
+				collectSQLiteInventory({
+					...driver,
+					all: async (sql) =>
+						sql === `PRAGMA main.${name}` ? rows : driver.all(sql),
+				}),
+			).rejects.toThrow();
+		}
+	} finally {
+		db.close();
+	}
+});
