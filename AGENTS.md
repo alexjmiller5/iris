@@ -1227,3 +1227,10 @@ sync. Schema changes invalidate old coverage, and enforced record rules remain
 fail-closed until the ordinary sync establishes their validation dependencies.
 
 Ordinary check workflows run on main pushes and pull requests, with superseded runs canceled. Long UI and accessibility suites run only through manual workflow dispatch.
+
+## Install page icons
+
+The shared OTA install publisher embeds one composed phone-and-download SVG
+master and its opaque 180/192/512-pixel home-screen renders. Icon links use
+the configured install base URL; verify routes and install links with
+`python3 -B scripts/ota_install_test.py`. The publisher stays self-contained.
